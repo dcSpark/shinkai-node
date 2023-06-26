@@ -1,0 +1,41 @@
+syntax = "proto3";
+package message;
+
+message Field {
+    string name = 1;
+    string type = 2;
+}
+
+message MessageSchemaType {
+    string type_name = 1;
+    repeated Field fields = 2;
+}
+
+message Topic {
+    string topic_id = 1;
+    string channel_id = 2;
+}
+
+message InternalMetadata {
+    MessageSchemaType message_schema_type = 1;
+    Topic topic = 2;
+    string content = 3;
+}
+
+message ExternalMetadata {
+    string sender = 1;
+    string recipient = 2;
+    string scheduled_time = 3;
+    string signature = 4;
+}
+
+message Body {
+    string content = 1;
+    InternalMetadata internal_metadata = 2;
+    ExternalMetadata external_metadata = 3;
+    string encryption = 4;
+}
+
+message Message {
+    Body body = 1;
+}
