@@ -32,10 +32,10 @@ message ExternalMetadata {
 message Body {
     string content = 1;
     InternalMetadata internal_metadata = 2;
-    ExternalMetadata external_metadata = 3;
-    string encryption = 4;
 }
 
 message Message {
     Body body = 1;
+    ExternalMetadata external_metadata = 2;
+    string encryption = 3;
 }

@@ -42,44 +42,47 @@ impl ShinkaiMessage {
                 .to_string(),
         };
 
-        let message = ProtoMessage {
-            body: Some(Body {
-                content: json_value["message"]["body"]["content"]
+        let body = Body {
+            content: json_value["message"]["body"]["content"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            internal_metadata: Some(InternalMetadata {
+                message_schema_type: Some(message_schema),
+                topic: Some(topic),
+                content: json_value["message"]["body"]["internal_metadata"]["content"]
                     .as_str()
                     .unwrap()
                     .to_string(),
-                internal_metadata: Some(InternalMetadata {
-                    message_schema_type: Some(message_schema),
-                    topic: Some(topic),
-                    content: json_value["message"]["body"]["internal_metadata"]["content"]
-                        .as_str()
-                        .unwrap()
-                        .to_string(),
-                }),
-                encryption: json_value["message"]["body"]["encryption"]
-                    .as_str()
-                    .unwrap()
-                    .to_string(),
-                external_metadata: Some(ExternalMetadata {
-                    sender: json_value["message"]["body"]["external_metadata"]["sender"]
-                        .as_str()
-                        .unwrap()
-                        .to_string(),
-                    recipient: json_value["message"]["body"]["external_metadata"]["recipient"]
-                        .as_str()
-                        .unwrap()
-                        .to_string(),
-                    scheduled_time: json_value["message"]["body"]["external_metadata"]
-                        ["scheduled_time"]
-                        .as_str()
-                        .unwrap()
-                        .to_string(),
-                    signature: json_value["message"]["body"]["external_metadata"]["signature"]
-                        .as_str()
-                        .unwrap()
-                        .to_string(),
-                }),
             }),
+        };
+
+        let external_metadata = ExternalMetadata {
+            sender: json_value["message"]["external_metadata"]["sender"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            recipient: json_value["message"]["external_metadata"]["recipient"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            scheduled_time: json_value["message"]["external_metadata"]["scheduled_time"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+            signature: json_value["message"]["external_metadata"]["signature"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        };
+
+        let message = ProtoMessage {
+            body: Some(body),
+            external_metadata: Some(external_metadata),
+            encryption: json_value["message"]["encryption"]
+                .as_str()
+                .unwrap()
+                .to_string(),
         };
 
         let mut bytes = Vec::new();
@@ -95,6 +98,7 @@ impl ShinkaiMessage {
 
 // shinkai_message.rs
 
+#[cfg(test)]
 mod tests {
     use crate::ShinkaiMessage;
 
@@ -117,14 +121,14 @@ mod tests {
                             "channel_id": "my_channel"
                         },
                         "content": "InternalContent"
-                    },
-                    "encryption": "AES",
-                    "external_metadata": {
-                        "sender": "Alice",
-                        "recipient": "Bob",
-                        "scheduled_time": "2023-12-01T00:00:00Z",
-                        "signature": "ABC123"
                     }
+                },
+                "encryption": "AES",
+                "external_metadata": {
+                    "sender": "Alice",
+                    "recipient": "Bob",
+                    "scheduled_time": "2023-12-01T00:00:00Z",
+                    "signature": "ABC123"
                 }
             }
         }"#;
@@ -151,14 +155,14 @@ mod tests {
                             "channel_id": "my_channel"
                         },
                         "content": "InternalContent"
-                    },
-                    "encryption": "AES",
-                    "external_metadata": {
-                        "sender": "Alice",
-                        "recipient": "Bob",
-                        "scheduled_time": "2023-12-01T00:00:00Z",
-                        "signature": "ABC123"
                     }
+                },
+                "encryption": "AES",
+                "external_metadata": {
+                    "sender": "Alice",
+                    "recipient": "Bob",
+                    "scheduled_time": "2023-12-01T00:00:00Z",
+                    "signature": "ABC123"
                 }
             }
         }"#;
@@ -168,7 +172,6 @@ mod tests {
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();
         assert_eq!(body.content, "Hello World");
-        assert_eq!(body.encryption, "AES");
 
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.content, "InternalContent");
@@ -225,7 +228,9 @@ mod tests {
             "my_channel"
         );
 
-        let external_metadata = body.external_metadata.as_ref().unwrap();
+        assert_eq!(decoded_message.encryption, "AES");
+
+        let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, "Alice");
         assert_eq!(external_metadata.recipient, "Bob");
         assert_eq!(external_metadata.scheduled_time, "2023-12-01T00:00:00Z");

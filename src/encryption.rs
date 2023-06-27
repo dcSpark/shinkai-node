@@ -31,8 +31,46 @@ pub fn encrypt_body_if_needed(
             // Encrypt message
             let ciphertext = cipher.encrypt(nonce, message).expect("encryption failure!");
 
-            // Here we return the ciphertext (encoded to base64 for easier storage and transmission)
-            Some(base64::encode(&ciphertext))
+            // Here we return the nonce and ciphertext (encoded to base64 for easier storage and transmission)
+            let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
+            Some(base64::encode(&nonce_and_ciphertext))
+        }
+        _ => {
+            // Return None if encryption method is not "default"
+            None
+        }
+    }
+}
+
+pub fn decrypt_body_content(
+    ciphertext: &[u8],
+    self_sk: &StaticSecret,
+    sender_pk: &PublicKey,
+    encryption: Option<&str>,
+) -> Option<String> {
+    match encryption {
+        Some("default") => {
+            let shared_secret = self_sk.diffie_hellman(&sender_pk);
+
+            // Convert the shared secret into a suitable key
+            let mut hasher = Sha256::new();
+            hasher.update(shared_secret.as_bytes());
+            let result = hasher.finalize();
+            let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
+
+            let cipher = ChaCha20Poly1305::new(&key);
+
+            let decoded = base64::decode(ciphertext).expect("Failed to decode base64");
+            let (nonce, ciphertext) = decoded.split_at(12);
+            let nonce = GenericArray::from_slice(nonce);
+
+            // Decrypt ciphertext
+            let plaintext = cipher
+                .decrypt(nonce, ciphertext)
+                .expect("decryption failure!");
+
+            // Here we return the plaintext (encoded as a string for easier use)
+            Some(String::from_utf8(plaintext).expect("Failed to convert decrypted bytes to String"))
         }
         _ => {
             // Return None if encryption method is not "default"

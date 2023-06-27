@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use crate::encryption::encrypt_body_if_needed;
+use crate::encryption::{encrypt_body_if_needed, decrypt_body_content};
 use crate::message::{
     Body, ExternalMetadata, Field, InternalMetadata, Message as ProtoMessage, MessageSchemaType,
     Topic,
@@ -31,12 +31,15 @@ impl ShinkaiMessageBuilder {
         }
     }
 
-    pub fn body(mut self, content: String, encryption: String) -> Self {
+    pub fn encryption(mut self, encryption: String) -> Self {
+        self.encryption = Some(encryption);
+        self
+    }
+
+    pub fn body(mut self, content: String) -> Self {
         self.body = Some(Body {
             content,
-            encryption,
             internal_metadata: None,
-            external_metadata: None,
         });
         self
     }
@@ -85,8 +88,6 @@ impl ShinkaiMessageBuilder {
                     .unwrap_or_else(|| String::from("")),
             };
             body.internal_metadata = Some(internal_metadata);
-            body.external_metadata = self.external_metadata;
-            print!("Encryption: {:?}", self.encryption);
             
             if self.encryption == Some("default".to_string()) {
                 print!("Encrypting body content");
@@ -99,7 +100,12 @@ impl ShinkaiMessageBuilder {
                 .expect("Failed to encrypt body content");
                 body.content = base64::encode(&encrypted_body);
             }
-            Ok(ProtoMessage { body: Some(body) })
+            
+            Ok(ProtoMessage { 
+                body: Some(body), 
+                encryption: self.encryption.unwrap_or_else(|| String::from("")),
+                external_metadata: self.external_metadata 
+            })
         } else {
             Err("Missing fields")
         }
@@ -129,7 +135,8 @@ mod tests {
         let public_key = PublicKey::from(&secret_key);
 
         let message_result = ShinkaiMessageBuilder::new(secret_key, public_key)
-            .body("body content".to_string(), "no_encryption".to_string())
+            .body("body content".to_string())
+            .encryption("no_encryption".to_string())
             .message_schema_type("schema type".to_string(), fields)
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
@@ -145,10 +152,10 @@ mod tests {
         let message = message_result.unwrap();
         let body = message.body.as_ref().unwrap();
         assert_eq!(body.content, "body content");
-        assert_eq!(body.encryption, "no_encryption");
+        assert_eq!(message.encryption, "no_encryption");
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.content, "internal metadata content");
-        let external_metadata = body.external_metadata.as_ref().unwrap();
+        let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, "sender");
     }
 
@@ -165,10 +172,12 @@ mod tests {
         #[allow(deprecated)]
         let mut csprng = OsRng::new().unwrap();
         let secret_key = StaticSecret::new(&mut csprng);
+        let secret_key_clone = secret_key.clone();
         let public_key = PublicKey::from(&secret_key);
 
         let message_result = ShinkaiMessageBuilder::new(secret_key, public_key)
-            .body("body content".to_string(), "default".to_string())
+            .body("body content".to_string())
+            .encryption("default".to_string())
             .message_schema_type("schema type".to_string(), fields)
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
@@ -183,11 +192,20 @@ mod tests {
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
         let body = message.body.as_ref().unwrap();
-        assert_eq!(body.content, "body content");
-        assert_eq!(body.encryption, "default");
+        assert_eq!(message.encryption, "default");
+    
+        let decrypted_content = decrypt_body_content(
+            base64::decode(&body.content).unwrap().as_slice(),
+            &secret_key_clone,
+            &public_key,
+            Some(&message.encryption),
+        )
+        .expect("Failed to decrypt body content");
+        assert_eq!(decrypted_content, "body content");
+
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.content, "internal metadata content");
-        let external_metadata = body.external_metadata.as_ref().unwrap();
+        let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, "sender");
     }
 
