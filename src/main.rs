@@ -1,15 +1,13 @@
 // main.rs
 
-mod shinkai_message_handler;
-mod shinkai_message_builder;
-mod encryption;
+mod shinkai_message;
 mod network;
 
-mod shinkai_message {
+mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message.rs"));
 }
 
-use shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 
 #[tokio::main]
 async fn main() {

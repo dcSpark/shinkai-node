@@ -1,6 +1,6 @@
 #[allow(unused_imports)]
-use crate::encryption::{encrypt_body_if_needed, decrypt_body_content};
-use crate::shinkai_message::{
+use super::encryption::{encrypt_body_if_needed, decrypt_body_content};
+use crate::shinkai_message_proto::{
     Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
     Topic,
 };

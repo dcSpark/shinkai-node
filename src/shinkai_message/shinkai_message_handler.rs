@@ -1,6 +1,6 @@
 // shinkai_message.rs
 
-use crate::shinkai_message::{
+use crate::shinkai_message_proto::{
     Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
     Topic,
 };
