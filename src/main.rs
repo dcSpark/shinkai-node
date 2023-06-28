@@ -3,6 +3,7 @@
 mod shinkai_message;
 mod shinkai_message_builder;
 mod encryption;
+mod network;
 
 mod message {
     include!(concat!(env!("OUT_DIR"), "/message.rs"));
