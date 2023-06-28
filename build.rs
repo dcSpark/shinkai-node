@@ -1,3 +1,3 @@
 fn main() {
-    prost_build::compile_protos(&["protos/message.proto"], &["protos"]).unwrap();
+    prost_build::compile_protos(&["protos/shinkai_message.proto"], &["protos"]).unwrap();
 }

@@ -1,15 +1,15 @@
 // shinkai_message.rs
 
-use crate::message::{
-    Body, ExternalMetadata, Field, InternalMetadata, Message as ProtoMessage, MessageSchemaType,
+use crate::shinkai_message::{
+    Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
     Topic,
 };
 use prost::Message;
 use serde_json::Value;
 
-pub struct ShinkaiMessage;
+pub struct ShinkaiMessageHandler;
 
-impl ShinkaiMessage {
+impl ShinkaiMessageHandler {
     pub fn encode_message(json_string: &str) -> Vec<u8> {
         let json_value: Value = serde_json::from_str(json_string).unwrap();
         let fields =
@@ -76,7 +76,7 @@ impl ShinkaiMessage {
                 .to_string(),
         };
 
-        let message = ProtoMessage {
+        let message = ShinkaiMessage {
             body: Some(body),
             external_metadata: Some(external_metadata),
             encryption: json_value["message"]["encryption"]
@@ -91,8 +91,8 @@ impl ShinkaiMessage {
         bytes
     }
 
-    pub fn decode_message(bytes: Vec<u8>) -> ProtoMessage {
-        ProtoMessage::decode(bytes.as_slice()).unwrap()
+    pub fn decode_message(bytes: Vec<u8>) -> ShinkaiMessage {
+        ShinkaiMessage::decode(bytes.as_slice()).unwrap()
     }
 }
 
@@ -100,7 +100,7 @@ impl ShinkaiMessage {
 
 #[cfg(test)]
 mod tests {
-    use crate::ShinkaiMessage;
+    use crate::ShinkaiMessageHandler;
 
     #[test]
     fn test_encode_message() {
@@ -132,7 +132,7 @@ mod tests {
                 }
             }
         }"#;
-        let encoded_message = ShinkaiMessage::encode_message(json_string);
+        let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
         assert!(encoded_message.len() > 0); // The result should be a non-empty vector.
     }
 
@@ -166,8 +166,8 @@ mod tests {
                 }
             }
         }"#;
-        let encoded_message = ShinkaiMessage::encode_message(json_string);
-        let decoded_message = ShinkaiMessage::decode_message(encoded_message);
+        let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();

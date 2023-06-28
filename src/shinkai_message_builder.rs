@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use crate::encryption::{encrypt_body_if_needed, decrypt_body_content};
-use crate::message::{
-    Body, ExternalMetadata, Field, InternalMetadata, Message as ProtoMessage, MessageSchemaType,
+use crate::shinkai_message::{
+    Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
     Topic,
 };
 use x25519_dalek::{PublicKey, StaticSecret};
@@ -78,7 +78,7 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn build(self) -> Result<ProtoMessage, &'static str> {
+    pub fn build(self) -> Result<ShinkaiMessage, &'static str> {
         if let Some(mut body) = self.body {
             let internal_metadata = InternalMetadata {
                 message_schema_type: self.message_schema_type,
@@ -101,7 +101,7 @@ impl ShinkaiMessageBuilder {
                 body.content = base64::encode(&encrypted_body);
             }
             
-            Ok(ProtoMessage { 
+            Ok(ShinkaiMessage { 
                 body: Some(body), 
                 encryption: self.encryption.unwrap_or_else(|| String::from("")),
                 external_metadata: self.external_metadata 

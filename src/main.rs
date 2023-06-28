@@ -1,15 +1,15 @@
 // main.rs
 
-mod shinkai_message;
+mod shinkai_message_handler;
 mod shinkai_message_builder;
 mod encryption;
 mod network;
 
-mod message {
-    include!(concat!(env!("OUT_DIR"), "/message.rs"));
+mod shinkai_message {
+    include!(concat!(env!("OUT_DIR"), "/shinkai_message.rs"));
 }
 
-use shinkai_message::ShinkaiMessage;
+use shinkai_message_handler::ShinkaiMessageHandler;
 
 #[tokio::main]
 async fn main() {
@@ -43,10 +43,10 @@ async fn main() {
     }"#;
 
     // Encoding
-    let encoded_message = ShinkaiMessage::encode_message(json_string);
+    let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
     println!("Encoded message: {:?}", encoded_message);
 
     // Decoding
-    let decoded_message = ShinkaiMessage::decode_message(encoded_message);
+    let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
     println!("Decoded message: {:?}", decoded_message);
 }

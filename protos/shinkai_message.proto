@@ -1,5 +1,5 @@
 syntax = "proto3";
-package message;
+package shinkai_message;
 
 message Field {
     string name = 1;
@@ -34,7 +34,7 @@ message Body {
     InternalMetadata internal_metadata = 2;
 }
 
-message Message {
+message ShinkaiMessage {
     Body body = 1;
     ExternalMetadata external_metadata = 2;
     string encryption = 3;
