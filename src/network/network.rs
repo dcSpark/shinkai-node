@@ -1,10 +1,11 @@
+use crate::shinkai_message::encryption::ephemeral_keys;
+use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
+use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use std::env;
-use std::time::Duration;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::time;
 use structopt::StructOpt;
-
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use x25519_dalek::{PublicKey, StaticSecret};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "example", about = "An example of StructOpt usage.")]
@@ -18,7 +19,15 @@ pub struct Opt {
     pub delay: u64,
 }
 
-pub async fn start_server() -> tokio::io::Result<()> {
+pub async fn ephemeral_start_server() -> tokio::io::Result<()> {
+    let (pk, sk) = ephemeral_keys();
+    return start_server(pk, sk).await;
+}
+
+pub async fn start_server(
+    secret_key: StaticSecret,
+    public_key: PublicKey,
+) -> tokio::io::Result<()> {
     let address = env::var("SERVER_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1"));
     let port = env::var("SERVER_PORT").unwrap_or_else(|_| String::from("8080"));
     let listener = TcpListener::bind(format!("{}:{}", address, port)).await?;
@@ -31,7 +40,7 @@ pub async fn start_server() -> tokio::io::Result<()> {
             Err(e) => {
                 println!("Connection closed, error: {}", e);
                 return Err(e);
-            },
+            }
         };
 
         // If the read returned 0, it means the connection was closed
@@ -40,45 +49,47 @@ pub async fn start_server() -> tokio::io::Result<()> {
             break;
         }
 
-        let msg = String::from_utf8(buf[..n].to_vec()).unwrap();
+        let msg = buf[..n].to_vec();
 
-        match msg.as_str() {
-            "Hello, server!" => {
-                socket.write_all(b"Hello, client!").await?;
-            },
-            "How are you?" => {
-                socket.write_all(b"I'm good, thank you.").await?;
-            },
+        let shinkai_message = match ShinkaiMessageHandler::decode_message(msg) {
+            Ok(msg) => msg,
+            Err(e) => {
+                println!("Server> Failed to decode message, error: {}", e);
+                continue;
+            }
+        };
+
+        // Process the message based on its content
+        match shinkai_message.body.unwrap().content.as_str() {
             "Ping" => {
-                socket.write_all(b"Pong").await?;
-            },
+                let pong = ShinkaiMessageBuilder::ping_pong_message(
+                    "Pong".to_owned(),
+                    secret_key.clone(),
+                    public_key,
+                )
+                .unwrap();
+                let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(pong);
+                socket.write_all(&encoded_msg).await?;
+            }
+            "terminate" => {
+                println!("Termination request received, closing connection.");
+                let terminate =
+                    ShinkaiMessageBuilder::terminate_message(secret_key.clone(), public_key)
+                        .unwrap();
+                let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(terminate);
+                socket.write_all(&encoded_msg).await?;
+                std::mem::drop(socket);
+                break;
+            }
             _ => {
-                socket.write_all(b"Sorry, I didn't understand that.").await?;
-            },
+                let ack = ShinkaiMessageBuilder::ack_message(secret_key.clone(), public_key).unwrap();
+                let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(ack);
+                socket.write_all(&encoded_msg).await?;
+            }
         }
     }
 
     Ok(())
-}
-
-pub async fn start_client(opt: Opt) -> tokio::io::Result<String> {
-    for _ in 0..opt.retries {
-        match TcpStream::connect("127.0.0.1:8080").await {
-            Ok(mut stream) => {
-                // Send a Ping message and expect a Pong response
-                stream.write_all(b"Ping").await?;
-                let response = read_from_server(&mut stream).await?;
-
-                return Ok(response.trim_end().to_string());
-            },
-            Err(e) => {
-                println!("Failed to connect, error: {}, retrying...", e);
-                time::sleep(Duration::from_secs(opt.delay)).await;
-            },
-        }
-    }
-
-    Err(tokio::io::Error::new(tokio::io::ErrorKind::Other, "Failed to connect after retries"))
 }
 
 async fn read_from_server(stream: &mut TcpStream) -> tokio::io::Result<String> {

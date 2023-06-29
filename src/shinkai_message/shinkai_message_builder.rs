@@ -90,7 +90,7 @@ impl ShinkaiMessageBuilder {
             body.internal_metadata = Some(internal_metadata);
             
             if self.encryption == Some("default".to_string()) {
-                print!("Encrypting body content");
+                print!("Encrypting body content: {}", body.content);
                 let encrypted_body = encrypt_body_if_needed(
                     body.content.as_bytes(),
                     &self.secret_key,
@@ -109,6 +109,38 @@ impl ShinkaiMessageBuilder {
         } else {
             Err("Missing fields")
         }
+    }
+
+    pub fn ack_message(secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(secret_key, public_key)
+            .body("ACK".to_string())
+            .encryption("no_encryption".to_string())
+            .build()
+    }
+
+    pub fn ping_pong_message(message: String, secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+        if message != "Ping" && message != "Pong" {
+            return Err("Invalid message: must be 'Ping' or 'Pong'")
+        }
+    
+        ShinkaiMessageBuilder::new(secret_key, public_key)
+            .body(message)
+            .encryption("no_encryption".to_string())
+            .build()
+    }
+
+    pub fn terminate_message(secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {    
+        ShinkaiMessageBuilder::new(secret_key, public_key)
+            .body("terminate".to_string())
+            .encryption("no_encryption".to_string())
+            .build()
+    }
+
+    pub fn error_message(secret_key: StaticSecret, public_key: PublicKey, error_msg: String) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(secret_key, public_key)
+            .body(format!("{{error: \"{}\"}}", error_msg))
+            .encryption("no_encryption".to_string())
+            .build()
     }
 }
 

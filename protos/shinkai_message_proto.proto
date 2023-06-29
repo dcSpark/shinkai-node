@@ -1,5 +1,5 @@
 syntax = "proto3";
-package shinkai_message;
+package shinkai_message_proto;
 
 message Field {
     string name = 1;

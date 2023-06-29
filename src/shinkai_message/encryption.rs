@@ -5,6 +5,14 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
+pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
+    #[allow(deprecated)]
+    let mut csprng = rand_os::OsRng::new().unwrap();
+    let secret_key = StaticSecret::new(&mut csprng);
+    let public_key = PublicKey::from(&secret_key);
+    (secret_key, public_key)
+}
+
 pub fn encrypt_body_if_needed(
     message: &[u8],
     self_sk: &StaticSecret,

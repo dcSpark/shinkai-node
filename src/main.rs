@@ -4,47 +4,22 @@ mod shinkai_message;
 mod network;
 
 mod shinkai_message_proto {
-    include!(concat!(env!("OUT_DIR"), "/shinkai_message.rs"));
+    include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
 }
 
-use shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_node::network::Opt;
+use shinkai_node::network::Client;
 
 #[tokio::main]
 async fn main() {
-    let json_string = r#"{
-        "message": {
-            "body": {
-                "content": "Hello World",
-                "internal_metadata": {
-                    "message_schema_type": {
-                        "type_name": "MyType",
-                        "fields": [
-                            {"name": "field1", "type": "type1"},
-                            {"name": "field2", "type": "type2"}
-                        ]
-                    },
-                    "topic": {
-                        "topic_id": "my_topic",
-                        "channel_id": "my_channel"
-                    },
-                    "content": "InternalContent"
-                },
-                "encryption": "AES",
-                "external_metadata": {
-                    "sender": "Alice",
-                    "recipient": "Bob",
-                    "scheduled_time": "2023-12-01T00:00:00Z",
-                    "signature": "ABC123"
-                }
-            }
-        }
-    }"#;
+    let opt = Opt {
+        retries: 5,
+        delay: 5,
+    };
 
-    // Encoding
-    let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
-    println!("Encoded message: {:?}", encoded_message);
+    let client = Client::new(opt, "127.0.0.1", 8080).await.unwrap();
 
-    // Decoding
-    let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
-    println!("Decoded message: {:?}", decoded_message);
+    // client.send("Ping".to_string());
+    // Send more messages...
+
 }

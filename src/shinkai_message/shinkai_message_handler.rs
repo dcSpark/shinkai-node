@@ -1,8 +1,7 @@
 // shinkai_message.rs
 
 use crate::shinkai_message_proto::{
-    Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
-    Topic,
+    Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage, Topic,
 };
 use prost::Message;
 use serde_json::Value;
@@ -10,8 +9,14 @@ use serde_json::Value;
 pub struct ShinkaiMessageHandler;
 
 impl ShinkaiMessageHandler {
-    pub fn encode_message(json_string: &str) -> Vec<u8> {
-        let json_value: Value = serde_json::from_str(json_string).unwrap();
+    pub fn encode_shinkai_message(message: ShinkaiMessage) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        message.encode(&mut bytes).unwrap();
+        bytes
+    }
+
+    pub fn encode_message(json_string: String) -> Vec<u8> {
+        let json_value: Value = serde_json::from_str(&json_string).unwrap();
         let fields =
             &json_value["message"]["body"]["internal_metadata"]["message_schema_type"]["fields"];
         let mut fields_vec = Vec::new();
@@ -91,8 +96,8 @@ impl ShinkaiMessageHandler {
         bytes
     }
 
-    pub fn decode_message(bytes: Vec<u8>) -> ShinkaiMessage {
-        ShinkaiMessage::decode(bytes.as_slice()).unwrap()
+    pub fn decode_message(bytes: Vec<u8>) -> Result<ShinkaiMessage, prost::DecodeError> {
+        ShinkaiMessage::decode(bytes.as_slice())
     }
 }
 
@@ -100,7 +105,7 @@ impl ShinkaiMessageHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::ShinkaiMessageHandler;
+    use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 
     #[test]
     fn test_encode_message() {
@@ -132,7 +137,7 @@ mod tests {
                 }
             }
         }"#;
-        let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
+        let encoded_message = ShinkaiMessageHandler::encode_message(json_string.to_owned());
         assert!(encoded_message.len() > 0); // The result should be a non-empty vector.
     }
 
@@ -166,8 +171,8 @@ mod tests {
                 }
             }
         }"#;
-        let encoded_message = ShinkaiMessageHandler::encode_message(json_string);
-        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
+        let encoded_message = ShinkaiMessageHandler::encode_message(json_string.to_owned());
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();
