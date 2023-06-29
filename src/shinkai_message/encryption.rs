@@ -5,6 +5,27 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
+pub enum EncryptionMethod {
+    DiffieHellmanChaChaPoly1305,
+    None,
+}
+
+impl EncryptionMethod {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::DiffieHellmanChaChaPoly1305 => "DiffieHellmanChaChaPoly1305",
+            Self::None => "None",
+        }
+    }
+
+    pub fn from_str(s: &str) -> EncryptionMethod {
+        match s {
+            "DiffieHellmanChaChaPoly1305" | "default" => EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            _ => EncryptionMethod::None,
+        }
+    }
+}
+
 pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
     #[allow(deprecated)]
     let mut csprng = rand_os::OsRng::new().unwrap();
@@ -41,8 +62,8 @@ pub fn encrypt_body_if_needed(
     destination_pk: &PublicKey,
     encryption: Option<&str>,
 ) -> Option<String> {
-    match encryption {
-        Some("default") => {
+    match EncryptionMethod::from_str(encryption.unwrap_or("None")) {
+        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&destination_pk);
 
             // Convert the shared secret into a suitable key
@@ -66,8 +87,7 @@ pub fn encrypt_body_if_needed(
 
             Some(base64::encode(&nonce_and_ciphertext))
         }
-        _ => {
-            // Return None if encryption method is not "default"
+        EncryptionMethod::None => {
             None
         }
     }
@@ -79,8 +99,8 @@ pub fn decrypt_body_content(
     sender_pk: &PublicKey,
     encryption: Option<&str>,
 ) -> Option<String> {
-    match encryption {
-        Some("default") => {
+    match EncryptionMethod::from_str(encryption.unwrap_or("None")) {
+        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
 
             // Convert the shared secret into a suitable key
@@ -103,8 +123,7 @@ pub fn decrypt_body_content(
             // Here we return the plaintext (encoded as a string for easier use)
             Some(String::from_utf8(plaintext).expect("Failed to convert decrypted bytes to String"))
         }
-        _ => {
-            // Return None if encryption method is not "default"
+        EncryptionMethod::None => {
             None
         }
     }
