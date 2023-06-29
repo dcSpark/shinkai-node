@@ -13,6 +13,28 @@ pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
     (secret_key, public_key)
 }
 
+pub fn public_key_to_string(public_key: PublicKey) -> String {
+    let bytes = public_key.to_bytes();
+    base64::encode(&bytes)
+}
+
+pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
+    match base64::decode(encoded_key) {
+        Ok(bytes) => {
+            if bytes.len() == 32 {
+                let mut array = [0; 32];
+                for (i, &byte) in bytes.iter().enumerate() {
+                    array[i] = byte;
+                }
+                Ok(PublicKey::from(array))
+            } else {
+                Err("Decoded string length does not match PublicKey length")
+            }
+        },
+        Err(_) => Err("Failed to decode base64 string")
+    }
+}
+
 pub fn encrypt_body_if_needed(
     message: &[u8],
     self_sk: &StaticSecret,
@@ -41,6 +63,7 @@ pub fn encrypt_body_if_needed(
 
             // Here we return the nonce and ciphertext (encoded to base64 for easier storage and transmission)
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
+
             Some(base64::encode(&nonce_and_ciphertext))
         }
         _ => {

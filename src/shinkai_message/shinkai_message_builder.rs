@@ -1,3 +1,4 @@
+use super::encryption::public_key_to_string;
 #[allow(unused_imports)]
 use super::encryption::{encrypt_body_if_needed, decrypt_body_content};
 use crate::shinkai_message_proto::{
@@ -64,13 +65,13 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata(
         mut self,
-        sender: String,
+        sender: PublicKey,
         recipient: String,
         scheduled_time: String,
         signature: String,
     ) -> Self {
         self.external_metadata = Some(ExternalMetadata {
-            sender,
+            sender: public_key_to_string(sender),
             recipient,
             scheduled_time,
             signature,
@@ -90,7 +91,6 @@ impl ShinkaiMessageBuilder {
             body.internal_metadata = Some(internal_metadata);
             
             if self.encryption == Some("default".to_string()) {
-                print!("Encrypting body content: {}", body.content);
                 let encrypted_body = encrypt_body_if_needed(
                     body.content.as_bytes(),
                     &self.secret_key,
@@ -98,7 +98,7 @@ impl ShinkaiMessageBuilder {
                     self.encryption.as_deref(),
                 )
                 .expect("Failed to encrypt body content");
-                body.content = base64::encode(&encrypted_body);
+                body.content = encrypted_body;
             }
             
             Ok(ShinkaiMessage { 
@@ -173,7 +173,7 @@ mod tests {
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
             .external_metadata(
-                "sender".to_string(),
+                public_key,
                 "recipient".to_string(),
                 "scheduled_time".to_string(),
                 "signature".to_string(),
@@ -188,7 +188,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.content, "internal metadata content");
         let external_metadata = message.external_metadata.as_ref().unwrap();
-        assert_eq!(external_metadata.sender, "sender");
+        assert_eq!(external_metadata.sender, public_key_to_string(public_key));
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod tests {
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
             .external_metadata(
-                "sender".to_string(),
+                public_key,
                 "recipient".to_string(),
                 "scheduled_time".to_string(),
                 "signature".to_string(),
@@ -225,9 +225,10 @@ mod tests {
         let message = message_result.unwrap();
         let body = message.body.as_ref().unwrap();
         assert_eq!(message.encryption, "default");
-    
+
+        print!("test encryption 'body content'> {:?} ", &body.content.as_bytes()); 
         let decrypted_content = decrypt_body_content(
-            base64::decode(&body.content).unwrap().as_slice(),
+            &body.content.as_bytes(),
             &secret_key_clone,
             &public_key,
             Some(&message.encryption),
@@ -238,7 +239,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.content, "internal metadata content");
         let external_metadata = message.external_metadata.as_ref().unwrap();
-        assert_eq!(external_metadata.sender, "sender");
+        assert_eq!(external_metadata.sender, public_key_to_string(public_key));
     }
 
     #[test]

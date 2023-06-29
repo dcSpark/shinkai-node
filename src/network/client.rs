@@ -49,7 +49,6 @@ impl Client {
                     let received_message = buffer[..n].to_vec();
                     if let Ok(shinkai_message) = ShinkaiMessageHandler::decode_message(received_message.clone()) {
                         if let Some(body) = shinkai_message.body {
-                            println!("Received message from server: {}", body.content); // Add this line
                             if body.content == "terminate" {
                                 println!("Termination signal received from the server. Stopping reading task.");
                                 reading_clone.store(false, Ordering::Relaxed); // set the flag to false when stopping the reading task

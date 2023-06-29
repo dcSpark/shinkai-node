@@ -1,4 +1,4 @@
-use crate::shinkai_message::encryption::ephemeral_keys;
+use crate::shinkai_message::encryption::{decrypt_body_content, string_to_public_key};
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use std::env;
@@ -19,14 +19,9 @@ pub struct Opt {
     pub delay: u64,
 }
 
-pub async fn ephemeral_start_server() -> tokio::io::Result<()> {
-    let (pk, sk) = ephemeral_keys();
-    return start_server(pk, sk).await;
-}
-
 pub async fn start_server(
-    secret_key: StaticSecret,
-    public_key: PublicKey,
+    server_secret_key: StaticSecret,
+    server_public_key: PublicKey,
 ) -> tokio::io::Result<()> {
     let address = env::var("SERVER_ADDRESS").unwrap_or_else(|_| String::from("127.0.0.1"));
     let port = env::var("SERVER_PORT").unwrap_or_else(|_| String::from("8080"));
@@ -59,30 +54,58 @@ pub async fn start_server(
             }
         };
 
-        // Process the message based on its content
-        match shinkai_message.body.unwrap().content.as_str() {
-            "Ping" => {
+        let message_content_string = shinkai_message.body.unwrap().content;
+        let message_content = message_content_string.as_str();
+        let message_encryption = shinkai_message.encryption.as_str();
+
+        match (message_content, message_encryption) {
+            ("Ping", _) => {
                 let pong = ShinkaiMessageBuilder::ping_pong_message(
                     "Pong".to_owned(),
-                    secret_key.clone(),
-                    public_key,
+                    server_secret_key.clone(),
+                    server_public_key,
                 )
                 .unwrap();
                 let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(pong);
                 socket.write_all(&encoded_msg).await?;
             }
-            "terminate" => {
+            ("terminate", _) => {
                 println!("Termination request received, closing connection.");
                 let terminate =
-                    ShinkaiMessageBuilder::terminate_message(secret_key.clone(), public_key)
+                    ShinkaiMessageBuilder::terminate_message(server_secret_key.clone(), server_public_key)
                         .unwrap();
                 let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(terminate);
                 socket.write_all(&encoded_msg).await?;
                 std::mem::drop(socket);
                 break;
             }
-            _ => {
-                let ack = ShinkaiMessageBuilder::ack_message(secret_key.clone(), public_key).unwrap();
+            (_, "default") => {
+                let sender_pk_string = shinkai_message.external_metadata.unwrap().sender;
+                let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
+                let decrypted_content = decrypt_body_content(
+                    message_content.as_bytes(),
+                    &server_secret_key.clone(),
+                    &sender_pk,
+                    Some(message_encryption),
+                );
+
+                match decrypted_content {
+                    Some(_) => {
+                        let ack =
+                            ShinkaiMessageBuilder::ack_message(server_secret_key.clone(), server_public_key)
+                                .unwrap();
+                        let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(ack);
+                        socket.write_all(&encoded_msg).await?;
+                    }
+                    None => {
+                        println!("Server> Failed to decrypt message.");
+                        continue;
+                    }
+                }
+            }
+            (_, _) => {
+                let ack =
+                    ShinkaiMessageBuilder::ack_message(server_secret_key.clone(), server_public_key).unwrap();
                 let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(ack);
                 socket.write_all(&encoded_msg).await?;
             }

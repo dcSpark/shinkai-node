@@ -1,7 +1,7 @@
 #[allow(deprecated)]
 use rand_os::OsRng;
-use shinkai_node::network::network::ephemeral_start_server;
-use shinkai_node::network::{Client, Opt};
+use shinkai_node::network::{Client, Opt, start_server};
+use shinkai_node::shinkai_message::encryption::ephemeral_keys;
 use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_node::shinkai_message_proto::Field;
@@ -12,7 +12,8 @@ use x25519_dalek::{PublicKey, StaticSecret};
 #[tokio::test]
 async fn test_message_exchange() {
     // Spawn the server task
-    let server = task::spawn(ephemeral_start_server());
+    let (server_sk, server_pk) = ephemeral_keys();
+    let server = tokio::task::spawn(start_server(server_sk, server_pk));
 
     // Give the server a moment to start up
     sleep(Duration::from_millis(100)).await;
@@ -32,47 +33,39 @@ async fn test_message_exchange() {
     let client = task::spawn(async move {
         #[allow(deprecated)]
         let mut csprng = OsRng::new().unwrap();
-        let secret_key = StaticSecret::new(&mut csprng);
-        let secret_key_clone = secret_key.clone();
-        let public_key = PublicKey::from(&secret_key);
+        let client_sk = StaticSecret::new(&mut csprng);
+        let client_sk_clone = client_sk.clone();
+        let client_pk = PublicKey::from(&client_sk);
 
         let fields = vec![Field {
             name: "field1".to_string(),
             r#type: "type1".to_string(),
         }];
 
-        let message_result = ShinkaiMessageBuilder::new(secret_key, public_key)
+        let message_result = ShinkaiMessageBuilder::new(client_sk, server_pk)
             .body("body content".to_string())
             .encryption("default".to_string())
             .message_schema_type("schema type".to_string(), fields)
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
             .external_metadata(
-                "sender".to_string(),
+                client_pk,
                 "recipient".to_string(),
                 "scheduled_time".to_string(),
                 "signature".to_string(),
             )
             .build();
-        println!("{:#?}", message_result);
 
         let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(message_result.unwrap());
-        println!("Encoded message: {:?}", encoded_msg);
-
         let response = client.send(encoded_msg).await.unwrap();
-
-        println!("Response message: {:?}", response);
-
-        // Decode the response
         let decoded_response = ShinkaiMessageHandler::decode_message(response).unwrap();
 
-        // Check if the response is "Pong"
+        // Check if the response is "ACK"
         assert_eq!(decoded_response.body.unwrap().content, "ACK");
 
-        client.terminate(secret_key_clone, public_key).await;
+        client.terminate(client_sk_clone, client_pk).await;
     });
 
-    // Wait for both tasks to complete
     let _ = server.await;
     let _ = client.await;
 }
@@ -82,8 +75,8 @@ async fn ping_pong_test_exchange() {
     // print hte name of the test
     println!("ping_pong_test_exchange");
 
-    // Spawn the server task
-    let server = task::spawn(ephemeral_start_server());
+    let (server_sk, server_pk) = ephemeral_keys();
+    let server = tokio::task::spawn(start_server(server_sk, server_pk));
 
     // Give the server a moment to start up
     sleep(Duration::from_millis(100)).await;
