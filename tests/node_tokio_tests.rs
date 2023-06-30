@@ -1,6 +1,7 @@
 use async_std::task;
 use futures::TryFutureExt;
 use shinkai_node::network::Node;
+use shinkai_node::network::node_tokio_v2::{Message, Peer, Tx};
 use tokio::sync::Mutex;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -41,8 +42,24 @@ fn tcp_node_test() {
             print!("Starting node 1");
             node1.start().await;
             print!("Node 1 started");
+            tokio::time::sleep(Duration::from_secs(2)).await;
         });
         
+        // node2.ping_all().await;
+
+        let payload = "Hello World".as_bytes().to_vec();
+        let peerPort = Peer {
+            listen_port: 8081,
+        };
+        let sent_time = Duration::from_secs(100);
+        let tx = Tx {
+            payload,
+            peer: peerPort,
+            sent_time,
+        };
+        let msg = Message::Tx(tx);
+        let result = node2.send(&msg, addr1).await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
         node2.ping_all().await;
     });
 }

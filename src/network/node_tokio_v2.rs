@@ -44,9 +44,9 @@ pub enum Message {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Tx {
-    payload: Vec<u8>,
-    peer: Peer,
-    sent_time: Duration,
+    pub payload: Vec<u8>,
+    pub peer: Peer,
+    pub sent_time: Duration,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Hash)]
@@ -58,7 +58,7 @@ pub struct Ping {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Hash)]
 pub struct Peer {
-    listen_port: u16,
+    pub listen_port: u16,
 }
 
 pub struct Node {
@@ -216,10 +216,11 @@ impl Node {
     }
 
     async fn handle_message(&self, bytes: &[u8], remote_address: SocketAddr) -> io::Result<()> {
-        print!("Got message from {}", remote_address);
+        println!("\nGot message from {}", remote_address);
         let message: Message =
             bincode::deserialize(bytes).expect("Failed to deserialize a message.");
         //info!("Got {:?}", message);
+        println!("Got {:?}", message);
         match message {
             Message::Ping(ping) => {
                 self.send(
@@ -245,6 +246,7 @@ impl Node {
             Message::Tx(tx) => {
                 let peer_address = addr_with_port(remote_address, tx.peer.listen_port).to_string();
                 let time = current_time() - tx.sent_time;
+                println!("Received tx from {} in {:?}. ", peer_address, time);
                 info!("Received tx from {} in {:?}", peer_address, time);
                 self.stats
                     .add_transmission(peer_address, time, tx.payload.len() as u32);
