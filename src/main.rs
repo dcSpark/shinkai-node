@@ -3,11 +3,11 @@ use network::Node;
 use shinkai_message::encryption::ephemeral_keys;
 use shinkai_node::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
 use std::env;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::{PublicKey};
 
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key};
@@ -70,7 +70,6 @@ fn main() {
         listen_address,
         secret_key.clone(),
         public_key.clone(),
-        1024,
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task

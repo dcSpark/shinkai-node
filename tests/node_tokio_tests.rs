@@ -1,4 +1,3 @@
-use async_std::task;
 use chrono::prelude::*;
 use chrono_tz::America::Chicago;
 use futures::TryFutureExt;
@@ -29,10 +28,10 @@ fn tcp_node_test() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let node1 = Node::new(addr1, node1_sk, node1_pk, 5);
+        let node1 = Node::new(addr1, node1_sk, node1_pk);
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let node2 = Node::new(addr2, node2_sk, node2_pk, 5);
+        let node2 = Node::new(addr2, node2_sk, node2_pk);
 
         // Give some time for nodes to exchange messages
         tokio::time::sleep(Duration::from_secs(2)).await;
@@ -101,19 +100,19 @@ fn get_three_peers_test() {
         // Define node1, node2, node3, node4
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
         let (node1_sk, node1_pk) = ephemeral_keys();
-        let node1 = Node::new(addr1, node1_sk, node1_pk, 5);
+        let node1 = Node::new(addr1, node1_sk, node1_pk);
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8081);
         let (node2_sk, node2_pk) = ephemeral_keys();
-        let node2 = Node::new(addr2, node2_sk, node2_pk, 5);
+        let node2 = Node::new(addr2, node2_sk, node2_pk);
 
         let addr3 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8082);
         let (node3_sk, node3_pk) = ephemeral_keys();
-        let node3 = Node::new(addr3, node3_sk, node3_pk, 5);
+        let node3 = Node::new(addr3, node3_sk, node3_pk);
 
         let addr4 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8083);
         let (node4_sk, node4_pk) = ephemeral_keys();
-        let node4 = Node::new(addr4, node4_sk, node4_pk, 5);
+        let node4 = Node::new(addr4, node4_sk, node4_pk);
 
         // let handler1 = tokio::spawn(async move {
             println!("Starting node4");

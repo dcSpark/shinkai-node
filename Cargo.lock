@@ -350,15 +350,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230c5f1ca6a325a32553f8640d31ac9b49f2411e901e427570154868b46da4f7"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2378,14 +2369,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "p2p_node_stats"
-version = "0.1.0"
-source = "git+https://github.com/eadventurous/p2p-node-stats#26ef797987d0a11c48c7c3481188652d2a9e5977"
-dependencies = [
- "chashmap",
-]
-
-[[package]]
 name = "parity-send-wrapper"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3224,10 +3207,10 @@ dependencies = [
 name = "shinkai_node"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "async-std",
  "async-trait",
  "base64 0.13.1",
- "bincode",
  "chacha20poly1305 0.7.1",
  "chashmap",
  "chrono",
@@ -3236,7 +3219,6 @@ dependencies = [
  "futures",
  "libp2p",
  "log",
- "p2p_node_stats",
  "prost 0.8.0",
  "prost-build 0.8.0",
  "prost-derive 0.8.0",

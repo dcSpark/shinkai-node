@@ -13,6 +13,7 @@ async-trait = "0.1"
 futures = "0.3.28"
 warp = "0.3.0"
 chrono = "0.4"
+chrono-tz = "0.5"
 prost = "0.8.0"
 prost-derive = "0.8.0"
 serde_json = "1.0.66"
@@ -25,12 +26,10 @@ base64 = "0.13.0"
 structopt = "0.3"
 tokio = { version = "1.0", features = ["full"] }
 libp2p = { version = "0.42.2", features = ["tcp-tokio", "dns-tokio"] }
-p2p_node_stats = { git = "https://github.com/eadventurous/p2p-node-stats"}
 log = "0.4.0"
-chrono-tz = "0.5"
 env_logger = "0.7.1"
 chashmap = "2.2.2"
-bincode = "1.2.1"
+async-channel = "1.6.1"
 
 [dependencies.serde]
 version = "1.0.105"
