@@ -75,7 +75,7 @@ fn tcp_node_test() {
             .external_metadata(node2_pk, "scheduled_time".to_string())
             .build();
 
-        let result = node2.send(&shinkai_msg.unwrap(), (addr1, node1_pk)).await;
+        let result = Node::send(&shinkai_msg.unwrap(), (addr1, node1_pk)).await;
         // check if result has an Error if so print it
         if let Err(e) = result {
             println!("Error sending ShinkaiMessage: {:?}", e);

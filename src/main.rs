@@ -25,7 +25,7 @@ fn main() {
 
     // Generate your keys here or load them from a file.
     let (secret_key, public_key) = match (env::var("SECRET_KEY")) {
-        (Ok(secret_key_str)) => {
+        Ok(secret_key_str) => {
             let secret_key = string_to_static_key(&secret_key_str).unwrap();
             let public_key = PublicKey::from(&secret_key);
             (secret_key, public_key)

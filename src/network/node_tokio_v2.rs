@@ -126,6 +126,7 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
+            let secret_key_clone = self.secret_key.clone();
 
             tokio::spawn(async move {
                 let mut buffer = [0u8; BUFFER_SIZE];
@@ -138,11 +139,8 @@ impl Node {
                         }
                         Ok(n) => {
                             println!("{} > TCP: Received message.", addr);
-                            // handle the message
-                            // let _ = self
-                                // .handle_message(&buffer[..n], socket.peer_addr().unwrap())
-                                // .await;
-                            // flush the stream
+                            let _ = Node::selfless_handle_message(addr, &buffer[..n], socket.peer_addr().unwrap(), secret_key_clone.clone())
+                                .await;
                             if let Err(e) = socket.flush().await {
                                 eprintln!("Failed to flush the socket: {}", e);
                             }
@@ -170,7 +168,7 @@ impl Node {
         // for loop over peers
         for peer in self.peers.clone() {
             if peer.0 .1 == recipient_pk {
-                self.send(message, peer.0).await?;
+                Node::send(message, peer.0).await?;
                 return Ok(());
             }
         }
@@ -194,7 +192,6 @@ impl Node {
     }
 
     pub async fn send(
-        &self,
         message: &ShinkaiMessage,
         peer: (SocketAddr, PublicKey),
     ) -> io::Result<()> {
@@ -221,15 +218,15 @@ impl Node {
 
     async fn broadcast(&self, message: &ShinkaiMessage) -> io::Result<()> {
         for (peer, _) in self.peers.clone() {
-            self.send(message, peer).await?;
+            Node::send(message, peer).await?;
         }
         Ok(())
     }
 
     async fn ping_pong(
-        &self,
         peer: (SocketAddr, PublicKey),
         ping_or_pong: PingPong,
+        secret_key: StaticSecret
     ) -> io::Result<()> {
         let message = match ping_or_pong {
             PingPong::Ping => "Ping",
@@ -238,11 +235,11 @@ impl Node {
 
         let msg = ShinkaiMessageBuilder::ping_pong_message(
             message.to_owned(),
-            self.secret_key.clone(),
-            self.public_key.clone(),
+            secret_key.clone(),
+            peer.1,
         )
         .unwrap();
-        self.send(&msg, peer).await
+        Node::send(&msg, peer).await
     }
 
     pub async fn ping_all(&self) -> io::Result<()> {
@@ -252,73 +249,37 @@ impl Node {
             self.peers.len()
         );
         for (peer, _) in self.peers.clone() {
-            self.ping_pong(peer, PingPong::Ping).await?;
+            Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone()).await?;
         }
         Ok(())
     }
 
-    async fn send_ack(&self, peer: (SocketAddr, PublicKey)) -> io::Result<()> {
+    async fn send_ack(peer: (SocketAddr, PublicKey), secret_key: StaticSecret) -> io::Result<()> {
         let ack =
-            ShinkaiMessageBuilder::ack_message(self.secret_key.clone(), peer.1.clone()).unwrap();
-        self.send(&ack, peer).await?;
+            ShinkaiMessageBuilder::ack_message(secret_key.clone(), peer.1.clone()).unwrap();
+        Node::send(&ack, peer).await?;
         Ok(())
     }
 
-    async fn handle_message(&self, bytes: &[u8], address: SocketAddr) -> io::Result<()> {
-        println!("{} > Got message from {:?}", self.listen_address, address);
-        // println!("handle> Encoded Message: {:?}", bytes.to_vec());
-
-        let message = ShinkaiMessageHandler::decode_message(bytes.to_vec());
-        let message = match message {
-            Ok(message) => message,
+    fn pk_to_address(public_key: String) -> SocketAddr {
+        match public_key.as_str() {
+            "AhaRlTgxDHtYy5gUYArrpLakSj4mHmBlxVL7f5v4Piw=" => {
+                SocketAddr::from(([127, 0, 0, 1], 8081))
+            }
+            "wMD/nPm7n9lfeKZ81+W4jRIYTwDc+EqrzapGi/hAAnw=" => {
+                SocketAddr::from(([127, 0, 0, 1], 8080))
+            }
+            "V+vHRIQCOnm1Uciqy3yD/k+1x35OJaNe3IW0H59pTSg=" => {
+                SocketAddr::from(([127, 0, 0, 1], 8082))
+            }
             _ => {
-                println!("{} > Failed to decode message.", self.listen_address);
-                return Ok(());
-            }
-        };
-
-        let message_content_string = message.body.unwrap().content;
-        let message_content = message_content_string.as_str();
-        let message_encryption = message.encryption.as_str();
-        // println!("Message content: {}", message_content);
-        // println!("Encryption: {}", message_encryption);
-
-        let sender_pk_string = message.external_metadata.unwrap().sender;
-        let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
-
-        // if Sender is not part of peers, add it
-        if !self.peers.contains_key(&(address, sender_pk)) {
-            self.peers.insert((address, sender_pk), Utc::now());
-        }
-
-        match (message_content, message_encryption) {
-            ("Ping", _) => {
-                self.ping_pong((address, sender_pk), PingPong::Pong).await?;
-            }
-            (_, "default") => {
-                let decrypted_content = decrypt_body_content(
-                    message_content.as_bytes(),
-                    &self.secret_key.clone(),
-                    &sender_pk,
-                    Some(message_encryption),
-                );
-
-                match decrypted_content {
-                    Some(_) => {
-                        self.send_ack((address, sender_pk)).await?;
-                    }
-                    None => {
-                        // TODO: send error back
-                        // TODO2: if pk is incorrect, remove from peers
-                        println!("Failed to decrypt message.");
-                    }
-                }
-            }
-            (_, _) => {
-                self.send_ack((address, sender_pk)).await?;
+                // In real-world scenarios, you'd likely want to return an error here, as an unrecognized
+                // public key could lead to problems down the line. The default case should be some sort of
+                // error condition.
+                println!("Unrecognized public key: {}", public_key);
+                SocketAddr::from(([127, 0, 0, 1], 3001))
             }
         }
-        Ok(())
     }
 
     async fn selfless_handle_message(listen_address: SocketAddr, bytes: &[u8], address: SocketAddr, secret_key: StaticSecret) -> io::Result<()> {
@@ -342,16 +303,21 @@ impl Node {
 
         let sender_pk_string = message.external_metadata.unwrap().sender;
         let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
+        println!("{} > Sender public key: {:?}", listen_address, sender_pk_string);
 
         // if Sender is not part of peers, add it
-        if !self.peers.contains_key(&(address, sender_pk)) {
-            self.peers.insert((address, sender_pk), Utc::now());
-        }
+        // if !self.peers.contains_key(&(address, sender_pk)) {
+        //     self.peers.insert((address, sender_pk), Utc::now());
+        // }
 
+        let reachable_address = Node::pk_to_address(sender_pk_string.clone());
         match (message_content, message_encryption) {
             ("Ping", _) => {
-                // self.ping_pong((address, sender_pk), PingPong::Pong).await?;
                 println!("{} > Got ping from {:?}", listen_address, address);
+                Node::ping_pong((reachable_address, sender_pk), PingPong::Pong, secret_key).await?;
+            }
+            ("ACK", _) => {
+                println!("{} > ACK from {:?}", listen_address, address);
             }
             (_, "default") => {
                 let decrypted_content = decrypt_body_content(
@@ -363,8 +329,8 @@ impl Node {
 
                 match decrypted_content {
                     Some(_) => {
-                        // self.send_ack((address, sender_pk)).await?;
-                        println!("{} > Got message from {:?}", listen_address, address);
+                        println!("{} > Got message from {:?}. Sending ACK", listen_address, address);
+                        Node::send_ack((reachable_address, sender_pk), secret_key).await?;
                     }
                     None => {
                         // TODO: send error back
@@ -374,7 +340,8 @@ impl Node {
                 }
             }
             (_, _) => {
-                self.send_ack((address, sender_pk)).await?;
+                println!("{} > Got message from {:?}. Sending ACK", listen_address, address);
+                Node::send_ack((reachable_address, sender_pk), secret_key).await?;
             }
         }
         Ok(())
