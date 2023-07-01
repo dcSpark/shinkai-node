@@ -14,12 +14,14 @@ pub struct ShinkaiMessageBuilder {
     internal_metadata_content: Option<String>,
     external_metadata: Option<ExternalMetadata>,
     encryption: Option<String>,
-    secret_key: StaticSecret,
-    public_key: PublicKey,
+    my_secret_key: StaticSecret,
+    my_public_key: PublicKey,
+    receiver_public_key: PublicKey,
 }
 
 impl ShinkaiMessageBuilder {
-    pub fn new(secret_key: StaticSecret, public_key: PublicKey) -> Self {
+    pub fn new(my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Self {
+        let my_public_key: PublicKey = PublicKey::from(&my_secret_key);
         Self {
             body: None,
             message_schema_type: None,
@@ -27,13 +29,19 @@ impl ShinkaiMessageBuilder {
             internal_metadata_content: None,
             external_metadata: None,
             encryption: None,
-            secret_key,
-            public_key,
+            my_secret_key,
+            my_public_key, 
+            receiver_public_key,
         }
     }
 
     pub fn encryption(mut self, encryption: String) -> Self {
         self.encryption = Some(encryption);
+        self
+    }
+
+    pub fn no_encryption(mut self) -> Self {
+        self.encryption = Some("no_encryption".to_string());
         self
     }
 
@@ -65,14 +73,13 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata(
         mut self,
-        sender: PublicKey,
-        recipient: String,
+        recipient: PublicKey,
         scheduled_time: String,
-        signature: String,
     ) -> Self {
+        let signature = "".to_string();
         self.external_metadata = Some(ExternalMetadata {
-            sender: public_key_to_string(sender),
-            recipient,
+            sender: public_key_to_string(self.my_public_key),
+            recipient: public_key_to_string(recipient),
             scheduled_time,
             signature,
         });
@@ -93,8 +100,8 @@ impl ShinkaiMessageBuilder {
             if self.encryption == Some("default".to_string()) {
                 let encrypted_body = encrypt_body_if_needed(
                     body.content.as_bytes(),
-                    &self.secret_key,
-                    &self.public_key,
+                    &self.my_secret_key,
+                    &self.receiver_public_key,
                     self.encryption.as_deref(),
                 )
                 .expect("Failed to encrypt body content");
@@ -111,35 +118,38 @@ impl ShinkaiMessageBuilder {
         }
     }
 
-    pub fn ack_message(secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
-        ShinkaiMessageBuilder::new(secret_key, public_key)
+    pub fn ack_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body("ACK".to_string())
-            .encryption("no_encryption".to_string())
+            .no_encryption()
+            .external_metadata(receiver_public_key, "".to_string())
             .build()
     }
 
-    pub fn ping_pong_message(message: String, secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+    pub fn ping_pong_message(message: String, my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
         if message != "Ping" && message != "Pong" {
             return Err("Invalid message: must be 'Ping' or 'Pong'")
         }
     
-        ShinkaiMessageBuilder::new(secret_key, public_key)
+        ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body(message)
-            .encryption("no_encryption".to_string())
+            .no_encryption()
+            .external_metadata(receiver_public_key, "".to_string())
             .build()
     }
 
-    pub fn terminate_message(secret_key: StaticSecret, public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {    
-        ShinkaiMessageBuilder::new(secret_key, public_key)
+    pub fn terminate_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {    
+        ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body("terminate".to_string())
-            .encryption("no_encryption".to_string())
+            .no_encryption()
+            .external_metadata(receiver_public_key, "".to_string())
             .build()
     }
 
-    pub fn error_message(secret_key: StaticSecret, public_key: PublicKey, error_msg: String) -> Result<ShinkaiMessage, &'static str> {
-        ShinkaiMessageBuilder::new(secret_key, public_key)
+    pub fn error_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey, error_msg: String) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body(format!("{{error: \"{}\"}}", error_msg))
-            .encryption("no_encryption".to_string())
+            .no_encryption()
             .build()
     }
 }
@@ -174,9 +184,7 @@ mod tests {
             .internal_metadata_content("internal metadata content".to_string())
             .external_metadata(
                 public_key,
-                "recipient".to_string(),
                 "scheduled_time".to_string(),
-                "signature".to_string(),
             )
             .build();
 
@@ -216,8 +224,6 @@ mod tests {
             .external_metadata(
                 public_key,
                 "recipient".to_string(),
-                "scheduled_time".to_string(),
-                "signature".to_string(),
             )
             .build();
 

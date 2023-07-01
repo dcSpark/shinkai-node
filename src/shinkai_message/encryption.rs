@@ -34,9 +34,31 @@ pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
     (secret_key, public_key)
 }
 
+pub fn secret_key_to_string(secret_key: StaticSecret) -> String {
+    let bytes = secret_key.to_bytes();
+    base64::encode(&bytes)
+}
+
 pub fn public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
     base64::encode(&bytes)
+}
+
+pub fn string_to_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
+    match base64::decode(encoded_key) {
+        Ok(bytes) => {
+            if bytes.len() == 32 {
+                let mut array = [0; 32];
+                for (i, &byte) in bytes.iter().enumerate() {
+                    array[i] = byte;
+                }
+                Ok(StaticSecret::from(array))
+            } else {
+                Err("Decoded string length does not match StaticSecret length")
+            }
+        },
+        Err(_) => Err("Failed to decode base64 string")
+    }
 }
 
 pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
