@@ -1,170 +1,175 @@
-// use shinkai_node::network::{Node, Opt};
-// // use rand_os::OsRng;
-// use shinkai_node::shinkai_message::encryption::ephemeral_keys;
-// use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-// use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-// use shinkai_node::shinkai_message_proto::Field;
-// use tokio::task;
-// use tokio::time::{sleep, Duration};
-// use x25519_dalek::{PublicKey, StaticSecret};
+use chrono::prelude::*;
+use chrono_tz::America::Chicago;
+use shinkai_node::network::Node;
+use shinkai_node::shinkai_message::encryption::{ephemeral_keys, unsafe_deterministic_private_key, public_key_to_string, secret_key_to_string};
+use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_node::shinkai_message_proto::Field;
+use std::net::{IpAddr, Ipv4Addr};
+use std::{net::SocketAddr, time::Duration};
+use tokio::runtime::Runtime;
 
-// #[tokio::test]
-// async fn test_message_exchange() {
-//     let server_opt = Opt {
-//         retries: 3, // adjust number of retries as needed
-//         delay: 1,   // adjust delay as needed
-//     };
+pub fn print_chicago_time() {
+    let utc: DateTime<Utc> = Utc::now();
+    let chicago_time: DateTime<chrono_tz::Tz> = utc.with_timezone(&Chicago);
+    println!("The current date and time in Chicago is {}", chicago_time);
+}
 
-//     let client_opt = Opt {
-//         retries: 3, // adjust number of retries as needed
-//         delay: 1,   // adjust delay as needed
-//     };
+#[test]
+fn tcp_node_test() {
+    let rt = Runtime::new().unwrap();
 
-//     // Create the server
-//     let (server_sk, server_pk) = ephemeral_keys();
-//     let server_addr = "127.0.0.1:8080".to_string();
-//     let mut server = match Node::new(server_opt, server_sk, server_pk, server_addr).await {
-//         Ok(node) => node,
-//         Err(e) => panic!("Failed to create server: {:?}", e),
-//     };
-//     // Give the server a moment to start up
-//     sleep(Duration::from_millis(100)).await;
+    rt.block_on(async {
+        let (node1_sk, node1_pk) = unsafe_deterministic_private_key(0);
+        let (node2_sk, node2_pk) = unsafe_deterministic_private_key(1);
+        let (node3_sk, node3_pk) = unsafe_deterministic_private_key(2);
+        println!("Node 1 private key: {:?}", secret_key_to_string(node1_sk.clone()));
+        println!("Node 1 public key: {:?}", public_key_to_string(node1_pk.clone()));
 
-//     // Create a new client
-//     let (client_sk, client_pk) = ephemeral_keys();
-//     let mut client = match Node::new(
-//         client_opt,
-//         client_sk.clone(),
-//         client_pk.clone(),
-//         "127.0.0.1:8081".to_string(),
-//     )
-//     .await
-//     {
-//         Ok(node) => node,
-//         Err(e) => panic!("Failed to create client: {:?}", e),
-//     };
+        println!("Node 2 private key: {:?}", secret_key_to_string(node2_sk.clone()));
+        println!("Node 2 public key: {:?}", public_key_to_string(node2_pk.clone()));
+        
+        println!("Node 3 private key: {:?}", secret_key_to_string(node3_sk.clone()));
+        println!("Node 3 public key: {:?}", public_key_to_string(node3_pk.clone()));
 
-//     // Connect the client to the server
-//     match client.connect_to_peer("127.0.0.1", 8080).await {
-//         Ok(_) => {}
-//         Err(e) => panic!("Failed to connect client to server: {:?}", e),
-//     }
-//     let connection_count = server.connection_count();
-//     println!("connection_count: {:?}", connection_count);
+        // Create node1 and node2
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let node1 = Node::new(addr1, node1_sk, 0);
+        node1.start();
 
-//     // Create and send a message
-//     let fields = vec![Field {
-//         name: "field1".to_string(),
-//         r#type: "type1".to_string(),
-//     }];
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let node2 = Node::new(addr2, node2_sk, 0);
+        node2.start_and_connect(&addr1.to_string(), node1_pk);
 
-//     let client_message = ShinkaiMessageBuilder::new(client_sk, server_pk)
-//         .body("body content".to_string())
-//         .encryption("default".to_string())
-//         .message_schema_type("schema type".to_string(), fields)
-//         .topic("topic_id".to_string(), "channel_id".to_string())
-//         .internal_metadata_content("internal metadata content".to_string())
-//         .external_metadata(
-//             client_pk,
-//             "recipient".to_string(),
-//             "scheduled_time".to_string(),
-//             "signature".to_string(),
-//         )
-//         .build();
+        println!("\n");
+        node1.ping_all().await;
 
-//     let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(client_message.unwrap());
-//     let size_in_bytes = encoded_msg.len();
-//     println!("Size of encoded_msg in bytes: {}", size_in_bytes);
+        // now testing node 2
+        println!("\n");
+        println!("Pinging all from node 2");
+        node2.ping_all().await;
+        let addr1_string = &addr1.to_string();
+        let node2_handle = node2.start_and_connect(&addr1_string, node1_pk).await;
+        println!("After connecting: Pinging all from node 2");
+        node2.ping_all().await;
 
-//     let isUp = server.is_up_and_running();
-//     println!("isUp: {:?}", isUp);
+        // tokio::spawn(async move {
+        //     println!("\n\n");
+        //     println!("Starting node 1");
+        //     node1.start().await;
+        //     println!("Node 1 started");
+        // });
 
-//     let connection_count = server.connection_count();
-//     println!("connection_count: {:?}", connection_count);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        node2.ping_all().await;
 
-//     match client.send(encoded_msg).await {
-//         Ok(Some(response)) => {
-//             let decoded_response = ShinkaiMessageHandler::decode_message(response).unwrap();
-//             // Check if the response is "ACK"
-//             assert_eq!(decoded_response.body.unwrap().content, "ACK");
-//             // Terminate the client and server
-//             client.terminate().await;
-//             server.terminate().await;
-//         }
-//         Ok(None) => panic!("No response received from the server"),
-//         Err(e) => panic!("Failed to send the message: {:?}", e),
-//     }
-// }
+        let fields = vec![Field {
+            name: "field1".to_string(),
+            r#type: "type1".to_string(),
+        }];
 
-// #[tokio::test]
-// async fn ping_pong_test_exchange() {
-//     // print the name of the test
-//     println!("ping_pong_test_exchange");
+        // let shinkai_msg = ShinkaiMessageBuilder::new(client_sk_clone, node1_pk)
+        //     .body("body content".to_string())
+        //     .encryption("default".to_string())
+        //     .message_schema_type("schema type".to_string(), fields)
+        //     .topic("topic_id".to_string(), "channel_id".to_string())
+        //     .internal_metadata_content("internal metadata content".to_string())
+        //     .external_metadata(node2_pk, "scheduled_time".to_string())
+        //     .build();
 
-//     let server_opt = Opt {
-//         retries: 3, // adjust number of retries as needed
-//         delay: 1,   // adjust delay as needed
-//     };
+        // let result = Node::send(&shinkai_msg.unwrap(), (addr1, node1_pk)).await;
+        // // check if result has an Error if so print it
+        // if let Err(e) = result {
+        //     println!("Error sending ShinkaiMessage: {:?}", e);
+        // }
+        // tokio::time::sleep(Duration::from_secs(2)).await;
+        // node2.ping_all().await;
 
-//     let client_opt = Opt {
-//         retries: 3, // adjust number of retries as needed
-//         delay: 1,   // adjust delay as needed
-//     };
+        // let peers = node2.get_peers();
+        // println!("Peers: {:?}", peers);
 
-//     // Create the server
-//     let (server_sk, server_pk) = ephemeral_keys();
-//     let server_addr = "127.0.0.1:8080".to_string();
-//     let mut server = match Node::new(server_opt, server_sk, server_pk, server_addr).await {
-//         Ok(node) => node,
-//         Err(e) => panic!("Failed to create server: {:?}", e),
-//     };
+        // tokio::time::sleep(Duration::from_secs(3)).await;
 
-//     // Give the server a moment to start up
-//     sleep(Duration::from_millis(100)).await;
+        // Wait for both tasks to complete
+        // let _ = tokio::try_join!(node1_handle, node2_handle);
+    });
+}
 
-//     // Create a new client
-//     let (client_sk, client_pk) = ephemeral_keys();
-//     let mut client = match Node::new(
-//         client_opt,
-//         client_sk.clone(),
-//         client_pk.clone(),
-//         "127.0.0.1:8081".to_string(),
-//     )
-//     .await
-//     {
-//         Ok(node) => node,
-//         Err(e) => panic!("Failed to create client: {:?}", e),
-//     };
+#[test]
+fn get_three_peers_test() {
+    let rt = Runtime::new().unwrap();
 
-//     // Connect the client to the server
-//     match client.connect_to_peer("127.0.0.1", 8080).await {
-//         Ok(_) => {}
-//         Err(e) => panic!("Failed to connect client to server: {:?}", e),
-//     }
+    rt.block_on(async {
+        // Define node1, node2, node3, node4
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080);
+        let (node1_sk, node1_pk) = ephemeral_keys();
+        let node1 = Node::new(addr1, node1_sk, 0);
 
-//     // Construct a "Ping" message using ShinkaiMessageBuilder
-//     let message_result =
-//         ShinkaiMessageBuilder::ping_pong_message("Ping".to_string(), client_sk, client_pk);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8081);
+        let (node2_sk, node2_pk) = ephemeral_keys();
+        let node2 = Node::new(addr2, node2_sk, 0);
 
-//     // Expecting an "Ok" from the builder, panic if not.
-//     let msg = match message_result {
-//         Ok(msg) => msg,
-//         Err(e) => panic!("Failed to create a new message: {:?}", e),
-//     };
+        let addr3 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8082);
+        let (node3_sk, node3_pk) = ephemeral_keys();
+        let node3 = Node::new(addr3, node3_sk, 0);
 
-//     // Encode the "Ping" message
-//     let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(msg);
+        let addr4 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8083);
+        let (node4_sk, node4_pk) = ephemeral_keys();
+        let node4 = Node::new(addr4, node4_sk, 0);
 
-//     // Send the encoded "Ping" message to the server and get the response
-//     let response = client.send(encoded_msg).await.unwrap().unwrap();
+        // let handler1 = tokio::spawn(async move {
+            println!("Starting node4");
+            print_chicago_time();
 
-//     // Decode the response
-//     let decoded_response = ShinkaiMessageHandler::decode_message(response).unwrap();
+            match node4.start().await {
+                Ok(_) => {
+                    println!("*** Node4 started ***");
+                    print_chicago_time();
+                }
+                Err(e) => {
+                    println!("\n\n:( :( :( Node4 failed to start: {:?} :( :( :(", e);
+                    print_chicago_time();
+                }
+            }
 
-//     // Check if the response is "Pong"
-//     assert_eq!(decoded_response.body.unwrap().content, "Pong");
+            // Give some time for nodes to exchange messages
+            tokio::time::sleep(Duration::from_secs(5)).await;
 
-//     // Terminate the client and server
-//     client.terminate().await;
-//     server.terminate().await;
-// }
+            // Check if get_peers from node4 returns 3 peers
+            let peers = node4.get_peers();
+            println!("Peers: {:?}", peers);
+            assert_eq!(peers.len(), 3);
+        // });
+
+        // let handler2 = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        //     // Connect node1, node2, and node3 to node4
+        //     println!("Node1 trying to connect to Node4");
+        //     print_chicago_time();
+            // match node1.start_and_connect(&addr4.to_string(), node4_pk).await {
+            //     Ok(_) => {
+            //         println!("Node1 connected to Node4");
+            //         print_chicago_time();                    
+            //     }
+            //     Err(e) => {
+            //         println!("Failed to connect Node1 to Node4: {}", e);
+            //         print_chicago_time();
+            //     }
+            // };
+
+            // tokio::time::sleep(Duration::from_secs(2)).await;
+            // println!("Node2 trying to connect to Node4");
+            // print_chicago_time();
+            // match node2.start_and_connect(&addr4.to_string(), node4_pk).await {
+            //     Ok(_) => println!("Node2 connected to Node4"),
+            //     Err(e) => println!("Failed to connect Node2 to Node4: {}", e),
+            // };
+
+            // match node3.start_and_connect(&addr4.to_string(), node4_pk).await {
+            //     Ok(_) => println!("Node3 connected to Node4"),
+            //     Err(e) => println!("Failed to connect Node3 to Node4: {}", e),
+            // };
+        // });
+
+        // let _ = tokio::try_join!(handler1, handler2);
+    });
+}

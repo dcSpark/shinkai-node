@@ -26,6 +26,19 @@ impl EncryptionMethod {
     }
 }
 
+pub fn unsafe_deterministic_private_key(n: u32) -> (StaticSecret, PublicKey) {
+    let mut hasher = Sha256::new();
+    hasher.update(n.to_le_bytes());
+    let hash = hasher.finalize();
+
+    let mut bytes = [0u8; 32];
+    bytes.copy_from_slice(&hash[0..32]);
+
+    let secret_key = StaticSecret::from(bytes);
+    let public_key = PublicKey::from(&secret_key);
+    (secret_key, public_key)
+}
+
 pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
     #[allow(deprecated)]
     let mut csprng = rand_os::OsRng::new().unwrap();

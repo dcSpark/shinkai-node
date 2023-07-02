@@ -1,11 +1,11 @@
-use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use std::{io, net::SocketAddr, time::Duration};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
 use x25519_dalek::{PublicKey, StaticSecret};
-use async_channel::{Receiver, Sender};
 
 use crate::shinkai_message::encryption::{decrypt_body_content, string_to_public_key};
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -23,9 +23,7 @@ pub enum PingPong {
 pub enum NodeCommand {
     PingAll,
     GetPublicKey,
-    SendMessage {
-        msg: ShinkaiMessage,
-    },
+    SendMessage { msg: ShinkaiMessage },
     // add other commands as needed...
 }
 
@@ -34,6 +32,7 @@ pub struct Node {
     public_key: PublicKey,
     listen_address: SocketAddr,
     peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
+    ping_interval_secs: u64,
     // commands: Receiver<NodeCommand>,
 }
 
@@ -41,14 +40,16 @@ impl Node {
     pub fn new(
         listen_address: SocketAddr,
         secret_key: StaticSecret,
-        public_key: PublicKey,
+        ping_interval_secs: u64, 
         // commands: Receiver<NodeCommand>,
     ) -> Node {
+        let public_key = PublicKey::from(&secret_key);
         Node {
             secret_key,
             public_key,
             peers: CHashMap::new(),
             listen_address,
+            ping_interval_secs,
             // commands,
         }
     }
@@ -56,7 +57,14 @@ impl Node {
     pub async fn start(&self) -> io::Result<()> {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
-        let mut ping_interval = async_std::stream::interval(Duration::from_secs(15));
+
+        let ping_interval_secs = if self.ping_interval_secs == 0 {
+            315576000 * 100 // 100 years in seconds
+        } else {
+            self.ping_interval_secs
+        };
+
+        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         // let mut commands_clone = self.commands.clone();
 
@@ -114,8 +122,13 @@ impl Node {
                         }
                         Ok(n) => {
                             // println!("{} > TCP: Received message.", addr);
-                            let _ = Node::selfless_handle_message(addr, &buffer[..n], socket.peer_addr().unwrap(), secret_key_clone.clone())
-                                .await;
+                            let _ = Node::handle_message(
+                                addr,
+                                &buffer[..n],
+                                socket.peer_addr().unwrap(),
+                                secret_key_clone.clone(),
+                            )
+                            .await;
                             if let Err(e) = socket.flush().await {
                                 eprintln!("Failed to flush the socket: {}", e);
                             }
@@ -166,17 +179,14 @@ impl Node {
         Ok(())
     }
 
-    pub async fn send(
-        message: &ShinkaiMessage,
-        peer: (SocketAddr, PublicKey),
-    ) -> io::Result<()> {
+    pub async fn send(message: &ShinkaiMessage, peer: (SocketAddr, PublicKey)) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
         let stream = TcpStream::connect(address).await;
         match stream {
             Ok(mut stream) => {
-                let encoded_msg = ShinkaiMessageHandler::encode_shinkai_message(message.clone());
+                let encoded_msg = ShinkaiMessageHandler::encode_message(message.clone());
                 // println!("send> Encoded Message: {:?}", encoded_msg);
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
@@ -201,7 +211,7 @@ impl Node {
     async fn ping_pong(
         peer: (SocketAddr, PublicKey),
         ping_or_pong: PingPong,
-        secret_key: StaticSecret
+        secret_key: StaticSecret,
     ) -> io::Result<()> {
         let message = match ping_or_pong {
             PingPong::Ping => "Ping",
@@ -230,21 +240,23 @@ impl Node {
     }
 
     async fn send_ack(peer: (SocketAddr, PublicKey), secret_key: StaticSecret) -> io::Result<()> {
-        let ack =
-            ShinkaiMessageBuilder::ack_message(secret_key.clone(), peer.1.clone()).unwrap();
+        let ack = ShinkaiMessageBuilder::ack_message(secret_key.clone(), peer.1.clone()).unwrap();
         Node::send(&ack, peer).await?;
         Ok(())
     }
 
+    // TODO: this should rely from a database that stores the public keys and their addresses
+    // and that db gets updated from the blockchain
+    // these are keys created with unsafe_deterministic_private_key starting at 0
     fn pk_to_address(public_key: String) -> SocketAddr {
         match public_key.as_str() {
-            "AhaRlTgxDHtYy5gUYArrpLakSj4mHmBlxVL7f5v4Piw=" => {
-                SocketAddr::from(([127, 0, 0, 1], 8081))
-            }
-            "wMD/nPm7n9lfeKZ81+W4jRIYTwDc+EqrzapGi/hAAnw=" => {
+            "eYy9ZNeMSg+6M4sqY0ljSUDcTltgHbECngLEHg/gVnk=" => {
                 SocketAddr::from(([127, 0, 0, 1], 8080))
             }
-            "V+vHRIQCOnm1Uciqy3yD/k+1x35OJaNe3IW0H59pTSg=" => {
+            "bYByVz2+uwMFd39XMyKGJxaT+MBQhD178V24GkVWRGo=" => {
+                SocketAddr::from(([127, 0, 0, 1], 8081))
+            }
+            "MnPRE+QBohXkKeMnI1IYanNwz37fHi1oqn74eiAjc3E=" => {
                 SocketAddr::from(([127, 0, 0, 1], 8082))
             }
             _ => {
@@ -257,7 +269,12 @@ impl Node {
         }
     }
 
-    async fn selfless_handle_message(listen_address: SocketAddr, bytes: &[u8], address: SocketAddr, secret_key: StaticSecret) -> io::Result<()> {
+    async fn handle_message(
+        listen_address: SocketAddr,
+        bytes: &[u8],
+        address: SocketAddr,
+        secret_key: StaticSecret,
+    ) -> io::Result<()> {
         println!("{} > Got message from {:?}", listen_address, address);
         // println!("handle> Encoded Message: {:?}", bytes.to_vec());
 
@@ -278,7 +295,10 @@ impl Node {
 
         let sender_pk_string = message.external_metadata.unwrap().sender;
         let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
-        println!("{} > Sender public key: {:?}", listen_address, sender_pk_string);
+        println!(
+            "{} > Sender public key: {:?}",
+            listen_address, sender_pk_string
+        );
 
         // if Sender is not part of peers, add it
         // if !self.peers.contains_key(&(address, sender_pk)) {
@@ -304,7 +324,10 @@ impl Node {
 
                 match decrypted_content {
                     Some(_) => {
-                        println!("{} > Got message from {:?}. Sending ACK", listen_address, address);
+                        println!(
+                            "{} > Got message from {:?}. Sending ACK",
+                            listen_address, address
+                        );
                         Node::send_ack((reachable_address, sender_pk), secret_key).await?;
                     }
                     None => {
@@ -315,7 +338,10 @@ impl Node {
                 }
             }
             (_, _) => {
-                println!("{} > Got message from {:?}. Sending ACK", listen_address, address);
+                println!(
+                    "{} > Got message from {:?}. Sending ACK",
+                    listen_address, address
+                );
                 Node::send_ack((reachable_address, sender_pk), secret_key).await?;
             }
         }

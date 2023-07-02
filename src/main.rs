@@ -42,6 +42,10 @@ fn main() {
         .unwrap_or_else(|_| "8000".to_string())
         .parse()
         .expect("Failed to parse port number");
+    let ping_interval: u64 = env::var("PING_INTERVAL_SECS")
+        .unwrap_or_else(|_| "10".to_string())
+        .parse()
+        .expect("Failed to parse port number");
 
     // Node API configuration
     let api_ip: IpAddr = env::var("NODE_API_IP")
@@ -69,7 +73,7 @@ fn main() {
     let node = Arc::new(Mutex::new(Node::new(
         listen_address,
         secret_key.clone(),
-        public_key.clone(),
+        ping_interval,
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task

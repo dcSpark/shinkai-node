@@ -1,98 +1,16 @@
 // shinkai_message.rs
 
 use crate::shinkai_message_proto::{
-    Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage, Topic,
+    ShinkaiMessage
 };
 use prost::Message;
-use serde_json::Value;
 
 pub struct ShinkaiMessageHandler;
 
 impl ShinkaiMessageHandler {
-    pub fn encode_shinkai_message(message: ShinkaiMessage) -> Vec<u8> {
+    pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
         let mut bytes = Vec::new();
         message.encode(&mut bytes).unwrap();
-        bytes
-    }
-
-    pub fn encode_message(json_string: String) -> Vec<u8> {
-        let json_value: Value = serde_json::from_str(&json_string).unwrap();
-        let fields =
-            &json_value["message"]["body"]["internal_metadata"]["message_schema_type"]["fields"];
-        let mut fields_vec = Vec::new();
-        for i in 0..fields.as_array().unwrap().len() {
-            fields_vec.push(Field {
-                name: fields[i]["name"].as_str().unwrap().to_string(),
-                r#type: fields[i]["type"].as_str().unwrap().to_string(),
-            });
-        }
-
-        let message_schema = MessageSchemaType {
-            type_name: json_value["message"]["body"]["internal_metadata"]["message_schema_type"]
-                ["type_name"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            fields: fields_vec,
-        };
-
-        let topic = Topic {
-            topic_id: json_value["message"]["body"]["internal_metadata"]["topic"]["topic_id"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            channel_id: json_value["message"]["body"]["internal_metadata"]["topic"]["channel_id"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        };
-
-        let body = Body {
-            content: json_value["message"]["body"]["content"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            internal_metadata: Some(InternalMetadata {
-                message_schema_type: Some(message_schema),
-                topic: Some(topic),
-                content: json_value["message"]["body"]["internal_metadata"]["content"]
-                    .as_str()
-                    .unwrap()
-                    .to_string(),
-            }),
-        };
-
-        let external_metadata = ExternalMetadata {
-            sender: json_value["message"]["external_metadata"]["sender"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            recipient: json_value["message"]["external_metadata"]["recipient"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            scheduled_time: json_value["message"]["external_metadata"]["scheduled_time"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            signature: json_value["message"]["external_metadata"]["signature"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        };
-
-        let message = ShinkaiMessage {
-            body: Some(body),
-            external_metadata: Some(external_metadata),
-            encryption: json_value["message"]["encryption"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-        };
-
-        let mut bytes = Vec::new();
-        message.encode(&mut bytes).unwrap();
-
         bytes
     }
 
@@ -101,77 +19,73 @@ impl ShinkaiMessageHandler {
     }
 }
 
-// shinkai_message.rs
-
 #[cfg(test)]
 mod tests {
-    use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+    use x25519_dalek::{StaticSecret, PublicKey};
+
+    use crate::shinkai_message::{shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_builder::ShinkaiMessageBuilder};
+    use crate::shinkai_message::encryption::{string_to_static_key, EncryptionMethod, public_key_to_string};
+    use crate::shinkai_message_proto::{Field, ShinkaiMessage};
+
+    const SECRET_KEYS: [&str; 3] = ["yMA8duhbady14IzHUXyz4m9ZeX423UHxvfEFFRCFK04=", "GGyELi2jbj7K30kZoAgU13jJ445Z+Ua3hEgwOKeXE0s", "UEbkn/SV8f1DaBRs9gw44rFkGRFYwGn5fHHSeg0vVFY="];
+
+    fn deterministic_keys(secret_string: String) -> (StaticSecret, PublicKey) {
+        let secret_key = string_to_static_key(&secret_string).unwrap();
+        let public_key = PublicKey::from(&secret_key);
+        (secret_key, public_key)
+    }
+
+    fn build_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey, encryption: String) -> ShinkaiMessage {
+        let fields = vec![
+            Field {
+                name: "field1".to_string(),
+                r#type: "type1".to_string(),
+            },
+            Field {
+                name: "field2".to_string(),
+                r#type: "type2".to_string(),
+            },
+        ];
+
+        let message_result = ShinkaiMessageBuilder::new(my_secret_key.clone(), receiver_public_key.clone())
+            .body("Hello World".to_string())
+            .encryption(encryption.to_string())
+            .message_schema_type("MyType".to_string(), fields)
+            .topic("my_topic".to_string(), "my_channel".to_string())
+            .internal_metadata_content("InternalContent".to_string())
+            .external_metadata(
+                receiver_public_key,
+                "2023-12-01T00:00:00Z".to_string(),
+            )
+            .build();
+
+        return message_result.unwrap();
+    }
 
     #[test]
     fn test_encode_message() {
-        let json_string = r#"{
-            "message": {
-                "body": {
-                    "content": "Hello World",
-                    "internal_metadata": {
-                        "message_schema_type": {
-                            "type_name": "MyType",
-                            "fields": [
-                                {"name": "field1", "type": "type1"},
-                                {"name": "field2", "type": "type2"}
-                            ]
-                        },
-                        "topic": {
-                            "topic_id": "my_topic",
-                            "channel_id": "my_channel"
-                        },
-                        "content": "InternalContent"
-                    }
-                },
-                "encryption": "AES",
-                "external_metadata": {
-                    "sender": "Alice",
-                    "recipient": "Bob",
-                    "scheduled_time": "2023-12-01T00:00:00Z",
-                    "signature": "ABC123"
-                }
-            }
-        }"#;
-        let encoded_message = ShinkaiMessageHandler::encode_message(json_string.to_owned());
-        assert!(encoded_message.len() > 0); // The result should be a non-empty vector.
+        let (my_secret_key, _) = deterministic_keys(SECRET_KEYS[0].to_owned());
+        let (_, receiver_public_key) = deterministic_keys(SECRET_KEYS[1].to_owned());
+        let message = build_message(my_secret_key, receiver_public_key, EncryptionMethod::None.as_str().to_owned());
+        let encoded_message = ShinkaiMessageHandler::encode_message(message);
+        assert!(encoded_message.len() > 0); 
+    }
+
+    #[test]
+    fn test_encode_message_with_encryption() {
+        let (my_secret_key, _) = deterministic_keys(SECRET_KEYS[0].to_owned());
+        let (_, receiver_public_key) = deterministic_keys(SECRET_KEYS[1].to_owned());
+        let message = build_message(my_secret_key, receiver_public_key, EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str().to_owned());
+        let encoded_message = ShinkaiMessageHandler::encode_message(message);
+        assert!(encoded_message.len() > 0); 
     }
 
     #[test]
     fn test_decode_message() {
-        let json_string = r#"{
-            "message": {
-                "body": {
-                    "content": "Hello World",
-                    "internal_metadata": {
-                        "message_schema_type": {
-                            "type_name": "MyType",
-                            "fields": [
-                                {"name": "field1", "type": "type1"},
-                                {"name": "field2", "type": "type2"}
-                            ]
-                        },
-                        "topic": {
-                            "topic_id": "my_topic",
-                            "channel_id": "my_channel"
-                        },
-                        "content": "InternalContent"
-                    }
-                },
-                "encryption": "AES",
-                "external_metadata": {
-                    "sender": "Alice",
-                    "recipient": "Bob",
-                    "scheduled_time": "2023-12-01T00:00:00Z",
-                    "signature": "ABC123"
-                }
-            }
-        }"#;
-        let encoded_message = ShinkaiMessageHandler::encode_message(json_string.to_owned());
+        let (my_secret_key, my_public_key) = deterministic_keys(SECRET_KEYS[0].to_owned());
+        let (_, receiver_public_key) = deterministic_keys(SECRET_KEYS[1].to_owned());
+        let message = build_message(my_secret_key, receiver_public_key, EncryptionMethod::None.as_str().to_owned());
+        let encoded_message = ShinkaiMessageHandler::encode_message(message); 
         let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
 
         // Assert that the decoded message is the same as the original message
@@ -233,12 +147,88 @@ mod tests {
             "my_channel"
         );
 
-        assert_eq!(decoded_message.encryption, "AES");
+        assert_eq!(decoded_message.encryption, "None");
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
-        assert_eq!(external_metadata.sender, "Alice");
-        assert_eq!(external_metadata.recipient, "Bob");
+        assert_eq!(external_metadata.sender, public_key_to_string(my_public_key.to_owned()));
+        assert_eq!(external_metadata.recipient, public_key_to_string(receiver_public_key.to_owned()));
         assert_eq!(external_metadata.scheduled_time, "2023-12-01T00:00:00Z");
-        assert_eq!(external_metadata.signature, "ABC123");
+        assert_eq!(external_metadata.signature, "");
+    }
+
+    #[test]
+    fn test_decode_encrypted_message() {
+        let (my_secret_key, my_public_key) = deterministic_keys(SECRET_KEYS[0].to_owned());
+        let (_, receiver_public_key) = deterministic_keys(SECRET_KEYS[1].to_owned());
+        let message = build_message(my_secret_key, receiver_public_key, EncryptionMethod::None.as_str().to_owned());
+        let encoded_message = ShinkaiMessageHandler::encode_message(message); 
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
+
+        // Assert that the decoded message is the same as the original message
+        let body = decoded_message.body.as_ref().unwrap();
+        assert_eq!(body.content, "Hello World");
+
+        let internal_metadata = body.internal_metadata.as_ref().unwrap();
+        assert_eq!(internal_metadata.content, "InternalContent");
+        assert_eq!(
+            internal_metadata
+                .message_schema_type
+                .as_ref()
+                .unwrap()
+                .type_name,
+            "MyType"
+        );
+        assert_eq!(
+            internal_metadata
+                .message_schema_type
+                .as_ref()
+                .unwrap()
+                .fields[0]
+                .name,
+            "field1"
+        );
+        assert_eq!(
+            internal_metadata
+                .message_schema_type
+                .as_ref()
+                .unwrap()
+                .fields[0]
+                .r#type,
+            "type1"
+        );
+        assert_eq!(
+            internal_metadata
+                .message_schema_type
+                .as_ref()
+                .unwrap()
+                .fields[1]
+                .name,
+            "field2"
+        );
+        assert_eq!(
+            internal_metadata
+                .message_schema_type
+                .as_ref()
+                .unwrap()
+                .fields[1]
+                .r#type,
+            "type2"
+        );
+        assert_eq!(
+            internal_metadata.topic.as_ref().unwrap().topic_id,
+            "my_topic"
+        );
+        assert_eq!(
+            internal_metadata.topic.as_ref().unwrap().channel_id,
+            "my_channel"
+        );
+
+        assert_eq!(decoded_message.encryption, "None");
+
+        let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
+        assert_eq!(external_metadata.sender, public_key_to_string(my_public_key.to_owned()));
+        assert_eq!(external_metadata.recipient, public_key_to_string(receiver_public_key.to_owned()));
+        assert_eq!(external_metadata.scheduled_time, "2023-12-01T00:00:00Z");
+        assert_eq!(external_metadata.signature, "");
     }
 }
