@@ -11,6 +11,7 @@ use crate::shinkai_message::encryption::{decrypt_body_content, string_to_public_
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message_proto::ShinkaiMessage;
+use crate::db::ShinkaiMessageDB;
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -210,7 +211,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn send(message: &ShinkaiMessage, peer: (SocketAddr, PublicKey)) -> io::Result<()> {
+    pub async fn send(message: &ShinkaiMessage, peer: (SocketAddr, PublicKey), db: &ShinkaiMessageDB) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
@@ -222,6 +223,8 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
+                db.insert_message(message).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            
                 Ok(())
             }
             Err(e) => {
@@ -234,7 +237,7 @@ impl Node {
 
     async fn broadcast(&self, message: &ShinkaiMessage) -> io::Result<()> {
         for (peer, _) in self.peers.clone() {
-            Node::send(message, peer).await?;
+            Node::send(message, peer, &self.db).await?;
         }
         Ok(())
     }

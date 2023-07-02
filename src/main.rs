@@ -16,6 +16,7 @@ use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_
 
 mod network;
 mod shinkai_message;
+mod db;
 
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
@@ -80,6 +81,7 @@ fn main() {
         secret_key.clone(),
         ping_interval,
         node_commands_receiver,
+        public_key.clone().as_bytes().to_vec(),
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task

@@ -1,2 +1,2 @@
-pub mod db;
-pub use db::{ShinkaiMessageDB};
+mod db;
+pub use db::ShinkaiMessageDB;

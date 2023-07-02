@@ -24,7 +24,7 @@ impl ShinkaiMessageHandler {
         scheduled_time
     }
 
-    fn calculate_hash(message: &ShinkaiMessage) -> String {
+    pub fn calculate_hash(message: &ShinkaiMessage) -> String {
         let mut hasher = Sha256::new();
 
         hasher.update(format!("{:?}", message));
