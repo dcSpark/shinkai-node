@@ -38,6 +38,7 @@ pub struct Node {
     peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
     ping_interval_secs: u64,
     commands: Receiver<NodeCommand>,
+    db: ShinkaiMessageDB,
 }
 
 impl Node {
@@ -46,6 +47,7 @@ impl Node {
         secret_key: StaticSecret,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
+        db: ShinkaiMessageDB,
     ) -> Node {
         let public_key = PublicKey::from(&secret_key);
         Node {
@@ -55,6 +57,7 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
+            db,
         }
     }
 
@@ -92,9 +95,14 @@ impl Node {
                                 let address = Node::pk_to_address(pk);
                                 res.send(address).await.unwrap();
                             },
+                            Some(NodeCommand::Connect { address, pk }) => {
+                                let address_str = address.to_string();
+                                let public_key = string_to_public_key(&pk).unwrap();
+                                self.connect(&address_str, public_key).await?;
+                            },
                             Some(NodeCommand::GetPublicKey(res)) => {
                                 let public_key = self.public_key.clone();
-                                res.send(public_key).await.map_err(|_| ());
+                                let _ = res.send(public_key).await.map_err(|_| ());
                             },
                             // Handle other commands
                             _ => break,
@@ -117,6 +125,7 @@ impl Node {
             }
         }
     }
+
     async fn listen(&self) -> io::Result<()> {
         let mut listener = TcpListener::bind(&self.listen_address).await?;
 
@@ -185,13 +194,18 @@ impl Node {
         Ok(self.public_key)
     }
 
-    pub async fn start_and_connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
+    pub async fn connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
         println!(
             "{} > Connecting to {} with pk: {:?}",
             self.listen_address, peer_address, pk
         );
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
         self.peers.insert((peer_address, pk), Utc::now());
+        Ok(())
+    }
+
+    pub async fn start_and_connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
+        self.connect(peer_address, pk).await?;
         self.start().await?;
         Ok(())
     }

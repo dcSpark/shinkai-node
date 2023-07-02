@@ -20,6 +20,12 @@ struct PkToAddressResponse {
     result: String,
 }
 
+#[derive(serde::Deserialize)]
+struct ConnectBody {
+    address: String,
+    pk: String,
+}
+
 pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
     println!("Starting Node API server at: {}", &address);
 
@@ -141,18 +147,21 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     //     warp::path!("v1" / "connect")
     //         .and(warp::post())
     //         .and(warp::body::json())
-    //         .and_then(move |connect_msg: ConnectMessage| {
-    //             // You'd need to define a ConnectMessage struct
-    //             let address = connect_msg.address;
-    //             let port = connect_msg.port;
-    //             let pk = connect_msg.public_key;
-
-    //             node_commands_sender
-    //                 .send(NodeCommand::Connect { address, port, pk }) // This command would need to be implemented
-    //                 .map(|_| ())
-    //                 .map_err(warp::reject::any)
+    //         .and_then(move |body: ConnectBody| {
+    //             let address: SocketAddr = body.address.parse().expect("Failed to parse SocketAddr");
+    //             let pk = body.pk.clone();
+    //             let node_commands_sender = node_commands_sender.clone();
+    //             async move {
+    //                 node_commands_sender
+    //                     .send(NodeCommand::Connect { address, pk })
+    //                     .await
+    //                     .map_err(|err| warp::reject::reject())?; // Proper error handling
+    //                 Ok::<_, warp::Rejection>(warp::reply::with_status(
+    //                     "Connection initiated",
+    //                     StatusCode::ACCEPTED,
+    //                 ))
+    //             }
     //         })
-    //         .map(|_| warp::reply())
     // };
 
     // POST v1/forward_from_profile
@@ -175,8 +184,8 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_peers)
         .or(pk_to_address)
         .or(get_public_key)
+        // .or(connect)
         .with(log);
-    // .or(connect)
     // .or(forward_from_profile);
     warp::serve(routes).run(address).await;
 

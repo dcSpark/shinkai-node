@@ -1,10 +1,10 @@
-use super::encryption::public_key_to_string;
+use super::{encryption::public_key_to_string, shinkai_message_handler::ShinkaiMessageHandler};
 #[allow(unused_imports)]
-use super::encryption::{encrypt_body_if_needed, decrypt_body_content};
+use super::encryption::{decrypt_body_content, encrypt_body_if_needed};
 use crate::shinkai_message_proto::{
-    Body, ExternalMetadata, Field, InternalMetadata, ShinkaiMessage, MessageSchemaType,
-    Topic,
+    Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage, Topic,
 };
+use chrono::Utc;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 pub struct ShinkaiMessageBuilder {
@@ -30,7 +30,7 @@ impl ShinkaiMessageBuilder {
             external_metadata: None,
             encryption: None,
             my_secret_key,
-            my_public_key, 
+            my_public_key,
             receiver_public_key,
         }
     }
@@ -71,7 +71,19 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn external_metadata(
+    pub fn external_metadata(mut self, recipient: PublicKey) -> Self {
+        let signature = "".to_string();
+        let scheduled_time = ShinkaiMessageHandler::generate_time_now();
+        self.external_metadata = Some(ExternalMetadata {
+            sender: public_key_to_string(self.my_public_key),
+            recipient: public_key_to_string(recipient),
+            scheduled_time,
+            signature,
+        });
+        self
+    }
+
+    pub fn external_metadata_with_schedule(
         mut self,
         recipient: PublicKey,
         scheduled_time: String,
@@ -96,7 +108,7 @@ impl ShinkaiMessageBuilder {
                     .unwrap_or_else(|| String::from("")),
             };
             body.internal_metadata = Some(internal_metadata);
-            
+
             if self.encryption == Some("default".to_string()) {
                 let encrypted_body = encrypt_body_if_needed(
                     body.content.as_bytes(),
@@ -107,46 +119,60 @@ impl ShinkaiMessageBuilder {
                 .expect("Failed to encrypt body content");
                 body.content = encrypted_body;
             }
-            
-            Ok(ShinkaiMessage { 
-                body: Some(body), 
+
+            Ok(ShinkaiMessage {
+                body: Some(body),
                 encryption: self.encryption.unwrap_or_else(|| String::from("")),
-                external_metadata: self.external_metadata 
+                external_metadata: self.external_metadata,
             })
         } else {
             Err("Missing fields")
         }
     }
 
-    pub fn ack_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+    pub fn ack_message(
+        my_secret_key: StaticSecret,
+        receiver_public_key: PublicKey,
+    ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body("ACK".to_string())
             .no_encryption()
-            .external_metadata(receiver_public_key, "".to_string())
+            .external_metadata(receiver_public_key)
             .build()
     }
 
-    pub fn ping_pong_message(message: String, my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {
+    pub fn ping_pong_message(
+        message: String,
+        my_secret_key: StaticSecret,
+        receiver_public_key: PublicKey,
+    ) -> Result<ShinkaiMessage, &'static str> {
         if message != "Ping" && message != "Pong" {
-            return Err("Invalid message: must be 'Ping' or 'Pong'")
+            return Err("Invalid message: must be 'Ping' or 'Pong'");
         }
-    
+
         ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body(message)
             .no_encryption()
-            .external_metadata(receiver_public_key, "".to_string())
+            .external_metadata(receiver_public_key)
             .build()
     }
 
-    pub fn terminate_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey) -> Result<ShinkaiMessage, &'static str> {    
+    pub fn terminate_message(
+        my_secret_key: StaticSecret,
+        receiver_public_key: PublicKey,
+    ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body("terminate".to_string())
             .no_encryption()
-            .external_metadata(receiver_public_key, "".to_string())
+            .external_metadata(receiver_public_key)
             .build()
     }
 
-    pub fn error_message(my_secret_key: StaticSecret, receiver_public_key: PublicKey, error_msg: String) -> Result<ShinkaiMessage, &'static str> {
+    pub fn error_message(
+        my_secret_key: StaticSecret,
+        receiver_public_key: PublicKey,
+        error_msg: String,
+    ) -> Result<ShinkaiMessage, &'static str> {
         ShinkaiMessageBuilder::new(my_secret_key, receiver_public_key)
             .body(format!("{{error: \"{}\"}}", error_msg))
             .no_encryption()
@@ -182,10 +208,7 @@ mod tests {
             .message_schema_type("schema type".to_string(), fields)
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
-            .external_metadata(
-                public_key,
-                "scheduled_time".to_string(),
-            )
+            .external_metadata_with_schedule(public_key, "20230702T20533481345".to_string())
             .build();
 
         assert!(message_result.is_ok());
@@ -221,10 +244,7 @@ mod tests {
             .message_schema_type("schema type".to_string(), fields)
             .topic("topic_id".to_string(), "channel_id".to_string())
             .internal_metadata_content("internal metadata content".to_string())
-            .external_metadata(
-                public_key,
-                "recipient".to_string(),
-            )
+            .external_metadata(public_key)
             .build();
 
         assert!(message_result.is_ok());
@@ -232,7 +252,10 @@ mod tests {
         let body = message.body.as_ref().unwrap();
         assert_eq!(message.encryption, "default");
 
-        print!("test encryption 'body content'> {:?} ", &body.content.as_bytes()); 
+        print!(
+            "test encryption 'body content'> {:?} ",
+            &body.content.as_bytes()
+        );
         let decrypted_content = decrypt_body_content(
             &body.content.as_bytes(),
             &secret_key_clone,

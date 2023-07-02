@@ -23,7 +23,7 @@ mod shinkai_message_proto {
 
 fn main() {
     // Create Tokio runtime
-    let rt = Runtime::new().unwrap();
+    let mut rt = Runtime::new().unwrap();
 
     // Generate your keys here or load them from a file.
     let (secret_key, public_key) = match env::var("SECRET_KEY") {
@@ -83,10 +83,8 @@ fn main() {
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task
-    let api_node = Arc::clone(&node);
     let connect_node = Arc::clone(&node);
     let start_node = Arc::clone(&node);
-    let api_node_commands_sender = node_commands_sender.clone();
 
     // Create a new Tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
