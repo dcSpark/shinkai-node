@@ -1,3 +1,4 @@
+use async_channel::{bounded, Receiver, Sender};
 // main.rs
 use network::Node;
 use shinkai_message::encryption::ephemeral_keys;
@@ -9,6 +10,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey};
 
+use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key};
 
@@ -21,10 +23,10 @@ mod shinkai_message_proto {
 
 fn main() {
     // Create Tokio runtime
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     // Generate your keys here or load them from a file.
-    let (secret_key, public_key) = match (env::var("SECRET_KEY")) {
+    let (secret_key, public_key) = match env::var("SECRET_KEY") {
         Ok(secret_key_str) => {
             let secret_key = string_to_static_key(&secret_key_str).unwrap();
             let public_key = PublicKey::from(&secret_key);
@@ -69,17 +71,22 @@ fn main() {
         ip, port, secret_key_string, public_key_string
     );
 
+    let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
+
+
     // Create a new node
     let node = Arc::new(Mutex::new(Node::new(
         listen_address,
         secret_key.clone(),
         ping_interval,
+        node_commands_receiver,
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task
     let api_node = Arc::clone(&node);
     let connect_node = Arc::clone(&node);
     let start_node = Arc::clone(&node);
+    let api_node_commands_sender = node_commands_sender.clone();
 
     // Create a new Tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
@@ -92,7 +99,7 @@ fn main() {
     rt.block_on(async {
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::serve(api_node, api_listen_address).await;
+            node_api::run_api(node_commands_sender, api_listen_address).await;
         });
 
         // Node task

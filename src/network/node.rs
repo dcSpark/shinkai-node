@@ -22,8 +22,12 @@ pub enum PingPong {
 
 pub enum NodeCommand {
     PingAll,
-    GetPublicKey,
+    GetPublicKey(Sender<PublicKey>),
     SendMessage { msg: ShinkaiMessage },
+    ForwardFromProfile { msg: ShinkaiMessage },
+    GetPeers(Sender<Vec<SocketAddr>>),
+    PkToAddress { pk: String, res: Sender<SocketAddr> },
+    Connect { address: SocketAddr, pk: String },
     // add other commands as needed...
 }
 
@@ -33,15 +37,15 @@ pub struct Node {
     listen_address: SocketAddr,
     peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
     ping_interval_secs: u64,
-    // commands: Receiver<NodeCommand>,
+    commands: Receiver<NodeCommand>,
 }
 
 impl Node {
     pub fn new(
         listen_address: SocketAddr,
         secret_key: StaticSecret,
-        ping_interval_secs: u64, 
-        // commands: Receiver<NodeCommand>,
+        ping_interval_secs: u64,
+        commands: Receiver<NodeCommand>,
     ) -> Node {
         let public_key = PublicKey::from(&secret_key);
         Node {
@@ -50,7 +54,7 @@ impl Node {
             peers: CHashMap::new(),
             listen_address,
             ping_interval_secs,
-            // commands,
+            commands,
         }
     }
 
@@ -64,25 +68,38 @@ impl Node {
             self.ping_interval_secs
         };
 
-        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut ping_interval =
+            async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
-        // let mut commands_clone = self.commands.clone();
 
         loop {
             let ping_future = ping_interval.next().fuse();
-            // let mut commands_future = commands_clone.next().fuse();
-            pin_mut!(ping_future);
+            let mut commands_future = commands_clone.next().fuse();
+            pin_mut!(ping_future, commands_future);
 
             select! {
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
-                    // command = commands_future => {
-                    //     match command {
-                    //         Some(NodeCommand::PingAll) => self.ping_all().await?,
-                    //         // Handle other commands
-                    //         _ => break,
-                    //     }
-                    // }
+                    command = commands_future => {
+                        match command {
+                            Some(NodeCommand::PingAll) => self.ping_all().await?,
+                            Some(NodeCommand::GetPeers(sender)) => {
+                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+                                sender.send(peer_addresses).await.unwrap();
+                            },
+                            Some(NodeCommand::PkToAddress { pk, res }) => {
+                                let address = Node::pk_to_address(pk);
+                                res.send(address).await.unwrap();
+                            },
+                            Some(NodeCommand::GetPublicKey(res)) => {
+                                let public_key = self.public_key.clone();
+                                res.send(public_key).await.map_err(|_| ());
+                            },
+                            // Handle other commands
+                            _ => break,
+                        }
+                    }
             };
         }
         Ok(())

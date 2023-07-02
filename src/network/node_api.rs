@@ -1,99 +1,197 @@
-use crate::shinkai_message::{shinkai_message_handler::ShinkaiMessageHandler, encryption::public_key_to_string};
+use crate::shinkai_message::encryption::public_key_to_string;
+use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message_proto::ShinkaiMessage;
+
+use super::node::NodeCommand;
+use async_channel::Sender;
+use prost::bytes;
+use serde_json::json;
+use std::net::SocketAddr;
+use warp::http::StatusCode;
 use warp::Filter;
 
-use super::Node;
-use std::{sync::Arc, net::SocketAddr};
-use tokio::sync::Mutex;
+#[derive(serde::Deserialize)]
+struct PkToAddressBody {
+    pk: String,
+}
 
-// Shared node between filters
-type SharedNode = Arc<Mutex<Node>>;
+#[derive(serde::Serialize)]
+struct PkToAddressResponse {
+    result: String,
+}
 
-pub async fn serve(node: Arc<Mutex<Node>>, address: SocketAddr) {
-    // let get_peers = warp::get()
-    //     .and(warp::path("peers"))
-    //     .and(with_node(node.clone()))
-    //     .and_then(get_peers_handler);
+pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
+    println!("Starting Node API server at: {}", &address);
 
-    let ping_peers = warp::post()
-        .and(warp::path("ping"))
-        .and(with_node(node.clone()))
-        .and_then(ping_peers_handler);
+    let log = warp::log::custom(|info| {
+        eprintln!(
+            "ip: {:?}, method: {:?}, path: {:?}, status: {:?}, elapsed: {:?}",
+            info.remote_addr(),
+            info.method(),
+            info.path(),
+            info.status(),
+            info.elapsed(),
+        );
+    });
 
-    let get_node_public_key = warp::get()
-        .and(warp::path("node_public_key"))
-        .and(with_node(node.clone()))
-        .and_then(get_node_public_key_handler);
+    let ping_all = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "ping_all")
+            .and(warp::post())
+            .and_then(move || handle_ping_all(node_commands_sender.clone()))
+    };
 
-    let send_message = warp::post()
-        .and(warp::path("send"))
-        .and(warp::body::content_length_limit(1024 * 1024)) // Limit to 1mb
-        .and(warp::body::bytes())
-        .and(with_node(node.clone()))
-        .and_then(send_message_handler);
+    // POST v1/send
+    let send_msg = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::post()
+            .and(warp::path("v1"))
+            .and(warp::path("send"))
+            .and(warp::body::bytes())
+            .and_then(move |bytes: bytes::Bytes| {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let bytes_vec = bytes.to_vec();
+                    match ShinkaiMessageHandler::decode_message(bytes_vec) {
+                        Ok(message) => {
+                            node_commands_sender
+                                .send(NodeCommand::SendMessage { msg: message })
+                                .await
+                                .unwrap();
+                            let resp = warp::reply::json(&"Message sent successfully");
+                            Ok::<_, warp::Rejection>(resp)
+                        }
+                        Err(_) => {
+                            let resp = warp::reply::json(&"Error decoding message");
+                            Ok::<_, warp::Rejection>(resp)
+                        }
+                    }
+                }
+            })
+    };
 
-    // let get_status = warp::get()
-    //     .and(warp::path("status"))
-    //     .and(with_node(node.clone()))
-    //     .and_then(get_status_handler);
+    // GET v1/get_peers
+    let get_peers = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_peers").and(warp::get()).and_then({
+            let node_commands_sender = node_commands_sender.clone();
+            move || {
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                let node_commands_sender_clone = node_commands_sender.clone();
+                async move {
+                    node_commands_sender_clone
+                        .send(NodeCommand::GetPeers(res_sender))
+                        .await
+                        .map_err(|_| warp::reject::reject())?; // Send the command to Node
+                    let peer_addresses = res_receiver.recv().await.unwrap();
+                    Ok::<_, warp::Rejection>(warp::reply::json(&peer_addresses))
+                }
+            }
+        })
+    };
 
-    let routes = send_message.or(ping_peers).or(get_node_public_key);
-    // .or(get_peers);
-    // .or(get_status);
+    // POST v1/pk_to_address
+    let pk_to_address = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "pk_to_address")
+            .and(warp::post())
+            .and(warp::body::json())
+            .and_then(move |body: PkToAddressBody| {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node_commands_sender
+                        .send(NodeCommand::PkToAddress {
+                            pk: body.pk,
+                            res: res_sender,
+                        })
+                        .await
+                        .unwrap();
+                    let address = res_receiver.recv().await.unwrap();
+                    Ok::<_, warp::Rejection>(warp::reply::json(&PkToAddressResponse {
+                        result: address.to_string(),
+                    }))
+                }
+            })
+    };
 
-    println!("Node API Listening on {}", address);
+    // GET v1/get_public_key
+    let get_public_key = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_public_key")
+            .and(warp::get())
+            .and_then(move || {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node_commands_sender
+                        .send(NodeCommand::GetPublicKey(res_sender))
+                        .await
+                        .map_err(|_| warp::reject())?;
+                    let public_key = res_receiver.recv().await.map_err(|_| warp::reject())?;
+                    let public_key_string = public_key_to_string(public_key.clone());
+                    Ok::<_, warp::Rejection>(warp::reply::json(&public_key_string))
+                }
+            })
+    };
+
+    // POST v1/connect
+    // let connect = {
+    //     let node_commands_sender = node_commands_sender.clone();
+    //     warp::path!("v1" / "connect")
+    //         .and(warp::post())
+    //         .and(warp::body::json())
+    //         .and_then(move |connect_msg: ConnectMessage| {
+    //             // You'd need to define a ConnectMessage struct
+    //             let address = connect_msg.address;
+    //             let port = connect_msg.port;
+    //             let pk = connect_msg.public_key;
+
+    //             node_commands_sender
+    //                 .send(NodeCommand::Connect { address, port, pk }) // This command would need to be implemented
+    //                 .map(|_| ())
+    //                 .map_err(warp::reject::any)
+    //         })
+    //         .map(|_| warp::reply())
+    // };
+
+    // POST v1/forward_from_profile
+    // let forward_from_profile = {
+    //     let node_commands_sender = node_commands_sender.clone();
+    //     warp::path!("v1" / "forward_from_profile")
+    //         .and(warp::post())
+    //         .and(warp::body::json())
+    //         .and_then(move |msg: ShinkaiMessage| {
+    //             node_commands_sender
+    //                 .send(NodeCommand::ForwardFromProfile { msg }) // This command would need to be implemented
+    //                 .map(|_| ())
+    //                 .map_err(warp::reject::any)
+    //         })
+    //         .map(|_| warp::reply())
+    // };
+
+    let routes = ping_all
+        .or(send_msg)
+        .or(get_peers)
+        .or(pk_to_address)
+        .or(get_public_key)
+        .with(log);
+    // .or(connect)
+    // .or(forward_from_profile);
     warp::serve(routes).run(address).await;
+
+    println!("Server successfully started at: {}", &address);
 }
 
-fn with_node(
-    node: SharedNode,
-) -> impl Filter<Extract = (SharedNode,), Error = std::convert::Infallible> + Clone {
-    warp::any().map(move || node.clone())
-}
-
-// async fn get_peers_handler(node: SharedNode) -> Result<impl warp::Reply, warp::Rejection> {
-//     let node = node.lock().await;
-//     let peers = node.get_peers(); // Assuming you have this method implemented
-//     let peer_list: Vec<_> = peers.into_iter().collect();
-//     Ok(warp::reply::json(&peer_list))
-// }
-
-async fn ping_peers_handler(node: SharedNode) -> Result<impl warp::Reply, warp::Rejection> {
-    let node = node.lock().await;
-    node.ping_all().await.unwrap();
-    Ok(warp::reply())
-}
-
-async fn send_message_handler(
-    body: prost::bytes::Bytes,
-    node: SharedNode,
+async fn handle_ping_all(
+    node_commands_sender: Sender<NodeCommand>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let node = node.lock().await;
-    let msg = ShinkaiMessageHandler::decode_message(body.to_vec()).unwrap();
-
-    // Check if sender is allowed to use full node as a proxy
-    // let sender = msg.external_metadata.clone().unwrap().sender;
-    // let recipient_pk = string_to_public_key(&sender).unwrap();
-    //
-    // if !node.is_allowed(&sender) {
-    //     return Ok(warp::reply::json(&"Sender not allowed"));
-    // }
-
-    node.forward_from_profile(&msg).await.unwrap();
-    Ok(warp::reply())
+    match node_commands_sender.send(NodeCommand::PingAll).await {
+        Ok(_) => Ok(warp::reply::json(&json!({
+            "result": "Pinged all nodes successfully"
+        }))),
+        Err(_) => Ok(warp::reply::json(&json!({
+            "error": "Error occurred while pinging all nodes"
+        }))),
+    }
 }
-
-async fn get_node_public_key_handler(
-    node: SharedNode,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let node = node.lock().await;
-    let public_key = node.get_public_key().unwrap();
-    let public_key_string = public_key_to_string(public_key);
-    let response = serde_json::json!({ "result": public_key_string });
-    Ok(warp::reply::json(&response))
-}
-
-// async fn get_status_handler(node: SharedNode) -> Result<impl warp::Reply, warp::Rejection> {
-//     let node = node.lock().await;
-//     let status = node.get_status(); // Assuming you have this method implemented
-//     Ok(warp::reply::json(&status))
-// }

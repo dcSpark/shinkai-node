@@ -21,51 +21,51 @@ fn tcp_node_test() {
     rt.block_on(async {
         let (node1_sk, node1_pk) = unsafe_deterministic_private_key(0);
         let (node2_sk, node2_pk) = unsafe_deterministic_private_key(1);
-        let (node3_sk, node3_pk) = unsafe_deterministic_private_key(2);
-        println!("Node 1 private key: {:?}", secret_key_to_string(node1_sk.clone()));
-        println!("Node 1 public key: {:?}", public_key_to_string(node1_pk.clone()));
-
-        println!("Node 2 private key: {:?}", secret_key_to_string(node2_sk.clone()));
-        println!("Node 2 public key: {:?}", public_key_to_string(node2_pk.clone()));
-        
-        println!("Node 3 private key: {:?}", secret_key_to_string(node3_sk.clone()));
-        println!("Node 3 public key: {:?}", public_key_to_string(node3_pk.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let node1 = Node::new(addr1, node1_sk, 0);
-        node1.start();
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
         let node2 = Node::new(addr2, node2_sk, 0);
-        node2.start_and_connect(&addr1.to_string(), node1_pk);
 
-        println!("\n");
-        node1.ping_all().await;
+        // let addr1_string = &addr1.to_string();
+        // let node2_handle = node2.start_and_connect(&addr1_string, node1_pk).await;
+        // println!("After connecting: Pinging all from node 2");
+        // node2.ping_all().await;
 
-        // now testing node 2
-        println!("\n");
-        println!("Pinging all from node 2");
-        node2.ping_all().await;
-        let addr1_string = &addr1.to_string();
-        let node2_handle = node2.start_and_connect(&addr1_string, node1_pk).await;
-        println!("After connecting: Pinging all from node 2");
-        node2.ping_all().await;
+        tokio::spawn(async move {
+            println!("\n\n");
+            println!("Starting node 1");
+            node1.start().await;
+            println!("Node 1 started");
+        });
 
-        // tokio::spawn(async move {
-        //     println!("\n\n");
-        //     println!("Starting node 1");
-        //     node1.start().await;
-        //     println!("Node 1 started");
-        // });
+        tokio::spawn(async move {
+            println!("\n\n");
+            println!("Starting node 2");
+            let _ = node2.start().await;
 
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        node2.ping_all().await;
+            println!("Node 2 started");
 
-        let fields = vec![Field {
-            name: "field1".to_string(),
-            r#type: "type1".to_string(),
-        }];
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let _ = node2.start();
+            // let _ = node2.start_and_connect(&addr1.to_string(), node1_pk);
+            tokio::time::sleep(Duration::from_secs(1)).await;
+    
+            println!("\n");
+            node2.ping_all().await;
+    
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            node2.ping_all().await;
+        });
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        // let fields = vec![Field {
+        //     name: "field1".to_string(),
+        //     r#type: "type1".to_string(),
+        // }];
 
         // let shinkai_msg = ShinkaiMessageBuilder::new(client_sk_clone, node1_pk)
         //     .body("body content".to_string())
