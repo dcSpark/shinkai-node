@@ -116,6 +116,14 @@ impl Node {
                                 self.connect(&address_str, public_key).await?;
 
                             },
+                            Some(NodeCommand::SendMessage { msg }) => {
+                                // Verify that it's coming from one of our allowed keys
+                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
+                                let address = Node::pk_to_address(recipient.clone()); 
+                                let pk = string_to_public_key(&recipient).expect("Failed to convert string to public key");
+                                let db = self.db.lock().await;
+                                Node::send(&msg,(address, pk), &db).await?;
+                            },
                             Some(NodeCommand::GetPublicKey(res)) => {
                                 let public_key = self.public_key.clone();
                                 let _ = res.send(public_key).await.map_err(|_| ());
@@ -288,13 +296,6 @@ impl Node {
             }
         }
     }
-
-    // pub async fn fetch_last_messages(&self, n: usize) -> Vec<ShinkaiMessage> {
-    //     let db_lock = self.db.lock().await;
-    //     let messages = db_lock.get_last_messages(n);
-    //     drop(db_lock);
-    //     messages.unwrap_or_else(|_| vec![])
-    // }
 
     async fn ping_pong(
         peer: (SocketAddr, PublicKey),

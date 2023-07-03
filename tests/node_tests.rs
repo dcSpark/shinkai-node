@@ -2,9 +2,10 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::shinkai_message::encryption::{
-    hash_public_key, public_key_to_string,
-    unsafe_deterministic_private_key,
+    hash_public_key, public_key_to_string, unsafe_deterministic_private_key,
 };
+use shinkai_node::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
+use shinkai_node::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -15,9 +16,7 @@ use tokio::runtime::Runtime;
 #[test]
 fn setup() {
     let path = Path::new("db_tests/");
-    if path.exists() {
-        fs::remove_dir_all(&path).unwrap();
-    }
+    let _ = fs::remove_dir_all(&path);
 }
 
 #[test]
@@ -100,8 +99,16 @@ fn tcp_node_test() {
             println!("Node 1 last messages: {:?}", node1_last_messages);
             println!("Node 2 last messages: {:?}", node2_last_messages);
 
-            assert_eq!(node1_last_messages.len(), 3, "Node 1 (listening) should have 3 message");
-            assert_eq!(node2_last_messages.len(), 3, "Node 2 (connecting) should have 3 messages");
+            assert_eq!(
+                node1_last_messages.len(),
+                3,
+                "Node 1 (listening) should have 3 message"
+            );
+            assert_eq!(
+                node2_last_messages.len(),
+                3,
+                "Node 2 (connecting) should have 3 messages"
+            );
 
             // Node 1 (receiving the Ping, sending back a Pong)
             assert_eq!(
@@ -109,11 +116,21 @@ fn tcp_node_test() {
                 true,
             );
             assert_eq!(
-                node1_last_messages[1].external_metadata.as_ref().unwrap().sender == public_key_to_string(node1_pk.clone()),
+                node1_last_messages[1]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .sender
+                    == public_key_to_string(node1_pk.clone()),
                 true
             );
             assert_eq!(
-                node1_last_messages[1].external_metadata.as_ref().unwrap().recipient == public_key_to_string(node2_pk.clone()),
+                node1_last_messages[1]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .recipient
+                    == public_key_to_string(node2_pk.clone()),
                 true
             );
 
@@ -123,23 +140,43 @@ fn tcp_node_test() {
                 true
             );
             assert_eq!(
-                node2_last_messages[0].external_metadata.as_ref().unwrap().sender == public_key_to_string(node2_pk.clone()),
+                node2_last_messages[0]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .sender
+                    == public_key_to_string(node2_pk.clone()),
                 true
             );
             assert_eq!(
-                node2_last_messages[0].external_metadata.as_ref().unwrap().recipient == public_key_to_string(node1_pk.clone()),
+                node2_last_messages[0]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .recipient
+                    == public_key_to_string(node1_pk.clone()),
                 true
-            ); 
+            );
             assert_eq!(
                 node2_last_messages[2].body.as_ref().unwrap().content == "Ping".to_string(),
                 true
             );
             assert_eq!(
-                node2_last_messages[2].external_metadata.as_ref().unwrap().sender == public_key_to_string(node2_pk.clone()),
+                node2_last_messages[2]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .sender
+                    == public_key_to_string(node2_pk.clone()),
                 true
             );
             assert_eq!(
-                node2_last_messages[2].external_metadata.as_ref().unwrap().recipient == public_key_to_string(node1_pk.clone()),
+                node2_last_messages[2]
+                    .external_metadata
+                    .as_ref()
+                    .unwrap()
+                    .recipient
+                    == public_key_to_string(node1_pk.clone()),
                 true
             );
 
@@ -156,6 +193,14 @@ fn tcp_node_test() {
                 ShinkaiMessageHandler::calculate_hash(&node1_last_messages[2]),
                 ShinkaiMessageHandler::calculate_hash(&node2_last_messages[2])
             );
+
+            // {
+            //     let shinkai_message = node1_last_messages[0].clone();
+            //     let message_wrapper = ShinkaiMessageWrapper::from(&shinkai_message);
+            //     let message_json = serde_json::to_string_pretty(&message_wrapper)
+            //         .expect("Failed to serialize message to JSON");
+            //     println!("Last message from Node 1: {}", message_json);
+            // }
         });
 
         // Wait for all tasks to complete

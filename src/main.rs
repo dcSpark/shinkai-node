@@ -10,11 +10,9 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey};
 
-use crate::db::ShinkaiMessageDB;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key, hash_public_key};
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 
 mod network;
 mod shinkai_message;

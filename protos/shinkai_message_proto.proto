@@ -3,7 +3,7 @@ package shinkai_message_proto;
 
 message Field {
     string name = 1;
-    string type = 2;
+    string field_type = 2;
 }
 
 message MessageSchemaType {

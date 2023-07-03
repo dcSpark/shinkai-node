@@ -1,5 +1,6 @@
 use crate::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
 use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
+use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
@@ -55,28 +56,49 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         warp::post()
             .and(warp::path("v1"))
             .and(warp::path("send"))
-            .and(warp::body::bytes())
-            .and_then(move |bytes: bytes::Bytes| {
+            .and(warp::body::json::<ShinkaiMessageWrapper>())
+            .and_then(move |message: ShinkaiMessageWrapper| {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
-                    let bytes_vec = bytes.to_vec();
-                    match ShinkaiMessageHandler::decode_message(bytes_vec) {
-                        Ok(message) => {
-                            node_commands_sender
-                                .send(NodeCommand::SendMessage { msg: message })
-                                .await
-                                .unwrap();
-                            let resp = warp::reply::json(&"Message sent successfully");
-                            Ok::<_, warp::Rejection>(resp)
-                        }
-                        Err(_) => {
-                            let resp = warp::reply::json(&"Error decoding message");
-                            Ok::<_, warp::Rejection>(resp)
-                        }
-                    }
+                    let msg = ShinkaiMessage::from(message); // Convert wrapper back to ShinkaiMessage
+                    node_commands_sender
+                        .send(NodeCommand::SendMessage { msg })
+                        .await
+                        .unwrap();
+                    let resp = warp::reply::json(&"Message sent successfully");
+                    Ok::<_, warp::Rejection>(resp)
                 }
             })
     };
+
+    // POST v1/send
+    // let send_msg = {
+    //     let node_commands_sender = node_commands_sender.clone();
+    //     warp::post()
+    //         .and(warp::path("v1"))
+    //         .and(warp::path("send"))
+    //         .and(warp::body::bytes())
+    //         .and_then(move |bytes: bytes::Bytes| {
+    //             let node_commands_sender = node_commands_sender.clone();
+    //             async move {
+    //                 let bytes_vec = bytes.to_vec();
+    //                 match ShinkaiMessageHandler::decode_message(bytes_vec) {
+    //                     Ok(message) => {
+    //                         node_commands_sender
+    //                             .send(NodeCommand::SendMessage { msg: message })
+    //                             .await
+    //                             .unwrap();
+    //                         let resp = warp::reply::json(&"Message sent successfully");
+    //                         Ok::<_, warp::Rejection>(resp)
+    //                     }
+    //                     Err(_) => {
+    //                         let resp = warp::reply::json(&"Error decoding message");
+    //                         Ok::<_, warp::Rejection>(resp)
+    //                     }
+    //                 }
+    //             }
+    //         })
+    // };
 
     // GET v1/get_peers
     let get_peers = {

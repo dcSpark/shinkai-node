@@ -192,7 +192,7 @@ mod tests {
         let fields = vec![
             Field {
                 name: "field1".to_string(),
-                r#type: "type1".to_string(),
+                field_type: "type1".to_string(),
             },
             // more fields...
         ];
@@ -227,7 +227,7 @@ mod tests {
         let fields = vec![
             Field {
                 name: "field1".to_string(),
-                r#type: "type1".to_string(),
+                field_type: "type1".to_string(),
             },
             // more fields...
         ];

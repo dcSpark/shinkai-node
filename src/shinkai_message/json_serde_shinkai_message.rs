@@ -4,7 +4,7 @@ use std::fmt;
 use crate::shinkai_message_proto::ShinkaiMessage;
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 
-pub struct JSONSerdeShinkaiMessage(ShinkaiMessage);
+pub struct JSONSerdeShinkaiMessage(pub ShinkaiMessage);
 
 impl JSONSerdeShinkaiMessage {
     pub fn new(msg: ShinkaiMessage) -> Self {

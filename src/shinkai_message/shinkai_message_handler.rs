@@ -66,11 +66,11 @@ mod tests {
         let fields = vec![
             Field {
                 name: "field1".to_string(),
-                r#type: "type1".to_string(),
+                field_type: "type1".to_string(),
             },
             Field {
                 name: "field2".to_string(),
-                r#type: "type2".to_string(),
+                field_type: "type2".to_string(),
             },
         ];
 
@@ -156,7 +156,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .fields[0]
-                .r#type,
+                .field_type,
             "type1"
         );
         assert_eq!(
@@ -174,7 +174,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .fields[1]
-                .r#type,
+                .field_type,
             "type2"
         );
         assert_eq!(
@@ -242,7 +242,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .fields[0]
-                .r#type,
+                .field_type,
             "type1"
         );
         assert_eq!(
@@ -260,7 +260,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .fields[1]
-                .r#type,
+                .field_type,
             "type2"
         );
         assert_eq!(
