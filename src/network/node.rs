@@ -2,16 +2,20 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::shinkai_message::encryption::{decrypt_body_content, string_to_public_key};
+use crate::db::ShinkaiMessageDB;
+use crate::shinkai_message::encryption::{
+    decrypt_body_content, hash_public_key, string_to_public_key,
+};
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message_proto::ShinkaiMessage;
-use crate::db::ShinkaiMessageDB;
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -39,7 +43,7 @@ pub struct Node {
     peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
     ping_interval_secs: u64,
     commands: Receiver<NodeCommand>,
-    db: ShinkaiMessageDB,
+    db: Arc<Mutex<ShinkaiMessageDB>>,
 }
 
 impl Node {
@@ -48,9 +52,12 @@ impl Node {
         secret_key: StaticSecret,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
-        db: ShinkaiMessageDB,
+        db_path: String,
     ) -> Node {
         let public_key = PublicKey::from(&secret_key);
+        let db = ShinkaiMessageDB::new(&db_path)
+            .unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
+
         Node {
             secret_key,
             public_key,
@@ -58,11 +65,11 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
-            db,
+            db: Arc::new(Mutex::new(db)),
         }
     }
 
-    pub async fn start(&self) -> io::Result<()> {
+    pub async fn start(&mut self) -> io::Result<()> {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
@@ -76,15 +83,20 @@ impl Node {
             async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
+        let check_peers_interval_secs = 5;
+        let mut check_peers_interval =
+            async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
         loop {
             let ping_future = ping_interval.next().fuse();
-            let mut commands_future = commands_clone.next().fuse();
-            pin_mut!(ping_future, commands_future);
+            let commands_future = commands_clone.next().fuse();
+            let check_peers_future = check_peers_interval.next().fuse();
+            pin_mut!(ping_future, commands_future, check_peers_future);
 
             select! {
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
+                    check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
@@ -98,8 +110,8 @@ impl Node {
                             },
                             Some(NodeCommand::Connect { address, pk }) => {
                                 let address_str = address.to_string();
-                                let public_key = string_to_public_key(&pk).unwrap();
-                                self.connect(&address_str, public_key).await?;
+                                let mut db_lock = self.db.lock().await;
+                                db_lock.write_to_peers(&pk, &address_str).expect("Failed to write to peers database");
                             },
                             Some(NodeCommand::GetPublicKey(res)) => {
                                 let public_key = self.public_key.clone();
@@ -134,10 +146,11 @@ impl Node {
             "{} > TCP: Listening on {}",
             self.listen_address, self.listen_address
         );
-
+        
         loop {
             let (mut socket, addr) = listener.accept().await?;
             let secret_key_clone = self.secret_key.clone();
+            let db = Arc::clone(&self.db); 
 
             tokio::spawn(async move {
                 let mut buffer = [0u8; BUFFER_SIZE];
@@ -154,6 +167,7 @@ impl Node {
                                 &buffer[..n],
                                 socket.peer_addr().unwrap(),
                                 secret_key_clone.clone(),
+                                db.clone(),
                             )
                             .await;
                             if let Err(e) = socket.flush().await {
@@ -174,6 +188,35 @@ impl Node {
         return self.peers.clone();
     }
 
+    async fn connect_new_peers(&self) -> io::Result<()> {
+        let db_lock = self.db.lock().await;
+        let peer_entries = match db_lock.get_all_peers() {
+            Ok(peers) => peers,
+            Err(e) => {
+                eprintln!("Failed to get peers from database: {}", e);
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Failed to get peers from database",
+                ));
+            }
+        };
+        drop(db_lock);
+
+        for (pk_str, address_str) in peer_entries {
+            let address: SocketAddr = address_str.parse().unwrap();
+            let pk = string_to_public_key(&pk_str).unwrap();
+
+            // Check if we already have this peer
+            if !self.peers.contains_key(&(address, pk)) {
+                // Here we assume there's a function called connect_new_peer that takes a SocketAddr and a public key hash
+                // convert SocketAddr to string
+                let address_str = address.to_string();
+                self.connect(&address_str, pk).await?;
+            }
+        }
+        Ok(())
+    }
+
     // this would require permissions for only allowlist of public keys
     // TODO: add something similar to solidity modifier to check if the sender is allowed
     pub async fn forward_from_profile(&self, message: &ShinkaiMessage) -> io::Result<()> {
@@ -183,7 +226,8 @@ impl Node {
         // for loop over peers
         for peer in self.peers.clone() {
             if peer.0 .1 == recipient_pk {
-                Node::send(message, peer.0).await?;
+                let db_lock = self.db.lock().await;
+                Node::send(message, peer.0, &db_lock).await?;
                 return Ok(());
             }
         }
@@ -205,13 +249,11 @@ impl Node {
         Ok(())
     }
 
-    pub async fn start_and_connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
-        self.connect(peer_address, pk).await?;
-        self.start().await?;
-        Ok(())
-    }
-
-    pub async fn send(message: &ShinkaiMessage, peer: (SocketAddr, PublicKey), db: &ShinkaiMessageDB) -> io::Result<()> {
+    pub async fn send(
+        message: &ShinkaiMessage,
+        peer: (SocketAddr, PublicKey),
+        db: &ShinkaiMessageDB,
+    ) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
@@ -223,8 +265,8 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
-                db.insert_message(message).map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-            
+                db.insert_message(message)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
                 Ok(())
             }
             Err(e) => {
@@ -236,8 +278,9 @@ impl Node {
     }
 
     async fn broadcast(&self, message: &ShinkaiMessage) -> io::Result<()> {
+        let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            Node::send(message, peer, &self.db).await?;
+            Node::send(message, peer, &db_lock).await?;
         }
         Ok(())
     }
@@ -246,6 +289,7 @@ impl Node {
         peer: (SocketAddr, PublicKey),
         ping_or_pong: PingPong,
         secret_key: StaticSecret,
+        db: &ShinkaiMessageDB,
     ) -> io::Result<()> {
         let message = match ping_or_pong {
             PingPong::Ping => "Ping",
@@ -258,7 +302,7 @@ impl Node {
             peer.1,
         )
         .unwrap();
-        Node::send(&msg, peer).await
+        Node::send(&msg, peer, db).await
     }
 
     pub async fn ping_all(&self) -> io::Result<()> {
@@ -267,15 +311,20 @@ impl Node {
             self.listen_address,
             self.peers.len()
         );
+        let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone()).await?;
+            Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone(), &db_lock).await?;
         }
         Ok(())
     }
 
-    async fn send_ack(peer: (SocketAddr, PublicKey), secret_key: StaticSecret) -> io::Result<()> {
+    async fn send_ack(
+        peer: (SocketAddr, PublicKey),
+        secret_key: StaticSecret,
+        db: &ShinkaiMessageDB,
+    ) -> io::Result<()> {
         let ack = ShinkaiMessageBuilder::ack_message(secret_key.clone(), peer.1.clone()).unwrap();
-        Node::send(&ack, peer).await?;
+        Node::send(&ack, peer, db).await?;
         Ok(())
     }
 
@@ -308,6 +357,7 @@ impl Node {
         bytes: &[u8],
         address: SocketAddr,
         secret_key: StaticSecret,
+        maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
     ) -> io::Result<()> {
         println!("{} > Got message from {:?}", listen_address, address);
         // println!("handle> Encoded Message: {:?}", bytes.to_vec());
@@ -343,7 +393,14 @@ impl Node {
         match (message_content, message_encryption) {
             ("Ping", _) => {
                 println!("{} > Got ping from {:?}", listen_address, address);
-                Node::ping_pong((reachable_address, sender_pk), PingPong::Pong, secret_key).await?;
+                let db = maybe_db.lock().await;
+                Node::ping_pong(
+                    (reachable_address, sender_pk),
+                    PingPong::Pong,
+                    secret_key,
+                    &db,
+                )
+                .await?;
             }
             ("ACK", _) => {
                 println!("{} > ACK from {:?}", listen_address, address);
@@ -362,7 +419,8 @@ impl Node {
                             "{} > Got message from {:?}. Sending ACK",
                             listen_address, address
                         );
-                        Node::send_ack((reachable_address, sender_pk), secret_key).await?;
+                        let db = maybe_db.lock().await;
+                        Node::send_ack((reachable_address, sender_pk), secret_key, &db).await?;
                     }
                     None => {
                         // TODO: send error back
@@ -376,7 +434,8 @@ impl Node {
                     "{} > Got message from {:?}. Sending ACK",
                     listen_address, address
                 );
-                Node::send_ack((reachable_address, sender_pk), secret_key).await?;
+                let db = maybe_db.lock().await;
+                Node::send_ack((reachable_address, sender_pk), secret_key, &db).await?;
             }
         }
         Ok(())

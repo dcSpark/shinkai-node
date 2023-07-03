@@ -10,9 +10,11 @@ use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey};
 
+use crate::db::ShinkaiMessageDB;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
-use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key};
+use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key, hash_public_key};
+use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 
 mod network;
 mod shinkai_message;
@@ -66,14 +68,15 @@ fn main() {
 
     let secret_key_string = secret_key_to_string(secret_key.clone());
     let public_key_string = public_key_to_string(public_key.clone());
+
+    let db_path = format!("db/{}", hash_public_key(public_key.clone()));
     // Log the address, port, and public_key
     println!(
-        "Starting node with address: {}, port: {}, secret_key {} and public_key: {}",
-        ip, port, secret_key_string, public_key_string
+        "Starting node with address: {}, port: {}, secret_key {}, public_key: {} and db path: {}",
+        ip, port, secret_key_string, public_key_string, db_path
     );
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
-
 
     // Create a new node
     let node = Arc::new(Mutex::new(Node::new(
@@ -81,7 +84,7 @@ fn main() {
         secret_key.clone(),
         ping_interval,
         node_commands_receiver,
-        public_key.clone().as_bytes().to_vec(),
+        db_path,
     )));
 
     // Clone the Arc<Mutex<Node>> for use in each task
@@ -110,7 +113,8 @@ fn main() {
                     connect_node
                         .lock()
                         .await
-                        .start_and_connect(&connect_addr, connect_pk)
+                        .start()
+                        // .start_and_connect(&connect_addr, connect_pk)
                         .await
                         .unwrap()
                 })

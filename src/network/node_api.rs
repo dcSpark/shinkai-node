@@ -1,4 +1,4 @@
-use crate::shinkai_message::encryption::public_key_to_string;
+use crate::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
@@ -142,27 +142,27 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     };
 
     // POST v1/connect
-    // let connect = {
-    //     let node_commands_sender = node_commands_sender.clone();
-    //     warp::path!("v1" / "connect")
-    //         .and(warp::post())
-    //         .and(warp::body::json())
-    //         .and_then(move |body: ConnectBody| {
-    //             let address: SocketAddr = body.address.parse().expect("Failed to parse SocketAddr");
-    //             let pk = body.pk.clone();
-    //             let node_commands_sender = node_commands_sender.clone();
-    //             async move {
-    //                 node_commands_sender
-    //                     .send(NodeCommand::Connect { address, pk })
-    //                     .await
-    //                     .map_err(|err| warp::reject::reject())?; // Proper error handling
-    //                 Ok::<_, warp::Rejection>(warp::reply::with_status(
-    //                     "Connection initiated",
-    //                     StatusCode::ACCEPTED,
-    //                 ))
-    //             }
-    //         })
-    // };
+    let connect = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "connect")
+            .and(warp::post())
+            .and(warp::body::json())
+            .and_then(move |body: ConnectBody| {
+                let address: SocketAddr = body.address.parse().expect("Failed to parse SocketAddr");
+                let pk = body.pk.clone();
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let _ = node_commands_sender
+                        .send(NodeCommand::Connect {
+                            address: address.clone(),
+                            pk: pk.clone(),
+                        })
+                        .await;
+
+                    Ok::<_, warp::Rejection>(warp::reply::json(&"OK".to_string()))
+                }
+            })
+    };
 
     // POST v1/forward_from_profile
     // let forward_from_profile = {
@@ -184,7 +184,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_peers)
         .or(pk_to_address)
         .or(get_public_key)
-        // .or(connect)
+        .or(connect)
         .with(log);
     // .or(forward_from_profile);
     warp::serve(routes).run(address).await;

@@ -91,6 +91,14 @@ pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str
     }
 }
 
+pub fn hash_public_key(public_key: PublicKey) -> String {
+    let bytes = public_key.to_bytes();
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let result = hasher.finalize();
+    format!("{:x}", result)
+}
+
 pub fn encrypt_body_if_needed(
     message: &[u8],
     self_sk: &StaticSecret,

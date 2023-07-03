@@ -32,6 +32,7 @@ chashmap = "2.2.2"
 async-channel = "1.6.1"
 
 [dependencies.rocksdb]
+version = "0.21.0"
 default-features = false
 features = ["lz4"]
 
