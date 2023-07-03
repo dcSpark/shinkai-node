@@ -33,7 +33,7 @@ pub enum NodeCommand {
     GetPeers(Sender<Vec<SocketAddr>>),
     PkToAddress { pk: String, res: Sender<SocketAddr> },
     Connect { address: SocketAddr, pk: String },
-    // add other commands as needed...
+    FetchLastMessages { limit: usize, res: Sender<Vec<ShinkaiMessage>> },
 }
 
 pub struct Node {
@@ -74,10 +74,11 @@ impl Node {
         pin_mut!(listen_future);
 
         let ping_interval_secs = if self.ping_interval_secs == 0 {
-            315576000 * 100 // 100 years in seconds
+            315576000 * 10 // 10 years in seconds
         } else {
             self.ping_interval_secs
         };
+        println!("Automatic Ping interval set to {} seconds", ping_interval_secs);
 
         let mut ping_interval =
             async_std::stream::interval(Duration::from_secs(ping_interval_secs));
@@ -90,13 +91,14 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
-            let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future, check_peers_future);
+            // TODO: update this to read onchain data and update db
+            // let check_peers_future = check_peers_interval.next().fuse();
+            pin_mut!(ping_future, commands_future);
 
             select! {
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
-                    check_peers = check_peers_future => self.connect_new_peers().await?,
+                    // check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
@@ -109,15 +111,20 @@ impl Node {
                                 res.send(address).await.unwrap();
                             },
                             Some(NodeCommand::Connect { address, pk }) => {
+                                let public_key = string_to_public_key(&pk).expect("Failed to convert string to public key");
                                 let address_str = address.to_string();
-                                let mut db_lock = self.db.lock().await;
-                                db_lock.write_to_peers(&pk, &address_str).expect("Failed to write to peers database");
+                                self.connect(&address_str, public_key).await?;
+
                             },
                             Some(NodeCommand::GetPublicKey(res)) => {
                                 let public_key = self.public_key.clone();
                                 let _ = res.send(public_key).await.map_err(|_| ());
                             },
-                            // Handle other commands
+                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
+                                let db = self.db.lock().await;
+                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+                                let _ = res.send(messages).await.map_err(|_| ());
+                            },
                             _ => break,
                         }
                     }
@@ -188,34 +195,35 @@ impl Node {
         return self.peers.clone();
     }
 
-    async fn connect_new_peers(&self) -> io::Result<()> {
-        let db_lock = self.db.lock().await;
-        let peer_entries = match db_lock.get_all_peers() {
-            Ok(peers) => peers,
-            Err(e) => {
-                eprintln!("Failed to get peers from database: {}", e);
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Failed to get peers from database",
-                ));
-            }
-        };
-        drop(db_lock);
+    // TODO: reuse this to extract data from onchain addresses
+    // async fn connect_new_peers(&self) -> io::Result<()> {
+    //     let db_lock = self.db.lock().await;
+    //     let peer_entries = match db_lock.get_all_peers() {
+    //         Ok(peers) => peers,
+    //         Err(e) => {
+    //             eprintln!("Failed to get peers from database: {}", e);
+    //             return Err(io::Error::new(
+    //                 io::ErrorKind::Other,
+    //                 "Failed to get peers from database",
+    //             ));
+    //         }
+    //     };
+    //     drop(db_lock);
 
-        for (pk_str, address_str) in peer_entries {
-            let address: SocketAddr = address_str.parse().unwrap();
-            let pk = string_to_public_key(&pk_str).unwrap();
+    //     for (pk_str, address_str) in peer_entries {
+    //         let address: SocketAddr = address_str.parse().unwrap();
+    //         let pk = string_to_public_key(&pk_str).unwrap();
 
-            // Check if we already have this peer
-            if !self.peers.contains_key(&(address, pk)) {
-                // Here we assume there's a function called connect_new_peer that takes a SocketAddr and a public key hash
-                // convert SocketAddr to string
-                let address_str = address.to_string();
-                self.connect(&address_str, pk).await?;
-            }
-        }
-        Ok(())
-    }
+    //         // Check if we already have this peer
+    //         if !self.peers.contains_key(&(address, pk)) {
+    //             // Here we assume there's a function called connect_new_peer that takes a SocketAddr and a public key hash
+    //             // convert SocketAddr to string
+    //             let address_str = address.to_string();
+    //             self.connect(&address_str, pk).await?;
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     // this would require permissions for only allowlist of public keys
     // TODO: add something similar to solidity modifier to check if the sender is allowed
@@ -246,6 +254,10 @@ impl Node {
         );
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
         self.peers.insert((peer_address, pk), Utc::now());
+
+        let peer = (peer_address, pk);
+        let db_lock = self.db.lock().await;
+        Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone(), &db_lock).await?;
         Ok(())
     }
 
@@ -277,13 +289,12 @@ impl Node {
         }
     }
 
-    async fn broadcast(&self, message: &ShinkaiMessage) -> io::Result<()> {
-        let mut db_lock = self.db.lock().await;
-        for (peer, _) in self.peers.clone() {
-            Node::send(message, peer, &db_lock).await?;
-        }
-        Ok(())
-    }
+    // pub async fn fetch_last_messages(&self, n: usize) -> Vec<ShinkaiMessage> {
+    //     let db_lock = self.db.lock().await;
+    //     let messages = db_lock.get_last_messages(n);
+    //     drop(db_lock);
+    //     messages.unwrap_or_else(|_| vec![])
+    // }
 
     async fn ping_pong(
         peer: (SocketAddr, PublicKey),
@@ -311,7 +322,7 @@ impl Node {
             self.listen_address,
             self.peers.len()
         );
-        let mut db_lock = self.db.lock().await;
+        let db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
             Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone(), &db_lock).await?;
         }
@@ -371,18 +382,24 @@ impl Node {
             }
         };
 
-        let message_content_string = message.body.unwrap().content;
+        let message_content_string = message.body.clone().unwrap().content;
         let message_content = message_content_string.as_str();
         let message_encryption = message.encryption.as_str();
         // println!("Message content: {}", message_content);
         // println!("Encryption: {}", message_encryption);
 
-        let sender_pk_string = message.external_metadata.unwrap().sender;
+        let sender_pk_string = message.external_metadata.clone().unwrap().sender;
         let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
         println!(
             "{} > Sender public key: {:?}",
             listen_address, sender_pk_string
         );
+
+        {
+            let db = maybe_db.lock().await; 
+            db.insert_message(&message)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        }
 
         // if Sender is not part of peers, add it
         // if !self.peers.contains_key(&(address, sender_pk)) {

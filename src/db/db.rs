@@ -6,6 +6,25 @@ use prost::Message;
 use rocksdb::{ColumnFamilyDescriptor, Error, Options, DB};
 use std::convert::TryInto;
 
+#[derive(Debug)]
+pub enum ShinkaiMessageDBError {
+    RocksDBError(rocksdb::Error),
+    DecodeError(prost::DecodeError),
+    MessageNotFound,
+}
+
+impl From<rocksdb::Error> for ShinkaiMessageDBError {
+    fn from(error: rocksdb::Error) -> Self {
+        ShinkaiMessageDBError::RocksDBError(error)
+    }
+}
+
+impl From<prost::DecodeError> for ShinkaiMessageDBError {
+    fn from(error: prost::DecodeError) -> Self {
+        ShinkaiMessageDBError::DecodeError(error)
+    }
+}
+
 // Define the Topics enum
 pub enum Topic {
     Peers,
@@ -108,43 +127,36 @@ impl ShinkaiMessageDB {
 
     pub fn insert_message(&self, message: &ShinkaiMessage) -> Result<(), Error> {
         // Calculate the hash of the message for the key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(message);
-
+        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
+    
+        // Clone the external_metadata first, then unwrap
+        let cloned_external_metadata = message.external_metadata.clone();
+        let ext_metadata = cloned_external_metadata.unwrap();
+    
         // Calculate the scheduled time or current time
-        let time_key = match message
-            .external_metadata
-            .clone()
-            .unwrap()
-            .scheduled_time
-            .is_empty()
-        {
+        let time_key = match ext_metadata.scheduled_time.is_empty() {
             true => ShinkaiMessageHandler::generate_time_now(),
-            false => message
-                .external_metadata
-                .clone()
-                .unwrap()
-                .scheduled_time
-                .clone(),
+            false => ext_metadata.scheduled_time.clone(),
         };
-
+    
         // Create a write batch
         let mut batch = rocksdb::WriteBatch::default();
-
+    
         // Define the data for AllMessages
         let all_messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
         let message_bytes = ShinkaiMessageHandler::encode_message(message.clone());
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
-
+    
         // Define the data for AllMessagesTimeKeyed
         let all_messages_time_keyed_cf = self
             .db
             .cf_handle(Topic::AllMessagesTimeKeyed.as_str())
             .unwrap();
         batch.put_cf(all_messages_time_keyed_cf, &time_key, &hash_key);
-
+    
         // Atomically apply the updates
         self.db.write(batch)?;
-
+    
         Ok(())
     }
 
@@ -176,5 +188,35 @@ impl ShinkaiMessageDB {
         self.db.put_cf(to_send_cf, time_key, message_bytes)?;
 
         Ok(())
+    }
+
+    pub fn get_last_messages(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
+        let time_keyed_cf = self.db.cf_handle(Topic::AllMessagesTimeKeyed.as_str()).unwrap();
+        let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
+
+        let iter = self.db.iterator_cf(time_keyed_cf, rocksdb::IteratorMode::End);
+
+        let mut messages = Vec::new();
+        for item in iter.take(n) {
+            // Handle the Result returned by the iterator
+            match item {
+                Ok((_, value)) => {
+                    // The value of the AllMessagesTimeKeyed CF is the key in the AllMessages CF
+                    let message_key = value.to_vec();
+
+                    // Fetch the message from the AllMessages CF
+                    match self.db.get_cf(messages_cf, &message_key)? {
+                        Some(bytes) => {
+                            let message = ShinkaiMessageHandler::decode_message(bytes.to_vec())?;
+                            messages.push(message);
+                        }
+                        None => return Err(ShinkaiMessageDBError::MessageNotFound),
+                    }
+                },
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Ok(messages)
     }
 }

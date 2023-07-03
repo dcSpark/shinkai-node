@@ -1,4 +1,5 @@
 use crate::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
+use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
@@ -6,6 +7,7 @@ use super::node::NodeCommand;
 use async_channel::Sender;
 use prost::bytes;
 use serde_json::json;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use warp::http::StatusCode;
 use warp::Filter;
@@ -164,6 +166,34 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // GET v1/last_messages?limit={number}
+    let get_last_messages = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "last_messages")
+            .and(warp::get())
+            .and(warp::query::<HashMap<String, usize>>())
+            .and_then(move |params: HashMap<String, usize>| {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let limit = *params.get("limit").unwrap_or(&10); // Default to 10 if limit is not specified
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node_commands_sender
+                        .send(NodeCommand::FetchLastMessages {
+                            limit,
+                            res: res_sender,
+                        })
+                        .await
+                        .map_err(|_| warp::reject::reject())?;
+                    let messages: Vec<ShinkaiMessage> = res_receiver.recv().await.unwrap();
+                    let messages: Vec<JSONSerdeShinkaiMessage> = messages
+                        .into_iter()
+                        .map(JSONSerdeShinkaiMessage::new)
+                        .collect();
+                    Ok::<_, warp::Rejection>(warp::reply::json(&messages))
+                }
+            })
+    };
+
     // POST v1/forward_from_profile
     // let forward_from_profile = {
     //     let node_commands_sender = node_commands_sender.clone();
@@ -185,6 +215,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(pk_to_address)
         .or(get_public_key)
         .or(connect)
+        .or(get_last_messages)
         .with(log);
     // .or(forward_from_profile);
     warp::serve(routes).run(address).await;

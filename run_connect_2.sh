@@ -6,6 +6,7 @@ export CONNECT_ADDR="127.0.0.1:8080"
 export NODE_API_IP="127.0.0.1"
 export NODE_API_PORT="3032"
 export SECRET_KEY="ILJdRXWXp7BGP5Yg9mbdEKosQ3OlBZZ8fI1wkiotbk4="
+export PING_INTERVAL_SECS="0"
 
 if [ -z "$1" ]
 then

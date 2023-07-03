@@ -50,7 +50,7 @@ fn main() {
     let ping_interval: u64 = env::var("PING_INTERVAL_SECS")
         .unwrap_or_else(|_| "10".to_string())
         .parse()
-        .expect("Failed to parse port number");
+        .expect("Failed to parse ping interval");
 
     // Node API configuration
     let api_ip: IpAddr = env::var("NODE_API_IP")
