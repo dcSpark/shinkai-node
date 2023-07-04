@@ -28,7 +28,32 @@ impl EncryptionMethod {
     }
 }
 
-pub fn unsafe_deterministic_private_key(n: u32) -> (StaticSecret, PublicKey) {
+pub fn unsafe_deterministic_double_private_key(n: u32) -> ((StaticSecret, PublicKey), (StaticSecret, PublicKey)) {
+    let mut hasher = Sha256::new();
+    hasher.update(n.to_le_bytes());
+    let hash = hasher.finalize();
+
+    let mut bytes1 = [0u8; 32];
+    bytes1.copy_from_slice(&hash[0..32]);
+
+    let secret_key1 = StaticSecret::from(bytes1);
+    let public_key1 = PublicKey::from(&secret_key1);
+
+    hasher = Sha256::new();
+    hasher.update((n + 1_000_000).to_le_bytes());
+    let hash = hasher.finalize();
+
+    let mut bytes2 = [0u8; 32];
+    bytes2.copy_from_slice(&hash[0..32]);
+
+    let secret_key2 = StaticSecret::from(bytes2);
+    let public_key2 = PublicKey::from(&secret_key2);
+
+    ((secret_key1, public_key1), (secret_key2, public_key2))
+}
+
+
+pub fn unsafe_deterministic_single_private_key(n: u32) -> (StaticSecret, PublicKey) {
     let mut hasher = Sha256::new();
     hasher.update(n.to_le_bytes());
     let hash = hasher.finalize();

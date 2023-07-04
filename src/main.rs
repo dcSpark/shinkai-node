@@ -13,7 +13,7 @@ use x25519_dalek::PublicKey;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
-    hash_public_key, secret_key_to_string, string_to_static_key, unsafe_deterministic_private_key,
+    hash_public_key, secret_key_to_string, string_to_static_key, unsafe_deterministic_double_private_key,
 };
 
 mod db;
@@ -25,34 +25,32 @@ mod shinkai_message_proto {
 }
 
 fn main() {
-    // Placeholder for now
+    // let (node1_identity, node1_encryption) = unsafe_deterministic_double_private_key(0);
+    // let (node2_identity, node2_encryption) = unsafe_deterministic_double_private_key(1);
+    // let (node3_identity, node3_encryption) = unsafe_deterministic_double_private_key(2);
+
+    // println!("node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node1_identity.0), public_key_to_string(node1_identity.1), secret_key_to_string(node1_encryption.0), public_key_to_string(node1_encryption.1));
+    // println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node2_identity.0), public_key_to_string(node2_identity.1), secret_key_to_string(node2_encryption.0), public_key_to_string(node2_encryption.1));
+    // println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node3_identity.0), public_key_to_string(node3_identity.1), secret_key_to_string(node3_encryption.0), public_key_to_string(node3_encryption.1));
+
+    // Placeholder for now. Maybe it should be a parameter that the user sets
+    // and then it's checked with onchain data for matching with the keys provided
     let global_identity_name = "@@globalIdentity.shinkai";
-
-    let (node1_sk, node1_pk) = unsafe_deterministic_private_key(0);
-    let (node2_sk, node2_pk) = unsafe_deterministic_private_key(1);
-    let (node3_sk, node3_pk) = unsafe_deterministic_private_key(2);
-
-    println!(
-        "Node 1: secret_key {} - public key {}",
-        secret_key_to_string(node1_sk.clone()),
-        public_key_to_string(node1_pk.clone())
-    );
-    println!(
-        "Node 2: secret_key {} - public key {}",
-        secret_key_to_string(node2_sk.clone()),
-        public_key_to_string(node2_pk.clone())
-    );
-    println!(
-        "Node 3: secret_key {} - public key {}",
-        secret_key_to_string(node3_sk.clone()),
-        public_key_to_string(node3_pk.clone())
-    );
 
     // Create Tokio runtime
     let mut rt = Runtime::new().unwrap();
 
     // Generate your keys here or load them from a file.
-    let (secret_key, public_key) = match env::var("SECRET_KEY") {
+    let (identity_secret_key, identity_public_key) = match env::var("IDENTITY_SECRET_KEY") {
+        Ok(secret_key_str) => {
+            let secret_key = string_to_static_key(&secret_key_str).unwrap();
+            let public_key = PublicKey::from(&secret_key);
+            (secret_key, public_key)
+        }
+        _ => ephemeral_keys(),
+    };
+
+    let (encryption_secret_key, encryption_public_key) = match env::var("ENCRYPTION_SECRET_KEY") {
         Ok(secret_key_str) => {
             let secret_key = string_to_static_key(&secret_key_str).unwrap();
             let public_key = PublicKey::from(&secret_key);
@@ -89,14 +87,14 @@ fn main() {
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
 
-    let secret_key_string = secret_key_to_string(secret_key.clone());
-    let public_key_string = public_key_to_string(public_key.clone());
+    let identity_secret_key_string = secret_key_to_string(identity_secret_key.clone());
+    let identity_public_key_string = public_key_to_string(identity_public_key.clone());
 
-    let db_path = format!("db/{}", hash_public_key(public_key.clone()));
+    let db_path = format!("db/{}", hash_public_key(identity_public_key.clone()));
     // Log the address, port, and public_key
     println!(
         "Starting node with address: {}, port: {}, secret_key {}, public_key: {} and db path: {}",
-        ip, port, secret_key_string, public_key_string, db_path
+        ip, port, identity_secret_key_string, identity_public_key_string, db_path
     );
 
     let (node_commands_sender, node_commands_receiver): (
@@ -108,7 +106,8 @@ fn main() {
     let node = Arc::new(Mutex::new(Node::new(
         global_identity_name.to_string(),
         listen_address,
-        secret_key.clone(),
+        identity_secret_key.clone(),
+        encryption_secret_key.clone(),
         ping_interval,
         node_commands_receiver,
         db_path,
@@ -133,15 +132,14 @@ fn main() {
         });
 
         // Node task
-        let node_task = if let Ok(connect_addr) = env::var("CONNECT_ADDR") {
-            if let Ok(connect_pk_str) = env::var("CONNECT_PK") {
-                let connect_pk: PublicKey = string_to_public_key(&connect_pk_str).unwrap();
+        // TODO: this needs redo after node refactoring
+        let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
+            if let Ok(_) = env::var("CONNECT_PK") {
                 tokio::spawn(async move {
                     connect_node
                         .lock()
                         .await
                         .start()
-                        // .start_and_connect(&connect_addr, connect_pk)
                         .await
                         .unwrap()
                 })

@@ -2,10 +2,8 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::shinkai_message::encryption::{
-    hash_public_key, public_key_to_string, unsafe_deterministic_private_key,
+    hash_public_key, public_key_to_string, unsafe_deterministic_double_private_key,
 };
-use shinkai_node::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
-use shinkai_node::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -25,8 +23,8 @@ fn tcp_node_test() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let (node1_sk, node1_pk) = unsafe_deterministic_private_key(0);
-        let (node2_sk, node2_pk) = unsafe_deterministic_private_key(1);
+        let ((node1_identity_sk, node1_identity_pk), (node1_encryption_sk, node1_encryption_pk)) = unsafe_deterministic_double_private_key(0);
+        let ((node2_identity_sk, node2_identity_pk), (node2_encryption_sk, node2_encryption_pk)) = unsafe_deterministic_double_private_key(1);
 
         let (node1_commands_sender, node1_commands_receiver): (
             Sender<NodeCommand>,
@@ -37,15 +35,15 @@ fn tcp_node_test() {
             Receiver<NodeCommand>,
         ) = bounded(100);
 
-        let node1_db_path = format!("db_tests/{}", hash_public_key(node1_pk.clone()));
-        let node2_db_path = format!("db_tests/{}", hash_public_key(node2_pk.clone()));
+        let node1_db_path = format!("db_tests/{}", hash_public_key(node1_identity_pk.clone()));
+        let node2_db_path = format!("db_tests/{}", hash_public_key(node2_identity_pk.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new("node1".to_string(), addr1, node1_sk, 0, node1_commands_receiver, node1_db_path);
+        let mut node1 = Node::new("node1".to_string(), addr1, node1_identity_sk, node1_encryption_sk, 0, node1_commands_receiver, node1_db_path);
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new("node2".to_string(), addr2, node2_sk, 0, node2_commands_receiver, node2_db_path);
+        let mut node2 = Node::new("node2".to_string(), addr2, node2_identity_sk, node2_encryption_sk, 0, node2_commands_receiver, node2_db_path);
 
         println!("Starting nodes");
         // Start node1 and node2
@@ -68,7 +66,7 @@ fn tcp_node_test() {
             node2_commands_sender
                 .send(NodeCommand::Connect {
                     address: addr1,
-                    pk: public_key_to_string(node1_pk),
+                    pk: public_key_to_string(node1_identity_pk),
                 })
                 .await
                 .unwrap();
@@ -121,7 +119,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .sender
-                    == public_key_to_string(node1_pk.clone()),
+                    == public_key_to_string(node1_identity_pk.clone()),
                 true
             );
             assert_eq!(
@@ -130,7 +128,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .recipient
-                    == public_key_to_string(node2_pk.clone()),
+                    == public_key_to_string(node2_identity_pk.clone()),
                 true
             );
 
@@ -145,7 +143,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .sender
-                    == public_key_to_string(node2_pk.clone()),
+                    == public_key_to_string(node2_identity_pk.clone()),
                 true
             );
             assert_eq!(
@@ -154,7 +152,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .recipient
-                    == public_key_to_string(node1_pk.clone()),
+                    == public_key_to_string(node1_identity_pk.clone()),
                 true
             );
             assert_eq!(
@@ -167,7 +165,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .sender
-                    == public_key_to_string(node2_pk.clone()),
+                    == public_key_to_string(node2_identity_pk.clone()),
                 true
             );
             assert_eq!(
@@ -176,7 +174,7 @@ fn tcp_node_test() {
                     .as_ref()
                     .unwrap()
                     .recipient
-                    == public_key_to_string(node1_pk.clone()),
+                    == public_key_to_string(node1_identity_pk.clone()),
                 true
             );
 

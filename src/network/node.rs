@@ -2,6 +2,7 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use core::panic;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -31,10 +32,17 @@ pub enum NodeCommand {
     SendMessage {
         msg: ShinkaiMessage,
     },
-    ForwardFromProfile {
-        msg: ShinkaiMessage,
-    },
     GetPeers(Sender<Vec<SocketAddr>>),
+    CreateRegistrationCode {
+        res: Sender<String>,
+    },
+    UseRegistrationCode {
+        code: String,
+        profile_name: String,
+        identity_pk: String,
+        encryption_pk: String,
+        res: Sender<String>,
+    },
     PkToAddress {
         pk: String,
         res: Sender<SocketAddr>,
@@ -51,8 +59,10 @@ pub enum NodeCommand {
 
 pub struct Node {
     main_identity: String,
-    secret_key: StaticSecret,
-    public_key: PublicKey,
+    identity_secret_key: StaticSecret,
+    identity_public_key: PublicKey,
+    encryption_secret_key: StaticSecret,
+    encryption_public_key: PublicKey,
     listen_address: SocketAddr,
     peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
     ping_interval_secs: u64,
@@ -64,19 +74,23 @@ impl Node {
     pub fn new(
         main_identity: String,
         listen_address: SocketAddr,
-        secret_key: StaticSecret,
+        identity_secret_key: StaticSecret,
+        encryption_secret_key: StaticSecret,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         db_path: String,
     ) -> Node {
-        let public_key = PublicKey::from(&secret_key);
+        let identity_public_key = PublicKey::from(&identity_secret_key);
+        let encryption_public_key = PublicKey::from(&encryption_secret_key);
         let db = ShinkaiMessageDB::new(&db_path)
             .unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
 
         Node {
             main_identity,
-            secret_key,
-            public_key,
+            identity_secret_key,
+            identity_public_key,
+            encryption_secret_key,
+            encryption_public_key,
             peers: CHashMap::new(),
             listen_address,
             ping_interval_secs,
@@ -115,47 +129,67 @@ impl Node {
             pin_mut!(ping_future, commands_future);
 
             select! {
-                    listen = listen_future => unreachable!(),
-                    ping = ping_future => self.ping_all().await?,
-                    // check_peers = check_peers_future => self.connect_new_peers().await?,
-                    command = commands_future => {
-                        match command {
-                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                            Some(NodeCommand::GetPeers(sender)) => {
-                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
-                                sender.send(peer_addresses).await.unwrap();
-                            },
-                            Some(NodeCommand::PkToAddress { pk, res }) => {
-                                let address = Node::pk_to_address(pk);
-                                res.send(address).await.unwrap();
-                            },
-                            Some(NodeCommand::Connect { address, pk }) => {
-                                let public_key = string_to_public_key(&pk).expect("Failed to convert string to public key");
-                                let address_str = address.to_string();
-                                self.connect(&address_str, public_key).await?;
+                                    listen = listen_future => unreachable!(),
+                                    ping = ping_future => self.ping_all().await?,
+                                    // check_peers = check_peers_future => self.connect_new_peers().await?,
+                                    command = commands_future => {
+                                        match command {
+                                            Some(NodeCommand::PingAll) => self.ping_all().await?,
+                                            Some(NodeCommand::GetPeers(sender)) => {
+                                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+                                                sender.send(peer_addresses).await.unwrap();
+                                            },
+                                            Some(NodeCommand::PkToAddress { pk, res }) => {
+                                                let address = Node::pk_to_address(pk);
+                                                res.send(address).await.unwrap();
+                                            },
+                                            Some(NodeCommand::Connect { address, pk }) => {
+                                                let public_key = string_to_public_key(&pk).expect("Failed to convert string to public key");
+                                                let address_str = address.to_string();
+                                                self.connect(&address_str, public_key).await?;
 
-                            },
-                            Some(NodeCommand::SendMessage { msg }) => {
-                                // Verify that it's coming from one of our allowed keys
-                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
-                                let address = Node::pk_to_address(recipient.clone());
-                                let pk = string_to_public_key(&recipient).expect("Failed to convert string to public key");
-                                let db = self.db.lock().await;
-                                Node::send(&msg,(address, pk), &db).await?;
-                            },
-                            Some(NodeCommand::GetPublicKey(res)) => {
-                                let public_key = self.public_key.clone();
-                                let _ = res.send(public_key).await.map_err(|_| ());
-                            },
-                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
-                                let db = self.db.lock().await;
-                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
-                                let _ = res.send(messages).await.map_err(|_| ());
-                            },
-                            _ => break,
-                        }
-                    }
-            };
+                                            },
+                                            Some(NodeCommand::SendMessage { msg }) => {
+                                                // Verify that it's coming from one of our allowed keys
+                                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
+                                                let address = Node::pk_to_address(recipient.clone());
+                                                let pk = string_to_public_key(&recipient).expect("Failed to convert string to public key");
+                                                let db = self.db.lock().await;
+                                                Node::send(&msg,(address, pk), &db).await?;
+                                            },
+                                            Some(NodeCommand::GetPublicKey(res)) => {
+                                                let public_key = self.identity_public_key.clone();
+                                                let _ = res.send(public_key).await.map_err(|_| ());
+                                            },
+                                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
+                                                let db = self.db.lock().await;
+                                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+                                                let _ = res.send(messages).await.map_err(|_| ());
+                                            },
+                                            Some(NodeCommand::CreateRegistrationCode { res }) => {
+                                                let db = self.db.lock().await;
+                                                let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+                                                let _ = res.send(code).await.map_err(|_| ());
+                                            },
+                                            Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
+                                                let db = self.db.lock().await;
+                                                let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
+                                                    .map_err(|e| e.to_string())
+                                                    .map(|_| "true".to_string());
+                                                
+                                                match result {
+                                                    Ok(success) => {
+                                                        let _ = res.send(success).await.map_err(|_| ());
+                                                    }
+                                                    Err(e) => {
+                                                        let _ = res.send(e).await.map_err(|_| ());
+                                                    }
+                                                }
+                                            },
+                                            _ => break,
+                                        }
+                                    }
+                            };
         }
         Ok(())
     }
@@ -183,7 +217,7 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
-            let secret_key_clone = self.secret_key.clone();
+            let secret_key_clone = self.identity_secret_key.clone();
             let db = Arc::clone(&self.db);
 
             tokio::spawn(async move {
@@ -253,7 +287,7 @@ impl Node {
     // }
 
     pub fn get_public_key(&self) -> io::Result<PublicKey> {
-        Ok(self.public_key)
+        Ok(self.identity_public_key)
     }
 
     pub async fn connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
@@ -266,7 +300,7 @@ impl Node {
 
         let peer = (peer_address, pk);
         let db_lock = self.db.lock().await;
-        Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone(), &db_lock).await?;
+        Node::ping_pong(peer, PingPong::Ping, self.identity_secret_key.clone(), &db_lock).await?;
         Ok(())
     }
 
@@ -326,7 +360,7 @@ impl Node {
         );
         let db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            Node::ping_pong(peer, PingPong::Ping, self.secret_key.clone(), &db_lock).await?;
+            Node::ping_pong(peer, PingPong::Ping, self.identity_secret_key.clone(), &db_lock).await?;
         }
         Ok(())
     }
@@ -361,6 +395,26 @@ impl Node {
                 // error condition.
                 println!("Unrecognized public key: {}", public_key);
                 SocketAddr::from(([127, 0, 0, 1], 3001))
+            }
+        }
+    }
+
+    fn pk_to_encryption_pk(public_key: String) -> PublicKey {
+        match public_key.as_str() {
+            "9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ" => {
+                string_to_public_key("BRdJYCYS8L6upTXuJ9JehZqyS88Dzy7Uh7gpS9tybYpM").unwrap()
+            }
+            "8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV" => {
+                string_to_public_key("6i7DLnCxLXSTU4ZA58eyFXtJanAo52MjyaXHaje7Hf5E").unwrap()
+            }
+            "4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG" => {
+                string_to_public_key("CvNHAWA4Kv7nuGnfFai6sNvAjLUPnQX3AiaM4VFXh7vU").unwrap()
+            }
+            _ => {
+                // In real-world scenarios, you'd likely want to return an error here, as an unrecognized
+                // public key could lead to problems down the line. The default case should be some sort of
+                // error condition.
+                panic!("Unrecognized public key: {}", public_key);
             }
         }
     }

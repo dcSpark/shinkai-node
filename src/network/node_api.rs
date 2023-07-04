@@ -29,6 +29,14 @@ struct ConnectBody {
     pk: String,
 }
 
+#[derive(serde::Deserialize)]
+struct UseRegistrationCodeBody {
+    code: String,
+    profile_name: String,
+    identity_pk: String,
+    encryption_pk: String,
+}
+
 pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
     println!("Starting Node API server at: {}", &address);
 
@@ -187,20 +195,50 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
-    // POST v1/forward_from_profile
-    // let forward_from_profile = {
-    //     let node_commands_sender = node_commands_sender.clone();
-    //     warp::path!("v1" / "forward_from_profile")
-    //         .and(warp::post())
-    //         .and(warp::body::json())
-    //         .and_then(move |msg: ShinkaiMessage| {
-    //             node_commands_sender
-    //                 .send(NodeCommand::ForwardFromProfile { msg }) // This command would need to be implemented
-    //                 .map(|_| ())
-    //                 .map_err(warp::reject::any)
-    //         })
-    //         .map(|_| warp::reply())
-    // };
+    // POST v1/create_registration_code
+    let create_registration_code = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "create_registration_code")
+            .and(warp::post())
+            .and_then(move || {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node_commands_sender
+                        .send(NodeCommand::CreateRegistrationCode { res: res_sender })
+                        .await
+                        .map_err(|_| warp::reject())?;
+                    let code = res_receiver.recv().await.map_err(|_| warp::reject())?;
+                    Ok::<_, warp::Rejection>(warp::reply::json(&code))
+                }
+            })
+    };
+
+    // POST v1/use_registration_code
+    let use_registration_code = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "use_registration_code")
+            .and(warp::post())
+            .and(warp::body::json::<UseRegistrationCodeBody>()) // You will need to define this struct
+            .and_then(move |body: UseRegistrationCodeBody| {
+                let node_commands_sender = node_commands_sender.clone();
+                async move {
+                    let (res_sender, res_receiver) = async_channel::bounded(1);
+                    node_commands_sender
+                        .send(NodeCommand::UseRegistrationCode {
+                            code: body.code,
+                            profile_name: body.profile_name,
+                            identity_pk: body.identity_pk,
+                            encryption_pk: body.encryption_pk,
+                            res: res_sender,
+                        })
+                        .await
+                        .map_err(|_| warp::reject())?;
+                    let result = res_receiver.recv().await.map_err(|_| warp::reject())?;
+                    Ok::<_, warp::Rejection>(warp::reply::json(&result))
+                }
+            })
+    };
 
     let routes = ping_all
         .or(send_msg)
@@ -209,8 +247,9 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_public_key)
         .or(connect)
         .or(get_last_messages)
+        .or(create_registration_code)
+        .or(use_registration_code)
         .with(log);
-    // .or(forward_from_profile);
     warp::serve(routes).run(address).await;
 
     println!("Server successfully started at: {}", &address);

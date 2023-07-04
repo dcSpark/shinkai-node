@@ -5,13 +5,17 @@ use crate::{
 use prost::Message;
 use rand::RngCore;
 use rocksdb::{ColumnFamilyDescriptor, Error, Options, DB};
-use std::convert::TryInto;
+use std::{convert::TryInto, fmt};
 
 #[derive(Debug)]
 pub enum ShinkaiMessageDBError {
     RocksDBError(rocksdb::Error),
     DecodeError(prost::DecodeError),
     MessageNotFound,
+    CodeAlreadyUsed,
+    CodeNonExistent,
+    ProfileNameAlreadyExists,
+    SomeError,
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -26,10 +30,32 @@ impl From<prost::DecodeError> for ShinkaiMessageDBError {
     }
 }
 
-// Define the Topics enum
+#[derive(PartialEq)]
+pub enum RegistrationCodeStatus {
+    Unused,
+    Used,
+}
+
+impl RegistrationCodeStatus {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        match slice {
+            b"unused" => Self::Unused,
+            _ => Self::Used,
+        }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Unused => b"unused",
+            Self::Used => b"used",
+        }
+    }
+}
+
 pub enum Topic {
     Peers,
-    Profiles,
+    ProfilesIdentityKey,
+    ProfilesEncryptionKey,
     ScheduledMessage,
     AllMessages,
     AllMessagesTimeKeyed,
@@ -40,11 +66,12 @@ impl Topic {
     fn as_str(&self) -> &'static str {
         match self {
             Self::Peers => "peers",
-            Self::Profiles => "profiles",
+            Self::ProfilesIdentityKey => "profiles_identity_key",
+            Self::ProfilesEncryptionKey => "profiles_encryption_key",
             Self::ScheduledMessage => "scheduled_message",
             Self::AllMessages => "all_messages",
             Self::AllMessagesTimeKeyed => "all_messages_time_keyed",
-            Self::OneTimeRegistrationCodes => "OneTimeRegistrationCodes",
+            Self::OneTimeRegistrationCodes => "one_time_registration_codes",
         }
     }
 }
@@ -58,7 +85,8 @@ impl ShinkaiMessageDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
         let cf_names = vec![
             Topic::Peers.as_str(),
-            Topic::Profiles.as_str(),
+            Topic::ProfilesEncryptionKey.as_str(),
+            Topic::ProfilesIdentityKey.as_str(),
             Topic::ScheduledMessage.as_str(),
             Topic::AllMessages.as_str(),
             Topic::AllMessagesTimeKeyed.as_str(),
@@ -235,7 +263,7 @@ impl ShinkaiMessageDB {
         Ok(messages)
     }
 
-    pub fn generate_and_store_new_code(&self) -> Result<String, Error> {
+    pub fn generate_registration_new_code(&self) -> Result<String, Error> {
         let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
@@ -245,5 +273,58 @@ impl ShinkaiMessageDB {
         self.db.put_cf(cf, &new_code, b"unused")?;
         
         Ok(new_code)
+    }
+
+    pub fn use_registration_code(&self, registration_code: &str, identity_public_key: &str, encryption_public_key: &str, profile_name: &str) -> Result<(), ShinkaiMessageDBError> {
+        // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
+        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
+        match self.db.get_cf(cf_codes, registration_code)? {
+            Some(value) => {
+                if RegistrationCodeStatus::from_slice(&value) != RegistrationCodeStatus::Unused {
+                    return Err(ShinkaiMessageDBError::CodeAlreadyUsed);
+                }
+            }
+            None => return Err(ShinkaiMessageDBError::CodeNonExistent),
+        }
+    
+        // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        if self.db.get_cf(cf_identity, profile_name)?.is_some() {
+            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+        }
+        
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        if self.db.get_cf(cf_encryption, profile_name)?.is_some() {
+            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+        }
+        
+        // Start write batch for atomic operation
+        let mut batch = rocksdb::WriteBatch::default();
+    
+        // Mark the registration code as used
+        batch.put_cf(cf_codes, registration_code, RegistrationCodeStatus::Used.as_bytes());
+    
+        // Write to ProfilesIdentityKey and ProfilesEncryptionKey
+        batch.put_cf(cf_identity, profile_name, identity_public_key.as_bytes());
+        batch.put_cf(cf_encryption, profile_name, encryption_public_key.as_bytes());
+    
+        // Write the batch
+        self.db.write(batch)?;
+    
+        Ok(())
+    }
+}
+
+impl fmt::Display for ShinkaiMessageDBError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ShinkaiMessageDBError::RocksDBError(e) => write!(f, "RocksDB error: {}", e),
+            ShinkaiMessageDBError::CodeAlreadyUsed => write!(f, "Registration code has already been used"),
+            ShinkaiMessageDBError::CodeNonExistent => write!(f, "Registration code does not exist"),
+            ShinkaiMessageDBError::ProfileNameAlreadyExists => write!(f, "Profile name already exists"),
+            ShinkaiMessageDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
+            ShinkaiMessageDBError::MessageNotFound => write!(f, "Message not found"),
+            ShinkaiMessageDBError::SomeError => write!(f, "Some mysterious error..."),
+        }
     }
 }

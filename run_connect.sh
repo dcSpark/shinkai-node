@@ -5,7 +5,8 @@ export NODE_PORT="8081"
 export CONNECT_ADDR="127.0.0.1:8080"
 export NODE_API_IP="127.0.0.1"
 export NODE_API_PORT="3031"
-export SECRET_KEY="7WN8xpGvHraDZairbgpMMCtB7EUgcEqDvHeNcPaNs511"
+export IDENTITY_SECRET_KEY="7WN8xpGvHraDZairbgpMMCtB7EUgcEqDvHeNcPaNs511"
+export ENCRYPTION_SECRET_KEY="HByEagUmXr9w5XRaJD7ADfQmpYctF2GwwsQSucCihPpr"
 export PING_INTERVAL_SECS="0"
 
 if [ -z "$1" ]
