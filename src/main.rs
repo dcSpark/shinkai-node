@@ -8,21 +8,46 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey};
+use x25519_dalek::PublicKey;
 
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
-use crate::shinkai_message::encryption::{secret_key_to_string, string_to_static_key, hash_public_key};
+use crate::shinkai_message::encryption::{
+    hash_public_key, secret_key_to_string, string_to_static_key, unsafe_deterministic_private_key,
+};
 
+mod db;
 mod network;
 mod shinkai_message;
-mod db;
 
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
 }
 
 fn main() {
+    // Placeholder for now
+    let global_identity_name = "@@globalIdentity.shinkai";
+
+    let (node1_sk, node1_pk) = unsafe_deterministic_private_key(0);
+    let (node2_sk, node2_pk) = unsafe_deterministic_private_key(1);
+    let (node3_sk, node3_pk) = unsafe_deterministic_private_key(2);
+
+    println!(
+        "Node 1: secret_key {} - public key {}",
+        secret_key_to_string(node1_sk.clone()),
+        public_key_to_string(node1_pk.clone())
+    );
+    println!(
+        "Node 2: secret_key {} - public key {}",
+        secret_key_to_string(node2_sk.clone()),
+        public_key_to_string(node2_pk.clone())
+    );
+    println!(
+        "Node 3: secret_key {} - public key {}",
+        secret_key_to_string(node3_sk.clone()),
+        public_key_to_string(node3_pk.clone())
+    );
+
     // Create Tokio runtime
     let mut rt = Runtime::new().unwrap();
 
@@ -35,7 +60,7 @@ fn main() {
         }
         _ => ephemeral_keys(),
     };
-    
+
     // Fetch the environment variables for the IP and port, or use default values
     let ip: IpAddr = env::var("NODE_IP")
         .unwrap_or_else(|_| "0.0.0.0".to_string())
@@ -74,10 +99,14 @@ fn main() {
         ip, port, secret_key_string, public_key_string, db_path
     );
 
-    let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
+    let (node_commands_sender, node_commands_receiver): (
+        Sender<NodeCommand>,
+        Receiver<NodeCommand>,
+    ) = bounded(100);
 
     // Create a new node
     let node = Arc::new(Mutex::new(Node::new(
+        global_identity_name.to_string(),
         listen_address,
         secret_key.clone(),
         ping_interval,

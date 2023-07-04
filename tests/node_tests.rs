@@ -42,10 +42,10 @@ fn tcp_node_test() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(addr1, node1_sk, 0, node1_commands_receiver, node1_db_path);
+        let mut node1 = Node::new("node1".to_string(), addr1, node1_sk, 0, node1_commands_receiver, node1_db_path);
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(addr2, node2_sk, 0, node2_commands_receiver, node2_db_path);
+        let mut node2 = Node::new("node2".to_string(), addr2, node2_sk, 0, node2_commands_receiver, node2_db_path);
 
         println!("Starting nodes");
         // Start node1 and node2

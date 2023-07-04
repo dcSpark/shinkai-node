@@ -28,15 +28,29 @@ pub enum PingPong {
 pub enum NodeCommand {
     PingAll,
     GetPublicKey(Sender<PublicKey>),
-    SendMessage { msg: ShinkaiMessage },
-    ForwardFromProfile { msg: ShinkaiMessage },
+    SendMessage {
+        msg: ShinkaiMessage,
+    },
+    ForwardFromProfile {
+        msg: ShinkaiMessage,
+    },
     GetPeers(Sender<Vec<SocketAddr>>),
-    PkToAddress { pk: String, res: Sender<SocketAddr> },
-    Connect { address: SocketAddr, pk: String },
-    FetchLastMessages { limit: usize, res: Sender<Vec<ShinkaiMessage>> },
+    PkToAddress {
+        pk: String,
+        res: Sender<SocketAddr>,
+    },
+    Connect {
+        address: SocketAddr,
+        pk: String,
+    },
+    FetchLastMessages {
+        limit: usize,
+        res: Sender<Vec<ShinkaiMessage>>,
+    },
 }
 
 pub struct Node {
+    main_identity: String,
     secret_key: StaticSecret,
     public_key: PublicKey,
     listen_address: SocketAddr,
@@ -48,6 +62,7 @@ pub struct Node {
 
 impl Node {
     pub fn new(
+        main_identity: String,
         listen_address: SocketAddr,
         secret_key: StaticSecret,
         ping_interval_secs: u64,
@@ -59,6 +74,7 @@ impl Node {
             .unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
 
         Node {
+            main_identity,
             secret_key,
             public_key,
             peers: CHashMap::new(),
@@ -78,7 +94,10 @@ impl Node {
         } else {
             self.ping_interval_secs
         };
-        println!("Automatic Ping interval set to {} seconds", ping_interval_secs);
+        println!(
+            "Automatic Ping interval set to {} seconds",
+            ping_interval_secs
+        );
 
         let mut ping_interval =
             async_std::stream::interval(Duration::from_secs(ping_interval_secs));
@@ -119,7 +138,7 @@ impl Node {
                             Some(NodeCommand::SendMessage { msg }) => {
                                 // Verify that it's coming from one of our allowed keys
                                 let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
-                                let address = Node::pk_to_address(recipient.clone()); 
+                                let address = Node::pk_to_address(recipient.clone());
                                 let pk = string_to_public_key(&recipient).expect("Failed to convert string to public key");
                                 let db = self.db.lock().await;
                                 Node::send(&msg,(address, pk), &db).await?;
@@ -161,11 +180,11 @@ impl Node {
             "{} > TCP: Listening on {}",
             self.listen_address, self.listen_address
         );
-        
+
         loop {
             let (mut socket, addr) = listener.accept().await?;
             let secret_key_clone = self.secret_key.clone();
-            let db = Arc::clone(&self.db); 
+            let db = Arc::clone(&self.db);
 
             tokio::spawn(async move {
                 let mut buffer = [0u8; BUFFER_SIZE];
@@ -232,24 +251,6 @@ impl Node {
     //     }
     //     Ok(())
     // }
-
-    // this would require permissions for only allowlist of public keys
-    // TODO: add something similar to solidity modifier to check if the sender is allowed
-    pub async fn forward_from_profile(&self, message: &ShinkaiMessage) -> io::Result<()> {
-        let recipient = message.external_metadata.clone().unwrap().recipient;
-        let recipient_pk = string_to_public_key(&recipient).unwrap();
-
-        // for loop over peers
-        for peer in self.peers.clone() {
-            if peer.0 .1 == recipient_pk {
-                let db_lock = self.db.lock().await;
-                Node::send(message, peer.0, &db_lock).await?;
-                return Ok(());
-            }
-        }
-        println!("Recipient not found in peers");
-        Ok(())
-    }
 
     pub fn get_public_key(&self) -> io::Result<PublicKey> {
         Ok(self.public_key)
@@ -345,13 +346,13 @@ impl Node {
     // these are keys created with unsafe_deterministic_private_key starting at 0
     fn pk_to_address(public_key: String) -> SocketAddr {
         match public_key.as_str() {
-            "eYy9ZNeMSg+6M4sqY0ljSUDcTltgHbECngLEHg/gVnk=" => {
+            "9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ" => {
                 SocketAddr::from(([127, 0, 0, 1], 8080))
             }
-            "bYByVz2+uwMFd39XMyKGJxaT+MBQhD178V24GkVWRGo=" => {
+            "8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV" => {
                 SocketAddr::from(([127, 0, 0, 1], 8081))
             }
-            "MnPRE+QBohXkKeMnI1IYanNwz37fHi1oqn74eiAjc3E=" => {
+            "4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG" => {
                 SocketAddr::from(([127, 0, 0, 1], 8082))
             }
             _ => {
@@ -397,9 +398,9 @@ impl Node {
         );
 
         {
-            let db = maybe_db.lock().await; 
+            let db = maybe_db.lock().await;
             db.insert_message(&message)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
 
         // if Sender is not part of peers, add it

@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
 use crate::shinkai_message_proto;
-use shinkai_message_proto::{Body, ShinkaiMessage, ExternalMetadata};
 use prost::Message;
+use serde::{Deserialize, Serialize};
+use shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage};
 use std::borrow::Cow;
 
 #[derive(Serialize, Deserialize)]
@@ -54,27 +54,71 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
     fn from(msg: &shinkai_message_proto::ShinkaiMessage) -> Self {
         ShinkaiMessageWrapper {
             body: BodyWrapper {
-                content: msg.body.as_ref().map_or(String::from(""), |b| b.content.clone()),
+                content: msg
+                    .body
+                    .as_ref()
+                    .map_or(String::from(""), |b| b.content.clone()),
                 internal_metadata: InternalMetadataWrapper {
                     message_schema_type: MessageSchemaTypeWrapper {
-                        type_name: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| im.message_schema_type.as_ref()).map_or(String::from(""), |mst| mst.type_name.clone()),
-                        fields: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| im.message_schema_type.as_ref()).map_or(vec![], |mst| mst.fields.iter().map(|f| FieldWrapper { 
-                            name: f.name.clone(),
-                            field_type: f.field_type.clone(),
-                        }).collect::<Vec<_>>()),
+                        type_name: msg
+                            .body
+                            .as_ref()
+                            .and_then(|b| b.internal_metadata.as_ref())
+                            .and_then(|im| im.message_schema_type.as_ref())
+                            .map_or(String::from(""), |mst| mst.type_name.clone()),
+                        fields: msg
+                            .body
+                            .as_ref()
+                            .and_then(|b| b.internal_metadata.as_ref())
+                            .and_then(|im| im.message_schema_type.as_ref())
+                            .map_or(vec![], |mst| {
+                                mst.fields
+                                    .iter()
+                                    .map(|f| FieldWrapper {
+                                        name: f.name.clone(),
+                                        field_type: f.field_type.clone(),
+                                    })
+                                    .collect::<Vec<_>>()
+                            }),
                     },
                     topic: TopicWrapper {
-                        topic_id: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| im.topic.as_ref()).map_or(String::from(""), |t| t.topic_id.clone()),
-                        channel_id: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| im.topic.as_ref()).map_or(String::from(""), |t| t.channel_id.clone()),
+                        topic_id: msg
+                            .body
+                            .as_ref()
+                            .and_then(|b| b.internal_metadata.as_ref())
+                            .and_then(|im| im.topic.as_ref())
+                            .map_or(String::from(""), |t| t.topic_id.clone()),
+                        channel_id: msg
+                            .body
+                            .as_ref()
+                            .and_then(|b| b.internal_metadata.as_ref())
+                            .and_then(|im| im.topic.as_ref())
+                            .map_or(String::from(""), |t| t.channel_id.clone()),
                     },
-                    content: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).map_or(String::from(""), |im| im.content.clone()),
+                    content: msg
+                        .body
+                        .as_ref()
+                        .and_then(|b| b.internal_metadata.as_ref())
+                        .map_or(String::from(""), |im| im.content.clone()),
                 },
             },
             external_metadata: ExternalMetadataWrapper {
-                sender: msg.external_metadata.as_ref().map_or(String::from(""), |em| em.sender.clone()),
-                recipient: msg.external_metadata.as_ref().map_or(String::from(""), |em| em.recipient.clone()),
-                scheduled_time: msg.external_metadata.as_ref().map_or(String::from(""), |em| em.scheduled_time.clone()),
-                signature: msg.external_metadata.as_ref().map_or(String::from(""), |em| em.signature.clone()),
+                sender: msg
+                    .external_metadata
+                    .as_ref()
+                    .map_or(String::from(""), |em| em.sender.clone()),
+                recipient: msg
+                    .external_metadata
+                    .as_ref()
+                    .map_or(String::from(""), |em| em.recipient.clone()),
+                scheduled_time: msg
+                    .external_metadata
+                    .as_ref()
+                    .map_or(String::from(""), |em| em.scheduled_time.clone()),
+                signature: msg
+                    .external_metadata
+                    .as_ref()
+                    .map_or(String::from(""), |em| em.signature.clone()),
             },
             encryption: msg.encryption.clone(),
         }
@@ -89,12 +133,17 @@ impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
                 internal_metadata: Some(shinkai_message_proto::InternalMetadata {
                     message_schema_type: Some(shinkai_message_proto::MessageSchemaType {
                         type_name: wrapper.body.internal_metadata.message_schema_type.type_name,
-                        fields: wrapper.body.internal_metadata.message_schema_type.fields.into_iter().map(|field| {
-                            shinkai_message_proto::Field {
+                        fields: wrapper
+                            .body
+                            .internal_metadata
+                            .message_schema_type
+                            .fields
+                            .into_iter()
+                            .map(|field| shinkai_message_proto::Field {
                                 name: field.name,
                                 field_type: field.field_type,
-                            }
-                        }).collect(),
+                            })
+                            .collect(),
                     }),
                     topic: Some(shinkai_message_proto::Topic {
                         topic_id: wrapper.body.internal_metadata.topic.topic_id,

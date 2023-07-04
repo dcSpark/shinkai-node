@@ -47,9 +47,9 @@ mod tests {
     use crate::shinkai_message_proto::{Field, ShinkaiMessage};
 
     const SECRET_KEYS: [&str; 3] = [
-        "yMA8duhbady14IzHUXyz4m9ZeX423UHxvfEFFRCFK04=",
-        "GGyELi2jbj7K30kZoAgU13jJ445Z+Ua3hEgwOKeXE0s",
-        "UEbkn/SV8f1DaBRs9gw44rFkGRFYwGn5fHHSeg0vVFY=",
+        "FZ97ouxTGpNnmyyfSBxgC2FGHTpvo7mM7LWoMut6gEYx",
+        "7WN8xpGvHraDZairbgpMMCtB7EUgcEqDvHeNcPaNs511",
+        "3CdnyVfdgbfd7N5WeWqFGtS6AtkMbT54zUB2dbTzCxj7",
     ];
 
     fn deterministic_keys(secret_string: String) -> (StaticSecret, PublicKey) {
@@ -81,7 +81,10 @@ mod tests {
                 .message_schema_type("MyType".to_string(), fields)
                 .topic("my_topic".to_string(), "my_channel".to_string())
                 .internal_metadata_content("InternalContent".to_string())
-                .external_metadata_with_schedule(receiver_public_key, "20230702T20533481345".to_string())
+                .external_metadata_with_schedule(
+                    receiver_public_key,
+                    "20230702T20533481345".to_string(),
+                )
                 .build();
 
         return message_result.unwrap();

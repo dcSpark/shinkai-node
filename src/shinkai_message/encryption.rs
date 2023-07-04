@@ -20,7 +20,9 @@ impl EncryptionMethod {
 
     pub fn from_str(s: &str) -> EncryptionMethod {
         match s {
-            "DiffieHellmanChaChaPoly1305" | "default" => EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            "DiffieHellmanChaChaPoly1305" | "default" => {
+                EncryptionMethod::DiffieHellmanChaChaPoly1305
+            }
             _ => EncryptionMethod::None,
         }
     }
@@ -49,16 +51,17 @@ pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
 
 pub fn secret_key_to_string(secret_key: StaticSecret) -> String {
     let bytes = secret_key.to_bytes();
-    base64::encode(&bytes)
+    bs58::encode(&bytes).into_string()
 }
 
 pub fn public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
-    base64::encode(&bytes)
+    bs58::encode(&bytes).into_string()
 }
 
 pub fn string_to_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
-    match base64::decode(encoded_key) {
+    println!("encoded_key: {}", encoded_key);
+    match bs58::decode(encoded_key).into_vec() {
         Ok(bytes) => {
             if bytes.len() == 32 {
                 let mut array = [0; 32];
@@ -69,13 +72,13 @@ pub fn string_to_static_key(encoded_key: &str) -> Result<StaticSecret, &'static 
             } else {
                 Err("Decoded string length does not match StaticSecret length")
             }
-        },
-        Err(_) => Err("Failed to decode base64 string")
+        }
+        Err(_) => Err("Failed to decode bs58 string"),
     }
 }
 
 pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
-    match base64::decode(encoded_key) {
+    match bs58::decode(encoded_key).into_vec() {
         Ok(bytes) => {
             if bytes.len() == 32 {
                 let mut array = [0; 32];
@@ -86,8 +89,8 @@ pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str
             } else {
                 Err("Decoded string length does not match PublicKey length")
             }
-        },
-        Err(_) => Err("Failed to decode base64 string")
+        }
+        Err(_) => Err("Failed to decode bs58 string"),
     }
 }
 
@@ -125,14 +128,12 @@ pub fn encrypt_body_if_needed(
             // Encrypt message
             let ciphertext = cipher.encrypt(nonce, message).expect("encryption failure!");
 
-            // Here we return the nonce and ciphertext (encoded to base64 for easier storage and transmission)
+            // Here we return the nonce and ciphertext (encoded to bs58 for easier storage and transmission)
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            Some(base64::encode(&nonce_and_ciphertext))
+            Some(bs58::encode(&nonce_and_ciphertext).into_string())
         }
-        EncryptionMethod::None => {
-            None
-        }
+        EncryptionMethod::None => None,
     }
 }
 
@@ -154,7 +155,7 @@ pub fn decrypt_body_content(
 
             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = base64::decode(ciphertext).expect("Failed to decode base64");
+            let decoded = bs58::decode(ciphertext).into_vec().expect("Failed to decode bs58");
             let (nonce, ciphertext) = decoded.split_at(12);
             let nonce = GenericArray::from_slice(nonce);
 
@@ -166,8 +167,6 @@ pub fn decrypt_body_content(
             // Here we return the plaintext (encoded as a string for easier use)
             Some(String::from_utf8(plaintext).expect("Failed to convert decrypted bytes to String"))
         }
-        EncryptionMethod::None => {
-            None
-        }
+        EncryptionMethod::None => None,
     }
 }

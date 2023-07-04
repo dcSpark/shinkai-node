@@ -1,6 +1,6 @@
-use super::{encryption::public_key_to_string, shinkai_message_handler::ShinkaiMessageHandler};
 #[allow(unused_imports)]
 use super::encryption::{decrypt_body_content, encrypt_body_if_needed};
+use super::{encryption::public_key_to_string, shinkai_message_handler::ShinkaiMessageHandler};
 use crate::shinkai_message_proto::{
     Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage, Topic,
 };
@@ -252,10 +252,6 @@ mod tests {
         let body = message.body.as_ref().unwrap();
         assert_eq!(message.encryption, "default");
 
-        print!(
-            "test encryption 'body content'> {:?} ",
-            &body.content.as_bytes()
-        );
         let decrypted_content = decrypt_body_content(
             &body.content.as_bytes(),
             &secret_key_clone,

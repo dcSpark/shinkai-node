@@ -1,8 +1,11 @@
-use serde::{de::{self, Deserialize, Deserializer, Visitor, SeqAccess}, Serialize, Serializer};
+use serde::{
+    de::{self, Deserialize, Deserializer, SeqAccess, Visitor},
+    Serialize, Serializer,
+};
 use std::fmt;
 
-use crate::shinkai_message_proto::ShinkaiMessage;
 use super::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message_proto::ShinkaiMessage;
 
 pub struct JSONSerdeShinkaiMessage(pub ShinkaiMessage);
 

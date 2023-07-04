@@ -71,35 +71,6 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
-    // POST v1/send
-    // let send_msg = {
-    //     let node_commands_sender = node_commands_sender.clone();
-    //     warp::post()
-    //         .and(warp::path("v1"))
-    //         .and(warp::path("send"))
-    //         .and(warp::body::bytes())
-    //         .and_then(move |bytes: bytes::Bytes| {
-    //             let node_commands_sender = node_commands_sender.clone();
-    //             async move {
-    //                 let bytes_vec = bytes.to_vec();
-    //                 match ShinkaiMessageHandler::decode_message(bytes_vec) {
-    //                     Ok(message) => {
-    //                         node_commands_sender
-    //                             .send(NodeCommand::SendMessage { msg: message })
-    //                             .await
-    //                             .unwrap();
-    //                         let resp = warp::reply::json(&"Message sent successfully");
-    //                         Ok::<_, warp::Rejection>(resp)
-    //                     }
-    //                     Err(_) => {
-    //                         let resp = warp::reply::json(&"Error decoding message");
-    //                         Ok::<_, warp::Rejection>(resp)
-    //                     }
-    //                 }
-    //             }
-    //         })
-    // };
-
     // GET v1/get_peers
     let get_peers = {
         let node_commands_sender = node_commands_sender.clone();
