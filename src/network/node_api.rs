@@ -1,32 +1,37 @@
-use crate::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
+use crate::shinkai_message::encryption::{encryption_public_key_to_string};
 use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message::signatures::signature_public_key_to_string;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 use super::node::NodeCommand;
 use async_channel::Sender;
-use prost::bytes;
 use serde_json::json;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use warp::http::StatusCode;
 use warp::Filter;
 
 #[derive(serde::Deserialize)]
-struct PkToAddressBody {
-    pk: String,
+struct NameToExternalProfileData {
+    name: String,
 }
 
 #[derive(serde::Serialize)]
-struct PkToAddressResponse {
-    result: String,
+struct GetPublicKeysResponse {
+    signature_public_key: String,
+    encryption_public_key: String,
+}
+
+#[derive(serde::Serialize)]
+struct IdentityNameToExternalProfileDataResponse {
+    signature_public_key: String,
+    encryption_public_key: String,
 }
 
 #[derive(serde::Deserialize)]
 struct ConnectBody {
     address: String,
-    pk: String,
+    profile_name: String,
 }
 
 #[derive(serde::Deserialize)]
@@ -99,47 +104,52 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         })
     };
 
-    // POST v1/pk_to_address
-    let pk_to_address = {
+    // POST v1/identity_name_to_external_profile_data
+    let identity_name_to_external_profile_data = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "pk_to_address")
+        warp::path!("v1" / "identity_name_to_external_profile_data")
             .and(warp::post())
             .and(warp::body::json())
-            .and_then(move |body: PkToAddressBody| {
+            .and_then(move |body: NameToExternalProfileData| {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
                     let (res_sender, res_receiver) = async_channel::bounded(1);
                     node_commands_sender
-                        .send(NodeCommand::PkToAddress {
-                            pk: body.pk,
+                        .send(NodeCommand::IdentityNameToExternalProfileData {
+                            name: body.name,
                             res: res_sender,
                         })
                         .await
                         .unwrap();
-                    let address = res_receiver.recv().await.unwrap();
-                    Ok::<_, warp::Rejection>(warp::reply::json(&PkToAddressResponse {
-                        result: address.to_string(),
+                    let external_profile_data = res_receiver.recv().await.unwrap();
+                    Ok::<_, warp::Rejection>(warp::reply::json(&IdentityNameToExternalProfileDataResponse {
+                        signature_public_key: signature_public_key_to_string(external_profile_data.signature_public_key),
+                        encryption_public_key: encryption_public_key_to_string(external_profile_data.encryption_public_key),
                     }))
                 }
             })
     };
 
-    // GET v1/get_public_key
+    // GET v1/get_public_keys
     let get_public_key = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "get_public_key")
+        warp::path!("v1" / "get_public_keys")
             .and(warp::get())
             .and_then(move || {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
                     let (res_sender, res_receiver) = async_channel::bounded(1);
                     node_commands_sender
-                        .send(NodeCommand::GetPublicKey(res_sender))
+                        .send(NodeCommand::GetPublicKeys(res_sender))
                         .await
                         .map_err(|_| warp::reject())?;
-                    let public_key = res_receiver.recv().await.map_err(|_| warp::reject())?;
-                    let public_key_string = public_key_to_string(public_key.clone());
-                    Ok::<_, warp::Rejection>(warp::reply::json(&public_key_string))
+                    let (signature_public_key, encryption_public_key) = res_receiver.recv().await.map_err(|_| warp::reject())?;
+                    let signature_public_key_string = signature_public_key_to_string(signature_public_key.clone());
+                    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key.clone());
+                    Ok::<_, warp::Rejection>(warp::reply::json(&GetPublicKeysResponse {
+                        signature_public_key: signature_public_key_string,
+                        encryption_public_key: encryption_public_key_string, 
+                    }))
                 }
             })
     };
@@ -152,13 +162,13 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and(warp::body::json())
             .and_then(move |body: ConnectBody| {
                 let address: SocketAddr = body.address.parse().expect("Failed to parse SocketAddr");
-                let pk = body.pk.clone();
+                let profile_name = body.profile_name.clone();
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
                     let _ = node_commands_sender
                         .send(NodeCommand::Connect {
                             address: address.clone(),
-                            pk: pk.clone(),
+                            profile_name: profile_name.clone(),
                         })
                         .await;
 
@@ -243,7 +253,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     let routes = ping_all
         .or(send_msg)
         .or(get_peers)
-        .or(pk_to_address)
+        .or(identity_name_to_external_profile_data)
         .or(get_public_key)
         .or(connect)
         .or(get_last_messages)

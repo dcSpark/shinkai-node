@@ -1,7 +1,9 @@
 use crate::{
-    shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage,
+    shinkai_message::{shinkai_message_handler::ShinkaiMessageHandler, encryption::{string_to_encryption_public_key, encryption_public_key_to_string}, signatures::{string_to_signature_public_key, signature_public_key_to_string}},
+    shinkai_message_proto::ShinkaiMessage, network::subidentities::SubIdentity,
 };
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use prost::Message;
 use rand::RngCore;
 use rocksdb::{ColumnFamilyDescriptor, Error, Options, DB};
@@ -16,6 +18,10 @@ pub enum ShinkaiMessageDBError {
     CodeNonExistent,
     ProfileNameAlreadyExists,
     SomeError,
+    ProfileNameNonExistent,
+    EncryptionKeyNonExistent,
+    PublicKeyParseError,
+
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -313,6 +319,101 @@ impl ShinkaiMessageDB {
     
         Ok(())
     }
+
+    pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiMessageDBError> {
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        
+        // Get the associated profile name for the identity public key
+        let profile_name = match self.db.get_cf(cf_identity, identity_public_key)? {
+            Some(name_bytes) => Ok(String::from_utf8_lossy(&name_bytes).to_string()),
+            None => Err(ShinkaiMessageDBError::ProfileNameNonExistent),
+        }?;
+    
+        // Get the associated encryption public key for the profile name
+        match self.db.get_cf(cf_encryption, &profile_name)? {
+            Some(encryption_key_bytes) => Ok(String::from_utf8_lossy(&encryption_key_bytes).to_string()),
+            None => Err(ShinkaiMessageDBError::EncryptionKeyNonExistent),
+        }
+    }
+
+    pub fn load_all_sub_identities(&self) -> Result<Vec<(String, EncryptionPublicKey, SignaturePublicKey)>, ShinkaiMessageDBError> {
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+    
+        let mut result = Vec::new();
+    
+        let iter = self.db.iterator_cf(cf_encryption, rocksdb::IteratorMode::Start);
+        for item in iter {
+            // Handle the Result returned by the iterator
+            match item {
+                Ok((key, value)) => {
+                    let name = String::from_utf8(key.to_vec()).unwrap();
+                    let encryption_public_key = string_to_encryption_public_key(&String::from_utf8(value.to_vec()).unwrap())
+                        .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
+    
+                    // get the associated signature public key
+                    match self.db.get_cf(cf_identity, &name)? {
+                        Some(value) => {
+                            let signature_public_key = string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())
+                                .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
+                            result.push((name, encryption_public_key, signature_public_key));
+                        }
+                        None => return Err(ShinkaiMessageDBError::ProfileNameNonExistent),
+                    }
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+    
+        Ok(result)
+    }    
+
+    pub fn remove_identity(&self, name: &str) -> Result<(), ShinkaiMessageDBError> {
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        
+        // Check that the profile name exists in ProfilesIdentityKey and ProfilesEncryptionKey
+        if self.db.get_cf(cf_identity, name)?.is_none() || self.db.get_cf(cf_encryption, name)?.is_none() {
+            return Err(ShinkaiMessageDBError::ProfileNameNonExistent);
+        }
+    
+        // Start write batch for atomic operation
+        let mut batch = rocksdb::WriteBatch::default();
+    
+        // Delete from ProfilesIdentityKey and ProfilesEncryptionKey
+        batch.delete_cf(cf_identity, name);
+        batch.delete_cf(cf_encryption, name);
+    
+        // Write the batch
+        self.db.write(batch)?;
+    
+        Ok(())
+    }
+
+    pub fn insert_sub_identity(&self, identity: SubIdentity) -> Result<(), ShinkaiMessageDBError> {
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        
+        // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
+        if self.db.get_cf(cf_identity, &identity.name)?.is_some() || self.db.get_cf(cf_encryption, &identity.name)?.is_some() {
+            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+        }
+    
+        // Start write batch for atomic operation
+        let mut batch = rocksdb::WriteBatch::default();
+    
+        // Write to ProfilesIdentityKey and ProfilesEncryptionKey
+        
+        batch.put_cf(cf_identity, &identity.name, signature_public_key_to_string(identity.signature_public_key).as_bytes());
+        batch.put_cf(cf_encryption, &identity.name, encryption_public_key_to_string(identity.encryption_public_key).as_bytes());
+    
+        // Write the batch
+        self.db.write(batch)?;
+    
+        Ok(())
+    }
+        
 }
 
 impl fmt::Display for ShinkaiMessageDBError {
@@ -325,6 +426,19 @@ impl fmt::Display for ShinkaiMessageDBError {
             ShinkaiMessageDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
             ShinkaiMessageDBError::MessageNotFound => write!(f, "Message not found"),
             ShinkaiMessageDBError::SomeError => write!(f, "Some mysterious error..."),
+            ShinkaiMessageDBError::ProfileNameNonExistent => write!(f, "Profile name does not exist"),
+            ShinkaiMessageDBError::EncryptionKeyNonExistent => write!(f, "Encryption key does not exist"),
+            ShinkaiMessageDBError::PublicKeyParseError => write!(f, "Error parsing public key"),
+        }
+    }
+}
+
+impl std::error::Error for ShinkaiMessageDBError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ShinkaiMessageDBError::RocksDBError(e) => Some(e),
+            ShinkaiMessageDBError::DecodeError(e) => Some(e),
+            _ => None,
         }
     }
 }

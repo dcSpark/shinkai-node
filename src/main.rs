@@ -1,20 +1,22 @@
 use async_channel::{bounded, Receiver, Sender};
 // main.rs
 use network::Node;
-use shinkai_message::encryption::ephemeral_keys;
-use shinkai_node::shinkai_message::encryption::{public_key_to_string, string_to_public_key};
+use shinkai_message::encryption::ephemeral_encryption_keys;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-use x25519_dalek::PublicKey;
 
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
-    hash_public_key, secret_key_to_string, string_to_static_key, unsafe_deterministic_double_private_key,
+    encryption_secret_key_to_string, hash_encryption_public_key, string_to_encryption_static_key,
 };
+use crate::shinkai_message::signatures::{string_to_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, clone_signature_secret_key};
+use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_secret_key_to_string};
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
 mod network;
@@ -25,17 +27,32 @@ mod shinkai_message_proto {
 }
 
 fn main() {
-    // let (node1_identity, node1_encryption) = unsafe_deterministic_double_private_key(0);
-    // let (node2_identity, node2_encryption) = unsafe_deterministic_double_private_key(1);
-    // let (node3_identity, node3_encryption) = unsafe_deterministic_double_private_key(2);
+    // let node1_identity_name = "@@node1.shinkai";
+    // let node2_identity_name = "@@node2.shinkai";
 
-    // println!("node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node1_identity.0), public_key_to_string(node1_identity.1), secret_key_to_string(node1_encryption.0), public_key_to_string(node1_encryption.1));
-    // println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node2_identity.0), public_key_to_string(node2_identity.1), secret_key_to_string(node2_encryption.0), public_key_to_string(node2_encryption.1));
-    // println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", secret_key_to_string(node3_identity.0), public_key_to_string(node3_identity.1), secret_key_to_string(node3_encryption.0), public_key_to_string(node3_encryption.1));
+    // let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    // let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    // let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    // let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+    // let (node3_identity_sk, node3_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    // let (node3_encryption_sk, node3_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+
+    // println!(
+    //     "node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
+    //     signature_secret_key_to_string(node1_identity_sk),
+    //     signature_public_key_to_string(node1_identity_pk),
+    //     encryption_secret_key_to_string(node1_encryption_sk),
+    //     encryption_public_key_to_string(node1_encryption_pk)
+    // );
+
+    // println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node2_identity_sk), signature_public_key_to_string(node2_identity_pk), encryption_secret_key_to_string(node2_encryption_sk), encryption_public_key_to_string(node2_encryption_pk));
+    // println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node3_identity_sk), signature_public_key_to_string(node3_identity_pk), encryption_secret_key_to_string(node3_encryption_sk), encryption_public_key_to_string(node3_encryption_pk));
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
-    let global_identity_name = "@@globalIdentity.shinkai";
+    let global_identity_name = "@@node1.shinkai";
 
     // Create Tokio runtime
     let mut rt = Runtime::new().unwrap();
@@ -43,20 +60,20 @@ fn main() {
     // Generate your keys here or load them from a file.
     let (identity_secret_key, identity_public_key) = match env::var("IDENTITY_SECRET_KEY") {
         Ok(secret_key_str) => {
-            let secret_key = string_to_static_key(&secret_key_str).unwrap();
-            let public_key = PublicKey::from(&secret_key);
+            let secret_key = string_to_signature_secret_key(&secret_key_str).unwrap();
+            let public_key = SignaturePublicKey::from(&secret_key);
             (secret_key, public_key)
         }
-        _ => ephemeral_keys(),
+        _ => ephemeral_signature_keypair(),
     };
 
     let (encryption_secret_key, encryption_public_key) = match env::var("ENCRYPTION_SECRET_KEY") {
         Ok(secret_key_str) => {
-            let secret_key = string_to_static_key(&secret_key_str).unwrap();
-            let public_key = PublicKey::from(&secret_key);
+            let secret_key = string_to_encryption_static_key(&secret_key_str).unwrap();
+            let public_key = x25519_dalek::PublicKey::from(&secret_key); 
             (secret_key, public_key)
         }
-        _ => ephemeral_keys(),
+        _ => ephemeral_encryption_keys(),
     };
 
     // Fetch the environment variables for the IP and port, or use default values
@@ -87,10 +104,13 @@ fn main() {
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
 
-    let identity_secret_key_string = secret_key_to_string(identity_secret_key.clone());
-    let identity_public_key_string = public_key_to_string(identity_public_key.clone());
+    let identity_secret_key_string = signature_secret_key_to_string(clone_signature_secret_key(&identity_secret_key));
+    let identity_public_key_string = signature_public_key_to_string(identity_public_key.clone());
 
-    let db_path = format!("db/{}", hash_public_key(identity_public_key.clone()));
+    let db_path = format!(
+        "db/{}",
+        hash_signature_public_key(&identity_public_key)
+    );
     // Log the address, port, and public_key
     println!(
         "Starting node with address: {}, port: {}, secret_key {}, public_key: {} and db path: {}",
@@ -106,7 +126,7 @@ fn main() {
     let node = Arc::new(Mutex::new(Node::new(
         global_identity_name.to_string(),
         listen_address,
-        identity_secret_key.clone(),
+        clone_signature_secret_key(&identity_secret_key),
         encryption_secret_key.clone(),
         ping_interval,
         node_commands_receiver,
@@ -135,14 +155,7 @@ fn main() {
         // TODO: this needs redo after node refactoring
         let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
             if let Ok(_) = env::var("CONNECT_PK") {
-                tokio::spawn(async move {
-                    connect_node
-                        .lock()
-                        .await
-                        .start()
-                        .await
-                        .unwrap()
-                })
+                tokio::spawn(async move { connect_node.lock().await.start().await.unwrap() })
             } else {
                 eprintln!("CONNECT_PK environment variable is not set.");
                 tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })

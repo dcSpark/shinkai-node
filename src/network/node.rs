@@ -1,21 +1,26 @@
+use super::external_identities::ExternalProfileData;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use core::panic;
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::db::ShinkaiMessageDB;
+use crate::db::{ShinkaiMessageDB, ShinkaiMessageDBError};
+use crate::network::external_identities::{self, external_identity_to_identity_pk};
 use crate::shinkai_message::encryption::{
-    decrypt_body_content, hash_public_key, string_to_public_key,
+    clone_static_secret_key, decrypt_body_content, encryption_public_key_to_string,
+    string_to_encryption_public_key,
 };
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message::signatures::clone_signature_secret_key;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
@@ -28,7 +33,7 @@ pub enum PingPong {
 
 pub enum NodeCommand {
     PingAll,
-    GetPublicKey(Sender<PublicKey>),
+    GetPublicKeys(Sender<(SignaturePublicKey, EncryptionPublicKey)>),
     SendMessage {
         msg: ShinkaiMessage,
     },
@@ -43,13 +48,13 @@ pub enum NodeCommand {
         encryption_pk: String,
         res: Sender<String>,
     },
-    PkToAddress {
-        pk: String,
-        res: Sender<SocketAddr>,
+    IdentityNameToExternalProfileData {
+        name: String,
+        res: Sender<ExternalProfileData>,
     },
     Connect {
         address: SocketAddr,
-        pk: String,
+        profile_name: String,
     },
     FetchLastMessages {
         limit: usize,
@@ -57,14 +62,16 @@ pub enum NodeCommand {
     },
 }
 
+type ProfileName = String;
+
 pub struct Node {
-    main_identity: String,
-    identity_secret_key: StaticSecret,
-    identity_public_key: PublicKey,
-    encryption_secret_key: StaticSecret,
-    encryption_public_key: PublicKey,
+    node_profile_name: String,
+    identity_secret_key: SignatureStaticKey,
+    identity_public_key: SignaturePublicKey,
+    encryption_secret_key: EncryptionStaticKey,
+    encryption_public_key: EncryptionPublicKey,
     listen_address: SocketAddr,
-    peers: CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>>,
+    peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
     ping_interval_secs: u64,
     commands: Receiver<NodeCommand>,
     db: Arc<Mutex<ShinkaiMessageDB>>,
@@ -72,21 +79,21 @@ pub struct Node {
 
 impl Node {
     pub fn new(
-        main_identity: String,
+        node_profile_name: String,
         listen_address: SocketAddr,
-        identity_secret_key: StaticSecret,
-        encryption_secret_key: StaticSecret,
+        identity_secret_key: SignatureStaticKey,
+        encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         db_path: String,
     ) -> Node {
-        let identity_public_key = PublicKey::from(&identity_secret_key);
-        let encryption_public_key = PublicKey::from(&encryption_secret_key);
+        let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
+        let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiMessageDB::new(&db_path)
             .unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
 
         Node {
-            main_identity,
+            node_profile_name,
             identity_secret_key,
             identity_public_key,
             encryption_secret_key,
@@ -129,67 +136,68 @@ impl Node {
             pin_mut!(ping_future, commands_future);
 
             select! {
-                                    listen = listen_future => unreachable!(),
-                                    ping = ping_future => self.ping_all().await?,
-                                    // check_peers = check_peers_future => self.connect_new_peers().await?,
-                                    command = commands_future => {
-                                        match command {
-                                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                                            Some(NodeCommand::GetPeers(sender)) => {
-                                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
-                                                sender.send(peer_addresses).await.unwrap();
-                                            },
-                                            Some(NodeCommand::PkToAddress { pk, res }) => {
-                                                let address = Node::pk_to_address(pk);
-                                                res.send(address).await.unwrap();
-                                            },
-                                            Some(NodeCommand::Connect { address, pk }) => {
-                                                let public_key = string_to_public_key(&pk).expect("Failed to convert string to public key");
-                                                let address_str = address.to_string();
-                                                self.connect(&address_str, public_key).await?;
+                    listen = listen_future => unreachable!(),
+                    ping = ping_future => self.ping_all().await?,
+                    // check_peers = check_peers_future => self.connect_new_peers().await?,
+                    command = commands_future => {
+                        match command {
+                            Some(NodeCommand::PingAll) => self.ping_all().await?,
+                            Some(NodeCommand::GetPeers(sender)) => {
+                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+                                sender.send(peer_addresses).await.unwrap();
+                            },
+                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => {
+                                let external_profile_data = external_identity_to_identity_pk(name).unwrap();
+                                res.send(external_profile_data).await.unwrap();
+                            },
+                            Some(NodeCommand::Connect { address, profile_name }) => {
+                                let address_str = address.to_string();
+                                self.connect(&address_str, profile_name).await?;
+                            },
+                            Some(NodeCommand::SendMessage { msg }) => {
+                                // Verify that it's coming from one of our allowed keys
+                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
+                                // TODO: fix it
+                                // let external_identities_to_identity_pks(&[recipient.clone()]).unwrap();
+                                // let address = Node::pk_to_address(recipient.clone());
+                                // let pk = string_to_encryption_public_key(&recipient).expect("Failed to convert string to public key");
+                                // let db = self.db.lock().await;
+                                // Node::send(&msg,(address, pk), &db).await?;
+                            },
+                            Some(NodeCommand::GetPublicKeys(res)) => {
+                                let identity_public_key = self.identity_public_key.clone();
+                                let encryption_public_key = self.encryption_public_key.clone();
+                                let _ = res.send((identity_public_key, encryption_public_key)).await.map_err(|_| ());
+                            },
+                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
+                                let db = self.db.lock().await;
+                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+                                let _ = res.send(messages).await.map_err(|_| ());
+                            },
+                            Some(NodeCommand::CreateRegistrationCode { res }) => {
+                                let db = self.db.lock().await;
+                                let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+                                let _ = res.send(code).await.map_err(|_| ());
+                            },
+                            Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
+                                let db = self.db.lock().await;
+                                let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
+                                    .map_err(|e| e.to_string())
+                                    .map(|_| "true".to_string());
 
-                                            },
-                                            Some(NodeCommand::SendMessage { msg }) => {
-                                                // Verify that it's coming from one of our allowed keys
-                                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
-                                                let address = Node::pk_to_address(recipient.clone());
-                                                let pk = string_to_public_key(&recipient).expect("Failed to convert string to public key");
-                                                let db = self.db.lock().await;
-                                                Node::send(&msg,(address, pk), &db).await?;
-                                            },
-                                            Some(NodeCommand::GetPublicKey(res)) => {
-                                                let public_key = self.identity_public_key.clone();
-                                                let _ = res.send(public_key).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
-                                                let db = self.db.lock().await;
-                                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
-                                                let _ = res.send(messages).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::CreateRegistrationCode { res }) => {
-                                                let db = self.db.lock().await;
-                                                let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
-                                                let _ = res.send(code).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
-                                                let db = self.db.lock().await;
-                                                let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
-                                                    .map_err(|e| e.to_string())
-                                                    .map(|_| "true".to_string());
-                                                
-                                                match result {
-                                                    Ok(success) => {
-                                                        let _ = res.send(success).await.map_err(|_| ());
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = res.send(e).await.map_err(|_| ());
-                                                    }
-                                                }
-                                            },
-                                            _ => break,
-                                        }
+                                match result {
+                                    Ok(success) => {
+                                        let _ = res.send(success).await.map_err(|_| ());
                                     }
-                            };
+                                    Err(e) => {
+                                        let _ = res.send(e).await.map_err(|_| ());
+                                    }
+                                }
+                            },
+                            _ => break,
+                        }
+                    }
+            };
         }
         Ok(())
     }
@@ -217,8 +225,11 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
-            let secret_key_clone = self.identity_secret_key.clone();
+            let signature_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
             let db = Arc::clone(&self.db);
+            let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
+            let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
+            let node_profile_name_clone = self.node_profile_name.clone();
 
             tokio::spawn(async move {
                 let mut buffer = [0u8; BUFFER_SIZE];
@@ -230,11 +241,14 @@ impl Node {
                         }
                         Ok(n) => {
                             // println!("{} > TCP: Received message.", addr);
+                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
                             let _ = Node::handle_message(
                                 addr,
+                                destination_socket.clone(),
                                 &buffer[..n],
-                                socket.peer_addr().unwrap(),
-                                secret_key_clone.clone(),
+                                node_profile_name_clone.clone(),
+                                clone_static_secret_key(&encryption_secret_key_clone),
+                                clone_signature_secret_key(&identity_secret_key_clone),
                                 db.clone(),
                             )
                             .await;
@@ -252,61 +266,56 @@ impl Node {
         }
     }
 
-    pub fn get_peers(&self) -> CHashMap<(SocketAddr, PublicKey), chrono::DateTime<Utc>> {
+    pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
 
-    // TODO: reuse this to extract data from onchain addresses
-    // async fn connect_new_peers(&self) -> io::Result<()> {
-    //     let db_lock = self.db.lock().await;
-    //     let peer_entries = match db_lock.get_all_peers() {
-    //         Ok(peers) => peers,
-    //         Err(e) => {
-    //             eprintln!("Failed to get peers from database: {}", e);
-    //             return Err(io::Error::new(
-    //                 io::ErrorKind::Other,
-    //                 "Failed to get peers from database",
-    //             ));
-    //         }
-    //     };
-    //     drop(db_lock);
-
-    //     for (pk_str, address_str) in peer_entries {
-    //         let address: SocketAddr = address_str.parse().unwrap();
-    //         let pk = string_to_public_key(&pk_str).unwrap();
-
-    //         // Check if we already have this peer
-    //         if !self.peers.contains_key(&(address, pk)) {
-    //             // Here we assume there's a function called connect_new_peer that takes a SocketAddr and a public key hash
-    //             // convert SocketAddr to string
-    //             let address_str = address.to_string();
-    //             self.connect(&address_str, pk).await?;
-    //         }
-    //     }
-    //     Ok(())
-    // }
-
-    pub fn get_public_key(&self) -> io::Result<PublicKey> {
-        Ok(self.identity_public_key)
+    pub async fn get_encryption_public_key(
+        &self,
+        identity_public_key: String,
+    ) -> Result<String, ShinkaiMessageDBError> {
+        let db = self.db.lock().await;
+        db.get_encryption_public_key(&identity_public_key)
     }
 
-    pub async fn connect(&self, peer_address: &str, pk: PublicKey) -> io::Result<()> {
+    pub fn get_public_key(&self) -> io::Result<(SignaturePublicKey, EncryptionPublicKey)> {
+        Ok((self.identity_public_key, self.encryption_public_key))
+    }
+
+    pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
         println!(
-            "{} > Connecting to {} with pk: {:?}",
-            self.listen_address, peer_address, pk
+            "{} > Connecting to {} with profile_name: {:?}",
+            self.listen_address, peer_address, profile_name
         );
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
-        self.peers.insert((peer_address, pk), Utc::now());
+        self.peers
+            .insert((peer_address, profile_name.clone()), Utc::now());
 
-        let peer = (peer_address, pk);
+        let peer = (peer_address, profile_name.clone());
         let db_lock = self.db.lock().await;
-        Node::ping_pong(peer, PingPong::Ping, self.identity_secret_key.clone(), &db_lock).await?;
+
+        let sender = self.node_profile_name.clone();
+        let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
+        let receiver = receiver_profile.node_identity_name.to_string();
+        let receiver_public_key = receiver_profile.encryption_public_key;
+
+        Node::ping_pong(
+            peer,
+            PingPong::Ping,
+            clone_static_secret_key(&self.encryption_secret_key),
+            clone_signature_secret_key(&self.identity_secret_key),
+            receiver_public_key,
+            sender,
+            receiver,
+            &db_lock,
+        )
+        .await?;
         Ok(())
     }
 
     pub async fn send(
         message: &ShinkaiMessage,
-        peer: (SocketAddr, PublicKey),
+        peer: (SocketAddr, ProfileName),
         db: &ShinkaiMessageDB,
     ) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
@@ -333,9 +342,13 @@ impl Node {
     }
 
     async fn ping_pong(
-        peer: (SocketAddr, PublicKey),
+        peer: (SocketAddr, ProfileName),
         ping_or_pong: PingPong,
-        secret_key: StaticSecret,
+        encryption_secret_key: EncryptionStaticKey, // not important for ping pong
+        signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey, // not important for ping pong
+        sender: ProfileName,
+        receiver: ProfileName,
         db: &ShinkaiMessageDB,
     ) -> io::Result<()> {
         let message = match ping_or_pong {
@@ -345,8 +358,11 @@ impl Node {
 
         let msg = ShinkaiMessageBuilder::ping_pong_message(
             message.to_owned(),
-            secret_key.clone(),
-            peer.1,
+            encryption_secret_key,
+            signature_secret_key,
+            receiver_public_key,
+            sender,
+            receiver,
         )
         .unwrap();
         Node::send(&msg, peer, db).await
@@ -360,80 +376,69 @@ impl Node {
         );
         let db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            Node::ping_pong(peer, PingPong::Ping, self.identity_secret_key.clone(), &db_lock).await?;
+            let sender = self.node_profile_name.clone();
+            let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
+            let receiver = receiver_profile.node_identity_name.to_string();
+            let receiver_public_key = receiver_profile.encryption_public_key;
+
+            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
+            Node::ping_pong(
+                peer,
+                PingPong::Ping,
+                clone_static_secret_key(&self.encryption_secret_key),
+                clone_signature_secret_key(&self.identity_secret_key),
+                receiver_public_key,
+                sender,
+                receiver,
+                &db_lock,
+            )
+            .await?;
         }
         Ok(())
     }
 
     async fn send_ack(
-        peer: (SocketAddr, PublicKey),
-        secret_key: StaticSecret,
+        peer: (SocketAddr, ProfileName),
+        encryption_secret_key: EncryptionStaticKey, // not important for ping pong
+        signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey, // not important for ping pong
+        sender: ProfileName,
+        receiver: ProfileName,
         db: &ShinkaiMessageDB,
     ) -> io::Result<()> {
-        let ack = ShinkaiMessageBuilder::ack_message(secret_key.clone(), peer.1.clone()).unwrap();
-        Node::send(&ack, peer, db).await?;
+        let msg = ShinkaiMessageBuilder::ack_message(
+            encryption_secret_key,
+            signature_secret_key,
+            receiver_public_key,
+            sender,
+            receiver,
+        )
+        .unwrap();
+
+        Node::send(&msg, peer, db).await?;
         Ok(())
     }
 
-    // TODO: this should rely from a database that stores the public keys and their addresses
-    // and that db gets updated from the blockchain
-    // these are keys created with unsafe_deterministic_private_key starting at 0
-    fn pk_to_address(public_key: String) -> SocketAddr {
-        match public_key.as_str() {
-            "9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ" => {
-                SocketAddr::from(([127, 0, 0, 1], 8080))
-            }
-            "8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV" => {
-                SocketAddr::from(([127, 0, 0, 1], 8081))
-            }
-            "4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG" => {
-                SocketAddr::from(([127, 0, 0, 1], 8082))
-            }
-            _ => {
-                // In real-world scenarios, you'd likely want to return an error here, as an unrecognized
-                // public key could lead to problems down the line. The default case should be some sort of
-                // error condition.
-                println!("Unrecognized public key: {}", public_key);
-                SocketAddr::from(([127, 0, 0, 1], 3001))
-            }
-        }
-    }
-
-    fn pk_to_encryption_pk(public_key: String) -> PublicKey {
-        match public_key.as_str() {
-            "9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ" => {
-                string_to_public_key("BRdJYCYS8L6upTXuJ9JehZqyS88Dzy7Uh7gpS9tybYpM").unwrap()
-            }
-            "8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV" => {
-                string_to_public_key("6i7DLnCxLXSTU4ZA58eyFXtJanAo52MjyaXHaje7Hf5E").unwrap()
-            }
-            "4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG" => {
-                string_to_public_key("CvNHAWA4Kv7nuGnfFai6sNvAjLUPnQX3AiaM4VFXh7vU").unwrap()
-            }
-            _ => {
-                // In real-world scenarios, you'd likely want to return an error here, as an unrecognized
-                // public key could lead to problems down the line. The default case should be some sort of
-                // error condition.
-                panic!("Unrecognized public key: {}", public_key);
-            }
-        }
-    }
-
     async fn handle_message(
-        listen_address: SocketAddr,
+        receiver_address: SocketAddr,
+        sender_address: SocketAddr,
         bytes: &[u8],
-        address: SocketAddr,
-        secret_key: StaticSecret,
+        node_profile_name: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
         maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
     ) -> io::Result<()> {
-        println!("{} > Got message from {:?}", listen_address, address);
+        println!(
+            "{} > Got message from {:?}",
+            receiver_address, sender_address
+        );
         // println!("handle> Encoded Message: {:?}", bytes.to_vec());
 
         let message = ShinkaiMessageHandler::decode_message(bytes.to_vec());
         let message = match message {
             Ok(message) => message,
             _ => {
-                println!("{} > Failed to decode message.", listen_address);
+                println!("{} > Failed to decode message.", receiver_address);
                 return Ok(());
             }
         };
@@ -445,10 +450,10 @@ impl Node {
         // println!("Encryption: {}", message_encryption);
 
         let sender_pk_string = message.external_metadata.clone().unwrap().sender;
-        let sender_pk = string_to_public_key(sender_pk_string.as_str()).unwrap();
+        let sender_pk = string_to_encryption_public_key(sender_pk_string.as_str()).unwrap();
         println!(
             "{} > Sender public key: {:?}",
-            listen_address, sender_pk_string
+            receiver_address, sender_pk_string
         );
 
         {
@@ -457,31 +462,45 @@ impl Node {
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
 
-        // if Sender is not part of peers, add it
+        // TODO: if Sender is not part of peers, add it
         // if !self.peers.contains_key(&(address, sender_pk)) {
         //     self.peers.insert((address, sender_pk), Utc::now());
         // }
-
-        let reachable_address = Node::pk_to_address(sender_pk_string.clone());
         match (message_content, message_encryption) {
             ("Ping", _) => {
-                println!("{} > Got ping from {:?}", listen_address, address);
-                let db = maybe_db.lock().await;
+                println!("{} > Got ping from {:?}", receiver_address, sender_address);
+
+                let sender = node_profile_name.clone();
+                let receiver_profile =
+                    &external_identities::addr_to_external_profile_data(sender_address.clone())[0];
+                let receiver = receiver_profile.node_identity_name.to_string();
+                let receiver_public_key = receiver_profile.encryption_public_key;
+
+                let db_lock = maybe_db.lock().await;
                 Node::ping_pong(
-                    (reachable_address, sender_pk),
+                    (
+                        sender_address.clone(),
+                        receiver_profile.node_identity_name.clone(),
+                    ),
                     PingPong::Pong,
-                    secret_key,
-                    &db,
+                    clone_static_secret_key(&my_encryption_secret_key),
+                    clone_signature_secret_key(&my_signature_secret_key),
+                    receiver_public_key,
+                    sender,
+                    receiver,
+                    &db_lock,
                 )
                 .await?;
             }
             ("ACK", _) => {
-                println!("{} > ACK from {:?}", listen_address, address);
+                println!("{} > ACK from {:?}", receiver_address, sender_address);
             }
             (_, "default") => {
+                // TODO: check for onion encryption
+
                 let decrypted_content = decrypt_body_content(
                     message_content.as_bytes(),
-                    &secret_key.clone(),
+                    &my_encryption_secret_key.clone(),
                     &sender_pk,
                     Some(message_encryption),
                 );
@@ -490,10 +509,30 @@ impl Node {
                     Some(_) => {
                         println!(
                             "{} > Got message from {:?}. Sending ACK",
-                            listen_address, address
+                            receiver_address, sender_address
                         );
-                        let db = maybe_db.lock().await;
-                        Node::send_ack((reachable_address, sender_pk), secret_key, &db).await?;
+
+                        let sender = node_profile_name.clone();
+                        let receiver_profile = &external_identities::addr_to_external_profile_data(
+                            sender_address.clone(),
+                        )[0];
+                        let receiver = receiver_profile.node_identity_name.to_string();
+                        let receiver_public_key = receiver_profile.encryption_public_key;
+
+                        let db_lock = maybe_db.lock().await;
+                        Node::send_ack(
+                            (
+                                sender_address.clone(),
+                                receiver_profile.node_identity_name.clone(),
+                            ),
+                            clone_static_secret_key(&my_encryption_secret_key),
+                            clone_signature_secret_key(&my_signature_secret_key),
+                            receiver_public_key,
+                            sender,
+                            receiver,
+                            &db_lock,
+                        )
+                        .await?;
                     }
                     None => {
                         // TODO: send error back
@@ -505,10 +544,28 @@ impl Node {
             (_, _) => {
                 println!(
                     "{} > Got message from {:?}. Sending ACK",
-                    listen_address, address
+                    receiver_address, sender_address
                 );
-                let db = maybe_db.lock().await;
-                Node::send_ack((reachable_address, sender_pk), secret_key, &db).await?;
+                let sender = node_profile_name.clone();
+                let receiver_profile =
+                    &external_identities::addr_to_external_profile_data(sender_address.clone())[0];
+                let receiver = receiver_profile.node_identity_name.to_string();
+                let receiver_public_key = receiver_profile.encryption_public_key;
+
+                let db_lock = maybe_db.lock().await;
+                Node::send_ack(
+                    (
+                        sender_address.clone(),
+                        receiver_profile.node_identity_name.clone(),
+                    ),
+                    clone_static_secret_key(&my_encryption_secret_key),
+                    clone_signature_secret_key(&my_signature_secret_key),
+                    receiver_public_key,
+                    sender,
+                    receiver,
+                    &db_lock,
+                )
+                .await?;
             }
         }
         Ok(())

@@ -1,2 +1,2 @@
 mod db;
-pub use db::ShinkaiMessageDB;
+pub use db::{ShinkaiMessageDB, ShinkaiMessageDBError};

@@ -28,32 +28,7 @@ impl EncryptionMethod {
     }
 }
 
-pub fn unsafe_deterministic_double_private_key(n: u32) -> ((StaticSecret, PublicKey), (StaticSecret, PublicKey)) {
-    let mut hasher = Sha256::new();
-    hasher.update(n.to_le_bytes());
-    let hash = hasher.finalize();
-
-    let mut bytes1 = [0u8; 32];
-    bytes1.copy_from_slice(&hash[0..32]);
-
-    let secret_key1 = StaticSecret::from(bytes1);
-    let public_key1 = PublicKey::from(&secret_key1);
-
-    hasher = Sha256::new();
-    hasher.update((n + 1_000_000).to_le_bytes());
-    let hash = hasher.finalize();
-
-    let mut bytes2 = [0u8; 32];
-    bytes2.copy_from_slice(&hash[0..32]);
-
-    let secret_key2 = StaticSecret::from(bytes2);
-    let public_key2 = PublicKey::from(&secret_key2);
-
-    ((secret_key1, public_key1), (secret_key2, public_key2))
-}
-
-
-pub fn unsafe_deterministic_single_private_key(n: u32) -> (StaticSecret, PublicKey) {
+pub fn unsafe_deterministic_encryption_keypair(n: u32) -> (StaticSecret, PublicKey) {
     let mut hasher = Sha256::new();
     hasher.update(n.to_le_bytes());
     let hash = hasher.finalize();
@@ -66,7 +41,7 @@ pub fn unsafe_deterministic_single_private_key(n: u32) -> (StaticSecret, PublicK
     (secret_key, public_key)
 }
 
-pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
+pub fn ephemeral_encryption_keys() -> (StaticSecret, PublicKey) {
     #[allow(deprecated)]
     let mut csprng = rand_os::OsRng::new().unwrap();
     let secret_key = StaticSecret::new(&mut csprng);
@@ -74,17 +49,17 @@ pub fn ephemeral_keys() -> (StaticSecret, PublicKey) {
     (secret_key, public_key)
 }
 
-pub fn secret_key_to_string(secret_key: StaticSecret) -> String {
+pub fn encryption_secret_key_to_string(secret_key: StaticSecret) -> String {
     let bytes = secret_key.to_bytes();
     bs58::encode(&bytes).into_string()
 }
 
-pub fn public_key_to_string(public_key: PublicKey) -> String {
+pub fn encryption_public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
     bs58::encode(&bytes).into_string()
 }
 
-pub fn string_to_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
+pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
     println!("encoded_key: {}", encoded_key);
     match bs58::decode(encoded_key).into_vec() {
         Ok(bytes) => {
@@ -102,7 +77,7 @@ pub fn string_to_static_key(encoded_key: &str) -> Result<StaticSecret, &'static 
     }
 }
 
-pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
+pub fn string_to_encryption_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
     match bs58::decode(encoded_key).into_vec() {
         Ok(bytes) => {
             if bytes.len() == 32 {
@@ -119,7 +94,11 @@ pub fn string_to_public_key(encoded_key: &str) -> Result<PublicKey, &'static str
     }
 }
 
-pub fn hash_public_key(public_key: PublicKey) -> String {
+pub fn clone_static_secret_key(original: &StaticSecret) -> StaticSecret {
+    StaticSecret::from(original.to_bytes())
+}
+
+pub fn hash_encryption_public_key(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
     let mut hasher = Sha256::new();
     hasher.update(bytes);
