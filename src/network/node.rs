@@ -12,14 +12,16 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::{ShinkaiMessageDB};
+use crate::db::ShinkaiMessageDB;
 use crate::network::external_identities::{self, external_identity_to_identity_pk};
 use crate::network::node_message_handlers::{
-    extract_message, extract_sender_keys, extract_sender_profile_name, verify_message_signature, extract_message_content_and_encryption, handle_based_on_message_content_and_encryption, ping_pong, PingPong,
+    extract_message, extract_message_content_and_encryption, extract_sender_keys,
+    extract_sender_profile_name, handle_based_on_message_content_and_encryption, ping_pong,
+    verify_message_signature, PingPong,
 };
-use crate::shinkai_message::encryption::{clone_static_secret_key};
+use crate::shinkai_message::encryption::clone_static_secret_key;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::{clone_signature_secret_key};
+use crate::shinkai_message::signatures::clone_signature_secret_key;
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
@@ -401,8 +403,7 @@ impl Node {
         let (message_content, message_encryption) =
             extract_message_content_and_encryption(&message);
         handle_based_on_message_content_and_encryption(
-            &message_content,
-            &message_encryption,
+            message.clone(),
             sender_keys.encryption_public_key,
             sender_keys.address,
             sender_profile_name_string,

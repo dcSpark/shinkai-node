@@ -29,7 +29,7 @@ lazy_static! {
             encryption_public_key: string_to_encryption_public_key("8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV").expect("Failed to parse public key"),
         });
         m.insert("@@node3.shinkai".to_string(), ExternalProfileData {
-            node_identity_name: "@@node2.shinkai".to_string(),
+            node_identity_name: "@@node3.shinkai".to_string(),
             addr: SocketAddr::from(([127, 0, 0, 1], 8082)),
             signature_public_key: string_to_signature_public_key("7iq1nvNfacJY3TGtLWJ7s2Weq9mV3rKWHtz6J3qVQyMf").expect("Failed to parse public key"),
             encryption_public_key: string_to_encryption_public_key("4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG").expect("Failed to parse public key"),

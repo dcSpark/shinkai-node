@@ -1,6 +1,6 @@
 // shinkai_message.rs
 
-use crate::shinkai_message_proto::ShinkaiMessage;
+use crate::shinkai_message_proto::{ShinkaiMessage, Body};
 use chrono::Utc;
 use prost::Message;
 use sha2::{Digest, Sha256};
@@ -31,6 +31,16 @@ impl ShinkaiMessageHandler {
         hasher.update(format!("{:?}", message));
         let result = hasher.finalize();
         format!("{:x}", result)
+    }
+
+    pub fn encode_body(body: Body) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        body.encode(&mut bytes).unwrap();
+        bytes
+    }
+
+    pub fn decode_body(bytes: Vec<u8>) -> Result<Body, prost::DecodeError> {
+        Body::decode(bytes.as_slice())
     }
 }
 
@@ -96,6 +106,20 @@ mod tests {
         let message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
         let encoded_message = ShinkaiMessageHandler::encode_message(message);
         assert!(encoded_message.len() > 0);
+    }
+
+    #[test]
+    fn test_encode_and_decode_body() {
+        let message = build_message(EncryptionMethod::None);
+        let body = message.body.unwrap();
+
+        let encoded_body = ShinkaiMessageHandler::encode_body(body.clone());
+        assert!(encoded_body.len() > 0);
+
+        let decoded_body = ShinkaiMessageHandler::decode_body(encoded_body).unwrap();
+
+        // Assert that the decoded body is the same as the original body
+        assert_eq!(decoded_body.content, body.content);
     }
 
     #[test]

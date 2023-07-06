@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use super::encryption::{decrypt_body_content, encrypt_body_if_needed};
+use super::encryption::{decrypt_message, encrypt_body_if_needed};
 use super::{
     encryption::{encryption_public_key_to_string, EncryptionMethod},
     shinkai_message_handler::ShinkaiMessageHandler,
@@ -18,7 +18,7 @@ pub struct ShinkaiMessageBuilder {
     message_schema_type: Option<MessageSchemaType>,
     internal_metadata: Option<InternalMetadata>,
     external_metadata: Option<ExternalMetadata>,
-    encryption: Option<String>,
+    encryption: String,
     my_encryption_secret_key: EncryptionStaticKey,
     my_encryption_public_key: EncryptionPublicKey,
     my_signature_secret_key: SignatureStaticKey,
@@ -39,7 +39,7 @@ impl ShinkaiMessageBuilder {
             message_schema_type: None,
             internal_metadata: None,
             external_metadata: None,
-            encryption: None,
+            encryption: EncryptionMethod::None.as_str().to_string(),
             my_encryption_secret_key,
             my_encryption_public_key,
             my_signature_public_key,
@@ -49,12 +49,12 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn encryption(mut self, encryption: EncryptionMethod) -> Self {
-        self.encryption = Some(encryption.as_str().to_string());
+        self.encryption = encryption.as_str().to_string();
         self
     }
 
     pub fn no_encryption(mut self) -> Self {
-        self.encryption = Some(EncryptionMethod::None.as_str().to_string());
+        self.encryption = EncryptionMethod::None.as_str().to_string();
         self
     }
 
@@ -71,7 +71,12 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn internal_metadata(mut self, sender_subidentity: String, recipient_subidentity: String, inbox: String) -> Self {
+    pub fn internal_metadata(
+        mut self,
+        sender_subidentity: String,
+        recipient_subidentity: String,
+        inbox: String,
+    ) -> Self {
         self.internal_metadata = Some(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,
@@ -113,27 +118,36 @@ impl ShinkaiMessageBuilder {
         if let Some(mut body) = self.body {
             body.internal_metadata = self.internal_metadata;
 
-            let encryption_method = EncryptionMethod::DiffieHellmanChaChaPoly1305
-                .as_str()
-                .to_string();
-
-            if self.encryption == Some(encryption_method) {
+            let encryption_method_none = EncryptionMethod::None.as_str().to_string();
+            let new_body = if self.encryption.as_str() != &encryption_method_none {
+                // Convert the body to bytes and encrypt the entire body
                 let encrypted_body = encrypt_body_if_needed(
-                    body.content.as_bytes(),
+                    &ShinkaiMessageHandler::encode_body(body.clone()),
                     &self.my_encryption_secret_key,
                     &self.receiver_public_key,
-                    self.encryption.as_deref(),
+                    self.encryption.as_str(),
                 )
-                .expect("Failed to encrypt body content");
-                body.content = encrypted_body;
-            }
+                .expect("Failed to encrypt body");
 
-            let mut external_metadata =
-                self.external_metadata.clone().ok_or("Missing external metadata")?;
+                // Convert the encrypted body to base58 and then to content of Body
+                Body {
+                    content: encrypted_body,
+                    internal_metadata: None,
+                }
+            } else {
+                println!("No encryption");
+                // If encryption method is None, just return body
+                body
+            };
+
+            let mut external_metadata = self
+                .external_metadata
+                .clone()
+                .ok_or("Missing external metadata")?;
 
             let unsigned_msg = ShinkaiMessage {
-                body: Some(body.clone()),
-                encryption: self.encryption.clone().unwrap_or_else(|| String::from("")),
+                body: Some(new_body.clone()),
+                encryption: self.encryption.clone(),
                 external_metadata: self.external_metadata,
             };
             let unsigned_msg_bytes = ShinkaiMessageHandler::encode_message(unsigned_msg);
@@ -142,8 +156,8 @@ impl ShinkaiMessageBuilder {
             external_metadata.signature = signature;
 
             let signed_msg = ShinkaiMessage {
-                body: Some(body.clone()),
-                encryption: self.encryption.clone().unwrap_or_else(|| String::from("")),
+                body: Some(new_body.clone()),
+                encryption: self.encryption.clone(),
                 external_metadata: Some(external_metadata),
             };
 
@@ -232,8 +246,11 @@ impl ShinkaiMessageBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::shinkai_message::{signatures::{unsafe_deterministic_signature_keypair, verify_signature}, encryption::unsafe_deterministic_encryption_keypair};
     use super::*;
+    use crate::shinkai_message::{
+        encryption::{decrypt_message, unsafe_deterministic_encryption_keypair},
+        signatures::{unsafe_deterministic_signature_keypair, verify_signature},
+    };
 
     #[test]
     fn test_builder_with_all_fields_no_encryption() {
@@ -253,37 +270,36 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let message_result = ShinkaiMessageBuilder::new(my_encryption_sk,my_identity_sk, node2_encryption_pk)
-            .body("body content".to_string())
-            .encryption(EncryptionMethod::None)
-            .message_schema_type("schema type".to_string(), fields)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string())
-            .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
-            .build();
+        let message_result =
+            ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
+                .body("body content".to_string())
+                .encryption(EncryptionMethod::None)
+                .message_schema_type("schema type".to_string(), fields)
+                .internal_metadata("".to_string(), "".to_string(), "".to_string())
+                .external_metadata_with_schedule(
+                    recipient.clone(),
+                    sender.clone(),
+                    scheduled_time.clone(),
+                )
+                .build();
 
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
         let message_clone = message.clone();
         let body = message.body.as_ref().unwrap();
         assert_eq!(body.content, "body content");
-        assert_eq!(message.encryption, EncryptionMethod::None.as_str().to_string());
+        assert_eq!(
+            message.encryption,
+            EncryptionMethod::None.as_str().to_string()
+        );
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
         let external_metadata = message.external_metadata.as_ref().unwrap();
-        assert_eq!(
-            external_metadata.sender,
-            sender
-        );
-        assert_eq!(
-            external_metadata.scheduled_time,
-            scheduled_time
-        );
-        assert_eq!(
-            external_metadata.recipient,
-            recipient
-        );
+        assert_eq!(external_metadata.sender, sender);
+        assert_eq!(external_metadata.scheduled_time, scheduled_time);
+        assert_eq!(external_metadata.recipient, recipient);
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
@@ -305,38 +321,45 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(),my_identity_sk, node2_encryption_pk)
-            .body("body content".to_string())
-            .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-            .message_schema_type("schema type".to_string(), fields)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string())
-            .external_metadata(recipient, sender.clone())
-            .build();
+        let message_result = ShinkaiMessageBuilder::new(
+            my_encryption_sk.clone(),
+            my_identity_sk,
+            node2_encryption_pk,
+        )
+        .body("body content".to_string())
+        .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .message_schema_type("schema type".to_string(), fields)
+        .internal_metadata("".to_string(), "".to_string(), "".to_string())
+        .external_metadata(recipient, sender.clone())
+        .build();
 
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
         let message_clone = message.clone();
-        let body = message.body.as_ref().unwrap();
-        assert_eq!(message.encryption, EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str().to_string());
+        // let body_content = message.body.as_ref().unwrap().content.clone();
+        assert_eq!(
+            message.encryption,
+            EncryptionMethod::DiffieHellmanChaChaPoly1305
+                .as_str()
+                .to_string()
+        );
 
-        let decrypted_content = decrypt_body_content(
-            &body.content.as_bytes(),
-            &my_encryption_sk,
-            &node2_encryption_pk,
-            Some(&message.encryption),
-        )
-        .expect("Failed to decrypt body content");
+        let decrypted_message =
+            decrypt_message(&message.clone(), &my_encryption_sk, &node2_encryption_pk)
+                .expect("Failed to decrypt body content");
+
+        let binding = decrypted_message.body.clone().unwrap();
+        let decrypted_content = binding.content.as_str();
+        println!("decrypted content: {}", decrypted_content);
         assert_eq!(decrypted_content, "body content");
 
-        let internal_metadata = body.internal_metadata.as_ref().unwrap();
+        let binding = decrypted_message.body.clone().unwrap();
+        let internal_metadata = binding.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
         let external_metadata = message.external_metadata.as_ref().unwrap();
-        assert_eq!(
-            external_metadata.sender,
-            sender
-        );
+        assert_eq!(external_metadata.sender, sender);
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
@@ -350,7 +373,9 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let message_result = ShinkaiMessageBuilder::new(my_encryption_sk,my_identity_sk, node2_encryption_pk).build();
+        let message_result =
+            ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
+                .build();
         assert!(message_result.is_err());
     }
 }

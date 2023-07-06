@@ -1,9 +1,17 @@
+use core::fmt;
+use std::error::Error;
+
+use bs58::decode;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
 use chacha20poly1305::ChaCha20Poly1305; // Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
+
+use crate::shinkai_message_proto::{Body, ShinkaiMessage};
+
+use super::shinkai_message_handler::ShinkaiMessageHandler;
 
 pub enum EncryptionMethod {
     DiffieHellmanChaChaPoly1305,
@@ -13,7 +21,7 @@ pub enum EncryptionMethod {
 impl EncryptionMethod {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::DiffieHellmanChaChaPoly1305 => "DiffieHellmanChaChaPoly1305",
+            Self::DiffieHellmanChaChaPoly1305 => "default",
             Self::None => "None",
         }
     }
@@ -110,12 +118,12 @@ pub fn encrypt_body_if_needed(
     message: &[u8],
     self_sk: &StaticSecret,
     destination_pk: &PublicKey,
-    encryption: Option<&str>,
+    encryption: &str,
 ) -> Option<String> {
-    match EncryptionMethod::from_str(encryption.unwrap_or("None")) {
+    match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&destination_pk);
-
+            
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
             hasher.update(shared_secret.as_bytes());
@@ -141,13 +149,39 @@ pub fn encrypt_body_if_needed(
     }
 }
 
-pub fn decrypt_body_content(
-    ciphertext: &[u8],
+#[derive(Debug)]
+pub struct DecryptionError {
+    pub details: String,
+}
+
+impl DecryptionError {
+    fn new(msg: &str) -> DecryptionError {
+        DecryptionError {
+            details: msg.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for DecryptionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.details)
+    }
+}
+
+impl Error for DecryptionError {
+    fn description(&self) -> &str {
+        &self.details
+    }
+}
+
+pub fn decrypt_message(
+    message: &ShinkaiMessage,
     self_sk: &StaticSecret,
     sender_pk: &PublicKey,
-    encryption: Option<&str>,
-) -> Option<String> {
-    match EncryptionMethod::from_str(encryption.unwrap_or("None")) {
+) -> Result<ShinkaiMessage, DecryptionError> {
+    let mut decrypted_message = message.clone();
+
+    match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
 
@@ -159,18 +193,26 @@ pub fn decrypt_body_content(
 
             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = bs58::decode(ciphertext).into_vec().expect("Failed to decode bs58");
+            let decoded = bs58::decode(&message.body.as_ref().unwrap().content)
+                .into_vec()
+                .map_err(|_| DecryptionError::new("Failed to decode bs58"))?;
             let (nonce, ciphertext) = decoded.split_at(12);
             let nonce = GenericArray::from_slice(nonce);
-
+            
             // Decrypt ciphertext
-            let plaintext = cipher
+            let plaintext_bytes = cipher
                 .decrypt(nonce, ciphertext)
-                .expect("decryption failure!");
+                .map_err(|_| DecryptionError::new("Decryption failure!"))?;
 
-            // Here we return the plaintext (encoded as a string for easier use)
-            Some(String::from_utf8(plaintext).expect("Failed to convert decrypted bytes to String"))
+            // Convert the decrypted bytes back into a Body
+            let decrypted_body =
+                ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec())
+                    .expect("Failed to decode decrypted body");
+
+            decrypted_message.body = Some(decrypted_body);
         }
-        EncryptionMethod::None => None,
+        EncryptionMethod::None => (),
     }
+
+    Ok(decrypted_message)
 }

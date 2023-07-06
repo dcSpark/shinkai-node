@@ -3,7 +3,7 @@ use crate::{
     db::ShinkaiMessageDB,
     network::Node,
     shinkai_message::{
-        encryption::{clone_static_secret_key, decrypt_body_content},
+        encryption::{clone_static_secret_key, decrypt_message},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, verify_signature},
@@ -11,9 +11,8 @@ use crate::{
     shinkai_message_proto::ShinkaiMessage,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use prost::encoding::message;
 use std::sync::Arc;
-use std::{io, net::SocketAddr, time::Duration};
+use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -108,8 +107,7 @@ pub async fn handle_ping(
 }
 
 pub async fn handle_default_encryption(
-    message_content: &str,
-    message_encryption: &str,
+    message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
     sender_profile_name: String,
@@ -120,15 +118,15 @@ pub async fn handle_default_encryption(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
 ) -> io::Result<()> {
-    let decrypted_content = decrypt_body_content(
-        message_content.as_bytes(),
+    let decrypted_message_result = decrypt_message(
+        &message.clone(),
         my_encryption_secret_key,
         &sender_encryption_pk,
-        Some(&message_encryption),
     );
 
-    match decrypted_content {
-        Some(_) => {
+    match decrypted_message_result {
+        Ok(decrypted_message) => {
+            let _ = decrypted_message.body.unwrap().content.as_str();
             println!(
                 "{} > Got message from {:?}. Sending ACK",
                 receiver_address, unsafe_sender_address
@@ -144,11 +142,10 @@ pub async fn handle_default_encryption(
                 &db_lock,
             )
             .await
-        }
-        None => {
+        },
+        Err(_) => {
             println!("Failed to decrypt message.");
-            // TODO: send error back
-            // TODO2: if pk is incorrect, remove from peers
+            // TODO: send error back?
             Ok(())
         }
     }
@@ -212,8 +209,7 @@ pub struct PublicKeyInfo {
 }
 
 pub async fn handle_based_on_message_content_and_encryption(
-    message_content: &str,
-    message_encryption: &str,
+    message: ShinkaiMessage,
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_address: SocketAddr,
     sender_profile_name: String,
@@ -224,6 +220,10 @@ pub async fn handle_based_on_message_content_and_encryption(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
 ) -> io::Result<()> {
+    let message_body = message.body.clone().unwrap();
+    let message_content = message_body.content.as_str();
+    let message_encryption = message.encryption.as_str();
+
     match (message_content, message_encryption) {
         ("Ping", _) => {
             handle_ping(
@@ -248,8 +248,7 @@ pub async fn handle_based_on_message_content_and_encryption(
         }
         (_, "default") => {
             handle_default_encryption(
-                message_content,
-                message_encryption,
+                message,
                 sender_encryption_pk,
                 sender_address,
                 sender_profile_name,
