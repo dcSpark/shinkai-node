@@ -4,13 +4,13 @@ use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::{ShinkaiMessageDB, ShinkaiMessageDBError};
 use crate::network::external_identities::{self, external_identity_to_identity_pk};
@@ -20,7 +20,10 @@ use crate::shinkai_message::encryption::{
 };
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::clone_signature_secret_key;
+use crate::shinkai_message::signatures::{
+    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
+    verify_signature,
+};
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
@@ -241,7 +244,14 @@ impl Node {
                         }
                         Ok(n) => {
                             // println!("{} > TCP: Received message.", addr);
-                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                            println!(
+                                "{} > TCP: Received from {:?} : {} bytes.",
+                                addr,
+                                socket.peer_addr(),
+                                n
+                            );
+                            let destination_socket =
+                                socket.peer_addr().expect("Failed to get peer address");
                             let _ = Node::handle_message(
                                 addr,
                                 destination_socket.clone(),
@@ -284,9 +294,10 @@ impl Node {
 
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
         println!(
-            "{} > Connecting to {} with profile_name: {:?}",
-            self.listen_address, peer_address, profile_name
+            "{} {} > Connecting to {} with profile_name: {:?}",
+            self.node_profile_name, self.listen_address, peer_address, profile_name
         );
+
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
         self.peers
             .insert((peer_address, profile_name.clone()), Utc::now());
@@ -421,16 +432,16 @@ impl Node {
 
     async fn handle_message(
         receiver_address: SocketAddr,
-        sender_address: SocketAddr,
+        unsafe_sender_address: SocketAddr,
         bytes: &[u8],
-        node_profile_name: String,
+        my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
     ) -> io::Result<()> {
         println!(
             "{} > Got message from {:?}",
-            receiver_address, sender_address
+            receiver_address, unsafe_sender_address
         );
         // println!("handle> Encoded Message: {:?}", bytes.to_vec());
 
@@ -442,20 +453,48 @@ impl Node {
                 return Ok(());
             }
         };
+        println!("{} > Decoded Message: {:?}", receiver_address, message);
 
+        // Verify the signature
+        let sender_profile_name_string = message.external_metadata.clone().unwrap().sender;
+        let sender_address = external_identities::external_identity_to_identity_pk(
+            sender_profile_name_string.clone(),
+        ).unwrap().addr;
+        let sender_signature_pk = external_identities::external_identity_to_identity_pk(
+            sender_profile_name_string.clone(),
+        )
+        .unwrap()
+        .signature_public_key;
+        let sender_encryption_pk = external_identities::external_identity_to_identity_pk(
+            sender_profile_name_string.clone(),
+        )
+        .unwrap()
+        .encryption_public_key;
+
+        match verify_signature(&sender_signature_pk.clone(), &message.clone()) {
+            Ok(is_valid) => {
+                if !is_valid {
+                    println!(
+                        "{} > Failed to validate message's signature",
+                        receiver_address
+                    );
+                    return Ok(());
+                }
+            }
+            Err(_) => {
+                println!("{} > Failed to verify signature.", receiver_address);
+                return Ok(());
+            }
+        }
+
+        // Decode the message
         let message_content_string = message.body.clone().unwrap().content;
         let message_content = message_content_string.as_str();
         let message_encryption = message.encryption.as_str();
         // println!("Message content: {}", message_content);
         // println!("Encryption: {}", message_encryption);
 
-        let sender_pk_string = message.external_metadata.clone().unwrap().sender;
-        let sender_pk = string_to_encryption_public_key(sender_pk_string.as_str()).unwrap();
-        println!(
-            "{} > Sender public key: {:?}",
-            receiver_address, sender_pk_string
-        );
-
+        // Save the message to the database
         {
             let db = maybe_db.lock().await;
             db.insert_message(&message)
@@ -466,34 +505,34 @@ impl Node {
         // if !self.peers.contains_key(&(address, sender_pk)) {
         //     self.peers.insert((address, sender_pk), Utc::now());
         // }
+
         match (message_content, message_encryption) {
             ("Ping", _) => {
-                println!("{} > Got ping from {:?}", receiver_address, sender_address);
+                println!(
+                    "{} > Got ping from {:?}",
+                    receiver_address, unsafe_sender_address
+                );
 
-                let sender = node_profile_name.clone();
-                let receiver_profile =
-                    &external_identities::addr_to_external_profile_data(sender_address.clone())[0];
-                let receiver = receiver_profile.node_identity_name.to_string();
-                let receiver_public_key = receiver_profile.encryption_public_key;
-
+                let receiver_profile_name = sender_profile_name_string;
+                let receiver_public_key = sender_encryption_pk;
                 let db_lock = maybe_db.lock().await;
                 Node::ping_pong(
-                    (
-                        sender_address.clone(),
-                        receiver_profile.node_identity_name.clone(),
-                    ),
+                    (sender_address.clone(), receiver_profile_name.clone()),
                     PingPong::Pong,
                     clone_static_secret_key(&my_encryption_secret_key),
                     clone_signature_secret_key(&my_signature_secret_key),
                     receiver_public_key,
-                    sender,
-                    receiver,
+                    my_node_profile_name,
+                    receiver_profile_name,
                     &db_lock,
                 )
                 .await?;
             }
             ("ACK", _) => {
-                println!("{} > ACK from {:?}", receiver_address, sender_address);
+                println!(
+                    "{} > ACK from {:?}",
+                    receiver_address, unsafe_sender_address
+                );
             }
             (_, "default") => {
                 // TODO: check for onion encryption
@@ -501,7 +540,7 @@ impl Node {
                 let decrypted_content = decrypt_body_content(
                     message_content.as_bytes(),
                     &my_encryption_secret_key.clone(),
-                    &sender_pk,
+                    &sender_encryption_pk,
                     Some(message_encryption),
                 );
 
@@ -509,27 +548,20 @@ impl Node {
                     Some(_) => {
                         println!(
                             "{} > Got message from {:?}. Sending ACK",
-                            receiver_address, sender_address
+                            receiver_address, unsafe_sender_address
                         );
 
-                        let sender = node_profile_name.clone();
-                        let receiver_profile = &external_identities::addr_to_external_profile_data(
-                            sender_address.clone(),
-                        )[0];
-                        let receiver = receiver_profile.node_identity_name.to_string();
-                        let receiver_public_key = receiver_profile.encryption_public_key;
-
+                        let sender = my_node_profile_name.clone();
+                        let receiver_profile_name = sender_profile_name_string;
+                        let receiver_public_key = sender_encryption_pk;
                         let db_lock = maybe_db.lock().await;
                         Node::send_ack(
-                            (
-                                sender_address.clone(),
-                                receiver_profile.node_identity_name.clone(),
-                            ),
+                            (sender_address.clone(), receiver_profile_name.clone()),
                             clone_static_secret_key(&my_encryption_secret_key),
                             clone_signature_secret_key(&my_signature_secret_key),
                             receiver_public_key,
                             sender,
-                            receiver,
+                            receiver_profile_name,
                             &db_lock,
                         )
                         .await?;
@@ -544,25 +576,23 @@ impl Node {
             (_, _) => {
                 println!(
                     "{} > Got message from {:?}. Sending ACK",
-                    receiver_address, sender_address
+                    receiver_address, unsafe_sender_address
                 );
-                let sender = node_profile_name.clone();
-                let receiver_profile =
-                    &external_identities::addr_to_external_profile_data(sender_address.clone())[0];
-                let receiver = receiver_profile.node_identity_name.to_string();
-                let receiver_public_key = receiver_profile.encryption_public_key;
-
+                let sender = my_node_profile_name.clone();
+                let receiver_profile_name = sender_profile_name_string;
+                let receiver_public_key = sender_encryption_pk;
                 let db_lock = maybe_db.lock().await;
+
                 Node::send_ack(
                     (
                         sender_address.clone(),
-                        receiver_profile.node_identity_name.clone(),
+                        receiver_profile_name.clone(),
                     ),
                     clone_static_secret_key(&my_encryption_secret_key),
                     clone_signature_secret_key(&my_signature_secret_key),
                     receiver_public_key,
                     sender,
-                    receiver,
+                    receiver_profile_name,
                     &db_lock,
                 )
                 .await?;

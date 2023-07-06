@@ -7,7 +7,7 @@ So, you would indeed need to use a different crate (such as ed25519_dalek) to cr
 
  */
 
-use ed25519_dalek::{Keypair, Signature, Signer, Verifier, SecretKey, PublicKey};
+use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
 use sha2::{Digest, Sha256};
 
 use crate::shinkai_message_proto::ShinkaiMessage;
@@ -83,7 +83,8 @@ pub fn sign_message(secret_key: &SecretKey, message: &[u8]) -> String {
     hasher.update(message);
     let message_hash = hasher.finalize();
     let public_key = PublicKey::from(secret_key);
-    let secret_key_clone = SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
+    let secret_key_clone =
+        SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
 
     let keypair = ed25519_dalek::Keypair {
         public: public_key,
@@ -91,15 +92,23 @@ pub fn sign_message(secret_key: &SecretKey, message: &[u8]) -> String {
     };
 
     let signature = keypair.sign(&message_hash);
-    
     bs58::encode(signature.to_bytes()).into_string()
 }
 
 pub fn verify_signature(
     public_key: &ed25519_dalek::PublicKey,
     message: &ShinkaiMessage,
-    base58_signature: &str,
 ) -> Result<bool, Box<dyn std::error::Error>> {
+    let base58_signature = match &message.external_metadata {
+        Some(metadata) => &metadata.signature,
+        None => {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "External metadata or signature missing in message",
+            )))
+        }
+    };
+
     // Decode the base58 signature to bytes
     let signature_bytes = bs58::decode(base58_signature).into_vec()?;
 

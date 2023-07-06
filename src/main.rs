@@ -11,9 +11,9 @@ use tokio::sync::Mutex;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
-    encryption_secret_key_to_string, hash_encryption_public_key, string_to_encryption_static_key,
+    encryption_secret_key_to_string, hash_encryption_public_key, string_to_encryption_static_key, encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
-use crate::shinkai_message::signatures::{string_to_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, clone_signature_secret_key};
+use crate::shinkai_message::signatures::{string_to_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, clone_signature_secret_key, unsafe_deterministic_signature_keypair};
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_secret_key_to_string};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -113,8 +113,12 @@ fn main() {
     );
     // Log the address, port, and public_key
     println!(
-        "Starting node with address: {}, port: {}, secret_key {}, public_key: {} and db path: {}",
-        ip, port, identity_secret_key_string, identity_public_key_string, db_path
+        "Starting node with address: {}, port: {}, db path: {}",
+        ip, port, db_path
+    );
+    println!(
+        "identity sk: {} pk: {} encryption sk: {} pk: {}",
+        identity_secret_key_string, identity_public_key_string, encryption_secret_key_to_string(encryption_secret_key.clone()), encryption_public_key_to_string(encryption_public_key.clone())
     );
 
     let (node_commands_sender, node_commands_receiver): (

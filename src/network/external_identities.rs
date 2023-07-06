@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 
 use crate::shinkai_message::{signatures::{string_to_signature_public_key, signature_public_key_to_string}, encryption::string_to_encryption_public_key};
 
+#[derive(Debug)]
 pub struct ExternalProfileData {
     pub node_identity_name: String,
     pub addr: SocketAddr,
@@ -18,20 +19,20 @@ lazy_static! {
         m.insert("@@node1.shinkai".to_string(), ExternalProfileData {
             node_identity_name: "@@node1.shinkai".to_string(),
             addr: SocketAddr::from(([127, 0, 0, 1], 8080)),
-            signature_public_key: string_to_signature_public_key("9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ").expect("Failed to parse public key"),
-            encryption_public_key: string_to_encryption_public_key("BRdJYCYS8L6upTXuJ9JehZqyS88Dzy7Uh7gpS9tybYpM").expect("Failed to parse public key"),
+            signature_public_key: string_to_signature_public_key("9d7nvacMcG9kXpSMidcTRkKiAVtmkz8PAjSRXVA7HhwP").expect("Failed to parse public key"),
+            encryption_public_key: string_to_encryption_public_key("9BUoYQYq7K38mkk61q8aMH9kD9fKSVL1Fib7FbH6nUkQ").expect("Failed to parse public key"),
         });
         m.insert("@@node2.shinkai".to_string(), ExternalProfileData {
             node_identity_name: "@@node2.shinkai".to_string(),
             addr: SocketAddr::from(([127, 0, 0, 1], 8081)),
-            signature_public_key: string_to_signature_public_key("8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV").expect("Failed to parse public key"),
-            encryption_public_key: string_to_encryption_public_key("6i7DLnCxLXSTU4ZA58eyFXtJanAo52MjyaXHaje7Hf5E").expect("Failed to parse public key"),
+            signature_public_key: string_to_signature_public_key("9NMC5fPm574jhjjdBe5oHfZa4DfAwrY8W8iJAjBafF82").expect("Failed to parse public key"),
+            encryption_public_key: string_to_encryption_public_key("8NT3CZR16VApT1B5zhinbAdqAvt8QkqMXEiojeFaGdgV").expect("Failed to parse public key"),
         });
         m.insert("@@node3.shinkai".to_string(), ExternalProfileData {
             node_identity_name: "@@node2.shinkai".to_string(),
             addr: SocketAddr::from(([127, 0, 0, 1], 8082)),
-            signature_public_key: string_to_signature_public_key("4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG").expect("Failed to parse public key"),
-            encryption_public_key: string_to_encryption_public_key("CvNHAWA4Kv7nuGnfFai6sNvAjLUPnQX3AiaM4VFXh7vU").expect("Failed to parse public key"),
+            signature_public_key: string_to_signature_public_key("7iq1nvNfacJY3TGtLWJ7s2Weq9mV3rKWHtz6J3qVQyMf").expect("Failed to parse public key"),
+            encryption_public_key: string_to_encryption_public_key("4PwpCXwBuZKhyBAsf2CuZwapotvXiHSq94kWcLLSxtcG").expect("Failed to parse public key"),
         });
         m
     };

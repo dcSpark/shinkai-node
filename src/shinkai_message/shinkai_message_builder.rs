@@ -179,7 +179,7 @@ impl ShinkaiMessageBuilder {
         )
         .body("ACK".to_string())
         .no_encryption()
-        .external_metadata(sender, receiver)
+        .external_metadata(receiver, sender)
         .build()
     }
 
@@ -201,7 +201,7 @@ impl ShinkaiMessageBuilder {
         )
         .body(message)
         .no_encryption()
-        .external_metadata(sender, receiver)
+        .external_metadata(receiver, sender)
         .build()
     }
 
@@ -219,7 +219,7 @@ impl ShinkaiMessageBuilder {
         )
         .body("terminate".to_string())
         .no_encryption()
-        .external_metadata(sender, receiver)
+        .external_metadata(receiver, sender)
         .build()
     }
 
@@ -246,9 +246,6 @@ impl ShinkaiMessageBuilder {
 mod tests {
     use crate::shinkai_message::{signatures::{unsafe_deterministic_signature_keypair, verify_signature}, encryption::unsafe_deterministic_encryption_keypair};
     use super::*;
-    #[allow(deprecated)]
-    use rand_os::OsRng;
-    use x25519_dalek::StaticSecret; // Provides a random number generator that implements RngCore and CryptoRng
 
     #[test]
     fn test_builder_with_all_fields_no_encryption() {
@@ -298,7 +295,7 @@ mod tests {
             external_metadata.recipient,
             recipient
         );
-        assert!(verify_signature(&my_identity_pk, &message_clone, &external_metadata.signature).unwrap())
+        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
     #[test]
@@ -350,7 +347,7 @@ mod tests {
             external_metadata.sender,
             sender
         );
-        assert!(verify_signature(&my_identity_pk, &message_clone, &external_metadata.signature).unwrap())
+        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
     #[test]

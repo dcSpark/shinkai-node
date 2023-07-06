@@ -178,7 +178,6 @@ mod tests {
         assert!(verify_signature(
             &my_identity_pk,
             &message,
-            &external_metadata.signature
         )
         .unwrap())
     }
@@ -268,7 +267,6 @@ mod tests {
         assert!(verify_signature(
             &my_identity_pk,
             &message,
-            &external_metadata.signature
         )
         .unwrap()) 
     }
