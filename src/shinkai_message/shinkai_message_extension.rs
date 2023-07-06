@@ -1,8 +1,6 @@
 use crate::shinkai_message_proto;
-use prost::Message;
 use serde::{Deserialize, Serialize};
 use shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage};
-use std::borrow::Cow;
 
 #[derive(Serialize, Deserialize)]
 pub struct FieldWrapper {
@@ -14,19 +12,6 @@ pub struct FieldWrapper {
 pub struct MessageSchemaTypeWrapper {
     type_name: String,
     fields: Vec<FieldWrapper>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct TopicWrapper {
-    topic_id: String,
-    channel_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct InternalMetadataWrapper {
-    message_schema_type: MessageSchemaTypeWrapper,
-    topic: TopicWrapper,
-    content: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -50,6 +35,14 @@ pub struct ShinkaiMessageWrapper {
     encryption: String,
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct InternalMetadataWrapper {
+    sender_subidentity: String,
+    recipient_subidentity: String,
+    message_schema_type: MessageSchemaTypeWrapper,
+    inbox: String,
+}
+
 impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
     fn from(msg: &shinkai_message_proto::ShinkaiMessage) -> Self {
         ShinkaiMessageWrapper {
@@ -59,6 +52,16 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
                     .as_ref()
                     .map_or(String::from(""), |b| b.content.clone()),
                 internal_metadata: InternalMetadataWrapper {
+                    sender_subidentity: msg
+                        .body
+                        .as_ref()
+                        .and_then(|b| b.internal_metadata.as_ref())
+                        .map_or(String::from(""), |im| im.sender_subidentity.clone()),
+                    recipient_subidentity: msg
+                        .body
+                        .as_ref()
+                        .and_then(|b| b.internal_metadata.as_ref())
+                        .map_or(String::from(""), |im| im.recipient_subidentity.clone()),
                     message_schema_type: MessageSchemaTypeWrapper {
                         type_name: msg
                             .body
@@ -81,25 +84,11 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
                                     .collect::<Vec<_>>()
                             }),
                     },
-                    topic: TopicWrapper {
-                        topic_id: msg
-                            .body
-                            .as_ref()
-                            .and_then(|b| b.internal_metadata.as_ref())
-                            .and_then(|im| im.topic.as_ref())
-                            .map_or(String::from(""), |t| t.topic_id.clone()),
-                        channel_id: msg
-                            .body
-                            .as_ref()
-                            .and_then(|b| b.internal_metadata.as_ref())
-                            .and_then(|im| im.topic.as_ref())
-                            .map_or(String::from(""), |t| t.channel_id.clone()),
-                    },
-                    content: msg
+                    inbox: msg
                         .body
                         .as_ref()
                         .and_then(|b| b.internal_metadata.as_ref())
-                        .map_or(String::from(""), |im| im.content.clone()),
+                        .map_or(String::from(""), |im| im.inbox.clone()),
                 },
             },
             external_metadata: ExternalMetadataWrapper {
@@ -131,6 +120,8 @@ impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
             body: Some(Body {
                 content: wrapper.body.content,
                 internal_metadata: Some(shinkai_message_proto::InternalMetadata {
+                    sender_subidentity: wrapper.body.internal_metadata.sender_subidentity,
+                    recipient_subidentity: wrapper.body.internal_metadata.recipient_subidentity,
                     message_schema_type: Some(shinkai_message_proto::MessageSchemaType {
                         type_name: wrapper.body.internal_metadata.message_schema_type.type_name,
                         fields: wrapper
@@ -145,11 +136,7 @@ impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
                             })
                             .collect(),
                     }),
-                    topic: Some(shinkai_message_proto::Topic {
-                        topic_id: wrapper.body.internal_metadata.topic.topic_id,
-                        channel_id: wrapper.body.internal_metadata.topic.channel_id,
-                    }),
-                    content: wrapper.body.internal_metadata.content,
+                    inbox: wrapper.body.internal_metadata.inbox,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {

@@ -11,15 +11,11 @@ message MessageSchemaType {
     repeated Field fields = 2;
 }
 
-message Topic {
-    string topic_id = 1;
-    string channel_id = 2;
-}
-
 message InternalMetadata {
-    MessageSchemaType message_schema_type = 1;
-    Topic topic = 2;
-    string content = 3;
+    string sender_subidentity = 1;
+    string recipient_subidentity = 2;
+    MessageSchemaType message_schema_type = 3;
+    string inbox = 4;
 }
 
 message ExternalMetadata {

@@ -219,7 +219,6 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
-            let signature_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
             let db = Arc::clone(&self.db);
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
             let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);

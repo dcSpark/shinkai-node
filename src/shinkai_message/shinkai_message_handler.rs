@@ -73,8 +73,7 @@ mod tests {
                 .body("Hello World".to_string())
                 .encryption(encryption)
                 .message_schema_type("MyType".to_string(), fields)
-                .topic("my_topic".to_string(), "my_channel".to_string())
-                .internal_metadata_content("InternalContent".to_string())
+                .internal_metadata("".to_string(), "".to_string(), "".to_string())
                 .external_metadata_with_schedule(
                     recipient,
                     sender,
@@ -110,7 +109,9 @@ mod tests {
         assert_eq!(body.content, "Hello World");
 
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
-        assert_eq!(internal_metadata.content, "InternalContent");
+        assert_eq!(internal_metadata.sender_subidentity, "");
+        assert_eq!(internal_metadata.recipient_subidentity, "");
+        assert_eq!(internal_metadata.inbox, "");
         assert_eq!(
             internal_metadata
                 .message_schema_type
@@ -154,14 +155,6 @@ mod tests {
                 .fields[1]
                 .field_type,
             "type2"
-        );
-        assert_eq!(
-            internal_metadata.topic.as_ref().unwrap().topic_id,
-            "my_topic"
-        );
-        assert_eq!(
-            internal_metadata.topic.as_ref().unwrap().channel_id,
-            "my_channel"
         );
 
         assert_eq!(decoded_message.encryption, "None");
@@ -193,7 +186,9 @@ mod tests {
         assert_eq!(body.content, "Hello World");
 
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
-        assert_eq!(internal_metadata.content, "InternalContent");
+        assert_eq!(internal_metadata.sender_subidentity, "");
+        assert_eq!(internal_metadata.recipient_subidentity, "");
+        assert_eq!(internal_metadata.inbox, "");
         assert_eq!(
             internal_metadata
                 .message_schema_type
@@ -237,14 +232,6 @@ mod tests {
                 .fields[1]
                 .field_type,
             "type2"
-        );
-        assert_eq!(
-            internal_metadata.topic.as_ref().unwrap().topic_id,
-            "my_topic"
-        );
-        assert_eq!(
-            internal_metadata.topic.as_ref().unwrap().channel_id,
-            "my_channel"
         );
 
         assert_eq!(decoded_message.encryption, "None");

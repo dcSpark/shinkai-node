@@ -6,7 +6,7 @@ use super::{
     signatures::sign_message,
 };
 use crate::shinkai_message_proto::{
-    Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage, Topic,
+    Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -16,8 +16,7 @@ pub type ProfileName = String;
 pub struct ShinkaiMessageBuilder {
     body: Option<Body>,
     message_schema_type: Option<MessageSchemaType>,
-    topic: Option<Topic>,
-    internal_metadata_content: Option<String>,
+    internal_metadata: Option<InternalMetadata>,
     external_metadata: Option<ExternalMetadata>,
     encryption: Option<String>,
     my_encryption_secret_key: EncryptionStaticKey,
@@ -38,8 +37,7 @@ impl ShinkaiMessageBuilder {
         Self {
             body: None,
             message_schema_type: None,
-            topic: None,
-            internal_metadata_content: None,
+            internal_metadata: None,
             external_metadata: None,
             encryption: None,
             my_encryption_secret_key,
@@ -73,16 +71,13 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn topic(mut self, topic_id: String, channel_id: String) -> Self {
-        self.topic = Some(Topic {
-            topic_id,
-            channel_id,
+    pub fn internal_metadata(mut self, sender_subidentity: String, recipient_subidentity: String, inbox: String) -> Self {
+        self.internal_metadata = Some(InternalMetadata {
+            sender_subidentity,
+            recipient_subidentity,
+            message_schema_type: self.message_schema_type.take(),
+            inbox,
         });
-        self
-    }
-
-    pub fn internal_metadata_content(mut self, content: String) -> Self {
-        self.internal_metadata_content = Some(content);
         self
     }
 
@@ -116,14 +111,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn build(self) -> Result<ShinkaiMessage, &'static str> {
         if let Some(mut body) = self.body {
-            let internal_metadata = InternalMetadata {
-                message_schema_type: self.message_schema_type,
-                topic: self.topic,
-                content: self
-                    .internal_metadata_content
-                    .unwrap_or_else(|| String::from("")),
-            };
-            body.internal_metadata = Some(internal_metadata);
+            body.internal_metadata = self.internal_metadata;
 
             let encryption_method = EncryptionMethod::DiffieHellmanChaChaPoly1305
                 .as_str()
@@ -269,8 +257,7 @@ mod tests {
             .body("body content".to_string())
             .encryption(EncryptionMethod::None)
             .message_schema_type("schema type".to_string(), fields)
-            .topic("topic_id".to_string(), "channel_id".to_string())
-            .internal_metadata_content("internal metadata content".to_string())
+            .internal_metadata("".to_string(), "".to_string(), "".to_string())
             .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
             .build();
 
@@ -281,7 +268,9 @@ mod tests {
         assert_eq!(body.content, "body content");
         assert_eq!(message.encryption, EncryptionMethod::None.as_str().to_string());
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
-        assert_eq!(internal_metadata.content, "internal metadata content");
+        assert_eq!(internal_metadata.sender_subidentity, "");
+        assert_eq!(internal_metadata.recipient_subidentity, "");
+        assert_eq!(internal_metadata.inbox, "");
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(
             external_metadata.sender,
@@ -320,8 +309,7 @@ mod tests {
             .body("body content".to_string())
             .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .message_schema_type("schema type".to_string(), fields)
-            .topic("topic_id".to_string(), "channel_id".to_string())
-            .internal_metadata_content("internal metadata content".to_string())
+            .internal_metadata("".to_string(), "".to_string(), "".to_string())
             .external_metadata(recipient, sender.clone())
             .build();
 
@@ -341,7 +329,9 @@ mod tests {
         assert_eq!(decrypted_content, "body content");
 
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
-        assert_eq!(internal_metadata.content, "internal metadata content");
+        assert_eq!(internal_metadata.sender_subidentity, "");
+        assert_eq!(internal_metadata.recipient_subidentity, "");
+        assert_eq!(internal_metadata.inbox, "");
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(
             external_metadata.sender,
