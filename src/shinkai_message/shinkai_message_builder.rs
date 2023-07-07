@@ -3,11 +3,11 @@ use super::encryption::{decrypt_message, encrypt_body_if_needed};
 use super::{
     encryption::{encryption_public_key_to_string, EncryptionMethod},
     shinkai_message_handler::ShinkaiMessageHandler,
-    signatures::sign_message,
+    signatures::{sign_message, signature_public_key_to_string},
 };
-use crate::shinkai_message_proto::{
+use crate::{shinkai_message_proto::{
     Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage,
-};
+}, network::subidentities::RegistrationCode};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -221,6 +221,37 @@ impl ShinkaiMessageBuilder {
         )
         .body("terminate".to_string())
         .no_encryption()
+        .external_metadata(receiver, sender)
+        .build()
+    }
+
+    pub fn code_registration(
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        code: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+        identity_signature_pk: SignaturePublicKey,
+        identity_encryption_pk: EncryptionPublicKey,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let registration_code = RegistrationCode {
+            code,
+            profile_name: sender.clone(),
+            identity_pk: signature_public_key_to_string(identity_signature_pk),
+            encryption_pk: encryption_public_key_to_string(identity_encryption_pk),
+        };
+
+        let body = serde_json::to_string(&registration_code)
+            .map_err(|_| "Failed to serialize registration code to JSON")?;
+
+        ShinkaiMessageBuilder::new(
+            my_encryption_secret_key,
+            my_signature_secret_key,
+            receiver_public_key,
+        )
+        .body(body)
+        .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .external_metadata(receiver, sender)
         .build()
     }

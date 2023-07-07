@@ -1,4 +1,4 @@
-use crate::shinkai_message::encryption::{encryption_public_key_to_string};
+use crate::shinkai_message::encryption::encryption_public_key_to_string;
 use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::signature_public_key_to_string;
@@ -122,10 +122,16 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                         .await
                         .unwrap();
                     let external_profile_data = res_receiver.recv().await.unwrap();
-                    Ok::<_, warp::Rejection>(warp::reply::json(&IdentityNameToExternalProfileDataResponse {
-                        signature_public_key: signature_public_key_to_string(external_profile_data.signature_public_key),
-                        encryption_public_key: encryption_public_key_to_string(external_profile_data.encryption_public_key),
-                    }))
+                    Ok::<_, warp::Rejection>(warp::reply::json(
+                        &IdentityNameToExternalProfileDataResponse {
+                            signature_public_key: signature_public_key_to_string(
+                                external_profile_data.signature_public_key,
+                            ),
+                            encryption_public_key: encryption_public_key_to_string(
+                                external_profile_data.encryption_public_key,
+                            ),
+                        },
+                    ))
                 }
             })
     };
@@ -143,12 +149,15 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                         .send(NodeCommand::GetPublicKeys(res_sender))
                         .await
                         .map_err(|_| warp::reject())?;
-                    let (signature_public_key, encryption_public_key) = res_receiver.recv().await.map_err(|_| warp::reject())?;
-                    let signature_public_key_string = signature_public_key_to_string(signature_public_key.clone());
-                    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key.clone());
+                    let (signature_public_key, encryption_public_key) =
+                        res_receiver.recv().await.map_err(|_| warp::reject())?;
+                    let signature_public_key_string =
+                        signature_public_key_to_string(signature_public_key.clone());
+                    let encryption_public_key_string =
+                        encryption_public_key_to_string(encryption_public_key.clone());
                     Ok::<_, warp::Rejection>(warp::reply::json(&GetPublicKeysResponse {
                         signature_public_key: signature_public_key_string,
-                        encryption_public_key: encryption_public_key_string, 
+                        encryption_public_key: encryption_public_key_string,
                     }))
                 }
             })
@@ -219,7 +228,8 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                         .await
                         .map_err(|_| warp::reject())?;
                     let code = res_receiver.recv().await.map_err(|_| warp::reject())?;
-                    Ok::<_, warp::Rejection>(warp::reply::json(&code))
+                    let response = serde_json::json!({ "code": code });
+                    Ok::<_, warp::Rejection>(warp::reply::json(&response))
                 }
             })
     };

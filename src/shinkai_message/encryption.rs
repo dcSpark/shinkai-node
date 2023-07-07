@@ -67,6 +67,10 @@ pub fn encryption_public_key_to_string(public_key: PublicKey) -> String {
     bs58::encode(&bytes).into_string()
 }
 
+pub fn encryption_public_key_to_string_ref(public_key: &PublicKey) -> String {
+    encryption_public_key_to_string(public_key.clone())
+}
+
 pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
     println!("encoded_key: {}", encoded_key);
     match bs58::decode(encoded_key).into_vec() {

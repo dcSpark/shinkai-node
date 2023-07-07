@@ -1,4 +1,5 @@
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use serde::Serialize;
 use std::{net::SocketAddr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -10,15 +11,23 @@ use crate::db::{ShinkaiMessageDB, ShinkaiMessageDBError};
 pub struct SubIdentity {
     pub name: String,
     pub addr: Option<SocketAddr>,
-    pub encryption_public_key: EncryptionPublicKey,
-    pub signature_public_key: SignaturePublicKey,
+    pub encryption_public_key: Option<EncryptionPublicKey>,
+    pub signature_public_key: Option<SignaturePublicKey>,
+}
+
+#[derive(Serialize)]
+pub struct RegistrationCode {
+    pub code: String,
+    pub profile_name: String,
+    pub identity_pk: String,
+    pub encryption_pk: String,
 }
 
 impl SubIdentity {
     pub fn new(
         name: String,
-        encryption_public_key: EncryptionPublicKey,
-        signature_public_key: SignaturePublicKey,
+        encryption_public_key: Option<EncryptionPublicKey>,
+        signature_public_key: Option<SignaturePublicKey>,
     ) -> Self {
         Self {
             name,
@@ -40,7 +49,7 @@ impl SubIdentityManager {
             let db = db.lock().await;
             let identities_tuple_vec = db.load_all_sub_identities()?;
             identities_tuple_vec.into_iter().map(|(name, encryption_public_key, signature_public_key)| {
-                SubIdentity::new(name, encryption_public_key, signature_public_key)
+                SubIdentity::new(name, Some(encryption_public_key), Some(signature_public_key))
             }).collect::<Vec<SubIdentity>>()
         };
         Ok(Self { identities, db })
@@ -63,7 +72,7 @@ impl SubIdentityManager {
     pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&SubIdentity> {
         self.identities
             .iter()
-            .find(|identity| &identity.signature_public_key == key)
+            .find(|identity| identity.signature_public_key.as_ref() == Some(key))
     }
 
     pub fn update_socket_addr(

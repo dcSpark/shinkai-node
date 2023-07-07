@@ -41,7 +41,8 @@ fn main() {
     // Initialization
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
-    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
+    let global_identity_name =
+        env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
 
     // Create Tokio runtime
     let mut rt = Runtime::new().unwrap();
@@ -171,7 +172,15 @@ fn main() {
         )
         .build();
 
-        println!("Message's signature: {}", message.clone().unwrap().external_metadata.unwrap().signature);
+        println!(
+            "Message's signature: {}",
+            message
+                .clone()
+                .unwrap()
+                .external_metadata
+                .unwrap()
+                .signature
+        );
 
         // Parse the message to JSON and print to stdout
         let message_wrapper = ShinkaiMessageWrapper::from(&message.unwrap());
@@ -186,29 +195,6 @@ fn main() {
 
         return;
     }
-
-    // let node1_identity_name = "@@node1.shinkai";
-    // let node2_identity_name = "@@node2.shinkai";
-
-    // let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    // let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-
-    // let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    // let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
-
-    // let (node3_identity_sk, node3_identity_pk) = unsafe_deterministic_signature_keypair(2);
-    // let (node3_encryption_sk, node3_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
-
-    // println!(
-    //     "node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
-    //     signature_secret_key_to_string(node1_identity_sk),
-    //     signature_public_key_to_string(node1_identity_pk),
-    //     encryption_secret_key_to_string(node1_encryption_sk),
-    //     encryption_public_key_to_string(node1_encryption_pk)
-    // );
-
-    // println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node2_identity_sk), signature_public_key_to_string(node2_identity_pk), encryption_secret_key_to_string(node2_encryption_sk), encryption_public_key_to_string(node2_encryption_pk));
-    // println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node3_identity_sk), signature_public_key_to_string(node3_identity_pk), encryption_secret_key_to_string(node3_encryption_sk), encryption_public_key_to_string(node3_encryption_pk));
 
     let (node_commands_sender, node_commands_receiver): (
         Sender<NodeCommand>,
@@ -259,4 +245,39 @@ fn main() {
 
         let _ = tokio::try_join!(api_server, node_task);
     });
+}
+
+fn print_generated_keys() {
+    let node1_identity_name = "@@node1.shinkai";
+    let node2_identity_name = "@@node2.shinkai";
+
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+    let (node3_identity_sk, node3_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (node3_encryption_sk, node3_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+
+    let (sub1_identity_sk, sub1_identity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (sub1_encryption_sk, sub1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+    println!(
+        "node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
+        signature_secret_key_to_string(node1_identity_sk),
+        signature_public_key_to_string(node1_identity_pk),
+        encryption_secret_key_to_string(node1_encryption_sk),
+        encryption_public_key_to_string(node1_encryption_pk)
+    );
+
+    println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node2_identity_sk), signature_public_key_to_string(node2_identity_pk), encryption_secret_key_to_string(node2_encryption_sk), encryption_public_key_to_string(node2_encryption_pk));
+    println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node3_identity_sk), signature_public_key_to_string(node3_identity_pk), encryption_secret_key_to_string(node3_encryption_sk), encryption_public_key_to_string(node3_encryption_pk));
+    println!(
+        "sub1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
+        signature_secret_key_to_string(sub1_identity_sk),
+        signature_public_key_to_string(sub1_identity_pk),
+        encryption_secret_key_to_string(sub1_encryption_sk),
+        encryption_public_key_to_string(sub1_encryption_pk)
+    );
 }

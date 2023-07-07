@@ -45,6 +45,10 @@ pub fn signature_public_key_to_string(public_key: PublicKey) -> String {
     bs58::encode(bytes).into_string()
 }
 
+pub fn signature_public_key_to_string_ref(public_key: &PublicKey) -> String {
+    signature_public_key_to_string(public_key.clone())
+}
+
 pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SecretKey, &'static str> {
     match bs58::decode(encoded_key).into_vec() {
         Ok(bytes) => {
