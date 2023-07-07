@@ -1,4 +1,4 @@
-use crate::shinkai_message::encryption::encryption_public_key_to_string;
+use crate::shinkai_message::encryption::{encryption_public_key_to_string, decrypt_message};
 use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::signature_public_key_to_string;
@@ -239,17 +239,16 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "use_registration_code")
             .and(warp::post())
-            .and(warp::body::json::<UseRegistrationCodeBody>()) // You will need to define this struct
-            .and_then(move |body: UseRegistrationCodeBody| {
+            .and(warp::body::json::<ShinkaiMessageWrapper>())
+            .and_then(move |message_wrapper: ShinkaiMessageWrapper| {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
+                    let msg = ShinkaiMessage::from(message_wrapper);
+
                     let (res_sender, res_receiver) = async_channel::bounded(1);
                     node_commands_sender
                         .send(NodeCommand::UseRegistrationCode {
-                            code: body.code,
-                            profile_name: body.profile_name,
-                            identity_pk: body.identity_pk,
-                            encryption_pk: body.encryption_pk,
+                            msg,
                             res: res_sender,
                         })
                         .await

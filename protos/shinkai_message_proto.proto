@@ -23,6 +23,7 @@ message ExternalMetadata {
     string recipient = 2;
     string scheduled_time = 3;
     string signature = 4;
+    string other = 5;
 }
 
 message Body {

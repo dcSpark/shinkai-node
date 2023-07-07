@@ -26,6 +26,7 @@ pub struct ExternalMetadataWrapper {
     recipient: String,
     scheduled_time: String,
     signature: String,
+    other: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -108,6 +109,10 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
                     .external_metadata
                     .as_ref()
                     .map_or(String::from(""), |em| em.signature.clone()),
+                other: msg
+                    .external_metadata
+                    .as_ref()
+                    .map_or(String::from(""), |em| em.other.clone()),
             },
             encryption: msg.encryption.clone(),
         }
@@ -144,6 +149,7 @@ impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
                 recipient: wrapper.external_metadata.recipient,
                 scheduled_time: wrapper.external_metadata.scheduled_time,
                 signature: wrapper.external_metadata.signature,
+                other: wrapper.external_metadata.other,
             }),
             encryption: wrapper.encryption,
         }

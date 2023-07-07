@@ -1,5 +1,5 @@
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use std::{net::SocketAddr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -15,7 +15,7 @@ pub struct SubIdentity {
     pub signature_public_key: Option<SignaturePublicKey>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct RegistrationCode {
     pub code: String,
     pub profile_name: String,

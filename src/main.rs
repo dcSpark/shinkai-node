@@ -15,7 +15,6 @@ use crate::shinkai_message::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key,
     string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::{
@@ -26,174 +25,150 @@ use crate::shinkai_message::signatures::{
     signature_public_key_to_string, signature_secret_key_to_string,
 };
 use crate::shinkai_message_proto::Field;
+use crate::utils::args::parse_args;
+use crate::utils::environment::fetch_node_environment;
+use crate::utils::keys::generate_or_load_keys;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
 mod network;
 mod shinkai_message;
+mod utils;
 
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
 }
 
+fn initialize_runtime() -> Runtime {
+    Runtime::new().unwrap()
+}
+
+fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
+    format!("db/{}", hash_signature_public_key(identity_public_key))
+}
+
 fn main() {
-    // Initialization
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
     let global_identity_name =
         env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
 
+    // Initialization
+    let args = parse_args();
+
     // Create Tokio runtime
-    let mut rt = Runtime::new().unwrap();
+    let mut rt = initialize_runtime();
+    let node_keys = generate_or_load_keys();
+    let node_env = fetch_node_environment();
+    let db_path = get_db_path(&node_keys.identity_public_key);
 
-    // Generate your keys here or load them from a file.
-    let (identity_secret_key, identity_public_key) = match env::var("IDENTITY_SECRET_KEY") {
-        Ok(secret_key_str) => {
-            let secret_key = string_to_signature_secret_key(&secret_key_str).unwrap();
-            let public_key = SignaturePublicKey::from(&secret_key);
-            (secret_key, public_key)
-        }
-        _ => ephemeral_signature_keypair(),
-    };
-
-    let (encryption_secret_key, encryption_public_key) = match env::var("ENCRYPTION_SECRET_KEY") {
-        Ok(secret_key_str) => {
-            let secret_key = string_to_encryption_static_key(&secret_key_str).unwrap();
-            let public_key = x25519_dalek::PublicKey::from(&secret_key);
-            (secret_key, public_key)
-        }
-        _ => ephemeral_encryption_keys(),
-    };
-
-    // Fetch the environment variables for the IP and port, or use default values
-    let ip: IpAddr = env::var("NODE_IP")
-        .unwrap_or_else(|_| "0.0.0.0".to_string())
-        .parse()
-        .expect("Failed to parse IP address");
-    let port: u16 = env::var("NODE_PORT")
-        .unwrap_or_else(|_| "8000".to_string())
-        .parse()
-        .expect("Failed to parse port number");
-    let ping_interval: u64 = env::var("PING_INTERVAL_SECS")
-        .unwrap_or_else(|_| "10".to_string())
-        .parse()
-        .expect("Failed to parse ping interval");
-
-    // Node API configuration
-    let api_ip: IpAddr = env::var("NODE_API_IP")
-        .unwrap_or_else(|_| "0.0.0.0".to_string())
-        .parse()
-        .expect("Failed to parse IP address");
-    let api_port: u16 = env::var("NODE_API_PORT")
-        .unwrap_or_else(|_| "3030".to_string())
-        .parse()
-        .expect("Failed to parse port number");
-
-    // Define the address and port where your node will listen
-    let listen_address = SocketAddr::new(ip, port);
-    let api_listen_address = SocketAddr::new(api_ip, api_port);
+    // old code from here:
 
     let identity_secret_key_string =
-        signature_secret_key_to_string(clone_signature_secret_key(&identity_secret_key));
-    let identity_public_key_string = signature_public_key_to_string(identity_public_key.clone());
+        signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
+    let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
 
-    let db_path = format!("db/{}", hash_signature_public_key(&identity_public_key));
     // Log the address, port, and public_key
-    println!(
-        "Starting node with address: {}, port: {}, db path: {}",
-        ip, port, db_path
-    );
+    // println!(
+    //     "Starting node with address: {}, port: {}, db path: {}",
+    //     ip, port, db_path
+    // );
     println!(
         "identity sk: {} pk: {} encryption sk: {} pk: {}",
         identity_secret_key_string,
         identity_public_key_string,
-        encryption_secret_key_to_string(encryption_secret_key.clone()),
-        encryption_public_key_to_string(encryption_public_key.clone())
+        encryption_secret_key_to_string(node_keys.encryption_secret_key.clone()),
+        encryption_public_key_to_string(node_keys.encryption_public_key.clone())
     );
 
-    //
-
-    let matches = clap::App::new("Shinkai Node")
-        .version("1.0")
-        .arg(
-            clap::Arg::new("create_message")
-                .short('c')
-                .long("create_message")
-                .takes_value(false),
-        )
-        .arg(
-            clap::Arg::new("receiver_encryption_pk")
-                .short('e')
-                .long("receiver_encryption_pk")
-                .takes_value(true),
-        )
-        .arg(
-            clap::Arg::new("recipient")
-                .short('r')
-                .long("recipient")
-                .takes_value(true),
-        )
-        .get_matches();
-
-    if matches.is_present("create_message") {
-        let node2_encryption_pk_str = matches
-            .value_of("receiver_encryption_pk")
-            .expect("receiver_encryption_pk argument is required for create_message");
-
-        let recipient = matches
-            .value_of("recipient")
-            .expect("recipient argument is required for create_message");
-
-        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str).unwrap();
+    if args.create_message {
+        let node2_encryption_pk_str = args.receiver_encryption_pk.expect("receiver_encryption_pk argument is required for create_message");
+        let recipient = args.recipient.expect("recipient argument is required for create_message");
+        let other = args.other.unwrap_or("".to_string());
+        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
 
         println!("Creating message for recipient: {}", recipient);
         println!("identity_secret_key: {}", identity_secret_key_string);
         println!("receiver_encryption_pk: {}", node2_encryption_pk_str);
 
-        let fields = vec![Field {
-            name: "field1".to_string(),
-            field_type: "type1".to_string(),
-        }];
+        if let Some(code) = args.code_registration {
+            // Call the `code_registration` function
+            let message = ShinkaiMessageBuilder::code_registration(
+                node_keys.encryption_secret_key,
+                node_keys.identity_secret_key,
+                node2_encryption_pk,
+                code.to_string(),
+                global_identity_name.to_string().clone(),
+                recipient.to_string(),
+            )
+            .expect("Failed to create message with code registration");
 
-        // Use your key generation and ShinkaiMessageBuilder code here
-        let message = ShinkaiMessageBuilder::new(
-            encryption_secret_key,
-            identity_secret_key,
-            node2_encryption_pk,
-        )
-        .body("body content".to_string())
-        .encryption(EncryptionMethod::None)
-        .message_schema_type("schema type".to_string(), fields)
-        .internal_metadata("".to_string(), "".to_string(), "".to_string())
-        .external_metadata(
-            recipient.to_string(),
-            global_identity_name.to_string().clone(),
-        )
-        .build();
+            println!(
+                "Message's signature: {}",
+                message
+                    .clone()
+                    .external_metadata
+                    .unwrap()
+                    .signature
+            );
 
-        println!(
-            "Message's signature: {}",
-            message
-                .clone()
-                .unwrap()
-                .external_metadata
-                .unwrap()
-                .signature
-        );
+            // Parse the message to JSON and print to stdout
+            let message_wrapper = ShinkaiMessageWrapper::from(&message);
 
-        // Parse the message to JSON and print to stdout
-        let message_wrapper = ShinkaiMessageWrapper::from(&message.unwrap());
+            // Serialize the wrapper into JSON and print to stdout
+            let message_json = serde_json::to_string_pretty(&message_wrapper);
 
-        // Serialize the wrapper into JSON and print to stdout
-        let message_json = serde_json::to_string_pretty(&message_wrapper);
+            match message_json {
+                Ok(json) => println!("{}", json),
+                Err(e) => println!("Error creating JSON: {}", e),
+            }
+            return;
+        } else if args.create_message {
+            let fields = vec![Field {
+                name: "field1".to_string(),
+                field_type: "type1".to_string(),
+            }];
 
-        match message_json {
-            Ok(json) => println!("{}", json),
-            Err(e) => println!("Error creating JSON: {}", e),
+            // Use your key generation and ShinkaiMessageBuilder code here
+            let message = ShinkaiMessageBuilder::new(
+                node_keys.encryption_secret_key,
+                node_keys.identity_secret_key,
+                node2_encryption_pk,
+            )
+            .body("body content".to_string())
+            .encryption(EncryptionMethod::None)
+            .message_schema_type("schema type".to_string(), fields)
+            .internal_metadata("".to_string(), "".to_string(), "".to_string())
+            .external_metadata_with_other(
+                recipient.to_string(),
+                global_identity_name.to_string().clone(),
+                other.to_string(),
+            )
+            .build();
+
+            println!(
+                "Message's signature: {}",
+                message
+                    .clone()
+                    .unwrap()
+                    .external_metadata
+                    .unwrap()
+                    .signature
+            );
+
+            // Parse the message to JSON and print to stdout
+            let message_wrapper = ShinkaiMessageWrapper::from(&message.unwrap());
+
+            // Serialize the wrapper into JSON and print to stdout
+            let message_json = serde_json::to_string_pretty(&message_wrapper);
+
+            match message_json {
+                Ok(json) => println!("{}", json),
+                Err(e) => println!("Error creating JSON: {}", e),
+            }
+            return;
         }
-
-        return;
     }
 
     let (node_commands_sender, node_commands_receiver): (
@@ -204,10 +179,10 @@ fn main() {
     // Create a new node
     let node = Arc::new(Mutex::new(Node::new(
         global_identity_name.to_string(),
-        listen_address,
-        clone_signature_secret_key(&identity_secret_key),
-        encryption_secret_key.clone(),
-        ping_interval,
+        node_env.listen_address,
+        clone_signature_secret_key(&node_keys.identity_secret_key),
+        node_keys.encryption_secret_key.clone(),
+        node_env.ping_interval,
         node_commands_receiver,
         db_path,
     )));
@@ -227,7 +202,7 @@ fn main() {
     rt.block_on(async {
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, api_listen_address).await;
+            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
         });
 
         // Node task
@@ -245,39 +220,4 @@ fn main() {
 
         let _ = tokio::try_join!(api_server, node_task);
     });
-}
-
-fn print_generated_keys() {
-    let node1_identity_name = "@@node1.shinkai";
-    let node2_identity_name = "@@node2.shinkai";
-
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-
-    let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
-
-    let (node3_identity_sk, node3_identity_pk) = unsafe_deterministic_signature_keypair(2);
-    let (node3_encryption_sk, node3_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
-
-    let (sub1_identity_sk, sub1_identity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (sub1_encryption_sk, sub1_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
-
-    println!(
-        "node1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
-        signature_secret_key_to_string(node1_identity_sk),
-        signature_public_key_to_string(node1_identity_pk),
-        encryption_secret_key_to_string(node1_encryption_sk),
-        encryption_public_key_to_string(node1_encryption_pk)
-    );
-
-    println!("node2 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node2_identity_sk), signature_public_key_to_string(node2_identity_pk), encryption_secret_key_to_string(node2_encryption_sk), encryption_public_key_to_string(node2_encryption_pk));
-    println!("node3 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}", signature_secret_key_to_string(node3_identity_sk), signature_public_key_to_string(node3_identity_pk), encryption_secret_key_to_string(node3_encryption_sk), encryption_public_key_to_string(node3_encryption_pk));
-    println!(
-        "sub1 identity_secret_key: {} identity_public_key: {} encryption_secret_key: {} encryption_public_key: {}",
-        signature_secret_key_to_string(sub1_identity_sk),
-        signature_public_key_to_string(sub1_identity_pk),
-        encryption_secret_key_to_string(sub1_encryption_sk),
-        encryption_public_key_to_string(sub1_encryption_pk)
-    );
 }

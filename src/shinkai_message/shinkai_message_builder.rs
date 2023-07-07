@@ -88,12 +88,27 @@ impl ShinkaiMessageBuilder {
 
     pub fn external_metadata(mut self, recipient: ProfileName, sender: ProfileName) -> Self {
         let signature = "".to_string();
+        let other = "".to_string();
         let scheduled_time = ShinkaiMessageHandler::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
             scheduled_time,
             signature,
+            other
+        });
+        self
+    }
+
+    pub fn external_metadata_with_other(mut self, recipient: ProfileName, sender: ProfileName, other: String) -> Self {
+        let signature = "".to_string();
+        let scheduled_time = ShinkaiMessageHandler::generate_time_now();
+        self.external_metadata = Some(ExternalMetadata {
+            sender,
+            recipient,
+            scheduled_time,
+            signature,
+            other
         });
         self
     }
@@ -105,11 +120,13 @@ impl ShinkaiMessageBuilder {
         scheduled_time: String,
     ) -> Self {
         let signature = "".to_string();
+        let other = "".to_string();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
             scheduled_time,
             signature,
+            other
         });
         self
     }
@@ -226,28 +243,29 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn code_registration(
-        my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
         sender: ProfileName,
-        receiver: ProfileName,
-        identity_signature_pk: SignaturePublicKey,
-        identity_encryption_pk: EncryptionPublicKey,
+        receiver: ProfileName
     ) -> Result<ShinkaiMessage, &'static str> {
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+
         let registration_code = RegistrationCode {
             code,
             profile_name: sender.clone(),
-            identity_pk: signature_public_key_to_string(identity_signature_pk),
-            encryption_pk: encryption_public_key_to_string(identity_encryption_pk),
+            identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
+            encryption_pk: encryption_public_key_to_string(my_subidentity_encryption_pk),
         };
 
         let body = serde_json::to_string(&registration_code)
             .map_err(|_| "Failed to serialize registration code to JSON")?;
 
         ShinkaiMessageBuilder::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
             receiver_public_key,
         )
         .body(body)

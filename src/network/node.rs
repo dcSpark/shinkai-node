@@ -19,7 +19,10 @@ use crate::network::node_message_handlers::{
     extract_sender_profile_name, handle_based_on_message_content_and_encryption, ping_pong,
     verify_message_signature, PingPong,
 };
-use crate::shinkai_message::encryption::clone_static_secret_key;
+use crate::network::subidentities::RegistrationCode;
+use crate::shinkai_message::encryption::{
+    clone_static_secret_key, decrypt_message, string_to_encryption_public_key,
+};
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message::signatures::{
     clone_signature_secret_key, signature_public_key_to_string,
@@ -40,10 +43,11 @@ pub enum NodeCommand {
         res: Sender<String>,
     },
     UseRegistrationCode {
-        code: String,
-        profile_name: String,
-        identity_pk: String,
-        encryption_pk: String,
+        msg: ShinkaiMessage,
+        // code: String,
+        // profile_name: String,
+        // identity_pk: String,
+        // encryption_pk: String,
         res: Sender<String>,
     },
     IdentityNameToExternalProfileData {
@@ -134,88 +138,119 @@ impl Node {
             pin_mut!(ping_future, commands_future);
 
             select! {
-                                    listen = listen_future => unreachable!(),
-                                    ping = ping_future => self.ping_all().await?,
-                                    // check_peers = check_peers_future => self.connect_new_peers().await?,
-                                    command = commands_future => {
-                                        match command {
-                                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                                            Some(NodeCommand::GetPeers(sender)) => {
-                                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
-                                                sender.send(peer_addresses).await.unwrap();
-                                            },
-                                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => {
-                                                let external_profile_data = external_identity_to_profile_data(name).unwrap();
-                                                res.send(external_profile_data).await.unwrap();
-                                            },
-                                            Some(NodeCommand::Connect { address, profile_name }) => {
-                                                let address_str = address.to_string();
-                                                self.connect(&address_str, profile_name).await?;
-                                            },
-                                            Some(NodeCommand::SendMessage { msg }) => {
-                                                // TODO: check that it's coming from one of the subidentities or "itself"
+                                listen = listen_future => unreachable!(),
+                                ping = ping_future => self.ping_all().await?,
+                                // check_peers = check_peers_future => self.connect_new_peers().await?,
+                                command = commands_future => {
+                                    match command {
+                                        Some(NodeCommand::PingAll) => self.ping_all().await?,
+                                        Some(NodeCommand::GetPeers(sender)) => {
+                                            let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+                                            sender.send(peer_addresses).await.unwrap();
+                                        },
+                                        Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => {
+                                            let external_profile_data = external_identity_to_profile_data(name).unwrap();
+                                            res.send(external_profile_data).await.unwrap();
+                                        },
+                                        Some(NodeCommand::Connect { address, profile_name }) => {
+                                            let address_str = address.to_string();
+                                            self.connect(&address_str, profile_name).await?;
+                                        },
+                                        Some(NodeCommand::SendMessage { msg }) => {
+                                            // TODO: check that it's coming from one of the subidentities or "itself"
 
-                                                // Validate it
-                                                let sender_profile_name_string = extract_sender_profile_name(&msg);
-                                                let sender_keys = extract_sender_keys(sender_profile_name_string.clone())?;
-                                                match verify_message_signature(sender_keys.signature_public_key, &msg) {
-                                                    Ok(_) => {},
-                                                    Err(e) => {
-                                                        eprintln!("Failed to verify message signature: {}", e);
-                                                        return Ok(());
-                                                    }
+                                            // Validate it
+                                            let sender_profile_name_string = extract_sender_profile_name(&msg);
+                                            let sender_keys = extract_sender_keys(sender_profile_name_string.clone())?;
+                                            match verify_message_signature(sender_keys.signature_public_key, &msg) {
+                                                Ok(_) => {},
+                                                Err(e) => {
+                                                    eprintln!("Failed to verify message signature: {}", e);
+                                                    return Ok(());
                                                 }
+                                            }
 
-                                                // Save to db
-                                                {
-                                                    let db = self.db.lock().await;
-                                                    db.insert_message(&msg.clone())
-                                                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                                            // Save to db
+                                            {
+                                                let db = self.db.lock().await;
+                                                db.insert_message(&msg.clone())
+                                                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                                            }
+
+                                            let recipient_profile_name_string = extract_receiver_profile_name(&msg);
+                                            let external_profile_data = external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
+
+                                            let db_guard = self.db.lock().await;
+                                            Node::send(&msg, (external_profile_data.addr, recipient_profile_name_string), &*db_guard).await?;
+                                        },
+                                        Some(NodeCommand::GetPublicKeys(res)) => {
+                                            let identity_public_key = self.identity_public_key.clone();
+                                            let encryption_public_key = self.encryption_public_key.clone();
+                                            let _ = res.send((identity_public_key, encryption_public_key)).await.map_err(|_| ());
+                                        },
+                                        Some(NodeCommand::FetchLastMessages { limit, res }) => {
+                                            let db = self.db.lock().await;
+                                            let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+                                            let _ = res.send(messages).await.map_err(|_| ());
+                                        },
+                                        Some(NodeCommand::CreateRegistrationCode { res }) => {
+                                            let db = self.db.lock().await;
+                                            let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+                                            let _ = res.send(code).await.map_err(|_| ());
+                                        },
+                                        Some(NodeCommand::UseRegistrationCode { msg, res }) => {
+                                            let sender_encryption_pk_string = msg.external_metadata.clone().unwrap().other;
+                                            let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+
+                                            // Decrypt the message
+                                            let decrypted_message_result = decrypt_message(
+                                                &msg.clone(),
+                                                &self.encryption_secret_key,
+                                                &sender_encryption_pk, // from the other field in external_metadata
+                                            );
+
+                                            // You'll need to handle the case where decryption fails
+                                            let decrypted_message = match decrypted_message_result {
+                                                Ok(message) => message,
+                                                Err(_) => {
+                                                    // TODO: add more debug info
+                                                    println!("Failed to decrypt the message");
+                                                    return Ok(());
                                                 }
+                                            };
 
-                                                let recipient_profile_name_string = extract_receiver_profile_name(&msg);
-                                                let external_profile_data = external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
+                                            // Deserialize body.content into RegistrationCode
+                                            let content = decrypted_message.body.clone().unwrap().content;
+                                            let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
 
-                                                let db_guard = self.db.lock().await;
-                                                Node::send(&msg, (external_profile_data.addr, recipient_profile_name_string), &*db_guard).await?;
-                                            },
-                                            Some(NodeCommand::GetPublicKeys(res)) => {
-                                                let identity_public_key = self.identity_public_key.clone();
-                                                let encryption_public_key = self.encryption_public_key.clone();
-                                                let _ = res.send((identity_public_key, encryption_public_key)).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
-                                                let db = self.db.lock().await;
-                                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
-                                                let _ = res.send(messages).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::CreateRegistrationCode { res }) => {
-                                                let db = self.db.lock().await;
-                                                let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
-                                                let _ = res.send(code).await.map_err(|_| ());
-                                            },
-                                            Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
-                                                let db = self.db.lock().await;
-                                                let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
-                                                    .map_err(|e| e.to_string())
-                                                    .map(|_| "true".to_string());
-                                                // TODO: add code if you are the first one some special stuff happens.
-                                                // definition of a shared symmetric encryption key
-                                                // probably we need to sign a message with the pk from the first user
+                                            // Extract values from the ShinkaiMessage
+                                            let code = registration_code.code;
+                                            let profile_name = registration_code.profile_name;
+                                            let identity_pk = registration_code.identity_pk;
+                                            let encryption_pk = registration_code.encryption_pk;
 
-                                                match result {
-                                                    Ok(success) => {
-                                                        let _ = res.send(success).await.map_err(|_| ());
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = res.send(e).await.map_err(|_| ());
-                                                    }
+                                            let db = self.db.lock().await;
+                                            let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
+                                                .map_err(|e| e.to_string())
+                                                .map(|_| "true".to_string());
+
+                                            // TODO: add code if you are the first one some special stuff happens.
+                                            // definition of a shared symmetric encryption key
+                                            // probably we need to sign a message with the pk from the first user
+
+                                            match result {
+                                                Ok(success) => {
+                                                    let _ = res.send(success).await.map_err(|_| ());
                                                 }
-                                            },
-                                            _ => break,
-                                        }
+                                                Err(e) => {
+                                                    let _ = res.send(e).await.map_err(|_| ());
+                                                }
+                                            }
+                                        },
+                                        _ => break,
                                     }
-                            };
+                                }
+                        };
         }
         Ok(())
     }
