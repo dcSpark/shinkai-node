@@ -8,6 +8,7 @@ export NODE_API_PORT="3032"
 export IDENTITY_SECRET_KEY="3c4ErU293cduZWoMhYRveSuTix8yq9gWVg2MemKxXnjP"
 export ENCRYPTION_SECRET_KEY="3CdnyVfdgbfd7N5WeWqFGtS6AtkMbT54zUB2dbTzCxj7"
 export PING_INTERVAL_SECS="0"
+export GLOBAL_IDENTITY_NAME="@@node3.shinkai"
 
 if [ -z "$1" ]
 then

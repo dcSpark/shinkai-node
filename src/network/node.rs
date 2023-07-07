@@ -13,15 +13,14 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiMessageDB;
-use crate::network::external_identities::{self, external_identity_to_identity_pk};
+use crate::network::external_identities::{self, external_identity_to_profile_data};
 use crate::network::node_message_handlers::{
-    extract_message, extract_message_content_and_encryption, extract_sender_keys,
-    extract_sender_profile_name, handle_based_on_message_content_and_encryption, ping_pong,
-    verify_message_signature, PingPong,
+    extract_message, extract_sender_keys, extract_sender_profile_name,
+    handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong, extract_receiver_profile_name, extract_recipient_keys,
 };
 use crate::shinkai_message::encryption::clone_static_secret_key;
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::clone_signature_secret_key;
+use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
@@ -132,68 +131,82 @@ impl Node {
             pin_mut!(ping_future, commands_future);
 
             select! {
-                    listen = listen_future => unreachable!(),
-                    ping = ping_future => self.ping_all().await?,
-                    // check_peers = check_peers_future => self.connect_new_peers().await?,
-                    command = commands_future => {
-                        match command {
-                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                            Some(NodeCommand::GetPeers(sender)) => {
-                                let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
-                                sender.send(peer_addresses).await.unwrap();
-                            },
-                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => {
-                                let external_profile_data = external_identity_to_identity_pk(name).unwrap();
-                                res.send(external_profile_data).await.unwrap();
-                            },
-                            Some(NodeCommand::Connect { address, profile_name }) => {
-                                let address_str = address.to_string();
-                                self.connect(&address_str, profile_name).await?;
-                            },
-                            Some(NodeCommand::SendMessage { msg }) => {
-                                // Verify that it's coming from one of our allowed keys
-                                let recipient = msg.external_metadata.as_ref().unwrap().recipient.clone();
-                                // TODO: fix it
-                                // let external_identities_to_identity_pks(&[recipient.clone()]).unwrap();
-                                // let address = Node::pk_to_address(recipient.clone());
-                                // let pk = string_to_encryption_public_key(&recipient).expect("Failed to convert string to public key");
-                                // let db = self.db.lock().await;
-                                // Node::send(&msg,(address, pk), &db).await?;
-                            },
-                            Some(NodeCommand::GetPublicKeys(res)) => {
-                                let identity_public_key = self.identity_public_key.clone();
-                                let encryption_public_key = self.encryption_public_key.clone();
-                                let _ = res.send((identity_public_key, encryption_public_key)).await.map_err(|_| ());
-                            },
-                            Some(NodeCommand::FetchLastMessages { limit, res }) => {
-                                let db = self.db.lock().await;
-                                let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
-                                let _ = res.send(messages).await.map_err(|_| ());
-                            },
-                            Some(NodeCommand::CreateRegistrationCode { res }) => {
-                                let db = self.db.lock().await;
-                                let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
-                                let _ = res.send(code).await.map_err(|_| ());
-                            },
-                            Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
-                                let db = self.db.lock().await;
-                                let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
-                                    .map_err(|e| e.to_string())
-                                    .map(|_| "true".to_string());
+                            listen = listen_future => unreachable!(),
+                            ping = ping_future => self.ping_all().await?,
+                            // check_peers = check_peers_future => self.connect_new_peers().await?,
+                            command = commands_future => {
+                                match command {
+                                    Some(NodeCommand::PingAll) => self.ping_all().await?,
+                                    Some(NodeCommand::GetPeers(sender)) => {
+                                        let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+                                        sender.send(peer_addresses).await.unwrap();
+                                    },
+                                    Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => {
+                                        let external_profile_data = external_identity_to_profile_data(name).unwrap();
+                                        res.send(external_profile_data).await.unwrap();
+                                    },
+                                    Some(NodeCommand::Connect { address, profile_name }) => {
+                                        let address_str = address.to_string();
+                                        self.connect(&address_str, profile_name).await?;
+                                    },
+                                    Some(NodeCommand::SendMessage { msg }) => {
+                                        // Validate it
+                                        let sender_profile_name_string = extract_sender_profile_name(&msg);
+                                        let sender_keys = extract_sender_keys(sender_profile_name_string.clone())?;
+                                        println!("Sender profile name: {}", sender_profile_name_string);
+                                        println!("Sender keys: {:?}", signature_public_key_to_string(sender_keys.signature_public_key));
+                                        verify_message_signature(sender_keys.signature_public_key, &msg)?;
 
-                                match result {
-                                    Ok(success) => {
-                                        let _ = res.send(success).await.map_err(|_| ());
-                                    }
-                                    Err(e) => {
-                                        let _ = res.send(e).await.map_err(|_| ());
-                                    }
+                                        // Save to db
+                                        {
+                                            let db = self.db.lock().await;
+                                            db.insert_message(&msg.clone())
+                                                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                                        }
+
+                                        let recipient_profile_name_string = extract_receiver_profile_name(&msg);
+                                        let external_profile_data = external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
+                                        
+                                        let db_guard = self.db.lock().await;
+                                        Node::send(&msg, (external_profile_data.addr, recipient_profile_name_string), &*db_guard).await?;
+                                    },
+                                    Some(NodeCommand::GetPublicKeys(res)) => {
+                                        let identity_public_key = self.identity_public_key.clone();
+                                        let encryption_public_key = self.encryption_public_key.clone();
+                                        let _ = res.send((identity_public_key, encryption_public_key)).await.map_err(|_| ());
+                                    },
+                                    Some(NodeCommand::FetchLastMessages { limit, res }) => {
+                                        let db = self.db.lock().await;
+                                        let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+                                        let _ = res.send(messages).await.map_err(|_| ());
+                                    },
+                                    Some(NodeCommand::CreateRegistrationCode { res }) => {
+                                        let db = self.db.lock().await;
+                                        let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+                                        let _ = res.send(code).await.map_err(|_| ());
+                                    },
+                                    Some(NodeCommand::UseRegistrationCode { code, profile_name, identity_pk, encryption_pk, res }) => {
+                                        let db = self.db.lock().await;
+                                        let result = db.use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
+                                            .map_err(|e| e.to_string())
+                                            .map(|_| "true".to_string());
+                                        // TODO: add code if you are the first one some special stuff happens.
+                                        // definition of a shared symmetric encryption key
+                                        // probably we need to sign a message with the pk from the first user
+
+                                        match result {
+                                            Ok(success) => {
+                                                let _ = res.send(success).await.map_err(|_| ());
+                                            }
+                                            Err(e) => {
+                                                let _ = res.send(e).await.map_err(|_| ());
+                                            }
+                                        }
+                                    },
+                                    _ => break,
                                 }
-                            },
-                            _ => break,
-                        }
-                    }
-            };
+                            }
+                    };
         }
         Ok(())
     }
@@ -390,7 +403,7 @@ impl Node {
         // Extract sender's public keys and verify the signature
         let sender_profile_name_string = extract_sender_profile_name(&message);
         let sender_keys = extract_sender_keys(sender_profile_name_string.clone())?;
-        verify_message_signature(sender_keys.signature_public_key, &message, receiver_address)?;
+        verify_message_signature(sender_keys.signature_public_key, &message)?;
 
         // Save to db
         {
@@ -399,9 +412,6 @@ impl Node {
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
 
-        // Decode the message and handle it based on its content and encryption
-        let (message_content, message_encryption) =
-            extract_message_content_and_encryption(&message);
         handle_based_on_message_content_and_encryption(
             message.clone(),
             sender_keys.encryption_public_key,

@@ -38,7 +38,7 @@ lazy_static! {
     };
 }
 
-pub fn external_identity_to_identity_pk(global_identity: String) -> Result<ExternalProfileData, &'static str> {
+pub fn external_identity_to_profile_data(global_identity: String) -> Result<ExternalProfileData, &'static str> {
     match IDENTITY_MAP.get(&global_identity) {
         Some(data) => Ok(ExternalProfileData {
             node_identity_name: data.node_identity_name.clone(),

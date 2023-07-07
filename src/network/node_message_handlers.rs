@@ -33,9 +33,23 @@ pub fn extract_sender_profile_name(message: &ShinkaiMessage) -> String {
     message.external_metadata.clone().unwrap().sender
 }
 
+pub fn extract_receiver_profile_name(message: &ShinkaiMessage) -> String {
+    message.external_metadata.clone().unwrap().recipient
+}
+
 pub fn extract_sender_keys(sender_profile_name: String) -> io::Result<PublicKeyInfo> {
     let identity_pk =
-        external_identities::external_identity_to_identity_pk(sender_profile_name.clone()).unwrap();
+        external_identities::external_identity_to_profile_data(sender_profile_name.clone()).unwrap();
+    Ok(PublicKeyInfo {
+        address: identity_pk.addr,
+        signature_public_key: identity_pk.signature_public_key,
+        encryption_public_key: identity_pk.encryption_public_key,
+    })
+}
+
+pub fn extract_recipient_keys(recipient_profile_name: String) -> io::Result<PublicKeyInfo> {
+    let identity_pk =
+        external_identities::external_identity_to_profile_data(recipient_profile_name.clone()).unwrap();
     Ok(PublicKeyInfo {
         address: identity_pk.addr,
         signature_public_key: identity_pk.signature_public_key,
@@ -45,15 +59,13 @@ pub fn extract_sender_keys(sender_profile_name: String) -> io::Result<PublicKeyI
 
 pub fn verify_message_signature(
     sender_signature_pk: ed25519_dalek::PublicKey,
-    message: &ShinkaiMessage,
-    receiver_address: SocketAddr,
+    message: &ShinkaiMessage
 ) -> io::Result<()> {
     match verify_signature(&sender_signature_pk.clone(), &message.clone()) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
             println!(
-                "{} > Failed to validate message's signature",
-                receiver_address
+                "Failed to validate message's signature"
             );
             Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -61,20 +73,13 @@ pub fn verify_message_signature(
             ))
         }
         Err(_) => {
-            println!("{} > Failed to verify signature.", receiver_address);
+            println!("> Failed to verify signature.");
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to verify signature",
             ))
         }
     }
-}
-
-pub fn extract_message_content_and_encryption(message: &ShinkaiMessage) -> (String, String) {
-    (
-        message.body.clone().unwrap().content,
-        message.encryption.clone(),
-    )
 }
 
 pub async fn handle_ping(

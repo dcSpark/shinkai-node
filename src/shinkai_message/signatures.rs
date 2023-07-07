@@ -19,7 +19,7 @@ pub fn unsafe_deterministic_signature_keypair(n: u32) -> (SecretKey, PublicKey) 
     hasher.update(n.to_le_bytes());
     let hash = hasher.finalize();
 
-    let secret_key = SecretKey::from_bytes(&hash).expect("Failed to create SecretKey from hash");
+    let secret_key = SecretKey::from_bytes(&hash.as_slice()).expect("Failed to create SecretKey from hash");
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }
@@ -91,7 +91,7 @@ pub fn sign_message(secret_key: &SecretKey, message: &[u8]) -> String {
         secret: secret_key_clone,
     };
 
-    let signature = keypair.sign(&message_hash);
+    let signature = keypair.sign(message_hash.as_slice());
     bs58::encode(signature.to_bytes()).into_string()
 }
 
@@ -130,5 +130,5 @@ pub fn verify_signature(
     let message_hash = hasher.finalize();
 
     // Verify the signature against the hash of the message
-    Ok(public_key.verify(&message_hash, &signature).is_ok())
+    Ok(public_key.verify(&message_hash.as_slice(), &signature).is_ok())
 }
