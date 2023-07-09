@@ -127,6 +127,8 @@ pub fn encrypt_body_if_needed(
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&destination_pk);
+            // println!("destination pk: {:?} ", encryption_public_key_to_string(*destination_pk));
+            // println!("self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
             
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
@@ -188,6 +190,8 @@ pub fn decrypt_message(
     match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
+            // println!("sender pk: {:?} ", encryption_public_key_to_string(*sender_pk));
+            // println!("self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
 
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();

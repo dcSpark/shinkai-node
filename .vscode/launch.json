@@ -101,16 +101,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug integration test 'node_tokio_tests'",
+            "name": "Debug integration test 'subidentity_registation'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--test=node_tokio_tests",
+                    "--test=subidentity_registation",
                     "--package=shinkai_node"
                 ],
                 "filter": {
-                    "name": "node_tokio_tests",
+                    "name": "subidentity_registation",
                     "kind": "test"
                 }
             },

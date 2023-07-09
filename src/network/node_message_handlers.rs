@@ -1,9 +1,9 @@
-use super::external_identities;
+use super::{external_identities, SubIdentityManager};
 use crate::{
     db::ShinkaiMessageDB,
     network::Node,
     shinkai_message::{
-        encryption::{clone_static_secret_key, decrypt_message},
+        encryption::{clone_static_secret_key, decrypt_message, string_to_encryption_public_key, encryption_public_key_to_string, encryption_secret_key_to_string},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, verify_signature},
@@ -11,6 +11,8 @@ use crate::{
     shinkai_message_proto::ShinkaiMessage,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use log::debug;
+use regex::Regex;
 use std::sync::Arc;
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
@@ -29,27 +31,58 @@ pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result
     })
 }
 
-pub fn extract_sender_profile_name(message: &ShinkaiMessage) -> String {
-    message.external_metadata.clone().unwrap().sender
+pub fn extract_sender_node_profile_name(message: &ShinkaiMessage) -> String {
+    let sender_profile_name = message.external_metadata.clone().unwrap().sender;
+    extract_node_name(&sender_profile_name)
 }
 
-pub fn extract_receiver_profile_name(message: &ShinkaiMessage) -> String {
-    message.external_metadata.clone().unwrap().recipient
+pub fn extract_recipient_node_profile_name(message: &ShinkaiMessage) -> String {
+    let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
+    extract_node_name(&sender_profile_name)
 }
 
-pub fn extract_sender_keys(sender_profile_name: String) -> io::Result<PublicKeyInfo> {
+fn extract_node_name(s: &str) -> String {
+    let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
+    re.captures(s)
+        .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+        .unwrap_or_else(|| s.to_string())
+}
+
+fn no_profiles_in_sender(s: &str) -> bool {
+    let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
+    re.is_match(s)
+}
+
+pub fn get_sender_keys(message: &ShinkaiMessage) -> io::Result<PublicKeyInfo> {
+    let sender_profile_name = message.external_metadata.clone().unwrap().sender;
+    let sender_node_profile_name = extract_node_name(&sender_profile_name);
     let identity_pk =
-        external_identities::external_identity_to_profile_data(sender_profile_name.clone()).unwrap();
-    Ok(PublicKeyInfo {
-        address: identity_pk.addr,
-        signature_public_key: identity_pk.signature_public_key,
-        encryption_public_key: identity_pk.encryption_public_key,
-    })
+        external_identities::external_identity_to_profile_data(sender_node_profile_name).unwrap();
+
+    if no_profiles_in_sender(&sender_profile_name) {
+        Ok(PublicKeyInfo {
+            address: identity_pk.addr,
+            signature_public_key: identity_pk.signature_public_key,
+            encryption_public_key: identity_pk.encryption_public_key,
+        })
+    } else {
+        let encryption_public_key = message
+            .external_metadata
+            .as_ref()
+            .and_then(|metadata| string_to_encryption_public_key(&metadata.other).ok())
+            .unwrap_or(identity_pk.encryption_public_key);
+        Ok(PublicKeyInfo {
+            address: identity_pk.addr,
+            signature_public_key: identity_pk.signature_public_key,
+            encryption_public_key,
+        })
+    }
 }
 
 pub fn extract_recipient_keys(recipient_profile_name: String) -> io::Result<PublicKeyInfo> {
     let identity_pk =
-        external_identities::external_identity_to_profile_data(recipient_profile_name.clone()).unwrap();
+        external_identities::external_identity_to_profile_data(recipient_profile_name.clone())
+            .unwrap();
     Ok(PublicKeyInfo {
         address: identity_pk.addr,
         signature_public_key: identity_pk.signature_public_key,
@@ -59,14 +92,12 @@ pub fn extract_recipient_keys(recipient_profile_name: String) -> io::Result<Publ
 
 pub fn verify_message_signature(
     sender_signature_pk: ed25519_dalek::PublicKey,
-    message: &ShinkaiMessage
+    message: &ShinkaiMessage,
 ) -> io::Result<()> {
     match verify_signature(&sender_signature_pk.clone(), &message.clone()) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
-            println!(
-                "Failed to validate message's signature"
-            );
+            println!("Failed to validate message's signature");
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to validate message's signature",
@@ -123,6 +154,11 @@ pub async fn handle_default_encryption(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
 ) -> io::Result<()> {
+    println!(
+        "{} > handle_default_encryption message: {:?}",
+        receiver_address, message
+    );
+    println!("Sender encryption pk: {:?}", encryption_public_key_to_string(sender_encryption_pk));
     let decrypted_message_result = decrypt_message(
         &message.clone(),
         my_encryption_secret_key,
@@ -147,7 +183,7 @@ pub async fn handle_default_encryption(
                 &db_lock,
             )
             .await
-        },
+        }
         Err(_) => {
             println!("Failed to decrypt message.");
             // TODO: send error back?
@@ -207,6 +243,7 @@ pub async fn send_ack(
 }
 
 // Helper struct to encapsulate sender keys
+#[derive(Debug)]
 pub struct PublicKeyInfo {
     pub address: SocketAddr,
     pub signature_public_key: ed25519_dalek::PublicKey,

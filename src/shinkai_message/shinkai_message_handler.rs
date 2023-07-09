@@ -1,9 +1,14 @@
 // shinkai_message.rs
 
-use crate::shinkai_message_proto::{ShinkaiMessage, Body};
+use std::io::Error;
+
+use crate::shinkai_message_proto::{Body, ShinkaiMessage, ExternalMetadata};
 use chrono::Utc;
 use prost::Message;
 use sha2::{Digest, Sha256};
+
+use super::{shinkai_message_extension::ShinkaiMessageWrapper, signatures::sign_message};
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -17,6 +22,12 @@ impl ShinkaiMessageHandler {
 
     pub fn decode_message(bytes: Vec<u8>) -> Result<ShinkaiMessage, prost::DecodeError> {
         ShinkaiMessage::decode(bytes.as_slice())
+    }
+
+    pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
+        let message_wrapper = ShinkaiMessageWrapper::from(&message);
+        let message_json = serde_json::to_string_pretty(&message_wrapper);
+        message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
     }
 
     pub fn generate_time_now() -> String {
@@ -41,6 +52,21 @@ impl ShinkaiMessageHandler {
 
     pub fn decode_body(bytes: Vec<u8>) -> Result<Body, prost::DecodeError> {
         Body::decode(bytes.as_slice())
+    }
+
+    pub fn re_sign_message(message: ShinkaiMessage, signature_sk: SignatureStaticKey) -> ShinkaiMessage {
+        // make sure to not include the current signature in the hash
+        let mut message = message.clone();
+
+        if let Some(external_metadata) = &mut message.external_metadata {
+            external_metadata.signature = String::from("");
+        }
+
+        let signature = sign_message(&signature_sk, message.clone());
+        if let Some(external_metadata) = &mut message.external_metadata {
+            external_metadata.signature = signature;
+        }
+        message
     }
 }
 
@@ -192,11 +218,7 @@ mod tests {
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, recipient);
         assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
-        assert!(verify_signature(
-            &my_identity_pk,
-            &message,
-        )
-        .unwrap())
+        assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 
     #[test]
@@ -263,22 +285,12 @@ mod tests {
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string(); 
+        let scheduled_time = "20230702T20533481345".to_string();
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
-        assert_eq!(
-            external_metadata.sender,
-            sender
-        );
-        assert_eq!(
-            external_metadata.recipient,
-            recipient
-        );
+        assert_eq!(external_metadata.sender, sender);
+        assert_eq!(external_metadata.recipient, recipient);
         assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
-        assert!(verify_signature(
-            &my_identity_pk,
-            &message,
-        )
-        .unwrap()) 
+        assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 }

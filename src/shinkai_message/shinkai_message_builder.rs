@@ -113,6 +113,14 @@ impl ShinkaiMessageBuilder {
         self
     }
 
+    // pub fn set_schedule(mut self, scheduled_time: String) -> Self {
+    //     if let Some(mut external_metadata) = self.external_metadata {
+    //         external_metadata.scheduled_time = scheduled_time;
+    //         self.external_metadata = Some(external_metadata);
+    //     }
+    //     self
+    // }
+
     pub fn external_metadata_with_schedule(
         mut self,
         recipient: ProfileName,
@@ -167,8 +175,7 @@ impl ShinkaiMessageBuilder {
                 encryption: self.encryption.clone(),
                 external_metadata: self.external_metadata,
             };
-            let unsigned_msg_bytes = ShinkaiMessageHandler::encode_message(unsigned_msg);
-            let signature = sign_message(&self.my_signature_secret_key, &unsigned_msg_bytes);
+            let signature = sign_message(&self.my_signature_secret_key, unsigned_msg);
 
             external_metadata.signature = signature;
 
@@ -253,11 +260,12 @@ impl ShinkaiMessageBuilder {
         let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
 
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
             profile_name: sender.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
-            encryption_pk: encryption_public_key_to_string(my_subidentity_encryption_pk),
+            encryption_pk: other.clone(),
         };
 
         let body = serde_json::to_string(&registration_code)
@@ -270,7 +278,7 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .external_metadata(receiver, sender)
+        .external_metadata_with_other(receiver, sender, other)
         .build()
     }
 

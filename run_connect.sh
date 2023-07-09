@@ -9,6 +9,7 @@ export IDENTITY_SECRET_KEY="7ygzVHMWYi3DRRZgADgUch6mvJS5YtYa1Mob8kkLuhdR"
 export ENCRYPTION_SECRET_KEY="7WN8xpGvHraDZairbgpMMCtB7EUgcEqDvHeNcPaNs511"
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node2.shinkai"
+export RUST_LOG=warn,error,info,debug,trace
 
 if [ -z "$1" ]
 then

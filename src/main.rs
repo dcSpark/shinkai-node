@@ -8,7 +8,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
-
+use anyhow::Error;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
@@ -30,6 +30,7 @@ use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use log::{info, warn};
 
 mod db;
 mod network;
@@ -49,6 +50,8 @@ fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
 }
 
 fn main() {
+    env_logger::init();
+    
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
     let global_identity_name =
@@ -67,13 +70,14 @@ fn main() {
 
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
-    let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
+    let identity_public_key_string =
+        signature_public_key_to_string(node_keys.identity_public_key.clone());
 
     // Log the address, port, and public_key
-    // println!(
-    //     "Starting node with address: {}, port: {}, db path: {}",
-    //     ip, port, db_path
-    // );
+    println!(
+        "Starting node with address: {}, db path: {}",
+        node_env.api_listen_address, db_path
+    );
     println!(
         "identity sk: {} pk: {} encryption sk: {} pk: {}",
         identity_secret_key_string,
@@ -83,10 +87,15 @@ fn main() {
     );
 
     if args.create_message {
-        let node2_encryption_pk_str = args.receiver_encryption_pk.expect("receiver_encryption_pk argument is required for create_message");
-        let recipient = args.recipient.expect("recipient argument is required for create_message");
+        let node2_encryption_pk_str = args
+            .receiver_encryption_pk
+            .expect("receiver_encryption_pk argument is required for create_message");
+        let recipient = args
+            .recipient
+            .expect("recipient argument is required for create_message");
         let other = args.other.unwrap_or("".to_string());
-        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
+        let node2_encryption_pk =
+            string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
 
         println!("Creating message for recipient: {}", recipient);
         println!("identity_secret_key: {}", identity_secret_key_string);
@@ -106,11 +115,7 @@ fn main() {
 
             println!(
                 "Message's signature: {}",
-                message
-                    .clone()
-                    .external_metadata
-                    .unwrap()
-                    .signature
+                message.clone().external_metadata.unwrap().signature
             );
 
             // Parse the message to JSON and print to stdout
@@ -140,10 +145,9 @@ fn main() {
             .encryption(EncryptionMethod::None)
             .message_schema_type("schema type".to_string(), fields)
             .internal_metadata("".to_string(), "".to_string(), "".to_string())
-            .external_metadata_with_other(
+            .external_metadata(
                 recipient.to_string(),
                 global_identity_name.to_string().clone(),
-                other.to_string(),
             )
             .build();
 
@@ -177,15 +181,21 @@ fn main() {
     ) = bounded(100);
 
     // Create a new node
-    let node = Arc::new(Mutex::new(Node::new(
-        global_identity_name.to_string(),
-        node_env.listen_address,
-        clone_signature_secret_key(&node_keys.identity_secret_key),
-        node_keys.encryption_secret_key.clone(),
-        node_env.ping_interval,
-        node_commands_receiver,
-        db_path,
-    )));
+    let node = std::sync::Arc::new(tokio::sync::Mutex::new(
+        // This is the async block where you can use `.await`
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            Node::new(
+                global_identity_name.to_string(),
+                node_env.listen_address,
+                clone_signature_secret_key(&node_keys.identity_secret_key),
+                node_keys.encryption_secret_key.clone(),
+                node_env.ping_interval,
+                node_commands_receiver,
+                db_path,
+            )
+            .await
+        }),
+    ));
 
     // Clone the Arc<Mutex<Node>> for use in each task
     let connect_node = Arc::clone(&node);

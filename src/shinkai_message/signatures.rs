@@ -82,9 +82,19 @@ pub fn hash_signature_public_key(public_key: &PublicKey) -> String {
     bs58::encode(hash).into_string()
 }
 
-pub fn sign_message(secret_key: &SecretKey, message: &[u8]) -> String {
+pub fn sign_message(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
+    let mut message_clone = message.clone();
+    if let Some(external_metadata) = message_clone.external_metadata.as_mut() {
+        if !external_metadata.signature.is_empty() {
+            external_metadata.signature = "".to_string();
+        }
+    }
+
+    // Convert ShinkaiMessage to bytes
+    let message_bytes = ShinkaiMessageHandler::encode_message(message_clone);
+
     let mut hasher = Sha256::new();
-    hasher.update(message);
+    hasher.update(message_bytes);
     let message_hash = hasher.finalize();
     let public_key = PublicKey::from(secret_key);
     let secret_key_clone =

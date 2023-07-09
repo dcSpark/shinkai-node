@@ -1,5 +1,5 @@
 use crate::{
-    network::subidentities::SubIdentity,
+    network::subidentities::Subidentity,
     shinkai_message::{
         encryption::{encryption_public_key_to_string, string_to_encryption_public_key, encryption_public_key_to_string_ref},
         shinkai_message_handler::ShinkaiMessageHandler,
@@ -454,7 +454,7 @@ impl ShinkaiMessageDB {
         Ok(())
     }
 
-    pub fn insert_sub_identity(&self, identity: SubIdentity) -> Result<(), ShinkaiMessageDBError> {
+    pub fn insert_sub_identity(&self, identity: Subidentity) -> Result<(), ShinkaiMessageDBError> {
         let cf_identity = self
             .db
             .cf_handle(Topic::ProfilesIdentityKey.as_str())
