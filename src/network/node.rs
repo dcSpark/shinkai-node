@@ -23,7 +23,7 @@ use crate::network::node_message_handlers::{
 };
 use crate::network::subidentities::RegistrationCode;
 use crate::shinkai_message::encryption::{
-    clone_static_secret_key, decrypt_message, string_to_encryption_public_key,
+    clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key,
 };
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message::signatures::{
@@ -69,7 +69,7 @@ pub enum NodeCommand {
     SendUnchangedMessage {
         msg: ShinkaiMessage,
     },
-    SendWrappedMessage {
+    SendOnionizedMessage {
         msg: ShinkaiMessage,
     },
     GetPeers(Sender<Vec<SocketAddr>>),
@@ -89,6 +89,7 @@ pub enum NodeCommand {
         profile_name: String,
     },
     FetchLastMessages {
+        // TODO: add profile name
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     },
@@ -184,7 +185,7 @@ impl Node {
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
                             Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                            Some(NodeCommand::SendWrappedMessage { msg }) => self.handle_wrapped_message(msg).await?,
+                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_onionized_message(msg).await?,
                             Some(NodeCommand::SendUnchangedMessage { msg }) => self.handle_unchanged_message(msg).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,

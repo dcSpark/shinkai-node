@@ -107,9 +107,9 @@ mod tests {
         let message_result =
             ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
                 .body("Hello World".to_string())
-                .encryption(encryption)
+                .body_encryption(encryption)
                 .message_schema_type("MyType".to_string(), fields)
-                .internal_metadata("".to_string(), "".to_string(), "".to_string())
+                .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
                 .external_metadata_with_schedule(
                     recipient,
                     sender,

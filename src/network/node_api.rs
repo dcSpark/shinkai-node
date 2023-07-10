@@ -1,4 +1,4 @@
-use crate::shinkai_message::encryption::{encryption_public_key_to_string, decrypt_message};
+use crate::shinkai_message::encryption::{encryption_public_key_to_string, decrypt_body_message};
 use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::signature_public_key_to_string;

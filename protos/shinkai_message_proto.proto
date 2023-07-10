@@ -16,6 +16,7 @@ message InternalMetadata {
     string recipient_subidentity = 2;
     MessageSchemaType message_schema_type = 3;
     string inbox = 4;
+    string encryption = 5;
 }
 
 message ExternalMetadata {

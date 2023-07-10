@@ -42,6 +42,7 @@ pub struct InternalMetadataWrapper {
     recipient_subidentity: String,
     message_schema_type: MessageSchemaTypeWrapper,
     inbox: String,
+    encryption: String,
 }
 
 impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
@@ -90,6 +91,11 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
                         .as_ref()
                         .and_then(|b| b.internal_metadata.as_ref())
                         .map_or(String::from(""), |im| im.inbox.clone()),
+                    encryption: msg
+                        .body
+                        .as_ref()
+                        .and_then(|b| b.internal_metadata.as_ref())
+                        .map_or(String::from(""), |im| im.encryption.clone()),
                 },
             },
             external_metadata: ExternalMetadataWrapper {
@@ -142,6 +148,7 @@ impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
                             .collect(),
                     }),
                     inbox: wrapper.body.internal_metadata.inbox,
+                    encryption: wrapper.body.internal_metadata.encryption,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {

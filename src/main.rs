@@ -142,9 +142,9 @@ fn main() {
                 node2_encryption_pk,
             )
             .body("body content".to_string())
-            .encryption(EncryptionMethod::None)
+            .body_encryption(EncryptionMethod::None)
             .message_schema_type("schema type".to_string(), fields)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string())
+            .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
             .external_metadata(
                 recipient.to_string(),
                 global_identity_name.to_string().clone(),

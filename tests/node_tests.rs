@@ -3,7 +3,7 @@ use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node, Subidentity, SubIdentityManager};
 use shinkai_node::shinkai_message::encryption::{
     encryption_public_key_to_string, hash_encryption_public_key,
-    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_message,
+    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message,
 };
 use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
@@ -244,8 +244,8 @@ fn subidentity_registration() {
     rt.block_on(async {
         let node1_identity_name = "@@node1.shinkai";
         let node2_identity_name = "@@node2.shinkai";
-        let node1_subidentity_name = "@@node1.shinkai/main_profile_node1";
-        let node2_subidentity_name = "@@node2.shinkai/main_profile_node2";
+        let node1_subidentity_name = "main_profile_node1";
+        let node2_subidentity_name = "main_profile_node2";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -402,16 +402,17 @@ fn subidentity_registration() {
                     node1_encryption_pk,
                 )
                 .body(message_content.clone())
-                .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
                 .message_schema_type("schema type".to_string(), fields)
                 .internal_metadata(
                     node2_subidentity_name.to_string().clone(),
                     "".to_string(),
                     "".to_string(),
+                    EncryptionMethod::None,
                 )
                 .external_metadata_with_other(
                     node1_identity_name.to_string(),
-                    node2_subidentity_name.to_string().clone(),
+                    node2_identity_name.to_string().clone(),
                     encryption_public_key_to_string(node2_subencryption_pk.clone()),
                 )
                 .build()
@@ -455,44 +456,46 @@ fn subidentity_registration() {
 
                 // println!("Node 1 last messages: {:?}", node1_last_messages);
                 // println!("\n\n");
-                // println!("Node 2 last messages: {:?}", node2_last_messages);
-                // println!("\n\n");
+                println!("Node 2 last messages: {:?}", node2_last_messages);
+                println!("\n\n");
 
-                let decrypted_message = decrypt_message(
-                    &node2_last_messages[1].clone(),
+                let encrypted_content = &node2_last_messages[1].clone().body.unwrap().content;
+                let decrypted_content = decrypt_content_message(
+                    encrypted_content.clone().to_string(),
+                    &node2_last_messages[1].clone().encryption,
                     &node1_encryption_sk_clone.clone(),
                     &node2_subencryption_pk,
                 ).unwrap();
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
-                    message_content == decrypted_message.body.as_ref().unwrap().content,
-                    true,
+                    message_content,
+                    decrypted_content,
                     "Node 2's profile send an encrypted message to Node 1"
                 );
 
                 assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().sender == node2_subidentity_name.to_string(),
-                    true,
+                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().sender,
+                    node2_subidentity_name.to_string(),
                     "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                 );
 
                 // You could think the subidentity signed it, but it's actually the node who re-signs it before sending it 
                 let signature = sign_message(&node2_identity_sk_clone, node2_last_messages[1].clone());
                 assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().signature == signature,
-                    true,
+                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().signature,
+                    signature,
                     "Node 2's profile send an encrypted message to Node 1. Node 2 sends the correct signature."
                 );
 
                 assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().other == encryption_public_key_to_string(node2_subencryption_pk),
-                    true,
+                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().other,
+                    encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 2 sends the subidentity's pk in other"
                 );
 
                 assert_eq!(
-                    node1_last_messages[1].external_metadata.clone().as_ref().unwrap().other == encryption_public_key_to_string(node2_subencryption_pk),
-                    true,
+                    node1_last_messages[1].external_metadata.clone().as_ref().unwrap().other,
+                    encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 1 has the other's public key"
                 );
                 println!("Node 2 sent message to Node 1 successfully");
@@ -555,32 +558,33 @@ fn subidentity_registration() {
                 assert_eq!(node1_all_subidentities[0].name, node1_just_subidentity_name, "Node 1 has the right subidentity");
                 // println!("Node 1 all subidentities: {:?}", node1_all_subidentities);
 
-                // // Send message from Node 1 subidentity to Node 2 subidentity
-                // let fields = vec![Field {
-                //     name: "field1".to_string(),
-                //     field_type: "type1".to_string(),
-                // }];
+                // Send message from Node 1 subidentity to Node 2 subidentity
+                let fields = vec![Field {
+                    name: "field1".to_string(),
+                    field_type: "type1".to_string(),
+                }];
 
-                // let unchanged_message = ShinkaiMessageBuilder::new(
-                //     node1_subencryption_sk,
-                //     clone_signature_secret_key(&node1_subidentity_sk),
-                //     node2_subencryption_pk, // Assuming you want to encrypt with Node 2 subidentity's encryption public key
-                // )
-                // .body("test body content".to_string())
-                // .encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-                // .message_schema_type("schema type".to_string(), fields)
-                // .internal_metadata(
-                //     node1_subidentity_name.to_string().clone(),
-                //     "".to_string(),
-                //     "".to_string(),
-                // )
-                // .external_metadata_with_other(
-                //     node2_subidentity_name.to_string(),
-                //     node1_subidentity_name.to_string().clone(),
-                //     encryption_public_key_to_string(node1_subencryption_pk.clone()),
-                // )
-                // .build()
-                // .unwrap();
+                let unchanged_message = ShinkaiMessageBuilder::new(
+                    node1_subencryption_sk,
+                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node2_subencryption_pk,
+                )
+                .body("test encrypted body content from node1 subidentity to node2 subidentity".to_string())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type("schema type".to_string(), fields)
+                .internal_metadata(
+                    node1_subidentity_name.to_string().clone(),
+                    node2_subidentity_name.to_string().clone(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_other(
+                    node2_identity_name.to_string().clone(),
+                    node1_identity_name.to_string().clone(),
+                    encryption_public_key_to_string(node1_subencryption_pk.clone()),
+                )
+                .build()
+                .unwrap();
 
                 // let (res1_send_msg_sender, res1_send_msg_receiver): (
                 //     async_channel::Sender<NodeCommand>,

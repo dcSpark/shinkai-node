@@ -9,7 +9,7 @@ use super::{
 use crate::{
     network::Subidentity,
     shinkai_message::{
-        encryption::{decrypt_message, string_to_encryption_public_key},
+        encryption::{decrypt_body_message, string_to_encryption_public_key, decrypt_content_message},
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
@@ -55,8 +55,7 @@ impl Node {
     }
 
     // And so on for the rest of the methods...
-
-    pub async fn handle_wrapped_message(&self, msg: ShinkaiMessage) -> Result<(), Error> {
+    pub async fn handle_onionized_message(&self, msg: ShinkaiMessage) -> Result<(), Error> {
         // check that the message is coming from a subidentity, sender needs to match a subidentity profile name
         // check that the signature is valid
         // decrypt the message (if it's encrypted)
@@ -124,10 +123,11 @@ impl Node {
     }
 
     pub async fn handle_unchanged_message(&self, msg: ShinkaiMessage) -> Result<(), Error> {
+        println!("handle_unchanged_message msg: {:?}", msg);
         // This command is used to send messages that are already signed and (potentially) encrypted
         let subidentity_manager = self.subidentity_manager.lock().await;
         let subidentity = subidentity_manager
-            .find_by_profile_name(&msg.external_metadata.clone().unwrap().sender);
+            .find_by_profile_name(&msg.clone().body.unwrap().internal_metadata.unwrap().sender_subidentity);
         // check if subidentity exist
         if subidentity.is_none() {
             eprintln!(
@@ -182,15 +182,15 @@ impl Node {
             &*db_guard,
         )
         .await?;
-        // println!(
-        //     "handle_unchanged_message who am I: {:?}",
-        //     self.node_profile_name
-        // );
-        // println!(
-        //     "Finished successfully> handle_unchanged_message msg: {:?}",
-        //     msg
-        // );
-        // println!("\n\n");
+        println!(
+            "handle_unchanged_message who am I: {:?}",
+            self.node_profile_name
+        );
+        println!(
+            "Finished successfully> handle_unchanged_message msg: {:?}",
+            msg
+        );
+        println!("\n\n");
         Ok(())
     }
 
@@ -240,14 +240,16 @@ impl Node {
             string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
         // Decrypt the message
-        let decrypted_message_result = decrypt_message(
-            &msg.clone(),
+        let message_to_decrypt = msg.clone();
+        let decrypted_content = decrypt_content_message(
+            message_to_decrypt.body.unwrap().content, 
+            message_to_decrypt.encryption.as_str(),
             &self.encryption_secret_key,
-            &sender_encryption_pk, // from the other field in external_metadata
+            &sender_encryption_pk
         );
 
         // You'll need to handle the case where decryption fails
-        let decrypted_message = match decrypted_message_result {
+        let decrypted_message = match decrypted_content {
             Ok(message) => message,
             Err(_) => {
                 // TODO: add more debug info
@@ -257,7 +259,7 @@ impl Node {
         };
 
         // Deserialize body.content into RegistrationCode
-        let content = decrypted_message.body.clone().unwrap().content;
+        let content = decrypted_message.clone();
         let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
 
         // Extract values from the ShinkaiMessage

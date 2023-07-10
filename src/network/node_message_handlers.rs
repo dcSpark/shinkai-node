@@ -3,7 +3,7 @@ use crate::{
     db::ShinkaiMessageDB,
     network::Node,
     shinkai_message::{
-        encryption::{clone_static_secret_key, decrypt_message, string_to_encryption_public_key, encryption_public_key_to_string, encryption_secret_key_to_string},
+        encryption::{clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key, encryption_public_key_to_string, encryption_secret_key_to_string},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, verify_signature},
@@ -159,7 +159,7 @@ pub async fn handle_default_encryption(
         receiver_address, message
     );
     println!("Sender encryption pk: {:?}", encryption_public_key_to_string(sender_encryption_pk));
-    let decrypted_message_result = decrypt_message(
+    let decrypted_message_result = decrypt_body_message(
         &message.clone(),
         my_encryption_secret_key,
         &sender_encryption_pk,
