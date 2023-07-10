@@ -2,16 +2,28 @@
 
 use std::io::Error;
 
-use crate::shinkai_message_proto::{Body, ShinkaiMessage, ExternalMetadata};
+use crate::shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage};
 use chrono::Utc;
 use prost::Message;
 use sha2::{Digest, Sha256};
 
-use super::{shinkai_message_extension::ShinkaiMessageWrapper, signatures::sign_message};
+use super::{
+    encryption::{encrypt_body, EncryptionMethod},
+    shinkai_message_extension::ShinkaiMessageWrapper,
+    signatures::sign_message,
+};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
+
+#[derive(Debug, PartialEq)]
+pub enum EncryptionStatus {
+    NotCurrentlyEncrypted,
+    BodyEncrypted,
+    ContentEncrypted,
+}
 
 impl ShinkaiMessageHandler {
     pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
@@ -54,7 +66,44 @@ impl ShinkaiMessageHandler {
         Body::decode(bytes.as_slice())
     }
 
-    pub fn re_sign_message(message: ShinkaiMessage, signature_sk: SignatureStaticKey) -> ShinkaiMessage {
+    pub fn encrypt_body_if_needed(
+        message: ShinkaiMessage,
+        my_encryption_secret_key: EncryptionStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+    ) -> ShinkaiMessage {
+        // if the message is already encrypted, return it
+        if ShinkaiMessageHandler::is_body_currently_encrypted(&message) {
+            return message;
+        }
+
+        let mut msg_to_encrypt = message.clone();
+        msg_to_encrypt.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305
+            .as_str()
+            .to_string();
+
+        let encrypted_body = encrypt_body(
+            &ShinkaiMessageHandler::encode_body(msg_to_encrypt.body.unwrap()),
+            &my_encryption_secret_key,
+            &receiver_public_key,
+            &EncryptionMethod::DiffieHellmanChaChaPoly1305
+                .as_str()
+                .to_string(),
+        )
+        .expect("Failed to encrypt body");
+
+        let new_body = Body {
+            content: encrypted_body,
+            internal_metadata: None,
+        };
+
+        msg_to_encrypt.body = Some(new_body);
+        msg_to_encrypt
+    }
+
+    pub fn re_sign_message(
+        message: ShinkaiMessage,
+        signature_sk: SignatureStaticKey,
+    ) -> ShinkaiMessage {
         // make sure to not include the current signature in the hash
         let mut message = message.clone();
 
@@ -68,6 +117,46 @@ impl ShinkaiMessageHandler {
         }
         message
     }
+
+    pub fn is_body_currently_encrypted(message: &ShinkaiMessage) -> bool {
+        if message.encryption == EncryptionMethod::None.as_str().to_string() {
+            return false;
+        }
+
+        match &message.body {
+            Some(body) => body.internal_metadata.is_none(),
+            None => false,
+        }
+    }
+
+    pub fn is_content_currently_encrypted(message: &ShinkaiMessage) -> bool {
+        if ShinkaiMessageHandler::is_body_currently_encrypted(&message.clone()) {
+            return true;
+        }
+
+        if let Some(body) = message.clone().body {
+            if let Some(internal_metadata) = body.internal_metadata {
+                let encryption_method_none = EncryptionMethod::None.as_str().to_string();
+
+                if internal_metadata.encryption != encryption_method_none
+                    && internal_metadata.message_schema_type.is_none()
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    pub fn get_encryption_status(message: ShinkaiMessage) -> EncryptionStatus {
+        if ShinkaiMessageHandler::is_body_currently_encrypted(&message) {
+            EncryptionStatus::BodyEncrypted
+        } else if ShinkaiMessageHandler::is_content_currently_encrypted(&message) {
+            EncryptionStatus::ContentEncrypted
+        } else {
+            EncryptionStatus::NotCurrentlyEncrypted
+        }
+    }
 }
 
 #[cfg(test)]
@@ -75,6 +164,7 @@ mod tests {
     use crate::shinkai_message::encryption::{
         unsafe_deterministic_encryption_keypair, EncryptionMethod,
     };
+    use crate::shinkai_message::shinkai_message_handler::EncryptionStatus;
     use crate::shinkai_message::signatures::{
         unsafe_deterministic_signature_keypair, verify_signature,
     };
@@ -109,7 +199,12 @@ mod tests {
                 .body("Hello World".to_string())
                 .body_encryption(encryption)
                 .message_schema_type("MyType".to_string(), fields)
-                .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
+                .internal_metadata(
+                    "".to_string(),
+                    "".to_string(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
                 .external_metadata_with_schedule(
                     recipient,
                     sender,
@@ -118,6 +213,29 @@ mod tests {
                 .build();
 
         return message_result.unwrap();
+    }
+
+    #[test]
+    fn test_is_body_currently_encrypted_encryption_none() {
+        let message = build_message(EncryptionMethod::None);
+        assert!(!ShinkaiMessageHandler::is_body_currently_encrypted(
+            &message
+        ));
+    }
+
+    #[test]
+    fn test_is_body_currently_encrypted_encryption_set_no_internal_metadata() {
+        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        message.body.as_mut().unwrap().internal_metadata = None;
+        assert!(ShinkaiMessageHandler::is_body_currently_encrypted(&message));
+    }
+
+    #[test]
+    fn test_is_body_currently_encrypted_encryption_set_with_internal_metadata() {
+        let message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        assert!(!ShinkaiMessageHandler::is_body_currently_encrypted(
+            &message
+        ));
     }
 
     #[test]
@@ -132,6 +250,83 @@ mod tests {
         let message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
         let encoded_message = ShinkaiMessageHandler::encode_message(message);
         assert!(encoded_message.len() > 0);
+    }
+
+    #[test]
+    fn test_is_content_currently_encrypted() {
+        // Test case when body encryption is set to EncryptionMethod::None
+        let message = build_message(EncryptionMethod::None);
+        assert!(!ShinkaiMessageHandler::is_content_currently_encrypted(
+            &message
+        ));
+
+        // Test case when body encryption is set but internal_metadata.encryption is set to EncryptionMethod::None
+        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        message
+            .body
+            .as_mut()
+            .unwrap()
+            .internal_metadata
+            .as_mut()
+            .unwrap()
+            .encryption = EncryptionMethod::None.as_str().to_string();
+        assert!(!ShinkaiMessageHandler::is_content_currently_encrypted(
+            &message
+        ));
+
+        // Test case when body encryption is set, internal_metadata.encryption is set and message_schema_type is None
+        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        message
+            .body
+            .as_mut()
+            .unwrap()
+            .internal_metadata
+            .as_mut()
+            .unwrap()
+            .message_schema_type = None;
+        assert!(ShinkaiMessageHandler::is_content_currently_encrypted(
+            &message
+        ));
+    }
+
+    #[test]
+    fn test_get_encryption_status() {
+        // Test case when body encryption is set to EncryptionMethod::None
+        let message = build_message(EncryptionMethod::None);
+        assert_eq!(
+            ShinkaiMessageHandler::get_encryption_status(message),
+            EncryptionStatus::NotCurrentlyEncrypted
+        );
+
+        // Test case when body encryption is set but internal_metadata.encryption is set to EncryptionMethod::None
+        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        message
+            .body
+            .as_mut()
+            .unwrap()
+            .internal_metadata
+            .as_mut()
+            .unwrap()
+            .encryption = EncryptionMethod::None.as_str().to_string();
+        assert_eq!(
+            ShinkaiMessageHandler::get_encryption_status(message),
+            EncryptionStatus::BodyEncrypted
+        );
+
+        // Test case when body encryption is set, internal_metadata.encryption is set and message_schema_type is None
+        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
+        message
+            .body
+            .as_mut()
+            .unwrap()
+            .internal_metadata
+            .as_mut()
+            .unwrap()
+            .message_schema_type = None;
+        assert_eq!(
+            ShinkaiMessageHandler::get_encryption_status(message),
+            EncryptionStatus::ContentEncrypted
+        );
     }
 
     #[test]

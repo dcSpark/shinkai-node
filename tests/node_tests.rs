@@ -3,13 +3,13 @@ use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node, Subidentity, SubIdentityManager};
 use shinkai_node::shinkai_message::encryption::{
     encryption_public_key_to_string, hash_encryption_public_key,
-    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message,
+    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string, decrypt_body_message,
 };
 use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_node::shinkai_message::signatures::{
     clone_signature_secret_key, signature_public_key_to_string,
-    unsafe_deterministic_signature_keypair, sign_message,
+    unsafe_deterministic_signature_keypair, sign_message, signature_secret_key_to_string,
 };
 use shinkai_node::shinkai_message::utils::hash_string;
 use shinkai_node::shinkai_message_proto::Field;
@@ -254,6 +254,8 @@ fn subidentity_registration() {
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node1_encryption_sk_clone = node1_encryption_sk.clone();
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
+        println!("Node 2 encryption sk: {:?}", encryption_secret_key_to_string(node2_encryption_sk_clone));
+        println!("Node 2 encryption pk: {:?}", encryption_public_key_to_string(node2_encryption_pk));
         let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
         let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
 
@@ -262,10 +264,16 @@ fn subidentity_registration() {
         let (node1_subencryption_sk, node1_subencryption_pk) =
             unsafe_deterministic_encryption_keypair(100);
 
+        println!("Node 1 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node1_subidentity_sk)));
+        println!("Node 1 subidentity pk: {:?}", signature_public_key_to_string(node1_subidentity_pk));
+
         let (node2_subidentity_sk, node2_subidentity_pk) =
             unsafe_deterministic_signature_keypair(101);
         let (node2_subencryption_sk, node2_subencryption_pk) =
             unsafe_deterministic_encryption_keypair(101);
+        println!("Node 2 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node2_subidentity_sk)));
+        println!("Node 2 subidentity pk: {:?}", signature_public_key_to_string(node2_subidentity_pk));
+
         let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_subidentity_sk);
         let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
 
@@ -331,6 +339,7 @@ fn subidentity_registration() {
                     .await
                     .unwrap();
                 let node2_registration_code = res_registraton_receiver.recv().await.unwrap();
+                println!("Node 2 registration code: {}", node2_registration_code);
 
                 let code_message = ShinkaiMessageBuilder::code_registration(
                     node2_subencryption_sk.clone(),
@@ -399,16 +408,17 @@ fn subidentity_registration() {
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node2_subencryption_sk,
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_encryption_pk,
+                    node2_encryption_pk,
                 )
                 .body(message_content.clone())
-                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .no_body_encryption()
+                // .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
                 .message_schema_type("schema type".to_string(), fields)
                 .internal_metadata(
                     node2_subidentity_name.to_string().clone(),
                     "".to_string(),
                     "".to_string(),
-                    EncryptionMethod::None,
+                    EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(
                     node1_identity_name.to_string(),
@@ -418,13 +428,16 @@ fn subidentity_registration() {
                 .build()
                 .unwrap();
 
+                println!("Sending message from node 2 to node 1");
+                println!("Message: {:?}", unchanged_message);
+
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<NodeCommand>,
                     async_channel::Receiver<NodeCommand>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender
-                    .send(NodeCommand::SendUnchangedMessage {
+                    .send(NodeCommand::SendOnionizedMessage {
                         msg: unchanged_message,
                     })
                     .await
@@ -459,17 +472,45 @@ fn subidentity_registration() {
                 println!("Node 2 last messages: {:?}", node2_last_messages);
                 println!("\n\n");
 
-                let encrypted_content = &node2_last_messages[1].clone().body.unwrap().content;
-                let decrypted_content = decrypt_content_message(
-                    encrypted_content.clone().to_string(),
-                    &node2_last_messages[1].clone().encryption,
+                let message_to_check = node2_last_messages[1].clone();
+                // Check that the message is body encrypted
+                assert_eq!(
+                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    true,
+                    "Message from Node 2 to Node 1 is body encrypted"
+                );
+
+                let message_to_check_body_unencrypted = decrypt_body_message(
+                    &message_to_check.clone(),
+                    &node1_encryption_sk_clone,
+                    &node2_encryption_pk
+                ).unwrap();
+                // Check that the body encryption was removed
+                assert_eq!(
+                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check_body_unencrypted.clone()),
+                    false,
+                    "Message from Node 2 to Node 1 is not body encrypted anymore"
+                );
+
+                // Check that the content is encrypted
+                println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
+                assert_eq!(
+                    ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check_body_unencrypted.clone()),
+                    true,
+                    "Message from Node 2 to Node 1 is content encrypted"
+                );
+
+                let message_to_check_content_unencrypted = decrypt_content_message(
+                    message_to_check_body_unencrypted.clone().body.unwrap().content,
+                    &message_to_check_body_unencrypted.clone().encryption,
                     &node1_encryption_sk_clone.clone(),
                     &node2_subencryption_pk,
                 ).unwrap();
+                
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
                     message_content,
-                    decrypted_content,
+                    message_to_check_content_unencrypted,
                     "Node 2's profile send an encrypted message to Node 1"
                 );
 

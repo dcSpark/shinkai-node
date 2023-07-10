@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use super::encryption::{decrypt_body_message, encrypt_body_if_needed};
+use super::encryption::{decrypt_body_message, encrypt_body};
 use super::{
     encryption::{encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
     shinkai_message_handler::ShinkaiMessageHandler,
@@ -181,7 +181,7 @@ impl ShinkaiMessageBuilder {
 
             // if self.encryption is not None
             let new_body = if self.encryption.as_str() != &encryption_method_none {
-                let encrypted_body = encrypt_body_if_needed(
+                let encrypted_body = encrypt_body(
                     &ShinkaiMessageHandler::encode_body(body.clone()),
                     &self.my_encryption_secret_key,
                     &self.receiver_public_key,
@@ -310,6 +310,7 @@ impl ShinkaiMessageBuilder {
         let body = serde_json::to_string(&registration_code)
             .map_err(|_| "Failed to serialize registration code to JSON")?;
 
+        println!("code_registration> receiver_public_key = {:?}", encryption_public_key_to_string(receiver_public_key));
         ShinkaiMessageBuilder::new(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
@@ -317,7 +318,9 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .external_metadata_with_other(receiver, sender, other)
+        .internal_metadata(sender, "".to_string(), "".to_string(), EncryptionMethod::None)
+        // we are interacting with the associated node so the receiver and the sender are from the same base node
+        .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
     }
 
@@ -540,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_all_fields_onion_encryption() {
-        
+
     }
 
     #[test]

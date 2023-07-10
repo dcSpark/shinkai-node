@@ -118,7 +118,7 @@ pub fn hash_encryption_public_key(public_key: PublicKey) -> String {
     format!("{:x}", result)
 }
 
-pub fn encrypt_body_if_needed(
+pub fn encrypt_body(
     body: &[u8],
     self_sk: &StaticSecret,
     destination_pk: &PublicKey,
@@ -127,8 +127,8 @@ pub fn encrypt_body_if_needed(
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&destination_pk);
-            // println!("destination pk: {:?} ", encryption_public_key_to_string(*destination_pk));
-            // println!("self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
+            println!("encrypt_body_if_needed> destination pk: {:?} ", encryption_public_key_to_string(*destination_pk));
+            println!("encrypt_body_if_needed> self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
 
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
@@ -149,6 +149,7 @@ pub fn encrypt_body_if_needed(
             // Here we return the nonce and ciphertext (encoded to bs58 for easier storage and transmission)
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
+            println!("encrypt body if needed> result {}", bs58::encode(&nonce_and_ciphertext).into_string());
             Some(bs58::encode(&nonce_and_ciphertext).into_string())
         }
         EncryptionMethod::None => None,
@@ -230,8 +231,8 @@ pub fn decrypt_body_message(
     match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
-            // println!("sender pk: {:?} ", encryption_public_key_to_string(*sender_pk));
-            // println!("self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
+            println!("decrypt_body_message> sender pk: {:?} ", encryption_public_key_to_string(*sender_pk));
+            println!("decrypt_body_message> self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
 
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();

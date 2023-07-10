@@ -75,7 +75,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                 async move {
                     let msg = ShinkaiMessage::from(message); // Convert wrapper back to ShinkaiMessage
                     node_commands_sender
-                        .send(NodeCommand::SendUnchangedMessage { msg })
+                        .send(NodeCommand::SendOnionizedMessage { msg })
                         .await
                         .unwrap();
                     let resp = warp::reply::json(&"Message sent successfully");

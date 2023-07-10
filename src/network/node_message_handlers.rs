@@ -6,7 +6,7 @@ use crate::{
         encryption::{clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key, encryption_public_key_to_string, encryption_secret_key_to_string},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         shinkai_message_handler::ShinkaiMessageHandler,
-        signatures::{clone_signature_secret_key, verify_signature},
+        signatures::{clone_signature_secret_key, verify_signature, signature_public_key_to_string},
     },
     shinkai_message_proto::ShinkaiMessage,
 };
@@ -97,14 +97,16 @@ pub fn verify_message_signature(
     match verify_signature(&sender_signature_pk.clone(), &message.clone()) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
-            println!("Failed to validate message's signature");
+            println!("Failed to validate message's signature. Message: {:?}", message);
+            println!("Sender signature pk: {:?}", signature_public_key_to_string(sender_signature_pk));
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to validate message's signature",
             ))
         }
         Err(_) => {
-            println!("> Failed to verify signature.");
+            println!("Failed to verify signature. Message: {:?}", message);
+            println!("Sender signature pk: {:?}", signature_public_key_to_string(sender_signature_pk));
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to verify signature",
@@ -185,7 +187,7 @@ pub async fn handle_default_encryption(
             .await
         }
         Err(_) => {
-            println!("Failed to decrypt message.");
+            println!("handle_default_encryption > Failed to decrypt message.");
             // TODO: send error back?
             Ok(())
         }
@@ -264,7 +266,7 @@ pub async fn handle_based_on_message_content_and_encryption(
 ) -> io::Result<()> {
     let message_body = message.body.clone().unwrap();
     let message_content = message_body.content.as_str();
-    let message_encryption = message.encryption.as_str();
+    let message_encryption = ShinkaiMessageHandler::is_body_currently_encrypted(&message);
 
     match (message_content, message_encryption) {
         ("Ping", _) => {
@@ -288,7 +290,7 @@ pub async fn handle_based_on_message_content_and_encryption(
             );
             Ok(())
         }
-        (_, "default") => {
+        (_, true) => {
             handle_default_encryption(
                 message,
                 sender_encryption_pk,

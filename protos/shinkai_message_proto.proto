@@ -11,10 +11,14 @@ message MessageSchemaType {
     repeated Field fields = 2;
 }
 
+message Content {
+    string data = 1;
+    MessageSchemaType message_schema_type = 2;
+}
+
 message InternalMetadata {
     string sender_subidentity = 1;
     string recipient_subidentity = 2;
-    MessageSchemaType message_schema_type = 3;
     string inbox = 4;
     string encryption = 5;
 }
@@ -28,7 +32,7 @@ message ExternalMetadata {
 }
 
 message Body {
-    string content = 1;
+    Content content = 1;
     InternalMetadata internal_metadata = 2;
 }
 

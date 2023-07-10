@@ -9,7 +9,10 @@ use super::{
 use crate::{
     network::Subidentity,
     shinkai_message::{
-        encryption::{decrypt_body_message, string_to_encryption_public_key, decrypt_content_message},
+        encryption::{
+            decrypt_body_message, decrypt_content_message, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
+        },
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
@@ -54,84 +57,62 @@ impl Node {
         Ok(())
     }
 
-    // And so on for the rest of the methods...
-    pub async fn handle_onionized_message(&self, msg: ShinkaiMessage) -> Result<(), Error> {
-        // check that the message is coming from a subidentity, sender needs to match a subidentity profile name
-        // check that the signature is valid
-        // decrypt the message (if it's encrypted)
-        // re-encrypt the message and re-sign it with the node identity
-
-        println!("handle_wrapped_message msg: {:?}", msg);
-
-        let subidentity_manager = self.subidentity_manager.lock().await;
-
-        // debug code
-        let all_subidentities = subidentity_manager.get_all_subidentities();
-        println!(
-            "handle_wrapped_message all_subidentities: {:?}",
-            all_subidentities
-        );
-        // end debug code
-
-        let subidentity = subidentity_manager
-            .find_by_profile_name(&msg.external_metadata.clone().unwrap().sender);
-
-        println!("handle_wrapped_message subidentity: {:?}", subidentity);
-        // check if subidentity exist
-        if subidentity.is_none() {
-            eprintln!(
-                "Subidentity not found for profile name: {}",
-                msg.external_metadata.clone().unwrap().sender
-            );
-            // TODO: add error messages here
-            return Ok(());
-        }
-
-        // If we reach this point, it means that subidentity exists, so it's safe to unwrap
-        // let subidentity = subidentity.unwrap();
-
-        // Validate it
-        let sender_keys = get_sender_keys(&msg)?;
-        match verify_message_signature(sender_keys.signature_public_key, &msg) {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("Failed to verify message signature: {}", e);
-                return Ok(());
-            }
-        }
-
-        // Save to db
-        {
-            let db = self.db.lock().await;
-            db.insert_message(&msg.clone())
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        }
-
-        let recipient_profile_name_string = extract_recipient_node_profile_name(&msg);
-        let external_profile_data =
-            external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
-
-        let db_guard = self.db.lock().await;
-        Node::send(
-            &msg,
-            (external_profile_data.addr, recipient_profile_name_string),
-            &*db_guard,
-        )
-        .await?;
-
-        Ok(())
-    }
-
-    pub async fn handle_unchanged_message(&self, msg: ShinkaiMessage) -> Result<(), Error> {
-        println!("handle_unchanged_message msg: {:?}", msg);
+    pub async fn handle_onionized_message(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+    ) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
+        println!(
+            "handle_onionized_message msg: {:?}",
+            potentially_encrypted_msg
+        );
+
+        let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(
+            &potentially_encrypted_msg.clone(),
+        ) {
+            // Decrypt the message
+            let sender_encryption_pk_string = potentially_encrypted_msg
+                .clone()
+                .external_metadata
+                .clone()
+                .unwrap()
+                .other;
+            let sender_encryption_pk =
+                string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+
+            let decrypted_msg = decrypt_body_message(
+                &potentially_encrypted_msg.clone(),
+                &self.encryption_secret_key,
+                &sender_encryption_pk,
+            );
+
+            match decrypted_msg {
+                Ok(msg) => msg,
+                Err(e) => {
+                    println!("handle_onionized_message > Error decrypting message: {}", e);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Decryption error: {}", e),
+                    ));
+                }
+            }
+        } else {
+            potentially_encrypted_msg.clone()
+        };
+
         let subidentity_manager = self.subidentity_manager.lock().await;
-        let subidentity = subidentity_manager
-            .find_by_profile_name(&msg.clone().body.unwrap().internal_metadata.unwrap().sender_subidentity);
-        // check if subidentity exist
+        let subidentity = subidentity_manager.find_by_profile_name(
+            &msg.clone()
+                .body
+                .unwrap()
+                .internal_metadata
+                .unwrap()
+                .sender_subidentity,
+        );
+        // Check that the subidentity that's trying to proxy through us exist / is valid
         if subidentity.is_none() {
             eprintln!(
-                "Subidentity not found for profile name: {}",
+                "handle_onionized_message > Subidentity not found for profile name: {}",
                 msg.external_metadata.clone().unwrap().sender
             );
             // TODO: add error messages here
@@ -141,35 +122,53 @@ impl Node {
         // If we reach this point, it means that subidentity exists, so it's safe to unwrap
         let subidentity = subidentity.unwrap();
 
-        // Validate it
+        // Validate that the message actually came from the subidentity
         let signature_public_key = subidentity.signature_public_key.clone();
         if signature_public_key.is_none() {
             eprintln!(
-                "Signature public key doesn't exist for identity: {}",
+                "handle_onionized_message > Signature public key doesn't exist for identity: {}",
                 subidentity.name.clone()
             );
             // TODO: add error messages here
             return Ok(());
         }
 
-        match verify_message_signature(signature_public_key.unwrap(), &msg) {
+        match verify_message_signature(
+            signature_public_key.unwrap(),
+            &potentially_encrypted_msg.clone(),
+        ) {
             Ok(_) => {}
             Err(e) => {
-                eprintln!("Failed to verify message signature: {}", e);
+                eprintln!(
+                    "handle_onionized_message > Failed to verify message signature: {}",
+                    e
+                );
                 return Ok(());
             }
         }
 
-        // We update the signature so it comes from the node and not the profile
-        // that way the recipient will be able to verify it
-        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = ShinkaiMessageHandler::re_sign_message(msg, signature_sk);
-        // Save to db
+        // Save to db. We do this before the next step so it's saved with a valid signature and unencrypted
         {
             let db = self.db.lock().await;
             db.insert_message(&msg.clone())
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
+
+        // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
+        // we know the node that we want to send the message to from the recipient profile name
+        let recipient_node_profile_name = msg.external_metadata.clone().unwrap().recipient;
+        let external_profile_data = external_identity_to_profile_data(recipient_node_profile_name).unwrap();
+
+        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
+            msg.clone(),
+            self.encryption_secret_key.clone(),
+            external_profile_data.encryption_public_key, // other node's encryption public key
+        );
+
+        // We update the signature so it comes from the node and not the profile
+        // that way the recipient will be able to verify it
+        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
+        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
 
         let recipient_profile_name_string = extract_recipient_node_profile_name(&msg);
         let external_profile_data =
@@ -183,11 +182,11 @@ impl Node {
         )
         .await?;
         println!(
-            "handle_unchanged_message who am I: {:?}",
+            "handle_onionized_message who am I: {:?}",
             self.node_profile_name
         );
         println!(
-            "Finished successfully> handle_unchanged_message msg: {:?}",
+            "Finished successfully> handle_onionized_message msg: {:?}",
             msg
         );
         println!("\n\n");
@@ -241,12 +240,17 @@ impl Node {
 
         // Decrypt the message
         let message_to_decrypt = msg.clone();
-        let decrypted_content = decrypt_content_message(
-            message_to_decrypt.body.unwrap().content, 
-            message_to_decrypt.encryption.as_str(),
+        let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
+        let encryption_secret_key_string =
+            encryption_secret_key_to_string(self.encryption_secret_key.clone());
+
+        let decrypted_content = decrypt_body_message(
+            &message_to_decrypt.clone(),
             &self.encryption_secret_key,
-            &sender_encryption_pk
+            &sender_encryption_pk,
         );
+
+        // println!("handle_registration_code_usage> decrypted_content: {:?}", decrypted_content);
 
         // You'll need to handle the case where decryption fails
         let decrypted_message = match decrypted_content {
@@ -259,7 +263,7 @@ impl Node {
         };
 
         // Deserialize body.content into RegistrationCode
-        let content = decrypted_message.clone();
+        let content = decrypted_message.clone().body.unwrap().content;
         let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
 
         // Extract values from the ShinkaiMessage

@@ -66,9 +66,6 @@ impl From<std::io::Error> for NodeError {
 pub enum NodeCommand {
     PingAll,
     GetPublicKeys(Sender<(SignaturePublicKey, EncryptionPublicKey)>),
-    SendUnchangedMessage {
-        msg: ShinkaiMessage,
-    },
     SendOnionizedMessage {
         msg: ShinkaiMessage,
     },
@@ -186,7 +183,6 @@ impl Node {
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
                             Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
                             Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_onionized_message(msg).await?,
-                            Some(NodeCommand::SendUnchangedMessage { msg }) => self.handle_unchanged_message(msg).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
                             Some(NodeCommand::CreateRegistrationCode { res }) => self.create_and_send_registration_code(res).await?,
