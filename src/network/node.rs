@@ -17,7 +17,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::db::ShinkaiMessageDB;
 use crate::network::external_identities::{self, external_identity_to_profile_data};
 use crate::network::node_message_handlers::{
-    extract_message, extract_recipient_node_profile_name, extract_recipient_keys,
+    extract_message, extract_recipient_keys, extract_recipient_node_profile_name,
     extract_sender_node_profile_name, get_sender_keys,
     handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
@@ -64,54 +64,78 @@ impl From<std::io::Error> for NodeError {
 }
 
 pub enum NodeCommand {
+    // Command to make the node ping all the other nodes it knows about.
     PingAll,
+    // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
     GetPublicKeys(Sender<(SignaturePublicKey, EncryptionPublicKey)>),
+    // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
     },
+    // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
+    // Command to make the node create a registration code. The sender will receive the code.
     CreateRegistrationCode {
         res: Sender<String>,
     },
+    // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
     UseRegistrationCode {
         msg: ShinkaiMessage,
         res: Sender<String>,
     },
+    // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
         name: String,
         res: Sender<ExternalProfileData>,
     },
+    // Command to make the node connect to a new node, given the node's address and profile name.
     Connect {
         address: SocketAddr,
         profile_name: String,
     },
+    // Command to fetch the last 'n' messages, where 'n' is defined by `limit`. The sender will receive the messages.
     FetchLastMessages {
-        // TODO: add profile name
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     },
+    // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
         res: Sender<Vec<Subidentity>>,
     },
 }
 
+// A type alias for a string that represents a profile name.
 type ProfileName = String;
 
+// The `Node` struct represents a single node in the network.
 pub struct Node {
+    // The profile name of the node.
     pub node_profile_name: String,
+    // The secret key used for signing operations.
     pub identity_secret_key: SignatureStaticKey,
+    // The public key corresponding to `identity_secret_key`.
     pub identity_public_key: SignaturePublicKey,
+    // The secret key used for encryption and decryption.
     pub encryption_secret_key: EncryptionStaticKey,
+    // The public key corresponding to `encryption_secret_key`.
     pub encryption_public_key: EncryptionPublicKey,
+    // The address this node is listening on.
     pub listen_address: SocketAddr,
+    // A map of known peer nodes.
     pub peers: CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>>,
+    // The interval at which this node pings all known peers.
     pub ping_interval_secs: u64,
+    // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
+    // The manager for subidentities.
     pub subidentity_manager: Arc<Mutex<SubIdentityManager>>,
+    // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
 }
 
 impl Node {
+    // Construct a new node. Returns a `Result` which is `Ok` if the node was successfully created,
+    // and `Err` otherwise.
     pub async fn new(
         node_profile_name: String,
         listen_address: SocketAddr,
@@ -143,6 +167,7 @@ impl Node {
         }
     }
 
+    // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
@@ -196,6 +221,7 @@ impl Node {
         Ok(())
     }
 
+    // A function that listens for incoming connections and tries to reconnect if a connection is lost.
     async fn listen_and_reconnect(&self) {
         info!(
             "{} > TCP: Starting listen and reconnect loop.",
@@ -209,6 +235,7 @@ impl Node {
         }
     }
 
+    // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
         let mut listener = TcpListener::bind(&self.listen_address).await?;
 
@@ -266,6 +293,7 @@ impl Node {
         }
     }
 
+    // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
@@ -278,6 +306,7 @@ impl Node {
     //     db.get_encryption_public_key(&identity_public_key)
     // }
 
+    // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
         info!(
             "{} {} > Connecting to {} with profile_name: {:?}",
@@ -310,6 +339,7 @@ impl Node {
         Ok(())
     }
 
+    // Send a message to a peer.
     pub async fn send(
         message: &ShinkaiMessage,
         peer: (SocketAddr, ProfileName),
