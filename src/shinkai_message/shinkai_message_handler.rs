@@ -139,7 +139,7 @@ impl ShinkaiMessageHandler {
                 let encryption_method_none = EncryptionMethod::None.as_str().to_string();
 
                 if internal_metadata.encryption != encryption_method_none
-                    && internal_metadata.message_schema_type.is_none()
+                    && internal_metadata.message_schema_type.is_empty()
                 {
                     return true;
                 }
@@ -172,7 +172,7 @@ mod tests {
         shinkai_message_builder::ShinkaiMessageBuilder,
         shinkai_message_handler::ShinkaiMessageHandler,
     };
-    use crate::shinkai_message_proto::{Field, ShinkaiMessage};
+    use crate::shinkai_message_proto::{ShinkaiMessage};
 
     fn build_message(encryption: EncryptionMethod) -> ShinkaiMessage {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -183,22 +183,11 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let fields = vec![
-            Field {
-                name: "field1".to_string(),
-                field_type: "type1".to_string(),
-            },
-            Field {
-                name: "field2".to_string(),
-                field_type: "type2".to_string(),
-            },
-        ];
-
         let message_result =
             ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
                 .body("Hello World".to_string())
                 .body_encryption(encryption)
-                .message_schema_type("MyType".to_string(), fields)
+                .message_schema_type("MyType".to_string())
                 .internal_metadata(
                     "".to_string(),
                     "".to_string(),
@@ -261,15 +250,7 @@ mod tests {
         ));
 
         // Test case when body encryption is set but internal_metadata.encryption is set to EncryptionMethod::None
-        let mut message = build_message(EncryptionMethod::DiffieHellmanChaChaPoly1305);
-        message
-            .body
-            .as_mut()
-            .unwrap()
-            .internal_metadata
-            .as_mut()
-            .unwrap()
-            .encryption = EncryptionMethod::None.as_str().to_string();
+        let mut message = build_message(EncryptionMethod::None);
         assert!(!ShinkaiMessageHandler::is_content_currently_encrypted(
             &message
         ));
@@ -283,7 +264,7 @@ mod tests {
             .internal_metadata
             .as_mut()
             .unwrap()
-            .message_schema_type = None;
+            .message_schema_type = String::new();
         assert!(ShinkaiMessageHandler::is_content_currently_encrypted(
             &message
         ));
@@ -322,7 +303,7 @@ mod tests {
             .internal_metadata
             .as_mut()
             .unwrap()
-            .message_schema_type = None;
+            .message_schema_type.clear();
         assert_eq!(
             ShinkaiMessageHandler::get_encryption_status(message),
             EncryptionStatus::ContentEncrypted
@@ -359,47 +340,8 @@ mod tests {
         assert_eq!(internal_metadata.inbox, "");
         assert_eq!(
             internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .type_name,
+                .message_schema_type,
             "MyType"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[0]
-                .name,
-            "field1"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[0]
-                .field_type,
-            "type1"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[1]
-                .name,
-            "field2"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[1]
-                .field_type,
-            "type2"
         );
 
         assert_eq!(decoded_message.encryption, "None");
@@ -432,49 +374,9 @@ mod tests {
         assert_eq!(internal_metadata.inbox, "");
         assert_eq!(
             internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .type_name,
+                .message_schema_type,
             "MyType"
         );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[0]
-                .name,
-            "field1"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[0]
-                .field_type,
-            "type1"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[1]
-                .name,
-            "field2"
-        );
-        assert_eq!(
-            internal_metadata
-                .message_schema_type
-                .as_ref()
-                .unwrap()
-                .fields[1]
-                .field_type,
-            "type2"
-        );
-
         assert_eq!(decoded_message.encryption, "None");
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);

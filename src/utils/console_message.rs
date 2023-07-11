@@ -87,11 +87,6 @@
 //     other: String,
 //     global_identity_name: &str,
 // ) -> ShinkaiMessage {
-//     let fields = vec![Field {
-//         name: "field1".to_string(),
-//         field_type: "type1".to_string(),
-//     }];
-
 //     let message = ShinkaiMessageBuilder::new(
 //         node_keys.encryption_secret_key.clone(),
 //         clone_signature_secret_key(&node_keys.identity_secret_key),

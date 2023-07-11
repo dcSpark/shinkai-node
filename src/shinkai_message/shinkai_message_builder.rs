@@ -7,9 +7,7 @@ use super::{
 };
 use crate::{
     network::subidentities::RegistrationCode,
-    shinkai_message_proto::{
-        Body, ExternalMetadata, Field, InternalMetadata, MessageSchemaType, ShinkaiMessage,
-    },
+    shinkai_message_proto::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -18,7 +16,7 @@ pub type ProfileName = String;
 
 pub struct ShinkaiMessageBuilder {
     body: Option<Body>,
-    message_schema_type: Option<MessageSchemaType>,
+    message_schema_type: String,
     internal_metadata: Option<InternalMetadata>,
     external_metadata: Option<ExternalMetadata>,
     encryption: String,
@@ -39,7 +37,7 @@ impl ShinkaiMessageBuilder {
         let my_signature_public_key = ed25519_dalek::PublicKey::from(&my_signature_secret_key);
         Self {
             body: None,
-            message_schema_type: None,
+            message_schema_type: String::new(),
             internal_metadata: None,
             external_metadata: None,
             encryption: EncryptionMethod::None.as_str().to_string(),
@@ -69,8 +67,8 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn message_schema_type(mut self, type_name: String, fields: Vec<Field>) -> Self {
-        self.message_schema_type = Some(MessageSchemaType { type_name, fields });
+    pub fn message_schema_type(mut self, content: String) -> Self {
+        self.message_schema_type = content.clone();
         self
     }
 
@@ -84,7 +82,7 @@ impl ShinkaiMessageBuilder {
         self.internal_metadata = Some(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,
-            message_schema_type: self.message_schema_type.take(),
+            message_schema_type: self.message_schema_type.clone(),
             inbox,
             encryption: encryption.as_str().to_string(),
         });
@@ -162,6 +160,7 @@ impl ShinkaiMessageBuilder {
                 if internal_metadata.encryption.as_str() != &encryption_method_none {
                     let encrypted_content = encrypt_string_content(
                         body_content,
+                        internal_metadata.message_schema_type.clone(),
                         &self.my_encryption_secret_key,
                         &self.receiver_public_key,
                         internal_metadata.encryption.as_str(),
@@ -178,6 +177,13 @@ impl ShinkaiMessageBuilder {
                 println!("No internal_metadata");
                 body_content
             };
+
+            if new_content != body.content.clone() {
+                if let Some(mut internal_metadata) = internal_metadata_clone {
+                    internal_metadata.message_schema_type = String::new();
+                    body.internal_metadata = Some(internal_metadata);
+                }
+            }
 
             // if self.encryption is not None
             let new_body = if self.encryption.as_str() != &encryption_method_none {
@@ -198,7 +204,7 @@ impl ShinkaiMessageBuilder {
                 // If encryption method is None, just return body
                 Body {
                     content: new_content,
-                    internal_metadata: internal_metadata_clone,
+                    internal_metadata: body.internal_metadata,
                 }
             };
 
@@ -310,7 +316,10 @@ impl ShinkaiMessageBuilder {
         let body = serde_json::to_string(&registration_code)
             .map_err(|_| "Failed to serialize registration code to JSON")?;
 
-        println!("code_registration> receiver_public_key = {:?}", encryption_public_key_to_string(receiver_public_key));
+        println!(
+            "code_registration> receiver_public_key = {:?}",
+            encryption_public_key_to_string(receiver_public_key)
+        );
         ShinkaiMessageBuilder::new(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
@@ -318,7 +327,12 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata(sender, "".to_string(), "".to_string(), EncryptionMethod::None)
+        .internal_metadata(
+            sender,
+            "".to_string(),
+            "".to_string(),
+            EncryptionMethod::None,
+        )
         // we are interacting with the associated node so the receiver and the sender are from the same base node
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
@@ -355,14 +369,6 @@ mod tests {
 
     #[test]
     fn test_builder_with_all_fields_no_encryption() {
-        let fields = vec![
-            Field {
-                name: "field1".to_string(),
-                field_type: "type1".to_string(),
-            },
-            // more fields...
-        ];
-
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -375,7 +381,7 @@ mod tests {
             ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
                 .body("body content".to_string())
                 .body_encryption(EncryptionMethod::None)
-                .message_schema_type("schema type".to_string(), fields)
+                .message_schema_type("schema type".to_string())
                 .internal_metadata(
                     "".to_string(),
                     "".to_string(),
@@ -411,11 +417,6 @@ mod tests {
 
     #[test]
     fn test_builder_with_all_fields_body_encryption() {
-        let fields = vec![Field {
-            name: "field1".to_string(),
-            field_type: "type1".to_string(),
-        }];
-
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -431,7 +432,7 @@ mod tests {
         )
         .body("body content".to_string())
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .message_schema_type("schema type".to_string(), fields)
+        .message_schema_type("schema type".to_string())
         .internal_metadata(
             "".to_string(),
             "".to_string(),
@@ -473,11 +474,6 @@ mod tests {
 
     #[test]
     fn test_builder_with_all_fields_content_encryption() {
-        let fields = vec![Field {
-            name: "field1".to_string(),
-            field_type: "type1".to_string(),
-        }];
-
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -493,7 +489,7 @@ mod tests {
         )
         .body("body content".to_string())
         .no_body_encryption()
-        .message_schema_type("schema type".to_string(), fields)
+        .message_schema_type("schema type".to_string())
         .internal_metadata(
             "".to_string(),
             "".to_string(),
@@ -520,6 +516,7 @@ mod tests {
         );
 
         let decrypted_content = decrypt_content_message(
+            // decrypt_content_message(
             message.clone().body.unwrap().content,
             &message
                 .clone()
@@ -533,8 +530,8 @@ mod tests {
         )
         .expect("Failed to decrypt body content");
 
-        println!("decrypted content: {}", decrypted_content);
-        assert_eq!(decrypted_content, "body content");
+        println!("decrypted content: {}", decrypted_content.0);
+        assert_eq!(decrypted_content.0, "body content");
 
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
@@ -542,9 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_with_all_fields_onion_encryption() {
-
-    }
+    fn test_builder_with_all_fields_onion_encryption() {}
 
     #[test]
     fn test_builder_missing_fields() {

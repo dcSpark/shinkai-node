@@ -1,4 +1,5 @@
 use core::fmt;
+use std::convert::TryInto;
 use std::error::Error;
 
 use bs58::decode;
@@ -127,8 +128,14 @@ pub fn encrypt_body(
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&destination_pk);
-            println!("encrypt_body_if_needed> destination pk: {:?} ", encryption_public_key_to_string(*destination_pk));
-            println!("encrypt_body_if_needed> self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
+            println!(
+                "encrypt_body_if_needed> destination pk: {:?} ",
+                encryption_public_key_to_string(*destination_pk)
+            );
+            println!(
+                "encrypt_body_if_needed> self sk: {:?} ",
+                encryption_secret_key_to_string(clone_static_secret_key(self_sk))
+            );
 
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
@@ -149,7 +156,10 @@ pub fn encrypt_body(
             // Here we return the nonce and ciphertext (encoded to bs58 for easier storage and transmission)
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            println!("encrypt body if needed> result {}", bs58::encode(&nonce_and_ciphertext).into_string());
+            println!(
+                "encrypt body if needed> result {}",
+                bs58::encode(&nonce_and_ciphertext).into_string()
+            );
             Some(bs58::encode(&nonce_and_ciphertext).into_string())
         }
         EncryptionMethod::None => None,
@@ -158,39 +168,88 @@ pub fn encrypt_body(
 
 pub fn encrypt_string_content(
     content: String,
+    content_schema: String,
     self_sk: &StaticSecret,
     destination_pk: &PublicKey,
     encryption: &str,
 ) -> Option<String> {
-    println!("encrypt_string_content");
-    println!("encryption: {}", encryption);
-    println!("destination pk: {:?} ", encryption_public_key_to_string(*destination_pk));
-    println!("self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
+    println!("encrypt_string_content> content: {}", content);
+    println!("encrypt_string_content> content_schema: {}", content_schema);
+    println!(
+        "encrypt_string_content> destination pk: {:?} ",
+        encryption_public_key_to_string(*destination_pk)
+    );
+    println!(
+        "encrypt_string_content> self sk: {:?} ",
+        encryption_secret_key_to_string(clone_static_secret_key(self_sk))
+    );
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
-            println!("DiffieHellmanChaChaPoly1305");
             let shared_secret = self_sk.diffie_hellman(destination_pk);
 
-            // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
             hasher.update(shared_secret.as_bytes());
             let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
+            let key = GenericArray::clone_from_slice(&result[..]);
+            println!(
+                "encrypt_string_content> key: {}",
+                bs58::encode(&key).into_string()
+            );
 
             let cipher = ChaCha20Poly1305::new(&key);
 
-            // Generate a unique nonce for each operation
             let mut nonce = [0u8; 12];
             OsRng.fill_bytes(&mut nonce[..]);
             let nonce = GenericArray::from_slice(&nonce);
 
-            // Encrypt message
-            let ciphertext = cipher.encrypt(nonce, content.as_bytes()).expect("encryption failure!");
+            // Combine the content and content_schema into a single string
+            let combined_content = format!("{}{}", content, content_schema);
+            println!(
+                "encrypt_string_content> combined_content: {:?}",
+                combined_content.as_bytes()
+            );
 
-            // Here we return the nonce and ciphertext (encoded to bs58 for easier storage and transmission)
+            let ciphertext = cipher
+                .encrypt(nonce, combined_content.as_bytes())
+                .expect("encryption failure!");
+
+            println!(
+                "encrypt_string_content> ciphertext: {}",
+                bs58::encode(&ciphertext).into_string()
+            );
+            println!(
+                "encrypt_string_content> nonce: {}",
+                bs58::encode(&nonce).into_string()
+            );
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            Some(bs58::encode(&nonce_and_ciphertext).into_string())
+            // Prepend the length of the content and content_schema as 8-byte strings
+            // the maximum value of an 8-byte integer in megabytes would be (2^64 - 1) * 2^-17
+            // = 140,737,488,355.328 MB (or roughly 140 terabytes).
+            let content_len = (content.len() as u64).to_le_bytes();
+            let content_schema_len = (content_schema.len() as u64).to_le_bytes();
+            let length_prefixed_nonce_and_ciphertext = [
+                &content_len[..],
+                &content_schema_len[..],
+                &nonce_and_ciphertext[..],
+            ]
+            .concat();
+
+            println!("encrypt_string_content> content_len: {}", content.len());
+            println!(
+                "encrypt_string_content> content_schema_len: {}",
+                content_schema.len()
+            );
+            println!(
+                "encrypt_string_content> nonce_and_ciphertext: {}",
+                bs58::encode(&nonce_and_ciphertext).into_string()
+            );
+
+            println!(
+                "encrypt_string_content> result {}",
+                bs58::encode(&length_prefixed_nonce_and_ciphertext).into_string()
+            );
+            Some(bs58::encode(length_prefixed_nonce_and_ciphertext).into_string())
         }
         EncryptionMethod::None => None,
     }
@@ -231,8 +290,14 @@ pub fn decrypt_body_message(
     match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
-            println!("decrypt_body_message> sender pk: {:?} ", encryption_public_key_to_string(*sender_pk));
-            println!("decrypt_body_message> self sk: {:?} ", encryption_secret_key_to_string(clone_static_secret_key(self_sk)));
+            println!(
+                "decrypt_body_message> sender pk: {:?} ",
+                encryption_public_key_to_string(*sender_pk)
+            );
+            println!(
+                "decrypt_body_message> self sk: {:?} ",
+                encryption_secret_key_to_string(clone_static_secret_key(self_sk))
+            );
 
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
@@ -267,39 +332,75 @@ pub fn decrypt_body_message(
 }
 
 pub fn decrypt_content_message(
-    content: String,
+    encrypted_content: String,
     encryption: &str,
     self_sk: &StaticSecret,
     sender_pk: &PublicKey,
-) -> Result<String, DecryptionError> {
+) -> Result<(String, String), DecryptionError> {
+    println!(
+        "decrypt_string_content> encrypted_content: {}",
+        encrypted_content
+    );
+    println!(
+        "decrypt_string_content> self sk: {:?}",
+        encryption_secret_key_to_string(clone_static_secret_key(self_sk))
+    );
+    println!(
+        "decrypt_string_content> sender pk: {:?}",
+        encryption_public_key_to_string(*sender_pk)
+    );
+
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(sender_pk);
-
-            // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
             hasher.update(shared_secret.as_bytes());
             let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
+            let key = GenericArray::clone_from_slice(&result[..]);
+            println!(
+                "decrypt_string_content> key: {}",
+                bs58::encode(&key).into_string()
+            );
 
             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = bs58::decode(&content)
+            let decoded = bs58::decode(&encrypted_content)
                 .into_vec()
-                .map_err(|_| DecryptionError::new("Failed to decode bs58"))?;
-            let (nonce, ciphertext) = decoded.split_at(12);
+                .expect("Failed to decode bs58");
+
+            let (content_len_bytes, remainder) = decoded.split_at(8);
+            let (content_schema_len_bytes, remainder) = remainder.split_at(8);
+            let (nonce, ciphertext) = remainder.split_at(12);
+
+            let content_len = u64::from_le_bytes(
+                content_len_bytes
+                    .try_into()
+                    .map_err(|_| DecryptionError::new("Failed to parse content length"))?,
+            );
+            let content_schema_len = u64::from_le_bytes(
+                content_schema_len_bytes
+                    .try_into()
+                    .map_err(|_| DecryptionError::new("Failed to parse content schema length"))?,
+            );
+
             let nonce = GenericArray::from_slice(nonce);
 
-            // Decrypt ciphertext
             let plaintext_bytes = cipher
                 .decrypt(nonce, ciphertext)
-                .map_err(|_| DecryptionError::new("Decryption failure!"))?;
+                .expect("Decryption failure!");
 
-            // Convert the decrypted bytes back into a String
-            String::from_utf8(plaintext_bytes)
-                .map_err(|_| DecryptionError::new("Failed to decode decrypted content"))
+            let (content_bytes, schema_bytes) = plaintext_bytes.split_at(content_len as usize);
+
+            let content = String::from_utf8(content_bytes.to_vec())
+                .expect("Failed to decode decrypted content");
+            let schema = String::from_utf8(schema_bytes.to_vec())
+                .expect("Failed to decode decrypted content schema");
+
+            println!("decrypt_string_content> content: {}", content);
+            println!("decrypt_string_content> content_schema: {}", schema);
+
+            Ok((content, schema))
         }
         EncryptionMethod::None => Err(DecryptionError::new("Encryption method is None")),
     }
 }
-

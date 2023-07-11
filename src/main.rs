@@ -1,14 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
 // main.rs
-use network::Node;
-use shinkai_message::encryption::ephemeral_encryption_keys;
-use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
-use std::env;
-use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
-use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
-use anyhow::Error;
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
@@ -24,13 +15,21 @@ use crate::shinkai_message::signatures::{
 use crate::shinkai_message::signatures::{
     signature_public_key_to_string, signature_secret_key_to_string,
 };
-use crate::shinkai_message_proto::Field;
 use crate::utils::args::parse_args;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
+use anyhow::Error;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 use log::{info, warn};
+use network::Node;
+use shinkai_message::encryption::ephemeral_encryption_keys;
+use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
+use std::env;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
+use tokio::runtime::Runtime;
+use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
 mod network;
@@ -51,7 +50,7 @@ fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
 
 fn main() {
     env_logger::init();
-    
+
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
     let global_identity_name =
@@ -130,11 +129,6 @@ fn main() {
             }
             return;
         } else if args.create_message {
-            let fields = vec![Field {
-                name: "field1".to_string(),
-                field_type: "type1".to_string(),
-            }];
-
             // Use your key generation and ShinkaiMessageBuilder code here
             let message = ShinkaiMessageBuilder::new(
                 node_keys.encryption_secret_key,
@@ -143,8 +137,13 @@ fn main() {
             )
             .body("body content".to_string())
             .body_encryption(EncryptionMethod::None)
-            .message_schema_type("schema type".to_string(), fields)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
+            .message_schema_type("schema type".to_string())
+            .internal_metadata(
+                "".to_string(),
+                "".to_string(),
+                "".to_string(),
+                EncryptionMethod::None,
+            )
             .external_metadata(
                 recipient.to_string(),
                 global_identity_name.to_string().clone(),

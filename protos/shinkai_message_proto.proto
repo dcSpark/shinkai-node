@@ -1,24 +1,10 @@
 syntax = "proto3";
 package shinkai_message_proto;
 
-message Field {
-    string name = 1;
-    string field_type = 2;
-}
-
-message MessageSchemaType {
-    string type_name = 1;
-    repeated Field fields = 2;
-}
-
-message Content {
-    string data = 1;
-    MessageSchemaType message_schema_type = 2;
-}
-
 message InternalMetadata {
     string sender_subidentity = 1;
     string recipient_subidentity = 2;
+    string message_schema_type = 3;
     string inbox = 4;
     string encryption = 5;
 }
@@ -32,7 +18,7 @@ message ExternalMetadata {
 }
 
 message Body {
-    Content content = 1;
+    string content = 1;
     InternalMetadata internal_metadata = 2;
 }
 

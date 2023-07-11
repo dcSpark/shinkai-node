@@ -10,7 +10,7 @@ use crate::{
     network::Subidentity,
     shinkai_message::{
         encryption::{
-            decrypt_body_message, decrypt_content_message, encryption_public_key_to_string,
+            decrypt_body_message, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key,
         },
         shinkai_message_handler::{self, ShinkaiMessageHandler},

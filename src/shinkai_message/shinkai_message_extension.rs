@@ -1,18 +1,6 @@
 use crate::shinkai_message_proto;
 use serde::{Deserialize, Serialize};
-use shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage};
-
-#[derive(Serialize, Deserialize)]
-pub struct FieldWrapper {
-    name: String,
-    field_type: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct MessageSchemaTypeWrapper {
-    type_name: String,
-    fields: Vec<FieldWrapper>,
-}
+use shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage, InternalMetadata};
 
 #[derive(Serialize, Deserialize)]
 pub struct BodyWrapper {
@@ -40,7 +28,7 @@ pub struct ShinkaiMessageWrapper {
 pub struct InternalMetadataWrapper {
     sender_subidentity: String,
     recipient_subidentity: String,
-    message_schema_type: MessageSchemaTypeWrapper,
+    message_schema_type: String,
     inbox: String,
     encryption: String,
 }
@@ -49,104 +37,52 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
     fn from(msg: &shinkai_message_proto::ShinkaiMessage) -> Self {
         ShinkaiMessageWrapper {
             body: BodyWrapper {
-                content: msg
-                    .body
-                    .as_ref()
-                    .map_or(String::from(""), |b| b.content.clone()),
-                internal_metadata: InternalMetadataWrapper {
-                    sender_subidentity: msg
-                        .body
-                        .as_ref()
-                        .and_then(|b| b.internal_metadata.as_ref())
-                        .map_or(String::from(""), |im| im.sender_subidentity.clone()),
-                    recipient_subidentity: msg
-                        .body
-                        .as_ref()
-                        .and_then(|b| b.internal_metadata.as_ref())
-                        .map_or(String::from(""), |im| im.recipient_subidentity.clone()),
-                    message_schema_type: MessageSchemaTypeWrapper {
-                        type_name: msg
-                            .body
-                            .as_ref()
-                            .and_then(|b| b.internal_metadata.as_ref())
-                            .and_then(|im| im.message_schema_type.as_ref())
-                            .map_or(String::from(""), |mst| mst.type_name.clone()),
-                        fields: msg
-                            .body
-                            .as_ref()
-                            .and_then(|b| b.internal_metadata.as_ref())
-                            .and_then(|im| im.message_schema_type.as_ref())
-                            .map_or(vec![], |mst| {
-                                mst.fields
-                                    .iter()
-                                    .map(|f| FieldWrapper {
-                                        name: f.name.clone(),
-                                        field_type: f.field_type.clone(),
-                                    })
-                                    .collect::<Vec<_>>()
-                            }),
-                    },
-                    inbox: msg
-                        .body
-                        .as_ref()
-                        .and_then(|b| b.internal_metadata.as_ref())
-                        .map_or(String::from(""), |im| im.inbox.clone()),
-                    encryption: msg
-                        .body
-                        .as_ref()
-                        .and_then(|b| b.internal_metadata.as_ref())
-                        .map_or(String::from(""), |im| im.encryption.clone()),
-                },
+                content: msg.body.as_ref().map_or(String::from(""), |b| b.content.clone()),
+                internal_metadata: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).map(|im| {
+                    InternalMetadataWrapper {
+                        sender_subidentity: im.sender_subidentity.clone(),
+                        recipient_subidentity: im.recipient_subidentity.clone(),
+                        message_schema_type: im.message_schema_type.clone(),
+                        inbox: im.inbox.clone(),
+                        encryption: im.encryption.clone(),
+                    }
+                }).unwrap_or(InternalMetadataWrapper {
+                    sender_subidentity: String::from(""),
+                    recipient_subidentity: String::from(""),
+                    message_schema_type: String::from(""),
+                    inbox: String::from(""),
+                    encryption: String::from(""),
+                }),
             },
-            external_metadata: ExternalMetadataWrapper {
-                sender: msg
-                    .external_metadata
-                    .as_ref()
-                    .map_or(String::from(""), |em| em.sender.clone()),
-                recipient: msg
-                    .external_metadata
-                    .as_ref()
-                    .map_or(String::from(""), |em| em.recipient.clone()),
-                scheduled_time: msg
-                    .external_metadata
-                    .as_ref()
-                    .map_or(String::from(""), |em| em.scheduled_time.clone()),
-                signature: msg
-                    .external_metadata
-                    .as_ref()
-                    .map_or(String::from(""), |em| em.signature.clone()),
-                other: msg
-                    .external_metadata
-                    .as_ref()
-                    .map_or(String::from(""), |em| em.other.clone()),
-            },
+            external_metadata: msg.external_metadata.as_ref().map(|em| {
+                ExternalMetadataWrapper {
+                    sender: em.sender.clone(),
+                    recipient: em.recipient.clone(),
+                    scheduled_time: em.scheduled_time.clone(),
+                    signature: em.signature.clone(),
+                    other: em.other.clone(),
+                }
+            }).unwrap_or(ExternalMetadataWrapper {
+                sender: String::from(""),
+                recipient: String::from(""),
+                scheduled_time: String::from(""),
+                signature: String::from(""),
+                other: String::from(""),
+            }),
             encryption: msg.encryption.clone(),
         }
     }
 }
 
-impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
+impl From<ShinkaiMessageWrapper> for shinkai_message_proto::ShinkaiMessage {
     fn from(wrapper: ShinkaiMessageWrapper) -> Self {
-        ShinkaiMessage {
+        shinkai_message_proto::ShinkaiMessage {
             body: Some(Body {
                 content: wrapper.body.content,
-                internal_metadata: Some(shinkai_message_proto::InternalMetadata {
+                internal_metadata: Some(InternalMetadata {
                     sender_subidentity: wrapper.body.internal_metadata.sender_subidentity,
                     recipient_subidentity: wrapper.body.internal_metadata.recipient_subidentity,
-                    message_schema_type: Some(shinkai_message_proto::MessageSchemaType {
-                        type_name: wrapper.body.internal_metadata.message_schema_type.type_name,
-                        fields: wrapper
-                            .body
-                            .internal_metadata
-                            .message_schema_type
-                            .fields
-                            .into_iter()
-                            .map(|field| shinkai_message_proto::Field {
-                                name: field.name,
-                                field_type: field.field_type,
-                            })
-                            .collect(),
-                    }),
+                    message_schema_type: wrapper.body.internal_metadata.message_schema_type,
                     inbox: wrapper.body.internal_metadata.inbox,
                     encryption: wrapper.body.internal_metadata.encryption,
                 }),
