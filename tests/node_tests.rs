@@ -39,14 +39,11 @@ fn subidentity_registration() {
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let node1_encryption_sk_clone = node1_encryption_sk.clone();
         let node1_encryption_sk_clone2 = node1_encryption_sk.clone();
-        println!("Node 1 encryption sk: {:?}", encryption_secret_key_to_string(node1_encryption_sk_clone2));
-        println!("Node 1 encryption pk: {:?}", encryption_public_key_to_string(node1_encryption_pk));
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
         let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
         let node2_encryption_sk_clone = node2_encryption_sk.clone();
-        println!("Node 2 encryption sk: {:?}", encryption_secret_key_to_string(node2_encryption_sk_clone));
-        println!("Node 2 encryption pk: {:?}", encryption_public_key_to_string(node2_encryption_pk));
+
         let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
         let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
 
@@ -55,15 +52,10 @@ fn subidentity_registration() {
         let (node1_subencryption_sk, node1_subencryption_pk) =
             unsafe_deterministic_encryption_keypair(100);
 
-        println!("Node 1 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node1_subidentity_sk)));
-        println!("Node 1 subidentity pk: {:?}", signature_public_key_to_string(node1_subidentity_pk));
-
         let (node2_subidentity_sk, node2_subidentity_pk) =
             unsafe_deterministic_signature_keypair(101);
         let (node2_subencryption_sk, node2_subencryption_pk) =
             unsafe_deterministic_encryption_keypair(101);
-        println!("Node 2 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node2_subidentity_sk)));
-        println!("Node 2 subidentity pk: {:?}", signature_public_key_to_string(node2_subidentity_pk));
 
         let node1_subencryption_sk_clone = node1_subencryption_sk.clone();
         let node2_subencryption_sk_clone = node2_subencryption_sk.clone();
@@ -106,6 +98,19 @@ fn subidentity_registration() {
             node2_db_path,
         );
 
+        // Printing
+        println!("Node 1 encryption sk: {:?}", encryption_secret_key_to_string(node1_encryption_sk_clone2));
+        println!("Node 1 encryption pk: {:?}", encryption_public_key_to_string(node1_encryption_pk));
+
+        println!("Node 2 encryption sk: {:?}", encryption_secret_key_to_string(node2_encryption_sk_clone));
+        println!("Node 2 encryption pk: {:?}", encryption_public_key_to_string(node2_encryption_pk));
+        
+        println!("Node 1 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node1_subidentity_sk)));
+        println!("Node 1 subidentity pk: {:?}", signature_public_key_to_string(node1_subidentity_pk));
+
+        println!("Node 2 subidentity sk: {:?}", signature_secret_key_to_string(clone_signature_secret_key(&node2_subidentity_sk)));
+        println!("Node 2 subidentity pk: {:?}", signature_public_key_to_string(node2_subidentity_pk));
+
         println!("Starting nodes");
         // Start node1 and node2
         let node1_handler = tokio::spawn(async move {
@@ -133,7 +138,7 @@ fn subidentity_registration() {
                     .await
                     .unwrap();
                 let node2_registration_code = res_registraton_receiver.recv().await.unwrap();
-                println!("Node 2 registration code: {}", node2_registration_code);
+                // println!("Node 2 registration code: {}", node2_registration_code);
 
                 let code_message = ShinkaiMessageBuilder::code_registration(
                     node2_subencryption_sk.clone(),
@@ -216,8 +221,7 @@ fn subidentity_registration() {
                 .build()
                 .unwrap();
 
-                println!("Sending message from node 2 to node 1");
-                println!("Message: {:?}", unchanged_message);
+                // println!("Message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<NodeCommand>,
@@ -257,8 +261,8 @@ fn subidentity_registration() {
 
                 // println!("Node 1 last messages: {:?}", node1_last_messages);
                 // println!("\n\n");
-                println!("Node 2 last messages: {:?}", node2_last_messages);
-                println!("\n\n");
+                // println!("Node 2 last messages: {:?}", node2_last_messages);
+                // println!("\n\n");
 
                 let message_to_check = node2_last_messages[1].clone();
                 // Check that the message is body encrypted
@@ -281,7 +285,7 @@ fn subidentity_registration() {
                 );
 
                 // Check that the content is encrypted
-                println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
+                // println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
                 assert_eq!(
                     ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check_body_unencrypted.clone()),
                     true,
@@ -452,12 +456,12 @@ fn subidentity_registration() {
                     .unwrap();
                 let node1_last_messages = res1_receiver.recv().await.unwrap();
 
-                println!("\n\n");
-                println!("\n***********\n");
-                println!("\n***********\n");
-                println!("\n***********\n");
-                println!("Node 1 last messages: {:?}", node1_last_messages);
-                println!("\n\nNode 2 last messages: {:?}", node2_last_messages);
+                // println!("\n\n");
+                // println!("\n***********\n");
+                // println!("\n***********\n");
+                // println!("\n***********\n");
+                // println!("Node 1 last messages: {:?}", node1_last_messages);
+                // println!("\n\nNode 2 last messages: {:?}", node2_last_messages);
 
                 let message_to_check = node2_last_messages[1].clone();
 
@@ -473,7 +477,7 @@ fn subidentity_registration() {
                     &node1_encryption_sk_clone,
                     &node2_encryption_pk
                 ).unwrap();
-                println!("Node 1 profile to Node 2 profile. Message to check body unencrypted: {:?}", message_to_check_body_unencrypted.clone());
+                // println!("Node 1 profile to Node 2 profile. Message to check body unencrypted: {:?}", message_to_check_body_unencrypted.clone());
                 // Check that the body encryption was removed
                 assert_eq!(
                     ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check_body_unencrypted.clone()),
@@ -482,7 +486,7 @@ fn subidentity_registration() {
                 );
 
                 // Check that the content is encrypted
-                println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
+                // println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
                 assert_eq!(
                     ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check_body_unencrypted.clone()),
                     true,

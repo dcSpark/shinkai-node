@@ -62,10 +62,10 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
     ) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        println!(
-            "handle_onionized_message msg: {:?}",
-            potentially_encrypted_msg
-        );
+        // println!(
+        //     "handle_onionized_message msg: {:?}",
+        //     potentially_encrypted_msg
+        // );
 
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(
             &potentially_encrypted_msg.clone(),
@@ -181,15 +181,15 @@ impl Node {
             &*db_guard,
         )
         .await?;
-        println!(
-            "handle_onionized_message who am I: {:?}",
-            self.node_profile_name
-        );
-        println!(
-            "Finished successfully> handle_onionized_message msg: {:?}",
-            msg
-        );
-        println!("\n\n");
+        // println!(
+        //     "handle_onionized_message who am I: {:?}",
+        //     self.node_profile_name
+        // );
+        // println!(
+        //     "Finished successfully> handle_onionized_message msg: {:?}",
+        //     msg
+        // );
+        // println!("\n\n");
         Ok(())
     }
 
