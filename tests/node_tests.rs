@@ -285,29 +285,31 @@ fn subidentity_registration() {
                     "Message from Node 2 to Node 1 is content encrypted"
                 );
 
+                {
+                    let internal_metadata = message_to_check_body_unencrypted.clone().body.unwrap().internal_metadata.unwrap();
+                    assert_eq!(
+                        internal_metadata.sender_subidentity,
+                        node2_subidentity_name.to_string(),
+                        "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
+                    );
+                }
+
                 let message_to_check_content_unencrypted = decrypt_content_message(
                     message_to_check_body_unencrypted.clone().body.unwrap().content,
                     &message_to_check_body_unencrypted.clone().encryption,
-                    &node2_subencryption_sk,
-                    &node1_encryption_pk,
-                    // &node1_encryption_sk_clone.clone(),
-                    // &node2_encryption_pk,
+                    // &node2_subencryption_sk,
+                    // &node1_encryption_pk,
+                    &node1_encryption_sk_clone.clone(),
+                    &node2_subencryption_pk,
                 ).unwrap();
-                println!("Worked!!");
-                
+                 
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
                     message_content,
                     message_to_check_content_unencrypted.0,
                     "Node 2's profile send an encrypted message to Node 1"
                 );
-
-                assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().sender,
-                    node2_subidentity_name.to_string(),
-                    "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
-                );
-
+               
                 // You could think the subidentity signed it, but it's actually the node who re-signs it before sending it 
                 let signature = sign_message(&node2_identity_sk_clone, node2_last_messages[1].clone());
                 assert_eq!(
