@@ -1,0 +1,17 @@
+version: '3'
+services:
+  shinkai-node:
+    build: .
+    ports:
+      - 8080:8080
+      - 3030:3030
+    environment:
+      - NODE_IP=${NODE_IP:-0.0.0.0}
+      - NODE_PORT=${NODE_PORT:-8080}
+      - NODE_API_IP=${NODE_API_IP:-0.0.0.0}
+      - NODE_API_PORT=${NODE_API_PORT:-3030}
+      - IDENTITY_SECRET_KEY=${IDENTITY_SECRET_KEY:-G2TyLP33XfqndppUzipoTWTs6XnKjmUhCQg1tH44isAG}
+      - ENCRYPTION_SECRET_KEY=${ENCRYPTION_SECRET_KEY:-FZ97ouxTGpNnmyyfSBxgC2FGHTpvo7mM7LWoMut6gEYx}
+      - PING_INTERVAL_SECS=${PING_INTERVAL_SECS:-0}
+      - GLOBAL_IDENTITY_NAME=${GLOBAL_IDENTITY_NAME:-@@node1.shinkai}
+      - RUST_LOG=${RUST_LOG:-warn,error,info,debug,trace}
