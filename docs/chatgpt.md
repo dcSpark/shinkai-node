@@ -12,6 +12,8 @@ Rust's expressive and efficient nature makes it a pleasure to work with. Here's 
 
 - **Use clear naming conventions:** Choose descriptive names for your functions, variables, and modules. This simple practice improves code readability and helps ChatGPT understand your code's purpose.
 
+- **Avoid adding tests in the same file:** While it's tempting to add tests to the same file as your code, it's better to keep them separate. This way, ChatGPT can focus on your code without getting distracted by the tests and we can maintain smaller files.
+
 ### Engaging with ChatGPT
 
 ChatGPT can be an incredibly helpful companion for your Rust development. Here are some tips on how to effectively interact with it:

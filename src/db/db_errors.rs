@@ -19,6 +19,7 @@ pub enum ShinkaiMessageDBError {
     PublicKeyParseError,
     InboxNotFound,
     IdentityNotFound,
+    InvalidData,
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -70,6 +71,7 @@ impl fmt::Display for ShinkaiMessageDBError {
                 write!(f, "Missing internal metadata")
             }
             ShinkaiMessageDBError::IdentityNotFound => write!(f, "Identity not found"),
+            ShinkaiMessageDBError::InvalidData => write!(f, "Invalid data"),
         }
     }
 }
@@ -124,6 +126,7 @@ impl PartialEq for ShinkaiMessageDBError {
             (ShinkaiMessageDBError::DecodeError(_), ShinkaiMessageDBError::DecodeError(_)) => true,
             (ShinkaiMessageDBError::RocksDBError(_), ShinkaiMessageDBError::RocksDBError(_)) => true,
             (ShinkaiMessageDBError::SomeError, ShinkaiMessageDBError::SomeError) => true,
+            (ShinkaiMessageDBError::InvalidData, ShinkaiMessageDBError::InvalidData) => true,
             _ => false,
         }
     }
