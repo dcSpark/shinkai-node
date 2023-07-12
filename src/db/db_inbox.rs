@@ -208,10 +208,10 @@ impl ShinkaiMessageDB {
             Some(cf) => cf,
             None => return Err(ShinkaiMessageDBError::InboxNotFound),
         };
-    
+
         // Fetch the column family for all messages
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
-    
+
         // Create an iterator for the specified unread_list
         let mut iter = match &offset_key {
             Some(offset_key) => self.db.iterator_cf(
@@ -220,17 +220,18 @@ impl ShinkaiMessageDB {
             ),
             None => self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::End),
         };
-    
+
         // Skip the first entry if an offset_key was provided and it matches the current key
-        // if let Some(Ok((key, _))) = iter.next() {
-        //     if let Some(offset_key) = &offset_key {
-        //         let key_str = String::from_utf8_lossy(&key);
-        //         if key_str != *offset_key {
-        //             // For now, just ignore this situation, as there is no clear way to move iterator backwards in rocksdb
-        //         }
-        //     }
-        // }
-    
+        if let Some(offset_key) = &offset_key {
+            if let Some(Ok((key, _))) = iter.next() {
+                let key_str = String::from_utf8_lossy(&key);
+                if key_str != *offset_key {
+                    // If the key didn't match the offset_key, recreate the iterator to start from the end
+                    iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::End);
+                }
+            }
+        }
+
         let mut messages = Vec::new();
         for item in iter.take(n) {
             // Handle the Result returned by the iterator
@@ -238,7 +239,7 @@ impl ShinkaiMessageDB {
                 Ok((_, value)) => {
                     // The value of the unread_list CF is the key in the AllMessages CF
                     let message_key = value.to_vec();
-    
+
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
@@ -251,10 +252,9 @@ impl ShinkaiMessageDB {
                 Err(e) => return Err(e.into()),
             }
         }
-    
+
         Ok(messages)
     }
-    
 
     pub fn add_permission(
         &mut self,
@@ -263,6 +263,18 @@ impl ShinkaiMessageDB {
         identity: &str,
         perm: Permission,
     ) -> Result<(), ShinkaiMessageDBError> {
+        // Fetch column family for identity
+        let cf_identity = self
+            .db
+            .cf_handle(Topic::ProfilesIdentityKey.as_str())
+            .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
+        
+        // Check if the identity exists
+        if self.db.get_cf(cf_identity, identity)?.is_none() {
+            return Err(ShinkaiMessageDBError::IdentityNotFound);
+        }
+    
+        // Handle the original permission addition
         let cf_name = format!("{}_{}", inbox_name, perm_type);
         let cf = self
             .db
@@ -279,6 +291,18 @@ impl ShinkaiMessageDB {
         perm_type: &str,
         identity: &str,
     ) -> Result<(), ShinkaiMessageDBError> {
+        // Fetch column family for identity
+        let cf_identity = self
+            .db
+            .cf_handle(Topic::ProfilesIdentityKey.as_str())
+            .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
+        
+        // Check if the identity exists
+        if self.db.get_cf(cf_identity, identity)?.is_none() {
+            return Err(ShinkaiMessageDBError::IdentityNotFound);
+        }
+    
+        // Handle the original permission removal
         let cf_name = format!("{}_{}", inbox_name, perm_type);
         let cf = self
             .db
@@ -287,7 +311,7 @@ impl ShinkaiMessageDB {
         self.db.delete_cf(cf, identity)?;
         Ok(())
     }
-
+    
     pub fn has_permission(
         &self,
         inbox_name: &str,
@@ -295,6 +319,18 @@ impl ShinkaiMessageDB {
         identity: &str,
         perm: Permission,
     ) -> Result<bool, ShinkaiMessageDBError> {
+        // Fetch column family for identity
+        let cf_identity = self
+            .db
+            .cf_handle(Topic::ProfilesIdentityKey.as_str())
+            .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
+    
+        // Check if the identity exists
+        if self.db.get_cf(cf_identity, identity)?.is_none() {
+            return Err(ShinkaiMessageDBError::IdentityNotFound);
+        }
+    
+        // Handle the original permission check
         let cf_name = format!("{}_{}", inbox_name, perm_type);
         let cf = self
             .db
@@ -303,8 +339,7 @@ impl ShinkaiMessageDB {
         match self.db.get_cf(cf, identity)? {
             Some(val) => {
                 let val_str = String::from_utf8(val.to_vec()).map_err(|_| ShinkaiMessageDBError::SomeError)?;
-                let val_perm =
-                    Permission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
+                let val_perm = Permission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
                 Ok(val_perm >= perm)
             }
             None => Ok(false),

@@ -18,6 +18,7 @@ pub enum ShinkaiMessageDBError {
     EncryptionKeyNonExistent,
     PublicKeyParseError,
     InboxNotFound,
+    IdentityNotFound,
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -68,6 +69,7 @@ impl fmt::Display for ShinkaiMessageDBError {
             ShinkaiMessageDBError::MissingInternalMetadata => {
                 write!(f, "Missing internal metadata")
             }
+            ShinkaiMessageDBError::IdentityNotFound => write!(f, "Identity not found"),
         }
     }
 }
@@ -78,6 +80,51 @@ impl std::error::Error for ShinkaiMessageDBError {
             ShinkaiMessageDBError::RocksDBError(e) => Some(e),
             ShinkaiMessageDBError::DecodeError(e) => Some(e),
             _ => None,
+        }
+    }
+}
+
+impl PartialEq for ShinkaiMessageDBError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ShinkaiMessageDBError::InboxNotFound, ShinkaiMessageDBError::InboxNotFound) => true,
+            (ShinkaiMessageDBError::MessageNotFound, ShinkaiMessageDBError::MessageNotFound) => {
+                true
+            }
+            (ShinkaiMessageDBError::CodeAlreadyUsed, ShinkaiMessageDBError::CodeAlreadyUsed) => {
+                true
+            }
+            (ShinkaiMessageDBError::CodeNonExistent, ShinkaiMessageDBError::CodeNonExistent) => {
+                true
+            }
+            (
+                ShinkaiMessageDBError::ProfileNameAlreadyExists,
+                ShinkaiMessageDBError::ProfileNameAlreadyExists,
+            ) => true,
+            (
+                ShinkaiMessageDBError::ProfileNameNonExistent,
+                ShinkaiMessageDBError::ProfileNameNonExistent,
+            ) => true,
+            (
+                ShinkaiMessageDBError::EncryptionKeyNonExistent,
+                ShinkaiMessageDBError::EncryptionKeyNonExistent,
+            ) => true,
+            (ShinkaiMessageDBError::PublicKeyParseError, ShinkaiMessageDBError::PublicKeyParseError) => true,
+            (ShinkaiMessageDBError::IdentityNotFound, ShinkaiMessageDBError::IdentityNotFound) => true,
+            (
+                ShinkaiMessageDBError::MissingExternalMetadata,
+                ShinkaiMessageDBError::MissingExternalMetadata,
+            ) => true,
+            (ShinkaiMessageDBError::MissingBody, ShinkaiMessageDBError::MissingBody) => true,
+            (
+                ShinkaiMessageDBError::MissingInternalMetadata,
+                ShinkaiMessageDBError::MissingInternalMetadata,
+            ) => true,
+            (ShinkaiMessageDBError::IOError(_), ShinkaiMessageDBError::IOError(_)) => true,
+            (ShinkaiMessageDBError::DecodeError(_), ShinkaiMessageDBError::DecodeError(_)) => true,
+            (ShinkaiMessageDBError::RocksDBError(_), ShinkaiMessageDBError::RocksDBError(_)) => true,
+            (ShinkaiMessageDBError::SomeError, ShinkaiMessageDBError::SomeError) => true,
+            _ => false,
         }
     }
 }

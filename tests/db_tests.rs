@@ -1,5 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::ShinkaiMessageDB;
+use shinkai_node::db::db_errors::ShinkaiMessageDBError;
+use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node, SubIdentityManager, Subidentity};
 use shinkai_node::shinkai_message::encryption::{
@@ -142,7 +144,6 @@ fn db_inbox() {
     let last_messages_inbox = shinkai_db
         .get_last_messages_from_inbox(inbox_name.clone().to_string(), 2)
         .unwrap();
-    println!("Last messages inbox: {:?}", last_messages_inbox);
     assert_eq!(last_messages_inbox.len(), 2);
 
     let last_unread_messages_inbox = shinkai_db
@@ -157,7 +158,6 @@ fn db_inbox() {
         last_unread_messages_inbox[1].clone().body.unwrap().content,
         "Hello World 2".to_string()
     );
-    println!("Last unread messages inbox: {:?}", last_unread_messages_inbox);
 
     let offset = ShinkaiMessageHandler::get_message_offset_db_key(&last_unread_messages_inbox[1].clone()).unwrap();
     let last_unread_messages_inbox_page2 = shinkai_db
@@ -180,111 +180,68 @@ fn db_inbox() {
     assert_eq!(last_messages_inbox.len(), 0);
 
     // Test permissions
-    // shinkai_db
-    //     .add_permission(&node1_identity_name, "device_perms", "device1", Permission::Admin)
-    //     .unwrap();
-    // assert!(shinkai_db
-    //     .has_permission(&node1_identity_name, "device_perms", "device1", Permission::Admin)
-    //     .unwrap());
-    // shinkai_db
-    //     .remove_permission(&node1_identity_name, "device_perms", "device1")
-    //     .unwrap();
-    // assert!(!shinkai_db
-    //     .has_permission(&node1_identity_name, "device_perms", "device1", Permission::Admin)
-    //     .unwrap());
+    let subidentity_name = "device1";
+    let subidentity = Subidentity::new(subidentity_name.clone().to_string(), Some(node1_subencryption_pk), Some(node1_subidentity_pk));
+    let _ = shinkai_db.insert_sub_identity(subidentity);
+
+    shinkai_db
+        .add_permission(&inbox_name, "device_perms", "device1", Permission::Admin)
+        .unwrap();
+    assert!(shinkai_db
+        .has_permission(&inbox_name, "device_perms", "device1", Permission::Admin)
+        .unwrap());
+
+    shinkai_db
+        .remove_permission(&inbox_name, "device_perms", "device1")
+        .unwrap();
+    assert!(!shinkai_db
+        .has_permission(&inbox_name, "device_perms", "device1", Permission::Admin)
+        .unwrap());
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use shinkai_node::{shinkai_message_proto::ShinkaiMessage, shinkai_message::{encryption::unsafe_deterministic_private_key, shinkai_message_builder::ShinkaiMessageBuilder}};
-//     use prost::Message;
-//     use rocksdb::{ColumnFamilyDescriptor, Error, Options, DB};
-//     use std::{convert::TryInto, collections::HashMap};
-//     // use tempfile::Builder;
+#[test]
+fn test_permission_errors() {
+    setup();
 
-//     fn get_test_db_path() -> String {
-//         let temp_dir = Builder::new()
-//             .prefix("test_db")
-//             .rand_bytes(5)
-//             .tempdir()
-//             .unwrap();
-//         temp_dir.into_path().to_str().unwrap().to_string()
-//     }
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-//     fn get_test_message() -> ShinkaiMessage {
-//         let (secret_key, public_key) = unsafe_deterministic_private_key(0);
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name.clone()));
 
-//         // Replace this with actual field data
-//         let fields = HashMap::new();
+    // Assuming the shinkai_db is created and node1_subencryption_pk, node1_subidentity_pk are defined
+    let mut shinkai_db = ShinkaiMessageDB::new(&node1_db_path).unwrap();
+    let subidentity_name = "device1";
+    let subidentity = Subidentity::new(subidentity_name.clone().to_string(), Some(node1_subencryption_pk), Some(node1_subidentity_pk));
+    let _ = shinkai_db.insert_sub_identity(subidentity);
+    
+    // Test 1: Adding a permission to a nonexistent inbox should result in an error
+    let result = shinkai_db.add_permission("nonexistent_inbox", "device_perms", "device1", Permission::Admin);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
 
-//         // Build the ShinkaiMessage
-//         ShinkaiMessageBuilder::new(&secret_key, &public_key)
-//             .body("body content".to_string())
-//             .encryption("no_encryption".to_string())
-//             .message_schema_type("schema type".to_string(), &fields)
-//             .topic("topic_id".to_string(), "channel_id".to_string())
-//             .internal_metadata_content("internal metadata content".to_string())
-//             .external_metadata(&public_key)
-//             .build()
-//             .unwrap()
-//     }
+    // Test 2: Adding a permission for a nonexistent identity should result in an error
+    let result = shinkai_db.add_permission("existing_inbox", "device_perms", "nonexistent_device", Permission::Admin);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
 
-//     #[test]
-//     fn test_insert_get() {
-//         let db_path = get_test_db_path();
-//         let db = ShinkaiMessageDB::new(&db_path).unwrap();
-//         let message = get_test_message();
+    // Test 3: Removing a permission from a nonexistent inbox should result in an error
+    let result = shinkai_db.remove_permission("nonexistent_inbox", "device_perms", "device1");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
 
-//         // Insert the message in AllMessages topic
-//         let key = ShinkaiMessageHandler::calculate_hash(&message);
-//         db.insert(key.clone(), &message, Topic::AllMessages).unwrap();
+    // Test 4: Removing a permission for a nonexistent identity should result in an error
+    let result = shinkai_db.remove_permission("existing_inbox", "device_perms", "nonexistent_device");
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
 
-//         // Retrieve the message and validate it
-//         let retrieved_message = db.get(key, Topic::AllMessages).unwrap().unwrap();
-//         assert_eq!(message, retrieved_message);
-//     }
+    // Test 5: Checking permission of a nonexistent inbox should result in an error
+    let result = shinkai_db.has_permission("nonexistent_inbox", "device_perms", "device1", Permission::Admin);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
 
-//     #[test]
-//     fn test_insert_message() {
-//         let db_path = get_test_db_path();
-//         let db = ShinkaiMessageDB::new(&db_path).unwrap();
-//         let message = get_test_message();
-
-//         // Insert the message
-//         db.insert_message(&message).unwrap();
-
-//         // Retrieve the message from AllMessages and validate it
-//         let all_messages_key = ShinkaiMessageHandler::calculate_hash(&message);
-//         let retrieved_message = db.get(all_messages_key, Topic::AllMessages).unwrap().unwrap();
-//         assert_eq!(message, retrieved_message);
-
-//         // Retrieve the pointer from AllMessagesTimeKeyed and validate it
-//         let time_keyed_key = if message.scheduled_time.is_empty() {
-//             ShinkaiMessageHandler::generate_time_now()
-//         } else {
-//             message.scheduled_time.clone()
-//         };
-//         let retrieved_key = db.get(time_keyed_key, Topic::AllMessagesTimeKeyed).unwrap().unwrap();
-//         assert_eq!(all_messages_key, retrieved_key);
-//     }
-
-//     #[test]
-//     fn test_schedule_message() {
-//         let db_path = get_test_db_path();
-//         let db = ShinkaiMessageDB::new(&db_path).unwrap();
-//         let message = get_test_message();
-
-//         // Schedule the message
-//         db.schedule_message(&message).unwrap();
-
-//         // Retrieve the scheduled message and validate it
-//         let scheduled_key = if message.scheduled_time.is_empty() {
-//             ShinkaiMessageHandler::generate_time_now()
-//         } else {
-//             message.scheduled_time.clone()
-//         };
-//         let retrieved_message = db.get(scheduled_key, Topic::ScheduledMessage).unwrap().unwrap();
-//         assert_eq!(message, retrieved_message);
-//     }
-// }
+    // Test 6: Checking permission for a nonexistent identity should result in an error
+    let result = shinkai_db.has_permission("existing_inbox", "device_perms", "nonexistent_device", Permission::Admin);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
+}
