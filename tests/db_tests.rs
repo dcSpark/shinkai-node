@@ -1,3 +1,38 @@
+use async_channel::{bounded, Receiver, Sender};
+use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::{Node, SubIdentityManager, Subidentity};
+use shinkai_node::shinkai_message::encryption::{
+    decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+    hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+};
+use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_node::shinkai_message::signatures::{
+    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
+};
+use shinkai_node::shinkai_message::utils::hash_string;
+use std::fs;
+use std::net::{IpAddr, Ipv4Addr};
+use std::path::Path;
+use std::{net::SocketAddr, time::Duration};
+use tokio::runtime::Runtime;
+
+#[test]
+fn setup() {
+    let path = Path::new("db_tests/");
+    let _ = fs::remove_dir_all(&path);
+}
+
+#[test]
+fn db_inbox() {
+    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let node1_identity_name = "@@node1.shinkai";
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+}
+
 // #[cfg(test)]
 // mod tests {
 //     use super::*;

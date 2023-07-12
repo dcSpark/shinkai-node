@@ -5,7 +5,8 @@ use std::{net::SocketAddr};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use crate::db::{ShinkaiMessageDB, ShinkaiMessageDBError};
+use crate::db::{ShinkaiMessageDB};
+use crate::db::db_errors::{ShinkaiMessageDBError};
 
 #[derive(Clone, Debug)]
 pub struct Subidentity {

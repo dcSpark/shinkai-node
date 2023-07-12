@@ -356,7 +356,7 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
-                db.insert_message(message)
+                db.insert_message_to_all(message)
                     .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
                 Ok(())
             }
@@ -430,7 +430,7 @@ impl Node {
         // Save to db
         {
             let db = maybe_db.lock().await;
-            db.insert_message(&message.clone())
+            db.insert_message_to_all(&message.clone())
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
 

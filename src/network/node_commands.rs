@@ -150,7 +150,7 @@ impl Node {
         // Save to db. We do this before the next step so it's saved with a valid signature and unencrypted
         {
             let db = self.db.lock().await;
-            db.insert_message(&msg.clone())
+            db.insert_message_to_all(&msg.clone())
                 .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
         }
 
@@ -212,7 +212,7 @@ impl Node {
         res: Sender<Vec<ShinkaiMessage>>,
     ) -> Result<(), Error> {
         let db = self.db.lock().await;
-        let messages = db.get_last_messages(limit).unwrap_or_else(|_| vec![]);
+        let messages = db.get_last_messages_from_all(limit).unwrap_or_else(|_| vec![]);
         let _ = res.send(messages).await.map_err(|_| ());
         Ok(())
     }
