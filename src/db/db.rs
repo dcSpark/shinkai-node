@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     network::subidentities::Subidentity,
     shinkai_message::{
@@ -51,6 +53,7 @@ pub struct ShinkaiMessageDB {
 impl ShinkaiMessageDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
         let cf_names = vec![
+            Topic::Inbox.as_str(),
             Topic::Peers.as_str(),
             Topic::ProfilesEncryptionKey.as_str(),
             Topic::ProfilesIdentityKey.as_str(),

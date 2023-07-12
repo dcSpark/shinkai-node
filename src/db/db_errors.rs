@@ -1,9 +1,14 @@
 use core::fmt;
+use std::io;
 
 #[derive(Debug)]
 pub enum ShinkaiMessageDBError {
     RocksDBError(rocksdb::Error),
     DecodeError(prost::DecodeError),
+    IOError(io::Error),
+    MissingExternalMetadata,
+    MissingBody,
+    MissingInternalMetadata,
     MessageNotFound,
     CodeAlreadyUsed,
     CodeNonExistent,
@@ -24,6 +29,12 @@ impl From<rocksdb::Error> for ShinkaiMessageDBError {
 impl From<prost::DecodeError> for ShinkaiMessageDBError {
     fn from(error: prost::DecodeError) -> Self {
         ShinkaiMessageDBError::DecodeError(error)
+    }
+}
+
+impl From<io::Error> for ShinkaiMessageDBError {
+    fn from(error: io::Error) -> Self {
+        ShinkaiMessageDBError::IOError(error)
     }
 }
 
@@ -49,6 +60,14 @@ impl fmt::Display for ShinkaiMessageDBError {
             }
             ShinkaiMessageDBError::PublicKeyParseError => write!(f, "Error parsing public key"),
             ShinkaiMessageDBError::InboxNotFound => write!(f, "Inbox not found"),
+            ShinkaiMessageDBError::IOError(e) => write!(f, "IO Error: {}", e),
+            ShinkaiMessageDBError::MissingExternalMetadata => {
+                write!(f, "Missing external metadata")
+            }
+            ShinkaiMessageDBError::MissingBody => write!(f, "Missing body"),
+            ShinkaiMessageDBError::MissingInternalMetadata => {
+                write!(f, "Missing internal metadata")
+            }
         }
     }
 }
