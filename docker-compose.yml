@@ -3,8 +3,8 @@ services:
   shinkai-node:
     build: .
     ports:
-      - 8080:8080
-      - 3030:3030
+      - ${PORT:-8080}:${NODE_PORT:-8080}
+      - ${PORT_API:-3030}:${NODE_API_PORT:-3030}
     environment:
       - NODE_IP=${NODE_IP:-0.0.0.0}
       - NODE_PORT=${NODE_PORT:-8080}
