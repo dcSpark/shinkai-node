@@ -176,11 +176,6 @@ pub fn encrypt_string_content(
 
             // Combine the content and content_schema into a single string
             let combined_content = format!("{}{}", content, content_schema);
-            println!(
-                "encrypt_string_content> combined_content: {:?}",
-                combined_content.as_bytes()
-            );
-
             let ciphertext = cipher
                 .encrypt(nonce, combined_content.as_bytes())
                 .expect("encryption failure!");

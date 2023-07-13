@@ -63,6 +63,7 @@ impl ShinkaiMessageDB {
     }
 
     pub fn insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiMessageDBError> {
+        println!("Inserting message into inbox: {:?}", message);
         let inbox_name = ShinkaiMessageHandler::get_inbox_name(&message.clone())?;
 
         // Insert the message

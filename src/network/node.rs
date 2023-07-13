@@ -17,18 +17,15 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::db::ShinkaiMessageDB;
 use crate::network::external_identities::{self, external_identity_to_profile_data};
 use crate::network::node_message_handlers::{
-    extract_message, extract_recipient_keys, extract_recipient_node_profile_name,
-    extract_sender_node_profile_name, get_sender_keys,
-    handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
+    extract_message, extract_recipient_keys, extract_recipient_node_profile_name, extract_sender_node_profile_name,
+    get_sender_keys, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
 use crate::network::subidentities::RegistrationCode;
 use crate::shinkai_message::encryption::{
     clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key,
 };
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string,
-};
+use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
 use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
@@ -147,8 +144,7 @@ impl Node {
     ) -> Node {
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-        let db = ShinkaiMessageDB::new(&db_path)
-            .unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
+        let db = ShinkaiMessageDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
         let subidentity_manager = SubIdentityManager::new(db_arc.clone()).await.unwrap();
 
@@ -177,18 +173,13 @@ impl Node {
         } else {
             self.ping_interval_secs
         };
-        info!(
-            "Automatic Ping interval set to {} seconds",
-            ping_interval_secs
-        );
+        info!("Automatic Ping interval set to {} seconds", ping_interval_secs);
 
-        let mut ping_interval =
-            async_std::stream::interval(Duration::from_secs(ping_interval_secs));
+        let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let mut check_peers_interval =
-            async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let mut check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
         loop {
             let ping_future = ping_interval.next().fuse();
@@ -223,10 +214,7 @@ impl Node {
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
     async fn listen_and_reconnect(&self) {
-        info!(
-            "{} > TCP: Starting listen and reconnect loop.",
-            self.listen_address
-        );
+        info!("{} > TCP: Starting listen and reconnect loop.", self.listen_address);
         loop {
             match self.listen().await {
                 Ok(_) => unreachable!(),
@@ -239,10 +227,7 @@ impl Node {
     async fn listen(&self) -> io::Result<()> {
         let mut listener = TcpListener::bind(&self.listen_address).await?;
 
-        info!(
-            "{} > TCP: Listening on {}",
-            self.listen_address, self.listen_address
-        );
+        info!("{} > TCP: Listening on {}", self.listen_address, self.listen_address);
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
@@ -261,14 +246,8 @@ impl Node {
                         }
                         Ok(n) => {
                             // println!("{} > TCP: Received message.", addr);
-                            println!(
-                                "{} > TCP: Received from {:?} : {} bytes.",
-                                addr,
-                                socket.peer_addr(),
-                                n
-                            );
-                            let destination_socket =
-                                socket.peer_addr().expect("Failed to get peer address");
+                            println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
+                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
                             let _ = Node::handle_message(
                                 addr,
                                 destination_socket.clone(),
@@ -314,11 +293,10 @@ impl Node {
         );
 
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
-        self.peers
-            .insert((peer_address, profile_name.clone()), Utc::now());
+        self.peers.insert((peer_address, profile_name.clone()), Utc::now());
 
         let peer = (peer_address, profile_name.clone());
-        let db_lock = self.db.lock().await;
+        let mut db_lock = self.db.lock().await;
 
         let sender = self.node_profile_name.clone();
         let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
@@ -333,7 +311,7 @@ impl Node {
             receiver_public_key,
             sender,
             receiver,
-            &db_lock,
+            &mut db_lock,
         )
         .await?;
         Ok(())
@@ -343,7 +321,7 @@ impl Node {
     pub async fn send(
         message: &ShinkaiMessage,
         peer: (SocketAddr, ProfileName),
-        db: &ShinkaiMessageDB,
+        db: &mut ShinkaiMessageDB,
     ) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
@@ -356,8 +334,16 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
-                db.insert_message_to_all(message)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+
+                let db_result = db.insert_inbox_message(message);
+                match db_result {
+                    Ok(_) => (),
+                    Err(e) => {
+                        println!("Failed to insert message into inbox: {}", e);
+                    }
+                }
+                // db.insert_message_to_all(message)
+                    // .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
                 Ok(())
             }
             Err(e) => {
@@ -369,12 +355,8 @@ impl Node {
     }
 
     pub async fn ping_all(&self) -> io::Result<()> {
-        info!(
-            "{} > Pinging all peers {} ",
-            self.listen_address,
-            self.peers.len()
-        );
-        let db_lock = self.db.lock().await;
+        info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
+        let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
             let sender = self.node_profile_name.clone();
             let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
@@ -390,7 +372,7 @@ impl Node {
                 receiver_public_key,
                 sender,
                 receiver,
-                &db_lock,
+                &mut db_lock,
             )
             .await?;
         }
@@ -406,10 +388,7 @@ impl Node {
         my_signature_secret_key: SignatureStaticKey,
         maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
     ) -> io::Result<()> {
-        info!(
-            "{} > Got message from {:?}",
-            receiver_address, unsafe_sender_address
-        );
+        info!("{} > Got message from {:?}", receiver_address, unsafe_sender_address);
 
         // Extract and validate the message
         let message = extract_message(bytes, receiver_address)?;

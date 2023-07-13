@@ -3,10 +3,13 @@ use crate::{
     db::ShinkaiMessageDB,
     network::Node,
     shinkai_message::{
-        encryption::{clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key, encryption_public_key_to_string, encryption_secret_key_to_string},
+        encryption::{
+            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
+        },
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-        shinkai_message_handler::ShinkaiMessageHandler,
-        signatures::{clone_signature_secret_key, verify_signature, signature_public_key_to_string},
+        shinkai_message_handler::{ShinkaiMessageHandler, EncryptionStatus},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, verify_signature},
     },
     shinkai_message_proto::ShinkaiMessage,
 };
@@ -21,6 +24,111 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 pub enum PingPong {
     Ping,
     Pong,
+}
+
+// pub async fn decrypt_content_if_possible(
+//     message: ShinkaiMessage,
+//     sender_encryption_pk: x25519_dalek::PublicKey,
+//     my_encryption_secret_key: &EncryptionStaticKey,
+//     my_signature_secret_key: &SignatureStaticKey,
+// ) -> io::Result<(ShinkaiMessage)> {
+//     if message.body.clone().unwrap().internal_metadata.unwrap().recipient_subidentity.to_string() == "".to_string() {
+//         let message_content = decrypt_content_if_possible(message, sender_encryption_pk, my_encryption_secret_key, my_signature_secret_key).await;
+//         println!("message_content for node decrypted: {:?}", message_content);
+//         message_content
+//     } else {
+//         // if else then return message wrapped as Result
+//         Ok(message)
+//     }
+// }
+
+pub async fn handle_based_on_message_content_and_encryption(
+    message: ShinkaiMessage,
+    sender_encryption_pk: x25519_dalek::PublicKey,
+    sender_address: SocketAddr,
+    sender_profile_name: String,
+    my_encryption_secret_key: &EncryptionStaticKey,
+    my_signature_secret_key: &SignatureStaticKey,
+    my_node_profile_name: &str,
+    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    receiver_address: SocketAddr,
+    unsafe_sender_address: SocketAddr,
+) -> io::Result<()> {
+    let message_body = message.body.clone().unwrap();
+    let message_content = message_body.content.as_str();
+    let message_encryption_status = ShinkaiMessageHandler::get_encryption_status(message.clone());
+    println!(
+        "{} > handle_based_on_message_content_and_encryption message: {:?} {:?}",
+        receiver_address, message, message_encryption_status
+    );
+
+    // TODO: if content body encrypted to the node itself then decrypt it and process it.    
+
+    match (message_content, message_encryption_status) {
+        (_, EncryptionStatus::BodyEncrypted) => {
+            handle_default_encryption(
+                message,
+                sender_encryption_pk,
+                sender_address,
+                sender_profile_name,
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                my_node_profile_name,
+                receiver_address,
+                unsafe_sender_address,
+                maybe_db,
+            )
+            .await
+        }
+        (_, EncryptionStatus::ContentEncrypted) => {
+            // TODO: save to db to send the profile when connected
+            println!("{} > Content encrypted", receiver_address);   
+            handle_other_cases(
+                sender_encryption_pk,
+                sender_address,
+                sender_profile_name,
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                my_node_profile_name,
+                receiver_address,
+                unsafe_sender_address,
+                maybe_db,
+            )
+            .await
+        }
+        ("Ping", _) => {
+            handle_ping(
+                sender_address,
+                sender_encryption_pk,
+                sender_profile_name,
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                my_node_profile_name,
+                receiver_address,
+                unsafe_sender_address,
+                maybe_db,
+            )
+            .await
+        }
+        ("ACK", _) => {
+            println!("{} > ACK from {:?}", receiver_address, unsafe_sender_address);
+            Ok(())
+        }
+        (_, _) => {
+            handle_other_cases(
+                sender_encryption_pk,
+                sender_address,
+                sender_profile_name,
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                my_node_profile_name,
+                receiver_address,
+                unsafe_sender_address,
+                maybe_db,
+            )
+            .await
+        }
+    }
 }
 
 // All the new helper functions here:
@@ -56,8 +164,7 @@ fn no_profiles_in_sender(s: &str) -> bool {
 pub fn get_sender_keys(message: &ShinkaiMessage) -> io::Result<PublicKeyInfo> {
     let sender_profile_name = message.external_metadata.clone().unwrap().sender;
     let sender_node_profile_name = extract_node_name(&sender_profile_name);
-    let identity_pk =
-        external_identities::external_identity_to_profile_data(sender_node_profile_name).unwrap();
+    let identity_pk = external_identities::external_identity_to_profile_data(sender_node_profile_name).unwrap();
 
     if no_profiles_in_sender(&sender_profile_name) {
         Ok(PublicKeyInfo {
@@ -80,9 +187,7 @@ pub fn get_sender_keys(message: &ShinkaiMessage) -> io::Result<PublicKeyInfo> {
 }
 
 pub fn extract_recipient_keys(recipient_profile_name: String) -> io::Result<PublicKeyInfo> {
-    let identity_pk =
-        external_identities::external_identity_to_profile_data(recipient_profile_name.clone())
-            .unwrap();
+    let identity_pk = external_identities::external_identity_to_profile_data(recipient_profile_name.clone()).unwrap();
     Ok(PublicKeyInfo {
         address: identity_pk.addr,
         signature_public_key: identity_pk.signature_public_key,
@@ -98,7 +203,10 @@ pub fn verify_message_signature(
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
             println!("Failed to validate message's signature. Message: {:?}", message);
-            println!("Sender signature pk: {:?}", signature_public_key_to_string(sender_signature_pk));
+            println!(
+                "Sender signature pk: {:?}",
+                signature_public_key_to_string(sender_signature_pk)
+            );
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to validate message's signature",
@@ -106,11 +214,11 @@ pub fn verify_message_signature(
         }
         Err(_) => {
             println!("Failed to verify signature. Message: {:?}", message);
-            println!("Sender signature pk: {:?}", signature_public_key_to_string(sender_signature_pk));
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Failed to verify signature",
-            ))
+            println!(
+                "Sender signature pk: {:?}",
+                signature_public_key_to_string(sender_signature_pk)
+            );
+            Err(io::Error::new(io::ErrorKind::Other, "Failed to verify signature"))
         }
     }
 }
@@ -126,11 +234,8 @@ pub async fn handle_ping(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
 ) -> io::Result<()> {
-    println!(
-        "{} > Got ping from {:?}",
-        receiver_address, unsafe_sender_address
-    );
-    let db_lock = maybe_db.lock().await;
+    println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
+    let mut db_lock = maybe_db.lock().await;
     ping_pong(
         (sender_address, sender_profile_name.clone()),
         PingPong::Pong,
@@ -139,7 +244,7 @@ pub async fn handle_ping(
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
-        &db_lock,
+        &mut db_lock,
     )
     .await
 }
@@ -160,12 +265,12 @@ pub async fn handle_default_encryption(
         "{} > handle_default_encryption message: {:?}",
         receiver_address, message
     );
-    println!("Sender encryption pk: {:?}", encryption_public_key_to_string(sender_encryption_pk));
-    let decrypted_message_result = decrypt_body_message(
-        &message.clone(),
-        my_encryption_secret_key,
-        &sender_encryption_pk,
+    println!(
+        "Sender encryption pk: {:?}",
+        encryption_public_key_to_string(sender_encryption_pk)
     );
+    let decrypted_message_result =
+        decrypt_body_message(&message.clone(), my_encryption_secret_key, &sender_encryption_pk);
 
     match decrypted_message_result {
         Ok(decrypted_message) => {
@@ -174,7 +279,7 @@ pub async fn handle_default_encryption(
                 "{} > Got message from {:?}. Sending ACK",
                 receiver_address, unsafe_sender_address
             );
-            let db_lock = maybe_db.lock().await;
+            let mut db_lock = maybe_db.lock().await;
             send_ack(
                 (sender_address.clone(), sender_profile_name.clone()),
                 clone_static_secret_key(my_encryption_secret_key),
@@ -182,7 +287,7 @@ pub async fn handle_default_encryption(
                 sender_encryption_pk,
                 my_node_profile_name.to_string(),
                 sender_profile_name,
-                &db_lock,
+                &mut db_lock,
             )
             .await
         }
@@ -209,7 +314,7 @@ pub async fn handle_other_cases(
         "{} > Got message from {:?}. Sending ACK",
         receiver_address, unsafe_sender_address
     );
-    let db_lock = maybe_db.lock().await;
+    let mut db_lock = maybe_db.lock().await;
     send_ack(
         (sender_address.clone(), sender_profile_name.clone()),
         clone_static_secret_key(my_encryption_secret_key),
@@ -217,7 +322,7 @@ pub async fn handle_other_cases(
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
-        &db_lock,
+        &mut db_lock,
     )
     .await
 }
@@ -229,7 +334,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &ShinkaiMessageDB,
+    db: &mut ShinkaiMessageDB,
 ) -> io::Result<()> {
     let msg = ShinkaiMessageBuilder::ack_message(
         encryption_secret_key,
@@ -252,76 +357,6 @@ pub struct PublicKeyInfo {
     pub encryption_public_key: x25519_dalek::PublicKey,
 }
 
-pub async fn handle_based_on_message_content_and_encryption(
-    message: ShinkaiMessage,
-    sender_encryption_pk: x25519_dalek::PublicKey,
-    sender_address: SocketAddr,
-    sender_profile_name: String,
-    my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SignatureStaticKey,
-    my_node_profile_name: &str,
-    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
-    receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
-) -> io::Result<()> {
-    let message_body = message.body.clone().unwrap();
-    let message_content = message_body.content.as_str();
-    let message_encryption = ShinkaiMessageHandler::is_body_currently_encrypted(&message);
-
-    match (message_content, message_encryption) {
-        ("Ping", _) => {
-            handle_ping(
-                sender_address,
-                sender_encryption_pk,
-                sender_profile_name,
-                my_encryption_secret_key,
-                my_signature_secret_key,
-                my_node_profile_name,
-                receiver_address,
-                unsafe_sender_address,
-                maybe_db,
-            )
-            .await
-        }
-        ("ACK", _) => {
-            println!(
-                "{} > ACK from {:?}",
-                receiver_address, unsafe_sender_address
-            );
-            Ok(())
-        }
-        (_, true) => {
-            handle_default_encryption(
-                message,
-                sender_encryption_pk,
-                sender_address,
-                sender_profile_name,
-                my_encryption_secret_key,
-                my_signature_secret_key,
-                my_node_profile_name,
-                receiver_address,
-                unsafe_sender_address,
-                maybe_db,
-            )
-            .await
-        }
-        (_, _) => {
-            handle_other_cases(
-                sender_encryption_pk,
-                sender_address,
-                sender_profile_name,
-                my_encryption_secret_key,
-                my_signature_secret_key,
-                my_node_profile_name,
-                receiver_address,
-                unsafe_sender_address,
-                maybe_db,
-            )
-            .await
-        }
-    }
-}
-
 pub async fn ping_pong(
     peer: (SocketAddr, ProfileName),
     ping_or_pong: PingPong,
@@ -330,7 +365,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &ShinkaiMessageDB,
+    db: &mut ShinkaiMessageDB,
 ) -> io::Result<()> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",

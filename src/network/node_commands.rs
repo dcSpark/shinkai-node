@@ -10,8 +10,8 @@ use crate::{
     network::Subidentity,
     shinkai_message::{
         encryption::{
-            decrypt_body_message, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
+            decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+            string_to_encryption_public_key,
         },
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
@@ -21,7 +21,9 @@ use crate::{
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
+use std::borrow::BorrowMut;
 use std::{
+    cell::RefCell,
     io::{self, Error},
     net::SocketAddr,
     time::Duration,
@@ -31,8 +33,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 impl Node {
     pub async fn send_peer_addresses(&self, sender: Sender<Vec<SocketAddr>>) -> Result<(), Error> {
-        let peer_addresses: Vec<SocketAddr> =
-            self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
+        let peer_addresses: Vec<SocketAddr> = self.peers.clone().into_iter().map(|(k, _)| k.0).collect();
         sender.send(peer_addresses).await.unwrap();
         Ok(())
     }
@@ -47,29 +48,20 @@ impl Node {
         Ok(())
     }
 
-    pub async fn connect_node(
-        &self,
-        address: SocketAddr,
-        profile_name: String,
-    ) -> Result<(), Error> {
+    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), Error> {
         let address_str = address.to_string();
         self.connect(&address_str, profile_name).await?;
         Ok(())
     }
 
-    pub async fn handle_onionized_message(
-        &self,
-        potentially_encrypted_msg: ShinkaiMessage,
-    ) -> Result<(), Error> {
+    pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
         // println!(
         //     "handle_onionized_message msg: {:?}",
         //     potentially_encrypted_msg
         // );
 
-        let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(
-            &potentially_encrypted_msg.clone(),
-        ) {
+        let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
             let sender_encryption_pk_string = potentially_encrypted_msg
                 .clone()
@@ -77,8 +69,7 @@ impl Node {
                 .clone()
                 .unwrap()
                 .other;
-            let sender_encryption_pk =
-                string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+            let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
             let decrypted_msg = decrypt_body_message(
                 &potentially_encrypted_msg.clone(),
@@ -101,14 +92,8 @@ impl Node {
         };
 
         let subidentity_manager = self.subidentity_manager.lock().await;
-        let subidentity = subidentity_manager.find_by_profile_name(
-            &msg.clone()
-                .body
-                .unwrap()
-                .internal_metadata
-                .unwrap()
-                .sender_subidentity,
-        );
+        let subidentity = subidentity_manager
+            .find_by_profile_name(&msg.clone().body.unwrap().internal_metadata.unwrap().sender_subidentity);
         // Check that the subidentity that's trying to proxy through us exist / is valid
         if subidentity.is_none() {
             eprintln!(
@@ -133,16 +118,10 @@ impl Node {
             return Ok(());
         }
 
-        match verify_message_signature(
-            signature_public_key.unwrap(),
-            &potentially_encrypted_msg.clone(),
-        ) {
+        match verify_message_signature(signature_public_key.unwrap(), &potentially_encrypted_msg.clone()) {
             Ok(_) => {}
             Err(e) => {
-                eprintln!(
-                    "handle_onionized_message > Failed to verify message signature: {}",
-                    e
-                );
+                eprintln!("handle_onionized_message > Failed to verify message signature: {}", e);
                 return Ok(());
             }
         }
@@ -171,14 +150,14 @@ impl Node {
         let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
 
         let recipient_profile_name_string = extract_recipient_node_profile_name(&msg);
-        let external_profile_data =
-            external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
+        let external_profile_data = external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
 
-        let db_guard = self.db.lock().await;
+        let mut db_guard = self.db.lock().await;
+
         Node::send(
             &msg,
             (external_profile_data.addr, recipient_profile_name_string),
-            &*db_guard,
+            &mut db_guard,
         )
         .await?;
         // println!(
@@ -193,10 +172,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn send_public_keys(
-        &self,
-        res: Sender<(SignaturePublicKey, EncryptionPublicKey)>,
-    ) -> Result<(), Error> {
+    pub async fn send_public_keys(&self, res: Sender<(SignaturePublicKey, EncryptionPublicKey)>) -> Result<(), Error> {
         let identity_public_key = self.identity_public_key.clone();
         let encryption_public_key = self.encryption_public_key.clone();
         let _ = res
@@ -222,9 +198,7 @@ impl Node {
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code = db
-            .generate_registration_new_code()
-            .unwrap_or_else(|_| "".to_string());
+        let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
         let _ = res.send(code).await.map_err(|_| ());
         Ok(())
     }
@@ -235,14 +209,12 @@ impl Node {
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let sender_encryption_pk_string = msg.external_metadata.clone().unwrap().other;
-        let sender_encryption_pk =
-            string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+        let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
         // Decrypt the message
         let message_to_decrypt = msg.clone();
         let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
-        let encryption_secret_key_string =
-            encryption_secret_key_to_string(self.encryption_secret_key.clone());
+        let encryption_secret_key_string = encryption_secret_key_to_string(self.encryption_secret_key.clone());
 
         let decrypted_content = decrypt_body_message(
             &message_to_decrypt.clone(),
@@ -284,10 +256,8 @@ impl Node {
         // probably we need to sign a message with the pk from the first user
         match result {
             Ok(success) => {
-                let signature_pk_obj =
-                    string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                let encryption_pk_obj =
-                    string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
 
                 let subidentity = Subidentity {
                     name: profile_name.clone(),
