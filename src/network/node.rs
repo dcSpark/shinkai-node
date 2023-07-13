@@ -22,7 +22,7 @@ use crate::network::node_message_handlers::{
 };
 use crate::network::subidentities::RegistrationCode;
 use crate::shinkai_message::encryption::{
-    clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key,
+    clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key, encryption_secret_key_to_string, encryption_public_key_to_string,
 };
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
@@ -320,6 +320,7 @@ impl Node {
     // Send a message to a peer.
     pub async fn send(
         message: &ShinkaiMessage,
+        my_encryption_sk: EncryptionStaticKey,
         peer: (SocketAddr, ProfileName),
         db: &mut ShinkaiMessageDB,
     ) -> io::Result<()> {
@@ -334,16 +335,7 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
-
-                let db_result = db.insert_inbox_message(message);
-                match db_result {
-                    Ok(_) => (),
-                    Err(e) => {
-                        println!("Failed to insert message into inbox: {}", e);
-                    }
-                }
-                // db.insert_message_to_all(message)
-                    // .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+                Node::save_to_db(true, message, my_encryption_sk, db).await?;
                 Ok(())
             }
             Err(e) => {
@@ -354,27 +346,60 @@ impl Node {
         }
     }
 
-    pub async fn ping_all(&self) -> io::Result<()> {
-        info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
-        let mut db_lock = self.db.lock().await;
-        for (peer, _) in self.peers.clone() {
-            let sender = self.node_profile_name.clone();
-            let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
-            let receiver = receiver_profile.node_identity_name.to_string();
-            let receiver_public_key = receiver_profile.encryption_public_key;
+    pub async fn save_to_db(
+        am_i_sender: bool,
+        message: &ShinkaiMessage,
+        my_encryption_sk: EncryptionStaticKey,
+        db: &mut ShinkaiMessageDB,
+    ) -> io::Result<()> {
+        // We want to save it decrypted if possible
+        // We are just going to check for the body encryption
 
-            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
-            ping_pong(
-                peer,
-                PingPong::Ping,
-                clone_static_secret_key(&self.encryption_secret_key),
-                clone_signature_secret_key(&self.identity_secret_key),
-                receiver_public_key,
-                sender,
-                receiver,
-                &mut db_lock,
-            )
-            .await?;
+        let is_body_encrypted = ShinkaiMessageHandler::is_body_currently_encrypted(message);
+
+        // Clone the message to get a fully owned version
+        let mut message_to_save = message.clone();
+
+        // The body should only be decrypted if it's currently encrypted.
+        if is_body_encrypted {
+            let mut counterpart_identity: String = "".to_string();
+            if am_i_sender {
+                counterpart_identity = extract_recipient_node_profile_name(message);
+            }
+            else {
+                counterpart_identity = extract_sender_node_profile_name(message);
+            }
+            // find the sender's encryption public key in external
+            let sender_encryption_pk = external_identity_to_profile_data(counterpart_identity)
+                .unwrap()
+                .encryption_public_key;
+
+            // Decrypt the message body
+            let decrypted_result =
+            decrypt_body_message(&message.clone(), &my_encryption_sk, &sender_encryption_pk);
+        match decrypted_result {
+            Ok(decrypted_content) => {
+                message_to_save = decrypted_content;
+            }
+            Err(e) => {
+                println!("save_to_db> my_encrypt_sk: {:?}", encryption_secret_key_to_string(my_encryption_sk));
+                println!("save_to_db> sender_encrypt_pk: {:?}", encryption_public_key_to_string(sender_encryption_pk));
+                println!("save_to_db> Failed to decrypt message body: {}", e);
+                println!("save_to_db> For message: {:?}", message);
+                return Err(io::Error::new(io::ErrorKind::Other, "Failed to decrypt message body"));
+            }
+        }
+        }
+
+        let db_result = db.insert_inbox_message(&message_to_save);
+        match db_result {
+            Ok(_) => (),
+            Err(e) => {
+                println!("Failed to insert message into inbox: {}", e);
+                // we will panic for now because that way we can be aware that something is off
+                // NOTE: we shouldn't panic on production!
+                panic!("Failed to insert message into inbox: {}", e);
+            }
         }
         Ok(())
     }
@@ -408,9 +433,8 @@ impl Node {
 
         // Save to db
         {
-            let db = maybe_db.lock().await;
-            db.insert_message_to_all(&message.clone())
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+            let mut db = maybe_db.lock().await;
+            Node::save_to_db(false, &message, clone_static_secret_key(&my_encryption_secret_key), &mut db).await?;
         }
 
         // println!("who am I: {:?}", my_node_profile_name);

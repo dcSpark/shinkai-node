@@ -7,11 +7,11 @@ use super::{
     ExternalProfileData, Node, RegistrationCode,
 };
 use crate::{
-    network::Subidentity,
+    network::{Subidentity, node_message_handlers::{ping_pong, PingPong}, external_identities},
     shinkai_message::{
         encryption::{
             decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key,
+            string_to_encryption_public_key, clone_static_secret_key,
         },
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
@@ -56,10 +56,10 @@ impl Node {
 
     pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        // println!(
-        //     "handle_onionized_message msg: {:?}",
-        //     potentially_encrypted_msg
-        // );
+        println!(
+            "handle_onionized_message msg: {:?}",
+            potentially_encrypted_msg
+        );
 
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
@@ -126,16 +126,10 @@ impl Node {
             }
         }
 
-        // Save to db. We do this before the next step so it's saved with a valid signature and unencrypted
-        {
-            let db = self.db.lock().await;
-            db.insert_message_to_all(&msg.clone())
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
-        }
-
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
         let recipient_node_profile_name = msg.external_metadata.clone().unwrap().recipient;
+        println!("handle_onionized_message > recipient_node_profile_name: {}", recipient_node_profile_name);
         let external_profile_data = external_identity_to_profile_data(recipient_node_profile_name).unwrap();
 
         let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
@@ -156,6 +150,7 @@ impl Node {
 
         Node::send(
             &msg,
+            clone_static_secret_key(&self.encryption_secret_key), 
             (external_profile_data.addr, recipient_profile_name_string),
             &mut db_guard,
         )
@@ -290,6 +285,31 @@ impl Node {
         let subidentity_manager = self.subidentity_manager.lock().await;
         let subidentities = subidentity_manager.get_all_subidentities();
         let _ = res.send(subidentities).await.map_err(|_| ());
+        Ok(())
+    }
+
+    pub async fn ping_all(&self) -> io::Result<()> {
+        info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
+        let mut db_lock = self.db.lock().await;
+        for (peer, _) in self.peers.clone() {
+            let sender = self.node_profile_name.clone();
+            let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
+            let receiver = receiver_profile.node_identity_name.to_string();
+            let receiver_public_key = receiver_profile.encryption_public_key;
+
+            // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
+            ping_pong(
+                peer,
+                PingPong::Ping,
+                clone_static_secret_key(&self.encryption_secret_key),
+                clone_signature_secret_key(&self.identity_secret_key),
+                receiver_public_key,
+                sender,
+                receiver,
+                &mut db_lock,
+            )
+            .await?;
+        }
         Ok(())
     }
 }

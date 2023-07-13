@@ -8,7 +8,7 @@ use crate::{
             encryption_secret_key_to_string, string_to_encryption_public_key,
         },
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-        shinkai_message_handler::{ShinkaiMessageHandler, EncryptionStatus},
+        shinkai_message_handler::{EncryptionStatus, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, signature_public_key_to_string, verify_signature},
     },
     shinkai_message_proto::ShinkaiMessage,
@@ -25,22 +25,6 @@ pub enum PingPong {
     Ping,
     Pong,
 }
-
-// pub async fn decrypt_content_if_possible(
-//     message: ShinkaiMessage,
-//     sender_encryption_pk: x25519_dalek::PublicKey,
-//     my_encryption_secret_key: &EncryptionStaticKey,
-//     my_signature_secret_key: &SignatureStaticKey,
-// ) -> io::Result<(ShinkaiMessage)> {
-//     if message.body.clone().unwrap().internal_metadata.unwrap().recipient_subidentity.to_string() == "".to_string() {
-//         let message_content = decrypt_content_if_possible(message, sender_encryption_pk, my_encryption_secret_key, my_signature_secret_key).await;
-//         println!("message_content for node decrypted: {:?}", message_content);
-//         message_content
-//     } else {
-//         // if else then return message wrapped as Result
-//         Ok(message)
-//     }
-// }
 
 pub async fn handle_based_on_message_content_and_encryption(
     message: ShinkaiMessage,
@@ -62,7 +46,7 @@ pub async fn handle_based_on_message_content_and_encryption(
         receiver_address, message, message_encryption_status
     );
 
-    // TODO: if content body encrypted to the node itself then decrypt it and process it.    
+    // TODO: if content body encrypted to the node itself then decrypt it and process it.
 
     match (message_content, message_encryption_status) {
         (_, EncryptionStatus::BodyEncrypted) => {
@@ -82,7 +66,7 @@ pub async fn handle_based_on_message_content_and_encryption(
         }
         (_, EncryptionStatus::ContentEncrypted) => {
             // TODO: save to db to send the profile when connected
-            println!("{} > Content encrypted", receiver_address);   
+            println!("{} > Content encrypted", receiver_address);
             handle_other_cases(
                 sender_encryption_pk,
                 sender_address,
@@ -337,7 +321,7 @@ pub async fn send_ack(
     db: &mut ShinkaiMessageDB,
 ) -> io::Result<()> {
     let msg = ShinkaiMessageBuilder::ack_message(
-        encryption_secret_key,
+        clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
         receiver_public_key,
         sender,
@@ -345,7 +329,7 @@ pub async fn send_ack(
     )
     .unwrap();
 
-    Node::send(&msg, peer, db).await?;
+    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db).await?;
     Ok(())
 }
 
@@ -374,12 +358,12 @@ pub async fn ping_pong(
 
     let msg = ShinkaiMessageBuilder::ping_pong_message(
         message.to_owned(),
-        encryption_secret_key,
+        clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
         receiver_public_key,
         sender,
         receiver,
     )
     .unwrap();
-    Node::send(&msg, peer, db).await
+    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db).await
 }
