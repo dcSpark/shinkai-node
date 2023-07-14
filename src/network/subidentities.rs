@@ -8,12 +8,39 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::db::{ShinkaiMessageDB};
 use crate::db::db_errors::{ShinkaiMessageDBError};
 
+#[derive(Debug, PartialEq, PartialOrd, Clone)]
+pub enum PermissionType {
+    Global,
+    Device,
+    Agent,
+}
+
+impl PermissionType {
+    pub fn to_enum(s: &str) -> Option<Self> {
+        match s {
+            "global" => Some(PermissionType::Global),
+            "device" => Some(PermissionType::Device),
+            "agent" => Some(PermissionType::Agent),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            PermissionType::Global => "global",
+            PermissionType::Device => "device",
+            PermissionType::Agent => "agent",
+        }.to_owned()
+    }
+}
+
 #[derive(Clone, Debug)]
-pub struct Subidentity {
+pub struct Identity {
     pub name: String,
     pub addr: Option<SocketAddr>,
     pub encryption_public_key: Option<EncryptionPublicKey>,
     pub signature_public_key: Option<SignaturePublicKey>,
+    pub permission_type: PermissionType,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -22,36 +49,39 @@ pub struct RegistrationCode {
     pub profile_name: String,
     pub identity_pk: String,
     pub encryption_pk: String,
+    pub permission_type: String,
 }
 
-impl Subidentity {
+impl Identity {
     pub fn new(
         name: String,
         encryption_public_key: Option<EncryptionPublicKey>,
         signature_public_key: Option<SignaturePublicKey>,
+        permission_type: PermissionType,
     ) -> Self {
         Self {
             name,
             addr: None,
             encryption_public_key,
             signature_public_key,
+            permission_type,
         }
     }
 }
 
-pub struct SubIdentityManager {
-    identities: Vec<Subidentity>,
+pub struct IdentityManager {
+    identities: Vec<Identity>,
     db: Arc<Mutex<ShinkaiMessageDB>>,
 }
 
-impl SubIdentityManager {
+impl IdentityManager {
     pub async fn new(db: Arc<Mutex<ShinkaiMessageDB>>) -> Result<Self, Box<dyn std::error::Error>> {
         let identities = {
             let db = db.lock().await;
             let identities_tuple_vec = db.load_all_sub_identities()?;
-            identities_tuple_vec.into_iter().map(|(name, encryption_public_key, signature_public_key)| {
-                Subidentity::new(name, Some(encryption_public_key), Some(signature_public_key))
-            }).collect::<Vec<Subidentity>>()
+            identities_tuple_vec.into_iter().map(|(name, encryption_public_key, signature_public_key, permission_type)| {
+                Identity::new(name, Some(encryption_public_key), Some(signature_public_key), permission_type)
+            }).collect::<Vec<Identity>>()
         };
         Ok(Self { identities, db })
     }
@@ -62,12 +92,13 @@ impl SubIdentityManager {
             .unwrap_or_else(|| s.to_string())
     } 
 
-    pub async fn add_subidentity(&mut self, identity: Subidentity) -> anyhow::Result<()> {
+    pub async fn add_subidentity(&mut self, identity: Identity) -> anyhow::Result<()> {
         let mut db = self.db.lock().await;
-        let normalized_identity = Subidentity::new(
-            SubIdentityManager::extract_subidentity(&identity.name.clone()),
+        let normalized_identity = Identity::new(
+            IdentityManager::extract_subidentity(&identity.name.clone()),
             identity.encryption_public_key.clone(),
             identity.signature_public_key.clone(),
+            identity.permission_type.clone(),
         );
         db.insert_sub_identity(normalized_identity.clone())?;
         self.identities.push(normalized_identity);
@@ -81,19 +112,19 @@ impl SubIdentityManager {
         Ok(())
     }
     
-    pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Subidentity> {
+    pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
         self.identities
             .iter()
             .find(|identity| identity.signature_public_key.as_ref() == Some(key))
     }
 
-    pub fn find_by_profile_name(&self, profile_name: &str) -> Option<&Subidentity> {
-        let normalized_profile_name = SubIdentityManager::extract_subidentity(profile_name);
+    pub fn find_by_profile_name(&self, profile_name: &str) -> Option<&Identity> {
+        let normalized_profile_name = IdentityManager::extract_subidentity(profile_name);
         self.identities.iter()
             .find(|identity| identity.name == normalized_profile_name)
     }
 
-    pub fn get_all_subidentities(&self) -> Vec<Subidentity> {
+    pub fn get_all_subidentities(&self) -> Vec<Identity> {
         self.identities.clone()
     }
 

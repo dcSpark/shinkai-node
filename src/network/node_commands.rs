@@ -4,10 +4,10 @@ use super::{
         extract_recipient_node_profile_name, extract_sender_node_profile_name, get_sender_keys,
         verify_message_signature,
     },
-    ExternalProfileData, Node, RegistrationCode,
+    ExternalProfileData, Node, RegistrationCode, subidentities::PermissionType,
 };
 use crate::{
-    network::{Subidentity, node_message_handlers::{ping_pong, PingPong}, external_identities},
+    network::{Identity, node_message_handlers::{ping_pong, PingPong}, external_identities},
     shinkai_message::{
         encryption::{
             decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -203,6 +203,7 @@ impl Node {
         msg: ShinkaiMessage,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        println!("handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().unwrap().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
@@ -238,10 +239,13 @@ impl Node {
         let profile_name = registration_code.profile_name;
         let identity_pk = registration_code.identity_pk;
         let encryption_pk = registration_code.encryption_pk;
+        let permission_type = registration_code.permission_type;
+
+        println!("permission_type: {}", permission_type);
 
         let db = self.db.lock().await;
         let result = db
-            .use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk)
+            .use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk, &permission_type)
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
         std::mem::drop(db);
@@ -253,12 +257,14 @@ impl Node {
             Ok(success) => {
                 let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
                 let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                let permission_type = PermissionType::to_enum(&permission_type).unwrap();
 
-                let subidentity = Subidentity {
+                let subidentity = Identity {
                     name: profile_name.clone(),
                     addr: None,
                     signature_public_key: Some(signature_pk_obj),
                     encryption_public_key: Some(encryption_pk_obj),
+                    permission_type: permission_type,
                 };
                 let mut subidentity_manager = self.subidentity_manager.lock().await;
                 match subidentity_manager.add_subidentity(subidentity).await {
@@ -280,7 +286,7 @@ impl Node {
 
     pub async fn get_all_subidentities(
         &self,
-        res: Sender<Vec<Subidentity>>,
+        res: Sender<Vec<Identity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let subidentity_manager = self.subidentity_manager.lock().await;
         let subidentities = subidentity_manager.get_all_subidentities();

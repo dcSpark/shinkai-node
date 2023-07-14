@@ -6,6 +6,9 @@ pub enum ShinkaiMessageDBError {
     RocksDBError(rocksdb::Error),
     DecodeError(prost::DecodeError),
     IOError(io::Error),
+    PermissionDenied(String),
+    InvalidPermissionType,
+    PermissionNotFound,
     MissingExternalMetadata,
     MissingBody,
     MissingInternalMetadata,
@@ -72,6 +75,9 @@ impl fmt::Display for ShinkaiMessageDBError {
             }
             ShinkaiMessageDBError::IdentityNotFound => write!(f, "Identity not found"),
             ShinkaiMessageDBError::InvalidData => write!(f, "Invalid data"),
+            ShinkaiMessageDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
+            ShinkaiMessageDBError::PermissionNotFound => write!(f, "Permission not found"),
+            ShinkaiMessageDBError::InvalidPermissionType => write!(f, "Invalid permission type"),
         }
     }
 }
@@ -127,6 +133,9 @@ impl PartialEq for ShinkaiMessageDBError {
             (ShinkaiMessageDBError::RocksDBError(_), ShinkaiMessageDBError::RocksDBError(_)) => true,
             (ShinkaiMessageDBError::SomeError, ShinkaiMessageDBError::SomeError) => true,
             (ShinkaiMessageDBError::InvalidData, ShinkaiMessageDBError::InvalidData) => true,
+            (ShinkaiMessageDBError::PermissionDenied(_), ShinkaiMessageDBError::PermissionDenied(_)) => true,
+            (ShinkaiMessageDBError::PermissionNotFound, ShinkaiMessageDBError::PermissionNotFound) => true,
+            (ShinkaiMessageDBError::InvalidPermissionType, ShinkaiMessageDBError::InvalidPermissionType) => true,
             _ => false,
         }
     }

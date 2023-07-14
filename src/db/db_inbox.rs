@@ -1,6 +1,9 @@
 use rocksdb::{Error, Options};
 
-use crate::{shinkai_message::shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_proto::ShinkaiMessage};
+use crate::{
+    network::subidentities::PermissionType, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    shinkai_message_proto::ShinkaiMessage,
+};
 
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
 
@@ -31,7 +34,7 @@ impl Permission {
 }
 
 impl ShinkaiMessageDB {
-    pub fn create_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
+    pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
         println!("Creating inbox: {}", inbox_name);
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
@@ -40,16 +43,12 @@ impl ShinkaiMessageDB {
 
         // Create ColumnFamilyDescriptors for inbox and permission lists
         let cf_name_inbox = inbox_name.clone();
-        let cf_name_global_perms = format!("{}_global_perms", &inbox_name);
-        let cf_name_device_perms = format!("{}_device_perms", &inbox_name);
-        let cf_name_agent_perms = format!("{}_agent_perms", &inbox_name);
+        let cf_name_perms = format!("{}_perms", &inbox_name);
         let cf_name_unread_list = format!("{}_unread_list", &inbox_name);
 
         // Create column families
         self.db.create_cf(&cf_name_inbox, &cf_opts)?;
-        self.db.create_cf(&cf_name_global_perms, &cf_opts)?;
-        self.db.create_cf(&cf_name_device_perms, &cf_opts)?;
-        self.db.create_cf(&cf_name_agent_perms, &cf_opts)?;
+        self.db.create_cf(&cf_name_perms, &cf_opts)?;
         self.db.create_cf(&cf_name_unread_list, &cf_opts)?;
 
         // Add inbox name to the list in the 'inbox' topic
@@ -63,15 +62,42 @@ impl ShinkaiMessageDB {
     }
 
     pub fn insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiMessageDBError> {
-        println!("Inserting message into inbox: {:?}", message);
-        let inbox_name = ShinkaiMessageHandler::get_inbox_name(&message.clone())?;
+        let message_clone = message.clone();
+        let internal_metadata = message_clone.body.as_ref().and_then(|b| b.internal_metadata.as_ref());
+        let external_metadata = message
+            .external_metadata
+            .as_ref()
+            .ok_or_else(|| ShinkaiMessageDBError::MissingExternalMetadata)?;
+
+        let mut inbox_name = match internal_metadata {
+            Some(metadata) => {
+                let inbox = &metadata.inbox;
+
+                // Check that the sender has permissions to that inbox
+                if !inbox.is_empty() && !self.has_permission(inbox, &external_metadata.sender, Permission::Read)? {
+                    return Err(ShinkaiMessageDBError::PermissionDenied(
+                        "Sender does not have permission to write to this inbox".to_string(),
+                    ));
+                }
+
+                inbox.clone()
+            }
+            None => ShinkaiMessageHandler::get_inbox_name(message)?,
+        };
+
+        // If the inbox name is empty, use the get_inbox_name function
+        if inbox_name.is_empty() {
+            inbox_name = ShinkaiMessageHandler::get_inbox_name(&message.clone())?;
+        }
+
+        println!("Inserting message into inbox: {:?}", inbox_name);
 
         // Insert the message
         let _ = self.insert_message_to_all(&message.clone())?;
 
         // Check if the inbox topic exists and if not create it
         if self.db.cf_handle(&inbox_name).is_none() {
-            self.create_inbox(inbox_name.clone())?;
+            self.create_empty_inbox(inbox_name.clone())?;
         }
 
         // Calculate the hash of the message for the key
@@ -260,7 +286,6 @@ impl ShinkaiMessageDB {
     pub fn add_permission(
         &mut self,
         inbox_name: &str,
-        perm_type: &str,
         identity: &str,
         perm: Permission,
     ) -> Result<(), ShinkaiMessageDBError> {
@@ -269,14 +294,14 @@ impl ShinkaiMessageDB {
             .db
             .cf_handle(Topic::ProfilesIdentityKey.as_str())
             .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
-        
+
         // Check if the identity exists
         if self.db.get_cf(cf_identity, identity)?.is_none() {
             return Err(ShinkaiMessageDBError::IdentityNotFound);
         }
-    
+
         // Handle the original permission addition
-        let cf_name = format!("{}_{}", inbox_name, perm_type);
+        let cf_name = format!("{}_perms", inbox_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -286,25 +311,20 @@ impl ShinkaiMessageDB {
         Ok(())
     }
 
-    pub fn remove_permission(
-        &mut self,
-        inbox_name: &str,
-        perm_type: &str,
-        identity: &str,
-    ) -> Result<(), ShinkaiMessageDBError> {
+    pub fn remove_permission(&mut self, inbox_name: &str, identity: &str) -> Result<(), ShinkaiMessageDBError> {
         // Fetch column family for identity
         let cf_identity = self
             .db
             .cf_handle(Topic::ProfilesIdentityKey.as_str())
             .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
-        
+
         // Check if the identity exists
         if self.db.get_cf(cf_identity, identity)?.is_none() {
             return Err(ShinkaiMessageDBError::IdentityNotFound);
         }
-    
+
         // Handle the original permission removal
-        let cf_name = format!("{}_{}", inbox_name, perm_type);
+        let cf_name = format!("{}_perms", inbox_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -312,11 +332,10 @@ impl ShinkaiMessageDB {
         self.db.delete_cf(cf, identity)?;
         Ok(())
     }
-    
+
     pub fn has_permission(
         &self,
         inbox_name: &str,
-        perm_type: &str,
         identity: &str,
         perm: Permission,
     ) -> Result<bool, ShinkaiMessageDBError> {
@@ -325,14 +344,31 @@ impl ShinkaiMessageDB {
             .db
             .cf_handle(Topic::ProfilesIdentityKey.as_str())
             .ok_or(ShinkaiMessageDBError::IdentityNotFound)?;
-    
+
         // Check if the identity exists
+        println!("Checking if identity exists: {}", identity);
         if self.db.get_cf(cf_identity, identity)?.is_none() {
             return Err(ShinkaiMessageDBError::IdentityNotFound);
         }
-    
+
+        // Fetch column family for permissions
+        let cf_permission = self
+            .db
+            .cf_handle(Topic::ProfilesPermissionType.as_str())
+            .ok_or(ShinkaiMessageDBError::PermissionNotFound)?;
+
+        // Get the permission type for the identity
+        let perm_type_bytes = self
+            .db
+            .get_cf(cf_permission, identity)?
+            .ok_or(ShinkaiMessageDBError::PermissionNotFound)?;
+        let perm_type_str =
+            String::from_utf8(perm_type_bytes.to_vec()).map_err(|_| ShinkaiMessageDBError::SomeError)?;
+        let perm_type = PermissionType::to_enum(&perm_type_str).ok_or(ShinkaiMessageDBError::InvalidPermissionType)?;
+
         // Handle the original permission check
-        let cf_name = format!("{}_{}", inbox_name, perm_type);
+        let cf_name = format!("{}_perms", inbox_name);
+        println!("Checking permission for inbox: {}", cf_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -340,7 +376,8 @@ impl ShinkaiMessageDB {
         match self.db.get_cf(cf, identity)? {
             Some(val) => {
                 let val_str = String::from_utf8(val.to_vec()).map_err(|_| ShinkaiMessageDBError::SomeError)?;
-                let val_perm = Permission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
+                let val_perm =
+                    Permission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
                 Ok(val_perm >= perm)
             }
             None => Ok(false),

@@ -1,5 +1,5 @@
 use super::external_identities::ExternalProfileData;
-use super::{SubIdentityManager, Subidentity};
+use super::{IdentityManager, Identity};
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -22,7 +22,8 @@ use crate::network::node_message_handlers::{
 };
 use crate::network::subidentities::RegistrationCode;
 use crate::shinkai_message::encryption::{
-    clone_static_secret_key, decrypt_body_message, string_to_encryption_public_key, encryption_secret_key_to_string, encryption_public_key_to_string,
+    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+    string_to_encryption_public_key,
 };
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
@@ -97,7 +98,40 @@ pub enum NodeCommand {
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
-        res: Sender<Vec<Subidentity>>,
+        res: Sender<Vec<Identity>>,
+    },
+    GetLastMessagesFromInbox {
+        inbox_name: String,
+        limit: usize,
+        res: Sender<Vec<ShinkaiMessage>>,
+    },
+    MarkAsReadUpTo {
+        inbox_name: String,
+        up_to_time: String,
+        res: Sender<String>,
+    },
+    GetLastUnreadMessagesFromInbox {
+        inbox_name: String,
+        limit: usize,
+        res: Sender<Vec<ShinkaiMessage>>,
+    },
+    AddInboxPermission {
+        inbox_name: String,
+        perm_type: String,
+        identity: String,
+        res: Sender<String>,
+    },
+    RemoveInboxPermission {
+        inbox_name: String,
+        perm_type: String,
+        identity: String,
+        res: Sender<String>,
+    },
+    HasInboxPermission {
+        inbox_name: String,
+        perm_type: String,
+        identity: String,
+        res: Sender<bool>,
     },
 }
 
@@ -125,7 +159,7 @@ pub struct Node {
     // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
     // The manager for subidentities.
-    pub subidentity_manager: Arc<Mutex<SubIdentityManager>>,
+    pub subidentity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
 }
@@ -146,7 +180,7 @@ impl Node {
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiMessageDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
-        let subidentity_manager = SubIdentityManager::new(db_arc.clone()).await.unwrap();
+        let subidentity_manager = IdentityManager::new(db_arc.clone()).await.unwrap();
 
         Node {
             node_profile_name,
@@ -365,8 +399,7 @@ impl Node {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
                 counterpart_identity = extract_recipient_node_profile_name(message);
-            }
-            else {
+            } else {
                 counterpart_identity = extract_sender_node_profile_name(message);
             }
             // find the sender's encryption public key in external
@@ -375,20 +408,25 @@ impl Node {
                 .encryption_public_key;
 
             // Decrypt the message body
-            let decrypted_result =
-            decrypt_body_message(&message.clone(), &my_encryption_sk, &sender_encryption_pk);
-        match decrypted_result {
-            Ok(decrypted_content) => {
-                message_to_save = decrypted_content;
+            let decrypted_result = decrypt_body_message(&message.clone(), &my_encryption_sk, &sender_encryption_pk);
+            match decrypted_result {
+                Ok(decrypted_content) => {
+                    message_to_save = decrypted_content;
+                }
+                Err(e) => {
+                    println!(
+                        "save_to_db> my_encrypt_sk: {:?}",
+                        encryption_secret_key_to_string(my_encryption_sk)
+                    );
+                    println!(
+                        "save_to_db> sender_encrypt_pk: {:?}",
+                        encryption_public_key_to_string(sender_encryption_pk)
+                    );
+                    println!("save_to_db> Failed to decrypt message body: {}", e);
+                    println!("save_to_db> For message: {:?}", message);
+                    return Err(io::Error::new(io::ErrorKind::Other, "Failed to decrypt message body"));
+                }
             }
-            Err(e) => {
-                println!("save_to_db> my_encrypt_sk: {:?}", encryption_secret_key_to_string(my_encryption_sk));
-                println!("save_to_db> sender_encrypt_pk: {:?}", encryption_public_key_to_string(sender_encryption_pk));
-                println!("save_to_db> Failed to decrypt message body: {}", e);
-                println!("save_to_db> For message: {:?}", message);
-                return Err(io::Error::new(io::ErrorKind::Other, "Failed to decrypt message body"));
-            }
-        }
         }
 
         let db_result = db.insert_inbox_message(&message_to_save);
@@ -434,7 +472,13 @@ impl Node {
         // Save to db
         {
             let mut db = maybe_db.lock().await;
-            Node::save_to_db(false, &message, clone_static_secret_key(&my_encryption_secret_key), &mut db).await?;
+            Node::save_to_db(
+                false,
+                &message,
+                clone_static_secret_key(&my_encryption_secret_key),
+                &mut db,
+            )
+            .await?;
         }
 
         // println!("who am I: {:?}", my_node_profile_name);

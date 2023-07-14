@@ -3,7 +3,7 @@ use shinkai_node::db::db_errors::ShinkaiMessageDBError;
 use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Node, SubIdentityManager, Subidentity};
+use shinkai_node::network::{Node, IdentityManager, Identity};
 use shinkai_node::shinkai_message::encryption::{
     decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,

@@ -107,6 +107,7 @@ fn main() {
                 node_keys.identity_secret_key,
                 node2_encryption_pk,
                 code.to_string(),
+                "device".to_string(),
                 global_identity_name.to_string().clone(),
                 recipient.to_string(),
             )

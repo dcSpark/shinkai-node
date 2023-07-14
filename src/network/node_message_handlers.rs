@@ -1,4 +1,4 @@
-use super::{external_identities, SubIdentityManager};
+use super::{external_identities, IdentityManager};
 use crate::{
     db::ShinkaiMessageDB,
     network::Node,

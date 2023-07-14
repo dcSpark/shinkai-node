@@ -304,6 +304,7 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
+        permission_type: String,
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -316,6 +317,7 @@ impl ShinkaiMessageBuilder {
             profile_name: sender.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
+            permission_type,
         };
 
         let body =
