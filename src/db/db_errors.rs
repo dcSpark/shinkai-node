@@ -23,6 +23,7 @@ pub enum ShinkaiMessageDBError {
     InboxNotFound,
     IdentityNotFound,
     InvalidData,
+    InvalidInboxName,
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -78,6 +79,7 @@ impl fmt::Display for ShinkaiMessageDBError {
             ShinkaiMessageDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
             ShinkaiMessageDBError::PermissionNotFound => write!(f, "Permission not found"),
             ShinkaiMessageDBError::InvalidPermissionType => write!(f, "Invalid permission type"),
+            ShinkaiMessageDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
         }
     }
 }
@@ -136,6 +138,7 @@ impl PartialEq for ShinkaiMessageDBError {
             (ShinkaiMessageDBError::PermissionDenied(_), ShinkaiMessageDBError::PermissionDenied(_)) => true,
             (ShinkaiMessageDBError::PermissionNotFound, ShinkaiMessageDBError::PermissionNotFound) => true,
             (ShinkaiMessageDBError::InvalidPermissionType, ShinkaiMessageDBError::InvalidPermissionType) => true,
+            (ShinkaiMessageDBError::InvalidInboxName, ShinkaiMessageDBError::InvalidInboxName) => true,
             _ => false,
         }
     }

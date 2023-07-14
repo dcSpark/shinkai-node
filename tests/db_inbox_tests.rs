@@ -2,6 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::db_errors::ShinkaiMessageDBError;
 use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
+use shinkai_node::managers::InboxNameManager;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::subidentities::PermissionType;
 use shinkai_node::network::{Identity, IdentityManager, Node};
@@ -93,10 +94,11 @@ fn db_inbox() {
         "Hello World".to_string()
     );
 
-    let inbox_name = ShinkaiMessageHandler::get_inbox_name(&message.clone()).unwrap();
+    let inbox_name = InboxNameManager::get_inbox_name_from_message(&message).unwrap();
+    println!("Inbox name: {}", inbox_name);
     assert_eq!(
         inbox_name,
-        "inbox_@@node1.shinkai@@node1.shinkaimain_profile_node1_false".to_string()
+        "inbox::@@node1.shinkai|::@@node1.shinkai|main_profile_node1::false".to_string()
     );
 
     println!("Inbox name: {}", inbox_name);

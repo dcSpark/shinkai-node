@@ -1,8 +1,8 @@
-use rocksdb::{Error, Options};
+use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
     network::subidentities::PermissionType, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage,
+    shinkai_message_proto::ShinkaiMessage, managers::inbox_name_manager::InboxNameManager,
 };
 
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
@@ -51,12 +51,18 @@ impl ShinkaiMessageDB {
         self.db.create_cf(&cf_name_perms, &cf_opts)?;
         self.db.create_cf(&cf_name_unread_list, &cf_opts)?;
 
+        // Start a write batch
+        let mut batch = WriteBatch::default();
+
         // Add inbox name to the list in the 'inbox' topic
         let cf_inbox = self
             .db
             .cf_handle(Topic::Inbox.as_str())
             .expect("to be able to access Topic::Inbox");
-        self.db.put_cf(cf_inbox, &inbox_name, &inbox_name)?;
+        batch.put_cf(cf_inbox, &inbox_name, &inbox_name);
+
+        // Commit the write batch
+        self.db.write(batch)?;
 
         Ok(())
     }
@@ -74,6 +80,8 @@ impl ShinkaiMessageDB {
                 let inbox = &metadata.inbox;
 
                 // Check that the sender has permissions to that inbox
+                // TODO: Validate signature as well
+                // TODO2: extract logic to InboxManager
                 if !inbox.is_empty() && !self.has_permission(inbox, &external_metadata.sender, Permission::Read)? {
                     return Err(ShinkaiMessageDBError::PermissionDenied(
                         "Sender does not have permission to write to this inbox".to_string(),
@@ -82,12 +90,12 @@ impl ShinkaiMessageDB {
 
                 inbox.clone()
             }
-            None => ShinkaiMessageHandler::get_inbox_name(message)?,
+            None => InboxNameManager::get_inbox_name_from_message(message)?
         };
 
         // If the inbox name is empty, use the get_inbox_name function
         if inbox_name.is_empty() {
-            inbox_name = ShinkaiMessageHandler::get_inbox_name(&message.clone())?;
+            inbox_name = InboxNameManager::get_inbox_name_from_message(message)?
         }
 
         println!("Inserting message into inbox: {:?}", inbox_name);
@@ -98,6 +106,9 @@ impl ShinkaiMessageDB {
         // Check if the inbox topic exists and if not create it
         if self.db.cf_handle(&inbox_name).is_none() {
             self.create_empty_inbox(inbox_name.clone())?;
+
+            // TODO: add permissions
+
         }
 
         // Calculate the hash of the message for the key

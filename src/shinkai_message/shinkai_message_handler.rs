@@ -151,40 +151,40 @@ impl ShinkaiMessageHandler {
         }
     }
 
-    pub fn get_inbox_name_from_params(
-        is_e2e: bool,
-        sender: String,
-        sender_subidentity: String,
-        recipient: String,
-        recipient_subidentity: String,
-    ) -> String {
-        let mut inbox_name_parts = vec![sender, sender_subidentity, recipient, recipient_subidentity];
+    // pub fn get_inbox_name_from_params(
+    //     is_e2e: bool,
+    //     sender: String,
+    //     sender_subidentity: String,
+    //     recipient: String,
+    //     recipient_subidentity: String,
+    // ) -> String {
+    //     let mut inbox_name_parts = vec![sender, sender_subidentity, recipient, recipient_subidentity];
 
-        inbox_name_parts.sort();
-        let inbox_name = format!("{}_{}_{}", "inbox", inbox_name_parts.join(""), is_e2e);
-        inbox_name
-    }
+    //     inbox_name_parts.sort();
+    //     let inbox_name = format!("{}_{}_{}", "inbox", inbox_name_parts.join(""), is_e2e);
+    //     inbox_name
+    // }
 
-    pub fn get_inbox_name(message: &ShinkaiMessage) -> Result<String, ShinkaiMessageDBError> {
-        // Check if message is encrypted
-        let is_e2e = ShinkaiMessageHandler::is_content_currently_encrypted(message);
+    // pub fn get_inbox_name(message: &ShinkaiMessage) -> Result<String, ShinkaiMessageDBError> {
+    //     // Check if message is encrypted
+    //     let is_e2e = ShinkaiMessageHandler::is_content_currently_encrypted(message);
     
-        // Check if all necessary fields are present in the message
-        let external_metadata = message.external_metadata.as_ref().ok_or(ShinkaiMessageDBError::MissingExternalMetadata)?;
-        let body = message.body.as_ref().ok_or(ShinkaiMessageDBError::MissingBody)?;
-        let internal_metadata = body.internal_metadata.as_ref().ok_or(ShinkaiMessageDBError::MissingInternalMetadata)?;
+    //     // Check if all necessary fields are present in the message
+    //     let external_metadata = message.external_metadata.as_ref().ok_or(ShinkaiMessageDBError::MissingExternalMetadata)?;
+    //     let body = message.body.as_ref().ok_or(ShinkaiMessageDBError::MissingBody)?;
+    //     let internal_metadata = body.internal_metadata.as_ref().ok_or(ShinkaiMessageDBError::MissingInternalMetadata)?;
     
-        // Call get_inbox_name_from_params
-        let inbox_name = ShinkaiMessageHandler::get_inbox_name_from_params(
-            is_e2e,
-            external_metadata.sender.clone(),
-            internal_metadata.sender_subidentity.clone(),
-            external_metadata.recipient.clone(),
-            internal_metadata.recipient_subidentity.clone(),
-        );
+    //     // Call get_inbox_name_from_params
+    //     let inbox_name = ShinkaiMessageHandler::get_inbox_name_from_params(
+    //         is_e2e,
+    //         external_metadata.sender.clone(),
+    //         internal_metadata.sender_subidentity.clone(),
+    //         external_metadata.recipient.clone(),
+    //         internal_metadata.recipient_subidentity.clone(),
+    //     );
     
-        Ok(inbox_name)
-    }
+    //     Ok(inbox_name)
+    // }
 
     pub fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiMessageDBError> {
         // Calculate the hash of the message for the key
