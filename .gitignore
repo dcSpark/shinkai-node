@@ -1,1 +1,5 @@
 /target
+*.pdf
+*.json
+*.bin
+/db
