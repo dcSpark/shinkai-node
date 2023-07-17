@@ -2,8 +2,8 @@ use libp2p::identity;
 use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
-    network::identities::IdentityType, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::NewIdentity},
+    shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{Identity, IdentityType}},
 };
 
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
@@ -306,7 +306,7 @@ impl ShinkaiMessageDB {
     pub fn add_permission(
         &mut self,
         inbox_name: &str,
-        identity: &NewIdentity,
+        identity: &Identity,
         perm: Permission,
     ) -> Result<(), ShinkaiMessageDBError> {
         // Fetch column family for identity
@@ -331,7 +331,7 @@ impl ShinkaiMessageDB {
         Ok(())
     }
 
-    pub fn remove_permission(&mut self, inbox_name: &str, identity: &NewIdentity) -> Result<(), ShinkaiMessageDBError> {
+    pub fn remove_permission(&mut self, inbox_name: &str, identity: &Identity) -> Result<(), ShinkaiMessageDBError> {
         // Fetch column family for identity
         let cf_identity = self
             .db
@@ -356,7 +356,7 @@ impl ShinkaiMessageDB {
     pub fn has_permission(
         &self,
         inbox_name: &str,
-        identity: &NewIdentity,
+        identity: &Identity,
         perm: Permission,
     ) -> Result<bool, ShinkaiMessageDBError> {
         // Fetch column family for identity

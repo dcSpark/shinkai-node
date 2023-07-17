@@ -4,8 +4,7 @@ use async_std::task;
 use shinkai_node::db::db_errors::ShinkaiMessageDBError;
 use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
-use shinkai_node::managers::identity_manager::NewIdentity;
-use shinkai_node::network::identities::IdentityType;
+use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::shinkai_message::encryption::{
@@ -69,7 +68,7 @@ fn test_new_load_all_sub_identities() {
         let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
-        let identity = NewIdentity::new(
+        let identity = Identity::new(
             subidentity_name.clone(),
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -78,12 +77,12 @@ fn test_new_load_all_sub_identities() {
             IdentityType::Device,
         );
 
-        shinkai_db.new_insert_sub_identity(identity).unwrap();
+        shinkai_db.insert_sub_identity(identity).unwrap();
     }
 
     // Test new_load_all_sub_identities
     let identities = shinkai_db
-        .new_load_all_sub_identities(node_profile_name.clone().to_string())
+        .load_all_sub_identities(node_profile_name.clone().to_string())
         .unwrap();
     assert_eq!(identities.len(), 5);
 
@@ -93,7 +92,7 @@ fn test_new_load_all_sub_identities() {
         let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
-        let identity = NewIdentity::new(
+        let identity = Identity::new(
             subidentity_name.clone(),
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -142,7 +141,7 @@ fn test_new_insert_sub_identity() {
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-    let identity = NewIdentity::new(
+    let identity = Identity::new(
         subidentity_name.to_string(),
         encryption_pk.clone(),
         identity_pk.clone(),
@@ -152,7 +151,7 @@ fn test_new_insert_sub_identity() {
     );
 
     // Test new_insert_sub_identity
-    shinkai_db.new_insert_sub_identity(identity.clone()).unwrap();
+    shinkai_db.insert_sub_identity(identity.clone()).unwrap();
 
     // check in db
     let cf_identity = shinkai_db.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
@@ -181,7 +180,7 @@ fn test_remove_subidentity() {
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-    let identity = NewIdentity::new(
+    let identity = Identity::new(
         subidentity_name.to_string(),
         encryption_pk.clone(),
         identity_pk.clone(),
@@ -191,7 +190,7 @@ fn test_remove_subidentity() {
     );
 
     // insert identity
-    shinkai_db.new_insert_sub_identity(identity.clone()).unwrap();
+    shinkai_db.insert_sub_identity(identity.clone()).unwrap();
 
     // remove identity
     shinkai_db.remove_subidentity(&subidentity_name).unwrap();

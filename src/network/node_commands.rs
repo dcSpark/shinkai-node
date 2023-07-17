@@ -4,10 +4,10 @@ use super::{
         extract_recipient_node_profile_name, extract_sender_node_profile_name, get_sender_keys,
         verify_message_signature,
     },
-    ExternalProfileData, Node, RegistrationCode, identities::IdentityType,
+    ExternalProfileData, Node,
 };
 use crate::{
-    network::{Identity, node_message_handlers::{ping_pong, PingPong}, external_identities},
+    network::{node_message_handlers::{ping_pong, PingPong}, external_identities},
     shinkai_message::{
         encryption::{
             decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -16,7 +16,7 @@ use crate::{
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
-    shinkai_message_proto::ShinkaiMessage, managers::identity_manager::NewIdentity,
+    shinkai_message_proto::ShinkaiMessage, managers::identity_manager::{Identity, RegistrationCode, IdentityType},
 };
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -261,7 +261,7 @@ impl Node {
                 let permission_type = IdentityType::to_enum(&permission_type).unwrap();
                 let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                let subidentity = NewIdentity {
+                let subidentity = Identity {
                     full_identity_name: full_identity_name,
                     addr: None,
                     subidentity_signature_public_key: Some(signature_pk_obj),
@@ -290,7 +290,7 @@ impl Node {
 
     pub async fn get_all_subidentities(
         &self,
-        res: Sender<Vec<NewIdentity>>,
+        res: Sender<Vec<Identity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let subidentity_manager = self.subidentity_manager.lock().await;
         let subidentities = subidentity_manager.get_all_subidentities();

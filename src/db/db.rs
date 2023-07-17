@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use crate::{
-    network::identities::Identity,
     shinkai_message::{
         encryption::{
             encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,

@@ -3,10 +3,9 @@ use shinkai_node::db::db_errors::ShinkaiMessageDBError;
 use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
 use shinkai_node::managers::{InboxNameManager, NewIdentityManager};
-use shinkai_node::managers::identity_manager::NewIdentity;
-use shinkai_node::network::identities::IdentityType;
+use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Identity, Node};
+use shinkai_node::network::{Node};
 use shinkai_node::shinkai_message::encryption::{
     decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -186,7 +185,7 @@ fn db_inbox() {
     // Test permissions
     let subidentity_name = "device1";
     let full_subidentity_name =  NewIdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
-    let device1_subidentity = NewIdentity::new(
+    let device1_subidentity = Identity::new(
         full_subidentity_name.clone().to_string(),
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -195,7 +194,7 @@ fn db_inbox() {
         IdentityType::Device,
     );
 
-    let _ = shinkai_db.new_insert_sub_identity(device1_subidentity.clone());
+    let _ = shinkai_db.insert_sub_identity(device1_subidentity.clone());
 
     println!("before adding perms> Inbox name: {}", inbox_name);
     shinkai_db
@@ -239,7 +238,7 @@ fn test_permission_errors() {
     let subidentity_name = "device1";
     let full_subidentity_name =  NewIdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
     
-    let device1_subidentity = NewIdentity::new(
+    let device1_subidentity = Identity::new(
         full_subidentity_name.clone().to_string(),
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -247,13 +246,13 @@ fn test_permission_errors() {
         Some(node1_subidentity_pk),
         IdentityType::Device,
     );
-    let _ = shinkai_db.new_insert_sub_identity(device1_subidentity.clone());
+    let _ = shinkai_db.insert_sub_identity(device1_subidentity.clone());
 
     println!("full_subidentity_name: {}", full_subidentity_name);
     println!("subidentity: {}", device1_subidentity);
 
     // Create a fake identity for tests
-    let nonexistent_identity = NewIdentity::new(
+    let nonexistent_identity = Identity::new(
         "nonexistent_identity".to_string(),
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),

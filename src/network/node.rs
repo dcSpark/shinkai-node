@@ -1,5 +1,4 @@
 use super::external_identities::ExternalProfileData;
-use super::{Identity};
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -16,9 +15,8 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::db::ShinkaiMessageDB;
 use crate::managers::NewIdentityManager;
-use crate::managers::identity_manager::NewIdentity;
+use crate::managers::identity_manager::Identity;
 use crate::network::external_identities::{self, external_identity_to_profile_data};
-use crate::network::identities::RegistrationCode;
 use crate::network::node_message_handlers::{
     extract_message, extract_recipient_keys, extract_recipient_node_profile_name, extract_sender_node_profile_name,
     get_sender_keys, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -100,7 +98,7 @@ pub enum NodeCommand {
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
-        res: Sender<Vec<NewIdentity>>,
+        res: Sender<Vec<Identity>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
