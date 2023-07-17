@@ -8,6 +8,8 @@ use std::io::Cursor;
 /// # Arguments
 ///
 /// * `buffer` - A byte slice containing the CSV data.
+/// * `header` - A boolean indicating whether to prepend column headers to
+///   values.
 ///
 /// # Returns
 ///
@@ -15,13 +17,26 @@ use std::io::Cursor;
 /// represents a row in the CSV, and contains the column values for that row. If
 /// an error occurs while parsing the CSV data, the `Result` will contain an
 /// `Error`.
-fn parse_csv(buffer: &[u8]) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
+fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
     let mut reader = Reader::from_reader(Cursor::new(buffer));
-    let mut result = Vec::new();
+    let headers = if header {
+        reader.headers()?.iter().map(String::from).collect::<Vec<String>>()
+    } else {
+        Vec::new()
+    };
 
+    let mut result = Vec::new();
     for record in reader.records() {
         let record = record?;
-        let row: Vec<String> = record.iter().map(String::from).collect();
+        let row: Vec<String> = if header {
+            record
+                .iter()
+                .enumerate()
+                .map(|(i, e)| format!("{}: {}", headers[i], e))
+                .collect()
+        } else {
+            record.iter().map(String::from).collect()
+        };
         result.push(row);
     }
 
@@ -50,6 +65,8 @@ fn parse_pdf(buffer: &[u8]) -> Result<String, Box<dyn Error>> {
 /// # Arguments
 ///
 /// * `file_path` - A string slice representing the file path of the CSV file.
+/// * `header` - A boolean indicating whether to prepend column headers to
+///   values.
 ///
 /// # Returns
 ///
@@ -57,17 +74,9 @@ fn parse_pdf(buffer: &[u8]) -> Result<String, Box<dyn Error>> {
 /// represents a row in the CSV, and contains the column values for that row. If
 /// an error occurs while parsing the CSV data, the `Result` will contain an
 /// `Error`.
-fn parse_csv_from_path(file_path: &str) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
-    let mut reader = Reader::from_path(file_path)?;
-    let mut result = Vec::new();
-
-    for record in reader.records() {
-        let record = record?;
-        let row: Vec<String> = record.iter().map(String::from).collect();
-        result.push(row);
-    }
-
-    Ok(result)
+fn parse_csv_from_path(file_path: &str, header: bool) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
+    let buffer = std::fs::read(file_path)?;
+    parse_csv(&buffer, header)
 }
 
 /// Parse text from a PDF from a file.
@@ -82,8 +91,6 @@ fn parse_csv_from_path(file_path: &str) -> Result<Vec<Vec<String>>, Box<dyn Erro
 /// error occurs while parsing the PDF data, the `Result` will contain an
 /// `Error`.
 fn parse_pdf_from_path(file_path: &str) -> Result<String, Box<dyn Error>> {
-    let bytes = std::fs::read(file_path)?;
-    let text = pdf_extract::extract_text_from_mem(&bytes)?;
-
-    Ok(text)
+    let buffer = std::fs::read(file_path)?;
+    parse_pdf(&buffer)
 }
