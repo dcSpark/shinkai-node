@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-and-deploy:
-    uses: dcSpark/shinkai-node/.github/workflows/build-workflow.yml@main
+    uses: dcSpark/shinkai-node/.github/workflows/build-workflow.yml@devops
     with:
       REGISTRY: dcspark
       REPOSITORY: shinkai-node
