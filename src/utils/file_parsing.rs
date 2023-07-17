@@ -11,11 +11,11 @@ use std::io::Cursor;
 ///
 /// # Returns
 ///
-/// A `Result` containing a `Vec<Vec<String>>`. Each inner `Vec<String>>`
-/// represents a row in the CSV, and contains the column values for that row. If
-/// an error occurs while parsing the CSV data, the `Result` will contain an
-/// `Error`.
-fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
+/// A `Result` containing a `Vec<String>`. Each `String` represents a row in the
+/// CSV, and contains the column values for that row, concatenated together with
+/// commas. If an error occurs while parsing the CSV data, the `Result` will
+/// contain an `Error`.
+fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, Box<dyn Error>> {
     let mut reader = Reader::from_reader(Cursor::new(buffer));
     let headers = reader.headers()?.iter().map(String::from).collect::<Vec<String>>();
 
@@ -44,11 +44,11 @@ fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
 ///
 /// # Returns
 ///
-/// A `Result` containing a `Vec<Vec<String>>`. Each inner `Vec<String>`
-/// represents a row in the CSV, and contains the column values for that row. If
-/// an error occurs while parsing the CSV data, the `Result` will contain an
-/// `Error`.
-fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
+/// A `Result` containing a `Vec<String>`. Each `String` represents a row in the
+/// CSV, and contains the column values for that row, concatenated together with
+/// commas. If an error occurs while parsing the CSV data, the `Result` will
+/// contain an `Error`.
+fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, Box<dyn Error>> {
     let mut reader = Reader::from_reader(Cursor::new(buffer));
     let headers = if header {
         reader.headers()?.iter().map(String::from).collect::<Vec<String>>()
@@ -68,7 +68,8 @@ fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<Vec<String>>, Box<dyn Er
         } else {
             record.iter().map(String::from).collect()
         };
-        result.push(row);
+        let row_string = row.join(", ");
+        result.push(row_string);
     }
 
     Ok(result)
@@ -105,7 +106,7 @@ fn parse_pdf(buffer: &[u8]) -> Result<String, Box<dyn Error>> {
 /// represents a row in the CSV, and contains the column values for that row. If
 /// an error occurs while parsing the CSV data, the `Result` will contain an
 /// `Error`.
-fn parse_csv_from_path(file_path: &str, header: bool) -> Result<Vec<Vec<String>>, Box<dyn Error>> {
+fn parse_csv_from_path(file_path: &str, header: bool) -> Result<Vec<String>, Box<dyn Error>> {
     let buffer = std::fs::read(file_path)?;
     parse_csv(&buffer, header)
 }
