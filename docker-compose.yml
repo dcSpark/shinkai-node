@@ -15,3 +15,6 @@ services:
       - PING_INTERVAL_SECS=${PING_INTERVAL_SECS:-0}
       - GLOBAL_IDENTITY_NAME=${GLOBAL_IDENTITY_NAME:-@@node1.shinkai}
       - RUST_LOG=${RUST_LOG:-warn,error,info,debug,trace}
+      - CONNECT_ADDR=$CONNECT_ADDR
+      - CONNECT_PK=$CONNECT_PK
+
