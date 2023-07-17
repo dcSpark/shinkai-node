@@ -8,28 +8,28 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::db::{ShinkaiMessageDB};
 use crate::db::db_errors::{ShinkaiMessageDBError};
 
-#[derive(Debug, PartialEq, PartialOrd, Clone)]
-pub enum PermissionType {
+#[derive(Debug, PartialEq, PartialOrd, Eq, Clone)]
+pub enum IdentityType {
     Global,
     Device,
     Agent,
 }
 
-impl PermissionType {
+impl IdentityType {
     pub fn to_enum(s: &str) -> Option<Self> {
         match s {
-            "global" => Some(PermissionType::Global),
-            "device" => Some(PermissionType::Device),
-            "agent" => Some(PermissionType::Agent),
+            "global" => Some(IdentityType::Global),
+            "device" => Some(IdentityType::Device),
+            "agent" => Some(IdentityType::Agent),
             _ => None,
         }
     }
 
     pub fn to_string(&self) -> String {
         match self {
-            PermissionType::Global => "global",
-            PermissionType::Device => "device",
-            PermissionType::Agent => "agent",
+            IdentityType::Global => "global",
+            IdentityType::Device => "device",
+            IdentityType::Agent => "agent",
         }.to_owned()
     }
 }
@@ -40,7 +40,7 @@ pub struct Identity {
     pub addr: Option<SocketAddr>,
     pub encryption_public_key: Option<EncryptionPublicKey>,
     pub signature_public_key: Option<SignaturePublicKey>,
-    pub permission_type: PermissionType,
+    pub permission_type: IdentityType,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -57,7 +57,7 @@ impl Identity {
         name: String,
         encryption_public_key: Option<EncryptionPublicKey>,
         signature_public_key: Option<SignaturePublicKey>,
-        permission_type: PermissionType,
+        permission_type: IdentityType,
     ) -> Self {
         Self {
             name,

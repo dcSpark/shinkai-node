@@ -1,5 +1,5 @@
 use super::external_identities::ExternalProfileData;
-use super::{IdentityManager, Identity};
+use super::{Identity, IdentityManager};
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -15,12 +15,13 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiMessageDB;
+use crate::managers::NewIdentityManager;
 use crate::network::external_identities::{self, external_identity_to_profile_data};
+use crate::network::identities::RegistrationCode;
 use crate::network::node_message_handlers::{
     extract_message, extract_recipient_keys, extract_recipient_node_profile_name, extract_sender_node_profile_name,
     get_sender_keys, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::network::subidentities::RegistrationCode;
 use crate::shinkai_message::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     string_to_encryption_public_key,
@@ -176,11 +177,30 @@ impl Node {
         commands: Receiver<NodeCommand>,
         db_path: String,
     ) -> Node {
+        // if is_valid_node_identity_name_and_no_subidentities is false panic
+        match NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_profile_name.clone()) {
+            true => (),
+            false => panic!("Invalid node identity name: {}", node_profile_name),
+        }
+
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiMessageDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
         let subidentity_manager = IdentityManager::new(db_arc.clone()).await.unwrap();
+
+        {
+            let db_lock = db_arc.lock().await;
+            match db_lock.update_local_node_keys(
+                node_profile_name.clone(),
+                encryption_public_key.clone(),
+                identity_public_key.clone(),
+            ) {
+                Ok(_) => (),
+                Err(e) => panic!("Failed to update local node keys: {}", e),
+            }
+            // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
+        }
 
         Node {
             node_profile_name,

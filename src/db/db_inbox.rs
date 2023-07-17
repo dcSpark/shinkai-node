@@ -1,7 +1,8 @@
+use libp2p::identity;
 use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
-    network::subidentities::PermissionType, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    network::identities::IdentityType, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
     shinkai_message_proto::ShinkaiMessage, managers::inbox_name_manager::InboxNameManager,
 };
 
@@ -103,12 +104,19 @@ impl ShinkaiMessageDB {
         // Insert the message
         let _ = self.insert_message_to_all(&message.clone())?;
 
-        // Check if the inbox topic exists and if not create it
+        // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
             self.create_empty_inbox(inbox_name.clone())?;
 
-            // TODO: add permissions
+            // let identity_1 = "identity_1";
+            // let identity_2 = "identity_2";
+            let parts = InboxNameManager::from_inbox_name(inbox_name.clone()).parse_parts()?;
+            let identity_a = format!("{}{}", parts.identity_a, parts.identity_a_subidentity);
+            let identity_b = format!("{}{}", parts.identity_b, parts.identity_b_subidentity);
 
+
+            // TODO: implement after identity_manager is implemented
+            // self.add_permission(&inbox_name, , perm);
         }
 
         // Calculate the hash of the message for the key
@@ -365,7 +373,7 @@ impl ShinkaiMessageDB {
         // Fetch column family for permissions
         let cf_permission = self
             .db
-            .cf_handle(Topic::ProfilesPermissionType.as_str())
+            .cf_handle(Topic::ProfilesIdentityType.as_str())
             .ok_or(ShinkaiMessageDBError::PermissionNotFound)?;
 
         // Get the permission type for the identity
@@ -375,7 +383,7 @@ impl ShinkaiMessageDB {
             .ok_or(ShinkaiMessageDBError::PermissionNotFound)?;
         let perm_type_str =
             String::from_utf8(perm_type_bytes.to_vec()).map_err(|_| ShinkaiMessageDBError::SomeError)?;
-        let perm_type = PermissionType::to_enum(&perm_type_str).ok_or(ShinkaiMessageDBError::InvalidPermissionType)?;
+        let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiMessageDBError::InvalidIdentityType)?;
 
         // Handle the original permission check
         let cf_name = format!("{}_perms", inbox_name);

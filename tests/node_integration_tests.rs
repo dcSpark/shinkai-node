@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_node::network::identities::IdentityType;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::subidentities::PermissionType;
 use shinkai_node::network::{Node, Identity, IdentityManager};
 use shinkai_node::shinkai_message::encryption::{
     encryption_public_key_to_string, hash_encryption_public_key,
@@ -152,7 +152,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk,
                     node2_registration_code.to_string(),
-                    PermissionType::Device.to_string(),
+                    IdentityType::Device.to_string(),
                     node2_subidentity_name.to_string().clone(),
                     node2_identity_name.to_string(),
                 )
@@ -360,7 +360,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_subidentity_sk),
                     node1_encryption_pk,
                     node1_registration_code.to_string(),
-                    PermissionType::Device.to_string(),
+                    IdentityType::Device.to_string(),
                     node1_subidentity_name.to_string().clone(),
                     node1_identity_name.to_string(),
                 )

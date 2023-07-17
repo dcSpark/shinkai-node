@@ -7,7 +7,8 @@ pub enum ShinkaiMessageDBError {
     DecodeError(prost::DecodeError),
     IOError(io::Error),
     PermissionDenied(String),
-    InvalidPermissionType,
+    InvalidIdentityType,
+    Utf8ConversionError,
     PermissionNotFound,
     MissingExternalMetadata,
     MissingBody,
@@ -41,6 +42,12 @@ impl From<prost::DecodeError> for ShinkaiMessageDBError {
 impl From<io::Error> for ShinkaiMessageDBError {
     fn from(error: io::Error) -> Self {
         ShinkaiMessageDBError::IOError(error)
+    }
+}
+
+impl From<&str> for ShinkaiMessageDBError {
+    fn from(_: &str) -> Self {
+        ShinkaiMessageDBError::PublicKeyParseError
     }
 }
 
@@ -78,8 +85,9 @@ impl fmt::Display for ShinkaiMessageDBError {
             ShinkaiMessageDBError::InvalidData => write!(f, "Invalid data"),
             ShinkaiMessageDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
             ShinkaiMessageDBError::PermissionNotFound => write!(f, "Permission not found"),
-            ShinkaiMessageDBError::InvalidPermissionType => write!(f, "Invalid permission type"),
+            ShinkaiMessageDBError::InvalidIdentityType => write!(f, "Invalid permission type"),
             ShinkaiMessageDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
+            ShinkaiMessageDBError::Utf8ConversionError => write!(f, "UTF8 conversion error"),
         }
     }
 }
@@ -137,8 +145,9 @@ impl PartialEq for ShinkaiMessageDBError {
             (ShinkaiMessageDBError::InvalidData, ShinkaiMessageDBError::InvalidData) => true,
             (ShinkaiMessageDBError::PermissionDenied(_), ShinkaiMessageDBError::PermissionDenied(_)) => true,
             (ShinkaiMessageDBError::PermissionNotFound, ShinkaiMessageDBError::PermissionNotFound) => true,
-            (ShinkaiMessageDBError::InvalidPermissionType, ShinkaiMessageDBError::InvalidPermissionType) => true,
+            (ShinkaiMessageDBError::InvalidIdentityType, ShinkaiMessageDBError::InvalidIdentityType) => true,
             (ShinkaiMessageDBError::InvalidInboxName, ShinkaiMessageDBError::InvalidInboxName) => true,
+            (ShinkaiMessageDBError::Utf8ConversionError, ShinkaiMessageDBError::Utf8ConversionError) => true,
             _ => false,
         }
     }

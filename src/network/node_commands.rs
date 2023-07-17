@@ -4,7 +4,7 @@ use super::{
         extract_recipient_node_profile_name, extract_sender_node_profile_name, get_sender_keys,
         verify_message_signature,
     },
-    ExternalProfileData, Node, RegistrationCode, subidentities::PermissionType,
+    ExternalProfileData, Node, RegistrationCode, identities::IdentityType,
 };
 use crate::{
     network::{Identity, node_message_handlers::{ping_pong, PingPong}, external_identities},
@@ -257,7 +257,7 @@ impl Node {
             Ok(success) => {
                 let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
                 let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
-                let permission_type = PermissionType::to_enum(&permission_type).unwrap();
+                let permission_type = IdentityType::to_enum(&permission_type).unwrap();
 
                 let subidentity = Identity {
                     name: profile_name.clone(),

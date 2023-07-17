@@ -6,7 +6,7 @@ use super::{
     signatures::{sign_message, signature_public_key_to_string},
 };
 use crate::{
-    network::subidentities::RegistrationCode,
+    network::identities::RegistrationCode,
     shinkai_message_proto::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};

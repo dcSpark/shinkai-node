@@ -1,5 +1,5 @@
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
-use crate::network::subidentities::{PermissionType, Identity};
+use crate::network::identities::{IdentityType, Identity};
 use crate::shinkai_message::encryption::encryption_public_key_to_string_ref;
 use crate::shinkai_message::signatures::signature_public_key_to_string_ref;
 use crate::shinkai_message::{encryption::string_to_encryption_public_key, signatures::string_to_signature_public_key};
@@ -73,7 +73,7 @@ impl ShinkaiMessageDB {
             return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
         }
 
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermissionType.as_str()).unwrap();
+        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
         if self.db.get_cf(cf_permission, profile_name)?.is_some() {
             return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
         }
@@ -88,7 +88,7 @@ impl ShinkaiMessageDB {
         batch.put_cf(cf_identity, profile_name, identity_public_key.as_bytes());
         batch.put_cf(cf_encryption, profile_name, encryption_public_key.as_bytes());
 
-        // Write to ProfilesIdentityKey, ProfilesEncryptionKey, and ProfilesPermissionType
+        // Write to ProfilesIdentityKey, ProfilesEncryptionKey, and ProfilesIdentityType
         batch.put_cf(cf_permission, profile_name, permission_type.as_bytes());
 
         // Write the batch
@@ -116,10 +116,10 @@ impl ShinkaiMessageDB {
 
     pub fn load_all_sub_identities(
         &self,
-    ) -> Result<Vec<(String, EncryptionPublicKey, SignaturePublicKey, PermissionType)>, ShinkaiMessageDBError> {
+    ) -> Result<Vec<(String, EncryptionPublicKey, SignaturePublicKey, IdentityType)>, ShinkaiMessageDBError> {
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermissionType.as_str()).unwrap();
+        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
         let mut result = Vec::new();
 
@@ -143,8 +143,8 @@ impl ShinkaiMessageDB {
                             match self.db.get_cf(cf_permission, &name)? {
                                 Some(value) => {
                                     let permission_type_str = String::from_utf8(value.to_vec()).unwrap();
-                                    let permission_type = PermissionType::to_enum(&permission_type_str)
-                                        .ok_or(ShinkaiMessageDBError::InvalidPermissionType)?;
+                                    let permission_type = IdentityType::to_enum(&permission_type_str)
+                                        .ok_or(ShinkaiMessageDBError::InvalidIdentityType)?;
 
                                     result.push((name, encryption_public_key, signature_public_key, permission_type));
                                 }
@@ -186,7 +186,7 @@ impl ShinkaiMessageDB {
     pub fn insert_sub_identity(&self, identity: Identity) -> Result<(), ShinkaiMessageDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermissionType.as_str()).unwrap();
+        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
         // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
         if self.db.get_cf(cf_identity, &identity.name)?.is_some()

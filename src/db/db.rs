@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    network::subidentities::Identity,
+    network::identities::Identity,
     shinkai_message::{
         encryption::{
             encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
@@ -29,7 +29,9 @@ pub enum Topic {
     AllMessagesTimeKeyed,
     OneTimeRegistrationCodes,
     // Links a specific Profile with its device type (global, device, agent)
-    ProfilesPermissionType,
+    ProfilesIdentityType,
+    ExternalNodeIdentityKey,
+    ExternalNodeEncryptionKey,
 }
 
 impl Topic {
@@ -43,7 +45,9 @@ impl Topic {
             Self::AllMessages => "all_messages",
             Self::AllMessagesTimeKeyed => "all_messages_time_keyed",
             Self::OneTimeRegistrationCodes => "one_time_registration_codes",
-            Self::ProfilesPermissionType => "profiles_permission_type",
+            Self::ProfilesIdentityType => "profiles_permission_type",
+            Self::ExternalNodeIdentityKey => "external_node_identity_key",
+            Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
         }
     }
 }
@@ -64,7 +68,9 @@ impl ShinkaiMessageDB {
             Topic::AllMessages.as_str(),
             Topic::AllMessagesTimeKeyed.as_str(),
             Topic::OneTimeRegistrationCodes.as_str(),
-            Topic::ProfilesPermissionType.as_str(),
+            Topic::ProfilesIdentityType.as_str(),
+            Topic::ExternalNodeIdentityKey.as_str(),
+            Topic::ExternalNodeEncryptionKey.as_str(),
         ];
 
         let mut cfs = vec![];

@@ -3,8 +3,8 @@ use shinkai_node::db::db_errors::ShinkaiMessageDBError;
 use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
 use shinkai_node::managers::InboxNameManager;
+use shinkai_node::network::identities::IdentityType;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::subidentities::PermissionType;
 use shinkai_node::network::{Identity, IdentityManager, Node};
 use shinkai_node::shinkai_message::encryption::{
     decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -188,7 +188,7 @@ fn db_inbox() {
         subidentity_name.clone().to_string(),
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
-        PermissionType::Device,
+        IdentityType::Device,
     );
     let _ = shinkai_db.insert_sub_identity(subidentity);
 
@@ -233,7 +233,7 @@ fn test_permission_errors() {
         subidentity_name.clone().to_string(),
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
-        PermissionType::Device,
+        IdentityType::Device,
     );
     let _ = shinkai_db.insert_sub_identity(subidentity);
 
