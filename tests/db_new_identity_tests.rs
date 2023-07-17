@@ -63,8 +63,6 @@ fn test_new_load_all_sub_identities() {
     // Create a local node profile
     task::block_on(create_local_node_profile(&shinkai_db, node_profile_name.clone().to_string(), encryption_pk.clone(), identity_pk.clone()));
 
-
-    println!("before insert");
     // Insert some sub-identities
     for i in 1..=5 {
         let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(i);

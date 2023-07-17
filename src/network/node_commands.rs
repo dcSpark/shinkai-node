@@ -16,11 +16,12 @@ use crate::{
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
-    shinkai_message_proto::ShinkaiMessage,
+    shinkai_message_proto::ShinkaiMessage, managers::identity_manager::NewIdentity,
 };
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
+use warp::path::full;
 use std::borrow::BorrowMut;
 use std::{
     cell::RefCell,
@@ -108,11 +109,11 @@ impl Node {
         let subidentity = subidentity.unwrap();
 
         // Validate that the message actually came from the subidentity
-        let signature_public_key = subidentity.signature_public_key.clone();
+        let signature_public_key = subidentity.subidentity_signature_public_key.clone();
         if signature_public_key.is_none() {
             eprintln!(
                 "handle_onionized_message > Signature public key doesn't exist for identity: {}",
-                subidentity.name.clone()
+                subidentity.full_identity_name.clone()
             );
             // TODO: add error messages here
             return Ok(());
@@ -258,12 +259,15 @@ impl Node {
                 let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
                 let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
                 let permission_type = IdentityType::to_enum(&permission_type).unwrap();
+                let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                let subidentity = Identity {
-                    name: profile_name.clone(),
+                let subidentity = NewIdentity {
+                    full_identity_name: full_identity_name,
                     addr: None,
-                    signature_public_key: Some(signature_pk_obj),
-                    encryption_public_key: Some(encryption_pk_obj),
+                    subidentity_signature_public_key: Some(signature_pk_obj),
+                    subidentity_encryption_public_key: Some(encryption_pk_obj),
+                    node_encryption_public_key: self.encryption_public_key.clone(),
+                    node_signature_public_key: self.identity_public_key.clone(),
                     permission_type: permission_type,
                 };
                 let mut subidentity_manager = self.subidentity_manager.lock().await;
@@ -286,7 +290,7 @@ impl Node {
 
     pub async fn get_all_subidentities(
         &self,
-        res: Sender<Vec<Identity>>,
+        res: Sender<Vec<NewIdentity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let subidentity_manager = self.subidentity_manager.lock().await;
         let subidentities = subidentity_manager.get_all_subidentities();

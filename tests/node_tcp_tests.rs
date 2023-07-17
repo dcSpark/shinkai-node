@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Node, Identity, IdentityManager};
+use shinkai_node::network::{Node};
 use shinkai_node::shinkai_message::encryption::{
     encryption_public_key_to_string, hash_encryption_public_key,
     unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string, decrypt_body_message,

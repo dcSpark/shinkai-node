@@ -1,13 +1,15 @@
+use crate::db::db_errors::ShinkaiMessageDBError;
+use crate::db::ShinkaiMessageDB;
+use crate::network::identities::IdentityType;
+use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref, self};
+use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
-use serde::{Serialize, Deserialize};
-use std::{net::SocketAddr};
+use serde::{Deserialize, Serialize};
+use std::{net::SocketAddr, fmt};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use crate::db::{ShinkaiMessageDB};
-use crate::db::db_errors::{ShinkaiMessageDBError};
-use crate::network::identities::IdentityType;
 
 use super::identity_network_manager::external_identity_to_profile_data;
 
@@ -59,6 +61,26 @@ impl NewIdentity {
     }
 }
 
+impl fmt::Display for NewIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
+        let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
+
+        let subidentity_encryption_public_key = self.subidentity_encryption_public_key.as_ref().map(encryption_public_key_to_string_ref).unwrap_or_else(|| "None".to_string());
+        let subidentity_signature_public_key = self.subidentity_signature_public_key.as_ref().map(signature_public_key_to_string_ref).unwrap_or_else(|| "None".to_string());
+
+        write!(f, "NewIdentity {{ full_identity_name: {}, addr: {:?}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, subidentity_encryption_public_key: {}, subidentity_signature_public_key: {}, permission_type: {:?} }}",
+            self.full_identity_name,
+            self.addr,
+            node_encryption_public_key,
+            node_signature_public_key,
+            subidentity_encryption_public_key,
+            subidentity_signature_public_key,
+            self.permission_type
+        )
+    }
+}
+
 pub struct NewIdentityManager {
     pub local_node_name: String,
     pub identities: Vec<NewIdentity>,
@@ -66,12 +88,23 @@ pub struct NewIdentityManager {
 }
 
 impl NewIdentityManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiMessageDB>>, local_node_name: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiMessageDB>>,
+        local_node_name: String,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         if local_node_name.clone().is_empty() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Local node name cannot be empty")));
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Local node name cannot be empty",
+            )));
         }
         match NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(&local_node_name.clone()) == false {
-            true => return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Local node name is not valid"))),
+            true => {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Local node name is not valid",
+                )))
+            }
             false => (),
         }
 
@@ -80,11 +113,19 @@ impl NewIdentityManager {
             db.new_load_all_sub_identities(local_node_name.clone())?
         };
 
-        if identities.is_empty() {
-            return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "No identities found in database")));
-        }
+        // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
+        // if identities.is_empty() {
+        //     return Err(Box::new(std::io::Error::new(
+        //         std::io::ErrorKind::Other,
+        //         "No identities found in database",
+        //     )));
+        // }
 
-        Ok(Self { local_node_name, identities, db })
+        Ok(Self {
+            local_node_name,
+            identities,
+            db,
+        })
     }
 
     pub async fn add_subidentity(&mut self, identity: NewIdentity) -> anyhow::Result<()> {
@@ -105,37 +146,53 @@ impl NewIdentityManager {
     pub fn search_identity(&self, full_identity_name: &str) -> Option<NewIdentity> {
         // Extract node name from the full identity name
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-    
+
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
-            self.identities.iter()
+            self.identities
+                .iter()
                 .find(|&identity| identity.full_identity_name == full_identity_name)
                 .cloned()
         } else {
             // If not, query the identity network manager
             match external_identity_to_profile_data(node_name.to_string()) {
-                Ok(identity_network_manager) => {
-                    Some(NewIdentity::new(
-                        node_name.to_string(),
-                        identity_network_manager.encryption_public_key,
-                        identity_network_manager.signature_public_key,
-                        None,
-                        None,
-                        IdentityType::Global,
-                    ))
-                }
+                Ok(identity_network_manager) => Some(NewIdentity::new(
+                    node_name.to_string(),
+                    identity_network_manager.encryption_public_key,
+                    identity_network_manager.signature_public_key,
+                    None,
+                    None,
+                    IdentityType::Global,
+                )),
                 Err(_) => None, // return None if the identity is not found in the network manager
             }
         }
+    }
+
+    pub fn get_all_subidentities(&self) -> Vec<NewIdentity> {
+        self.identities.clone()
+    }
+
+    pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&NewIdentity> {
+        self.identities
+            .iter()
+            .find(|identity| identity.subidentity_signature_public_key.as_ref() == Some(key))
+    }
+
+    pub fn find_by_profile_name(&self, full_profile_name: &str) -> Option<&NewIdentity> {
+        self.identities
+            .iter()
+            .find(|identity| identity.full_identity_name == full_profile_name)
     }
 }
 
 impl NewIdentityManager {
     pub fn extract_subidentity(s: &str) -> String {
         let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
-        re.captures(s).and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+        re.captures(s)
+            .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
             .unwrap_or_else(|| s.to_string())
-    } 
+    }
 
     pub fn extract_node_name(s: &str) -> String {
         let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
@@ -143,9 +200,15 @@ impl NewIdentityManager {
             .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
             .unwrap_or_else(|| s.to_string())
     }
-    
+
     pub fn is_valid_node_identity_name_and_no_subidentities(s: &str) -> bool {
         let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
         re.is_match(s)
+    }
+
+    pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
+        let name = format!("{}/{}", node_name, subidentity_name);
+        NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(name.clone().as_str());
+        name
     }
 }

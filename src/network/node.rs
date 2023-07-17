@@ -1,5 +1,5 @@
 use super::external_identities::ExternalProfileData;
-use super::{Identity, IdentityManager};
+use super::{Identity};
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -16,6 +16,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::db::ShinkaiMessageDB;
 use crate::managers::NewIdentityManager;
+use crate::managers::identity_manager::NewIdentity;
 use crate::network::external_identities::{self, external_identity_to_profile_data};
 use crate::network::identities::RegistrationCode;
 use crate::network::node_message_handlers::{
@@ -99,7 +100,7 @@ pub enum NodeCommand {
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
-        res: Sender<Vec<Identity>>,
+        res: Sender<Vec<NewIdentity>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
@@ -160,7 +161,7 @@ pub struct Node {
     // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
     // The manager for subidentities.
-    pub subidentity_manager: Arc<Mutex<IdentityManager>>,
+    pub subidentity_manager: Arc<Mutex<NewIdentityManager>>,
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
 }
@@ -187,8 +188,6 @@ impl Node {
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiMessageDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
-        let subidentity_manager = IdentityManager::new(db_arc.clone()).await.unwrap();
-
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
@@ -201,6 +200,7 @@ impl Node {
             }
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
+        let subidentity_manager = NewIdentityManager::new(db_arc.clone(), node_profile_name.clone()).await.unwrap();
 
         Node {
             node_profile_name,

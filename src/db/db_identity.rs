@@ -114,118 +114,118 @@ impl ShinkaiMessageDB {
         }
     }
 
-    pub fn load_all_sub_identities(
-        &self,
-    ) -> Result<Vec<(String, EncryptionPublicKey, SignaturePublicKey, IdentityType)>, ShinkaiMessageDBError> {
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+    // pub fn load_all_sub_identities(
+    //     &self,
+    // ) -> Result<Vec<(String, EncryptionPublicKey, SignaturePublicKey, IdentityType)>, ShinkaiMessageDBError> {
+    //     let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+    //     let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+    //     let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
-        let mut result = Vec::new();
+    //     let mut result = Vec::new();
 
-        let iter = self.db.iterator_cf(cf_encryption, rocksdb::IteratorMode::Start);
-        for item in iter {
-            // Handle the Result returned by the iterator
-            match item {
-                Ok((key, value)) => {
-                    let name = String::from_utf8(key.to_vec()).unwrap();
-                    let encryption_public_key =
-                        string_to_encryption_public_key(&String::from_utf8(value.to_vec()).unwrap())
-                            .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
+    //     let iter = self.db.iterator_cf(cf_encryption, rocksdb::IteratorMode::Start);
+    //     for item in iter {
+    //         // Handle the Result returned by the iterator
+    //         match item {
+    //             Ok((key, value)) => {
+    //                 let name = String::from_utf8(key.to_vec()).unwrap();
+    //                 let encryption_public_key =
+    //                     string_to_encryption_public_key(&String::from_utf8(value.to_vec()).unwrap())
+    //                         .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
 
-                    // get the associated signature public key
-                    match self.db.get_cf(cf_identity, &name)? {
-                        Some(value) => {
-                            let signature_public_key =
-                                string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())
-                                    .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
-                            // get the associated permission type
-                            match self.db.get_cf(cf_permission, &name)? {
-                                Some(value) => {
-                                    let permission_type_str = String::from_utf8(value.to_vec()).unwrap();
-                                    let permission_type = IdentityType::to_enum(&permission_type_str)
-                                        .ok_or(ShinkaiMessageDBError::InvalidIdentityType)?;
+    //                 // get the associated signature public key
+    //                 match self.db.get_cf(cf_identity, &name)? {
+    //                     Some(value) => {
+    //                         let signature_public_key =
+    //                             string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())
+    //                                 .map_err(|_| ShinkaiMessageDBError::PublicKeyParseError)?;
+    //                         // get the associated permission type
+    //                         match self.db.get_cf(cf_permission, &name)? {
+    //                             Some(value) => {
+    //                                 let permission_type_str = String::from_utf8(value.to_vec()).unwrap();
+    //                                 let permission_type = IdentityType::to_enum(&permission_type_str)
+    //                                     .ok_or(ShinkaiMessageDBError::InvalidIdentityType)?;
 
-                                    result.push((name, encryption_public_key, signature_public_key, permission_type));
-                                }
-                                None => return Err(ShinkaiMessageDBError::ProfileNameNonExistent),
-                            }
-                        }
-                        None => return Err(ShinkaiMessageDBError::ProfileNameNonExistent),
-                    }
-                }
-                Err(e) => return Err(e.into()),
-            }
-        }
+    //                                 result.push((name, encryption_public_key, signature_public_key, permission_type));
+    //                             }
+    //                             None => return Err(ShinkaiMessageDBError::ProfileNameNonExistent),
+    //                         }
+    //                     }
+    //                     None => return Err(ShinkaiMessageDBError::ProfileNameNonExistent),
+    //                 }
+    //             }
+    //             Err(e) => return Err(e.into()),
+    //         }
+    //     }
 
-        Ok(result)
-    }
+    //     Ok(result)
+    // }
 
-    pub fn remove_identity(&self, name: &str) -> Result<(), ShinkaiMessageDBError> {
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+    // pub fn remove_identity(&self, name: &str) -> Result<(), ShinkaiMessageDBError> {
+    //     let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+    //     let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
 
-        // Check that the profile name exists in ProfilesIdentityKey and ProfilesEncryptionKey
-        if self.db.get_cf(cf_identity, name)?.is_none() || self.db.get_cf(cf_encryption, name)?.is_none() {
-            return Err(ShinkaiMessageDBError::ProfileNameNonExistent);
-        }
+    //     // Check that the profile name exists in ProfilesIdentityKey and ProfilesEncryptionKey
+    //     if self.db.get_cf(cf_identity, name)?.is_none() || self.db.get_cf(cf_encryption, name)?.is_none() {
+    //         return Err(ShinkaiMessageDBError::ProfileNameNonExistent);
+    //     }
 
-        // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
+    //     // Start write batch for atomic operation
+    //     let mut batch = rocksdb::WriteBatch::default();
 
-        // Delete from ProfilesIdentityKey and ProfilesEncryptionKey
-        batch.delete_cf(cf_identity, name);
-        batch.delete_cf(cf_encryption, name);
+    //     // Delete from ProfilesIdentityKey and ProfilesEncryptionKey
+    //     batch.delete_cf(cf_identity, name);
+    //     batch.delete_cf(cf_encryption, name);
 
-        // Write the batch
-        self.db.write(batch)?;
+    //     // Write the batch
+    //     self.db.write(batch)?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    pub fn insert_sub_identity(&self, identity: Identity) -> Result<(), ShinkaiMessageDBError> {
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+    // pub fn insert_sub_identity(&self, identity: Identity) -> Result<(), ShinkaiMessageDBError> {
+    //     let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+    //     let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+    //     let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
-        // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
-        if self.db.get_cf(cf_identity, &identity.name)?.is_some()
-            || self.db.get_cf(cf_encryption, &identity.name)?.is_some()
-            || self.db.get_cf(cf_permission, &identity.name)?.is_some()
-        {
-            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
-        }
+    //     // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
+    //     if self.db.get_cf(cf_identity, &identity.name)?.is_some()
+    //         || self.db.get_cf(cf_encryption, &identity.name)?.is_some()
+    //         || self.db.get_cf(cf_permission, &identity.name)?.is_some()
+    //     {
+    //         return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+    //     }
 
-        // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
+    //     // Start write batch for atomic operation
+    //     let mut batch = rocksdb::WriteBatch::default();
 
-        // Write to ProfilesIdentityKey and ProfilesEncryptionKey
-        let identity_public_key = identity
-            .signature_public_key
-            .as_ref()
-            .map(signature_public_key_to_string_ref)
-            .unwrap_or_else(|| String::new());
+    //     // Write to ProfilesIdentityKey and ProfilesEncryptionKey
+    //     let identity_public_key = identity
+    //         .signature_public_key
+    //         .as_ref()
+    //         .map(signature_public_key_to_string_ref)
+    //         .unwrap_or_else(|| String::new());
 
-        let encryption_public_key = identity
-            .encryption_public_key
-            .as_ref()
-            .map(encryption_public_key_to_string_ref)
-            .unwrap_or_else(|| String::new());
+    //     let encryption_public_key = identity
+    //         .encryption_public_key
+    //         .as_ref()
+    //         .map(encryption_public_key_to_string_ref)
+    //         .unwrap_or_else(|| String::new());
 
-        let permission_type_str = identity.permission_type.to_string();
-        let permission_type_bytes = permission_type_str.as_bytes();
+    //     let permission_type_str = identity.permission_type.to_string();
+    //     let permission_type_bytes = permission_type_str.as_bytes();
 
-        println!("Identity being added: {:?}", identity.name);
+    //     println!("Identity being added: {:?}", identity.name);
 
-        batch.put_cf(cf_identity, &identity.name, identity_public_key.as_bytes());
-        batch.put_cf(cf_encryption, &identity.name, encryption_public_key.as_bytes());
-        batch.put_cf(cf_permission, &identity.name, permission_type_bytes);
+    //     batch.put_cf(cf_identity, &identity.name, identity_public_key.as_bytes());
+    //     batch.put_cf(cf_encryption, &identity.name, encryption_public_key.as_bytes());
+    //     batch.put_cf(cf_permission, &identity.name, permission_type_bytes);
 
-        // Write the batch
-        self.db.write(batch)?;
+    //     // Write the batch
+    //     self.db.write(batch)?;
 
-        println!("Identity added");
+    //     println!("Identity added");
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
