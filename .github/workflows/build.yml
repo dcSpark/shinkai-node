@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'nico/add-poc-message'
+      - 'devops'
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+'
