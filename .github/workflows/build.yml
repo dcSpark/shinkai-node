@@ -1,0 +1,20 @@
+name: Build shinkai-node docker image
+
+on:
+  push:
+    branches:
+      - 'nico/add-poc-message'
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build-and-deploy:
+    uses: dcSpark/shinkai-node/.github/workflows/build-workflow.yml@main
+    with:
+      REGISTRY: dcspark
+      REPOSITORY: shinkai-node
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      

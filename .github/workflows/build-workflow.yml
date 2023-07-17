@@ -1,0 +1,63 @@
+name: Build Workflow
+
+on:
+  workflow_call:
+    inputs:
+      REGISTRY:
+        description: Docker registry
+        type: string
+        required: true
+      REPOSITORY:
+        description: Docker repository
+        type: string
+        required: true
+
+    secrets:
+      DOCKERHUB_USERNAME:
+        description: Dockerhub username
+        required: true
+      DOCKERHUB_TOKEN:
+        description: Dockerhub username
+        required: true
+
+env:
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-docker-image:
+    name: build docker image
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Set Docker image tags
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ inputs.REGISTRY }}/${{ inputs.REPOSITORY }}
+          tags: |
+            type=ref,event=branch
+            type=pep440,pattern={{version}}
+            type=sha
+            
+      - name: Build and push ${{ inputs.REGISTRY }}/${{ inputs.REPOSITORY }}
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
