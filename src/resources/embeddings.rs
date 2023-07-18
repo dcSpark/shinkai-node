@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vector_similarity() {
+    fn test_embedding_vector_similarity() {
         let generator = EmbeddingGenerator::new_default();
 
         let query = "What can fly in the sky?";
