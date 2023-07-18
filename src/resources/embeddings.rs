@@ -14,6 +14,16 @@ pub struct ScoredEmbedding {
     pub embedding: Embedding,
 }
 
+impl ScoredEmbedding {
+    /// Print scored embedding id + score.
+    ///
+    /// # Parameters
+    /// - `embedding`: The embedding to print.
+    pub fn print(&self) {
+        println!("  {}: {}", self.embedding.id, self.score);
+    }
+}
+
 //#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Embedding {
@@ -233,10 +243,10 @@ mod tests {
         // Print similarities
         println!("---");
         println!("Similarities:");
-        for scored_embedding in similarities {
-            println!("  {}: {}", scored_embedding.embedding.id, scored_embedding.score);
+        for scored_embedding in &similarities {
+            scored_embedding.print();
         }
 
-        assert!(5 == 2);
+        assert!(similarities[0].embedding.id == "A plane in the sky");
     }
 }
