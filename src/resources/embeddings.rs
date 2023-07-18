@@ -8,6 +8,12 @@ lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScoredEmbedding {
+    pub score: f32,
+    pub embedding: Embedding,
+}
+
 //#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Embedding {
@@ -65,6 +71,35 @@ impl Embedding {
     /// The magnitude of the vector.
     fn magnitude(&self, v: &[f32]) -> f32 {
         v.iter().map(|&x| x * x).sum::<f32>().sqrt()
+    }
+
+    /// Calculate and score the cosine similarity between the query embedding
+    /// (self) and a list of embeddings.
+    ///
+    /// The function calculates the cosine similarity between the query
+    /// embedding and each embedding in the provided list. It returns a
+    /// sorted vector of `ScoredEmbedding` objects, where each object
+    /// contains the cosine similarity score and the corresponding embedding.
+    ///
+    /// # Parameters
+    /// - `embeddings`: A vector of `Embedding` objects representing the
+    ///   embeddings to be scored.
+    ///
+    /// # Returns
+    /// A sorted vector of `ScoredEmbedding` objects, sorted in descending order
+    /// by the cosine similarity score.
+    pub fn score_similarity(&self, embeddings: Vec<Embedding>) -> Vec<ScoredEmbedding> {
+        // Calculate the cosine similarity between the query and each embedding, and
+        // sort by similarity
+        let mut similarities: Vec<ScoredEmbedding> = embeddings
+            .iter()
+            .map(|embedding| ScoredEmbedding {
+                score: self.cosine_similarity(&embedding),
+                embedding: embedding.clone(),
+            })
+            .collect();
+        similarities.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        similarities
     }
 }
 
@@ -193,12 +228,13 @@ mod tests {
             .map(|embedding| (embedding.clone(), query_embedding.cosine_similarity(&embedding)))
             .collect();
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let mut similarities = query_embedding.score_similarity(comparand_embeddings);
 
         // Print similarities
         println!("---");
         println!("Similarities:");
-        for (embedding, score) in similarities {
-            println!("  {}: {}", embedding.id, score);
+        for scored_embedding in similarities {
+            println!("  {}: {}", scored_embedding.embedding.id, scored_embedding.score);
         }
 
         assert!(5 == 2);
