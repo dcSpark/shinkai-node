@@ -1,4 +1,3 @@
-use super::external_identities::ExternalProfileData;
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
@@ -14,12 +13,10 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiMessageDB;
-use crate::managers::NewIdentityManager;
-use crate::managers::identity_manager::Identity;
-use crate::network::external_identities::{self, external_identity_to_profile_data};
+use crate::managers::identity_manager::{self, Identity};
+use crate::managers::IdentityManager;
 use crate::network::node_message_handlers::{
-    extract_message, extract_recipient_keys, extract_recipient_node_profile_name, extract_sender_node_profile_name,
-    get_sender_keys, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
+    extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
 use crate::shinkai_message::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -84,7 +81,7 @@ pub enum NodeCommand {
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
         name: String,
-        res: Sender<ExternalProfileData>,
+        res: Sender<Identity>,
     },
     // Command to make the node connect to a new node, given the node's address and profile name.
     Connect {
@@ -159,7 +156,7 @@ pub struct Node {
     // The channel from which this node receives commands.
     pub commands: Receiver<NodeCommand>,
     // The manager for subidentities.
-    pub subidentity_manager: Arc<Mutex<NewIdentityManager>>,
+    pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
 }
@@ -177,7 +174,7 @@ impl Node {
         db_path: String,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
-        match NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_profile_name.clone()) {
+        match IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_profile_name.clone()) {
             true => (),
             false => panic!("Invalid node identity name: {}", node_profile_name),
         }
@@ -198,7 +195,9 @@ impl Node {
             }
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
-        let subidentity_manager = NewIdentityManager::new(db_arc.clone(), node_profile_name.clone()).await.unwrap();
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
+            .await
+            .unwrap();
 
         Node {
             node_profile_name,
@@ -210,7 +209,7 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
-            subidentity_manager: Arc::new(Mutex::new(subidentity_manager)),
+            identity_manager: Arc::new(Mutex::new(subidentity_manager)),
             db: db_arc,
         }
     }
@@ -284,6 +283,7 @@ impl Node {
         loop {
             let (mut socket, addr) = listener.accept().await?;
             let db = Arc::clone(&self.db);
+            let identity_manager = Arc::clone(&self.identity_manager);
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
             let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
             let node_profile_name_clone = self.node_profile_name.clone();
@@ -308,6 +308,7 @@ impl Node {
                                 clone_static_secret_key(&encryption_secret_key_clone),
                                 clone_signature_secret_key(&identity_secret_key_clone),
                                 db.clone(),
+                                identity_manager.clone(),
                             )
                             .await;
                             if let Err(e) = socket.flush().await {
@@ -351,9 +352,18 @@ impl Node {
         let mut db_lock = self.db.lock().await;
 
         let sender = self.node_profile_name.clone();
-        let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
-        let receiver = receiver_profile.node_identity_name.to_string();
-        let receiver_public_key = receiver_profile.encryption_public_key;
+
+        println!(">>> Peer: {:?}", peer);
+
+        let receiver_profile_identity = self
+            .identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&peer.1.clone())
+            .await
+            .unwrap();
+        let receiver = receiver_profile_identity.node_identity_name().to_string();
+        let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
         ping_pong(
             peer,
@@ -364,6 +374,7 @@ impl Node {
             sender,
             receiver,
             &mut db_lock,
+            self.identity_manager.clone(),
         )
         .await?;
         Ok(())
@@ -375,6 +386,7 @@ impl Node {
         my_encryption_sk: EncryptionStaticKey,
         peer: (SocketAddr, ProfileName),
         db: &mut ShinkaiMessageDB,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
@@ -387,7 +399,7 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 // info!("Sent message to {}", stream.peer_addr()?);
-                Node::save_to_db(true, message, my_encryption_sk, db).await?;
+                Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
                 Ok(())
             }
             Err(e) => {
@@ -403,6 +415,7 @@ impl Node {
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
         db: &mut ShinkaiMessageDB,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
         // We are just going to check for the body encryption
@@ -416,14 +429,18 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = extract_recipient_node_profile_name(message);
+                counterpart_identity = IdentityManager::extract_recipient_node_global_name(message);
             } else {
-                counterpart_identity = extract_sender_node_profile_name(message);
+                counterpart_identity = IdentityManager::extract_sender_node_global_name(message);
             }
             // find the sender's encryption public key in external
-            let sender_encryption_pk = external_identity_to_profile_data(counterpart_identity)
+            let sender_encryption_pk = maybe_identity_manager
+                .lock()
+                .await
+                .external_profile_to_global_identity(&counterpart_identity.clone())
+                .await
                 .unwrap()
-                .encryption_public_key;
+                .node_encryption_public_key;
 
             // Decrypt the message body
             let decrypted_result = decrypt_body_message(&message.clone(), &my_encryption_sk, &sender_encryption_pk);
@@ -468,6 +485,7 @@ impl Node {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         info!("{} > Got message from {:?}", receiver_address, unsafe_sender_address);
 
@@ -476,15 +494,21 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = extract_sender_node_profile_name(&message);
-        let sender_keys = get_sender_keys(&message.clone())?;
-        verify_message_signature(sender_keys.signature_public_key, &message)?;
+        let sender_profile_name_string = IdentityManager::extract_sender_node_global_name(&message);
+        let sender_identity = maybe_identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&sender_profile_name_string)
+            .await
+            .unwrap();
+
+        verify_message_signature(sender_identity.node_signature_public_key, &message)?;
 
         debug!(
             "{} > Sender Profile Name: {:?}",
             receiver_address, sender_profile_name_string
         );
-        debug!("{} > Sender Keys: {:?}", receiver_address, sender_keys);
+        debug!("{} > Node Sender Identity: {:?}", receiver_address, sender_identity);
         debug!("{} > Verified message signature", receiver_address);
 
         // Save to db
@@ -495,21 +519,24 @@ impl Node {
                 &message,
                 clone_static_secret_key(&my_encryption_secret_key),
                 &mut db,
+                maybe_identity_manager.clone(),
             )
             .await?;
         }
 
         // println!("who am I: {:?}", my_node_profile_name);
+        println!("sender identity: {}", sender_identity);
 
         handle_based_on_message_content_and_encryption(
             message.clone(),
-            sender_keys.encryption_public_key,
-            sender_keys.address,
+            sender_identity.node_encryption_public_key,
+            sender_identity.addr.clone().unwrap(),
             sender_profile_name_string,
             &my_encryption_secret_key,
             &my_signature_secret_key,
             &my_node_profile_name,
             maybe_db,
+            maybe_identity_manager,
             receiver_address,
             unsafe_sender_address,
         )

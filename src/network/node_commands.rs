@@ -1,35 +1,27 @@
-use super::{
-    external_identities::external_identity_to_profile_data,
-    node_message_handlers::{
-        extract_recipient_node_profile_name, extract_sender_node_profile_name, get_sender_keys,
-        verify_message_signature,
-    },
-    ExternalProfileData, Node,
-};
+use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    network::{node_message_handlers::{ping_pong, PingPong}, external_identities},
+    managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode},
+    network::node_message_handlers::{ping_pong, PingPong},
     shinkai_message::{
         encryption::{
-            decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key, clone_static_secret_key,
+            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
         },
         shinkai_message_handler::{self, ShinkaiMessageHandler},
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
-    shinkai_message_proto::ShinkaiMessage, managers::identity_manager::{Identity, RegistrationCode, IdentityType},
+    shinkai_message_proto::ShinkaiMessage,
 };
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
-use warp::path::full;
-use std::borrow::BorrowMut;
 use std::{
     cell::RefCell,
     io::{self, Error},
     net::SocketAddr,
-    time::Duration,
 };
 use tokio::sync::oneshot::error;
+use warp::path::full;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -39,13 +31,15 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_external_profile_data(
-        &self,
-        name: String,
-        res: Sender<ExternalProfileData>,
-    ) -> Result<(), Error> {
-        let external_profile_data = external_identity_to_profile_data(name).unwrap();
-        res.send(external_profile_data).await.unwrap();
+    pub async fn handle_external_profile_data(&self, name: String, res: Sender<Identity>) -> Result<(), Error> {
+        let external_global_identity = self
+            .identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&name)
+            .await
+            .unwrap();
+        res.send(external_global_identity).await.unwrap();
         Ok(())
     }
 
@@ -57,10 +51,7 @@ impl Node {
 
     pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        println!(
-            "handle_onionized_message msg: {:?}",
-            potentially_encrypted_msg
-        );
+        println!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
@@ -92,10 +83,20 @@ impl Node {
             potentially_encrypted_msg.clone()
         };
 
-        let subidentity_manager = self.subidentity_manager.lock().await;
-        let subidentity = subidentity_manager
-            .find_by_profile_name(&msg.clone().body.unwrap().internal_metadata.unwrap().sender_subidentity);
-        // Check that the subidentity that's trying to proxy through us exist / is valid
+        let subidentity_manager = self.identity_manager.lock().await;
+        let sender_subidentity = msg
+            .clone()
+            .body
+            .unwrap()
+            .internal_metadata
+            .unwrap()
+            .sender_subidentity
+            .clone();
+
+        let subidentity = subidentity_manager.find_by_profile_name(&sender_subidentity).cloned();
+        std::mem::drop(subidentity_manager);
+
+        // Check that the subidentity that's trying to prox through us exist / is valid
         if subidentity.is_none() {
             eprintln!(
                 "handle_onionized_message > Subidentity not found for profile name: {}",
@@ -130,13 +131,28 @@ impl Node {
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
         let recipient_node_profile_name = msg.external_metadata.clone().unwrap().recipient;
-        println!("handle_onionized_message > recipient_node_profile_name: {}", recipient_node_profile_name);
-        let external_profile_data = external_identity_to_profile_data(recipient_node_profile_name).unwrap();
+        println!(
+            "handle_onionized_message > recipient_node_profile_name: {}",
+            recipient_node_profile_name
+        );
+
+        let external_global_identity = self
+            .identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&recipient_node_profile_name.clone())
+            .await
+            .unwrap();
+
+        println!(
+            "handle_onionized_message > external_global_identity: {:?}",
+            external_global_identity
+        );
 
         let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
             msg.clone(),
             self.encryption_secret_key.clone(),
-            external_profile_data.encryption_public_key, // other node's encryption public key
+            external_global_identity.node_encryption_public_key, // other node's encryption public key
         );
 
         // We update the signature so it comes from the node and not the profile
@@ -144,16 +160,30 @@ impl Node {
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
         let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
 
-        let recipient_profile_name_string = extract_recipient_node_profile_name(&msg);
-        let external_profile_data = external_identity_to_profile_data(recipient_profile_name_string.clone()).unwrap();
+        let recipient_profile_name_string = IdentityManager::extract_recipient_node_global_name(&msg);
+        let external_global_identity = self
+            .identity_manager
+            .lock()
+            .await
+            .external_profile_to_global_identity(&recipient_profile_name_string.clone())
+            .await
+            .unwrap();
+
+        println!(
+            "handle_onionized_message > recipient_profile_name_string: {}",
+            recipient_profile_name_string
+        );
 
         let mut db_guard = self.db.lock().await;
 
+        let node_addr = external_global_identity.addr.unwrap();
+
         Node::send(
             &msg,
-            clone_static_secret_key(&self.encryption_secret_key), 
-            (external_profile_data.addr, recipient_profile_name_string),
+            clone_static_secret_key(&self.encryption_secret_key),
+            (node_addr, recipient_profile_name_string),
             &mut db_guard,
+            self.identity_manager.clone(),
         )
         .await?;
         // println!(
@@ -270,7 +300,7 @@ impl Node {
                     node_signature_public_key: self.identity_public_key.clone(),
                     permission_type: permission_type,
                 };
-                let mut subidentity_manager = self.subidentity_manager.lock().await;
+                let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_subidentity(subidentity).await {
                     Ok(_) => {
                         let _ = res.send(success).await.map_err(|_| ());
@@ -292,7 +322,7 @@ impl Node {
         &self,
         res: Sender<Vec<Identity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let subidentity_manager = self.subidentity_manager.lock().await;
+        let subidentity_manager = self.identity_manager.lock().await;
         let subidentities = subidentity_manager.get_all_subidentities();
         let _ = res.send(subidentities).await.map_err(|_| ());
         Ok(())
@@ -303,9 +333,15 @@ impl Node {
         let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
             let sender = self.node_profile_name.clone();
-            let receiver_profile = &external_identities::addr_to_external_profile_data(peer.0)[0];
-            let receiver = receiver_profile.node_identity_name.to_string();
-            let receiver_public_key = receiver_profile.encryption_public_key;
+            let receiver_profile_identity = self
+                .identity_manager
+                .lock()
+                .await
+                .external_profile_to_global_identity(&peer.1.clone())
+                .await
+                .unwrap();
+            let receiver = receiver_profile_identity.node_identity_name().to_string();
+            let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
             ping_pong(
@@ -317,6 +353,7 @@ impl Node {
                 sender,
                 receiver,
                 &mut db_lock,
+                self.identity_manager.clone(),
             )
             .await?;
         }

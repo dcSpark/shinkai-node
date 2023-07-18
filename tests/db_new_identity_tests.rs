@@ -70,6 +70,7 @@ fn test_new_load_all_sub_identities() {
 
         let identity = Identity::new(
             subidentity_name.clone(),
+            None,
             encryption_pk.clone(),
             identity_pk.clone(),
             Some(subencryption_pk),
@@ -94,6 +95,7 @@ fn test_new_load_all_sub_identities() {
 
         let identity = Identity::new(
             subidentity_name.clone(),
+            None,
             encryption_pk.clone(),
             identity_pk.clone(),
             Some(subencryption_pk),
@@ -143,6 +145,7 @@ fn test_new_insert_sub_identity() {
 
     let identity = Identity::new(
         subidentity_name.to_string(),
+        None,
         encryption_pk.clone(),
         identity_pk.clone(),
         Some(subencryption_pk.clone()),
@@ -182,6 +185,7 @@ fn test_remove_subidentity() {
 
     let identity = Identity::new(
         subidentity_name.to_string(),
+        None,
         encryption_pk.clone(),
         identity_pk.clone(),
         Some(subencryption_pk.clone()),

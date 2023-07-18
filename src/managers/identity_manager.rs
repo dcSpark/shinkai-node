@@ -1,22 +1,24 @@
 use crate::db::db_errors::ShinkaiMessageDBError;
 use crate::db::ShinkaiMessageDB;
-use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref, self};
+use crate::shinkai_message::encryption::{self, encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
+use crate::shinkai_message_proto::ShinkaiMessage;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, fmt};
 use std::sync::Arc;
+use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::identity_network_manager::external_identity_to_profile_data;
+use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone)]
 pub enum IdentityType {
     Global,
     Device,
     Agent,
+    Profile,
 }
 
 impl IdentityType {
@@ -25,6 +27,7 @@ impl IdentityType {
             "global" => Some(IdentityType::Global),
             "device" => Some(IdentityType::Device),
             "agent" => Some(IdentityType::Agent),
+            "profile" => Some(IdentityType::Profile),
             _ => None,
         }
     }
@@ -34,7 +37,9 @@ impl IdentityType {
             IdentityType::Global => "global",
             IdentityType::Device => "device",
             IdentityType::Agent => "agent",
-        }.to_owned()
+            IdentityType::Profile => "profile",
+        }
+        .to_owned()
     }
 }
 
@@ -61,20 +66,34 @@ pub struct Identity {
 impl Identity {
     pub fn new(
         full_identity_name: String,
+        addr: Option<SocketAddr>,
         node_encryption_public_key: EncryptionPublicKey,
         node_signature_public_key: SignaturePublicKey,
         subidentity_encryption_public_key: Option<EncryptionPublicKey>,
         subidentity_signature_public_key: Option<SignaturePublicKey>,
-        permission_type: IdentityType,
+        identity_type: IdentityType,
     ) -> Self {
+        // If Identity is of type Global or Agent, clear the subidentity keys
+        let subidentity_encryption_public_key = if matches!(identity_type, IdentityType::Global | IdentityType::Agent) {
+            None
+        } else {
+            subidentity_encryption_public_key
+        };
+
+        let subidentity_signature_public_key = if matches!(identity_type, IdentityType::Global | IdentityType::Agent) {
+            None
+        } else {
+            subidentity_signature_public_key
+        };
+
         Self {
             full_identity_name,
-            addr: None,
+            addr,
             node_encryption_public_key,
             node_signature_public_key,
             subidentity_encryption_public_key,
             subidentity_signature_public_key,
-            permission_type,
+            permission_type: identity_type,
         }
     }
 
@@ -100,8 +119,16 @@ impl fmt::Display for Identity {
         let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
         let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
 
-        let subidentity_encryption_public_key = self.subidentity_encryption_public_key.as_ref().map(encryption_public_key_to_string_ref).unwrap_or_else(|| "None".to_string());
-        let subidentity_signature_public_key = self.subidentity_signature_public_key.as_ref().map(signature_public_key_to_string_ref).unwrap_or_else(|| "None".to_string());
+        let subidentity_encryption_public_key = self
+            .subidentity_encryption_public_key
+            .as_ref()
+            .map(encryption_public_key_to_string_ref)
+            .unwrap_or_else(|| "None".to_string());
+        let subidentity_signature_public_key = self
+            .subidentity_signature_public_key
+            .as_ref()
+            .map(signature_public_key_to_string_ref)
+            .unwrap_or_else(|| "None".to_string());
 
         write!(f, "NewIdentity {{ full_identity_name: {}, addr: {:?}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, subidentity_encryption_public_key: {}, subidentity_signature_public_key: {}, permission_type: {:?} }}",
             self.full_identity_name,
@@ -115,13 +142,14 @@ impl fmt::Display for Identity {
     }
 }
 
-pub struct NewIdentityManager {
+pub struct IdentityManager {
     pub local_node_name: String,
     pub identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
+    pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
 }
 
-impl NewIdentityManager {
+impl IdentityManager {
     pub async fn new(
         db: Arc<Mutex<ShinkaiMessageDB>>,
         local_node_name: String,
@@ -132,7 +160,7 @@ impl NewIdentityManager {
                 "Local node name cannot be empty",
             )));
         }
-        match NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(&local_node_name.clone()) == false {
+        match IdentityManager::is_valid_node_identity_name_and_no_subidentities(&local_node_name.clone()) == false {
             true => {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -154,18 +182,21 @@ impl NewIdentityManager {
         //         "No identities found in database",
         //     )));
         // }
+        let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
 
         Ok(Self {
             local_node_name,
             identities,
             db,
+            external_identity_manager,
         })
     }
 
     pub async fn add_subidentity(&mut self, identity: Identity) -> anyhow::Result<()> {
         let db = self.db.lock().await;
         let normalized_identity = Identity::new(
-            NewIdentityManager::extract_subidentity(&identity.full_identity_name.clone()),
+            IdentityManager::extract_subidentity(&identity.full_identity_name.clone()),
+            identity.addr.clone(),
             identity.node_encryption_public_key.clone(),
             identity.node_signature_public_key.clone(),
             identity.subidentity_encryption_public_key.clone(),
@@ -177,7 +208,21 @@ impl NewIdentityManager {
         Ok(())
     }
 
-    pub fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+    pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
+
+        // If the node name matches local node, search in self.identities
+        if self.local_node_name == node_name {
+            self.identities
+                .iter()
+                .find(|&identity| identity.full_identity_name == full_identity_name)
+                .cloned()
+        } else {
+            None
+        }
+    }
+
+    pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
         // Extract node name from the full identity name
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
 
@@ -189,9 +234,14 @@ impl NewIdentityManager {
                 .cloned()
         } else {
             // If not, query the identity network manager
-            match external_identity_to_profile_data(node_name.to_string()) {
+            let external_im = self.external_identity_manager.lock().await;
+            match external_im
+                .external_identity_to_profile_data(full_identity_name.to_string())
+                .await
+            {
                 Ok(identity_network_manager) => Some(Identity::new(
                     node_name.to_string(),
+                    Some(identity_network_manager.addr),
                     identity_network_manager.encryption_public_key,
                     identity_network_manager.signature_public_key,
                     None,
@@ -218,9 +268,37 @@ impl NewIdentityManager {
             .iter()
             .find(|identity| identity.full_identity_name == full_profile_name)
     }
+
+    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<Identity> {
+        let node_name = IdentityManager::extract_node_name(full_profile_name);
+
+        println!("external_profile_to_global_identity > full_profile_name: {}", full_profile_name);
+        println!("external_profile_to_global_identity > node_name: {}", node_name);
+        // validate the profile name
+        if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) == false {
+            println!("external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false");
+            return None;
+        }
+        let external_im = self.external_identity_manager.lock().await;
+        match external_im
+            .external_identity_to_profile_data(node_name.to_string())
+            .await
+        {
+            Ok(identity_network_manager) => Some(Identity::new(
+                node_name.to_string(),
+                Some(identity_network_manager.addr),
+                identity_network_manager.encryption_public_key,
+                identity_network_manager.signature_public_key,
+                None,
+                None,
+                IdentityType::Global,
+            )),
+            Err(_) => None, // return None if the identity is not found in the network manager
+        }
+    }
 }
 
-impl NewIdentityManager {
+impl IdentityManager {
     pub fn extract_subidentity(s: &str) -> String {
         let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
         re.captures(s)
@@ -242,7 +320,18 @@ impl NewIdentityManager {
 
     pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
         let name = format!("{}/{}", node_name, subidentity_name);
-        NewIdentityManager::is_valid_node_identity_name_and_no_subidentities(name.clone().as_str());
+        IdentityManager::is_valid_node_identity_name_and_no_subidentities(name.clone().as_str());
         name
+    }
+
+    // TODO: add a new that creates an Identity instance from a message
+    pub fn extract_sender_node_global_name(message: &ShinkaiMessage) -> String {
+        let sender_profile_name = message.external_metadata.clone().unwrap().sender;
+        IdentityManager::extract_node_name(&sender_profile_name)
+    }
+
+    pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
+        let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
+        IdentityManager::extract_node_name(&sender_profile_name)
     }
 }

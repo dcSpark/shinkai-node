@@ -1,6 +1,6 @@
-use super::{external_identities};
 use crate::{
     db::ShinkaiMessageDB,
+    managers::{IdentityManager, identity_manager},
     network::Node,
     shinkai_message::{
         encryption::{
@@ -35,6 +35,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_signature_secret_key: &SignatureStaticKey,
     my_node_profile_name: &str,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
 ) -> io::Result<()> {
@@ -61,6 +62,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
+                maybe_identity_manager
             )
             .await
         }
@@ -77,6 +79,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
+                maybe_identity_manager
             )
             .await
         }
@@ -91,6 +94,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
+                maybe_identity_manager
             )
             .await
         }
@@ -109,6 +113,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
+                maybe_identity_manager
             )
             .await
         }
@@ -120,62 +125,6 @@ pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result
     ShinkaiMessageHandler::decode_message(bytes.to_vec()).map_err(|_| {
         println!("{} > Failed to decode message.", receiver_address);
         io::Error::new(io::ErrorKind::Other, "Failed to decode message")
-    })
-}
-
-pub fn extract_sender_node_profile_name(message: &ShinkaiMessage) -> String {
-    let sender_profile_name = message.external_metadata.clone().unwrap().sender;
-    extract_node_name(&sender_profile_name)
-}
-
-pub fn extract_recipient_node_profile_name(message: &ShinkaiMessage) -> String {
-    let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
-    extract_node_name(&sender_profile_name)
-}
-
-fn extract_node_name(s: &str) -> String {
-    let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
-    re.captures(s)
-        .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-        .unwrap_or_else(|| s.to_string())
-}
-
-fn no_profiles_in_sender(s: &str) -> bool {
-    let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
-    re.is_match(s)
-}
-
-pub fn get_sender_keys(message: &ShinkaiMessage) -> io::Result<PublicKeyInfo> {
-    let sender_profile_name = message.external_metadata.clone().unwrap().sender;
-    let sender_node_profile_name = extract_node_name(&sender_profile_name);
-    let identity_pk = external_identities::external_identity_to_profile_data(sender_node_profile_name).unwrap();
-
-    if no_profiles_in_sender(&sender_profile_name) {
-        Ok(PublicKeyInfo {
-            address: identity_pk.addr,
-            signature_public_key: identity_pk.signature_public_key,
-            encryption_public_key: identity_pk.encryption_public_key,
-        })
-    } else {
-        let encryption_public_key = message
-            .external_metadata
-            .as_ref()
-            .and_then(|metadata| string_to_encryption_public_key(&metadata.other).ok())
-            .unwrap_or(identity_pk.encryption_public_key);
-        Ok(PublicKeyInfo {
-            address: identity_pk.addr,
-            signature_public_key: identity_pk.signature_public_key,
-            encryption_public_key,
-        })
-    }
-}
-
-pub fn extract_recipient_keys(recipient_profile_name: String) -> io::Result<PublicKeyInfo> {
-    let identity_pk = external_identities::external_identity_to_profile_data(recipient_profile_name.clone()).unwrap();
-    Ok(PublicKeyInfo {
-        address: identity_pk.addr,
-        signature_public_key: identity_pk.signature_public_key,
-        encryption_public_key: identity_pk.encryption_public_key,
     })
 }
 
@@ -217,6 +166,7 @@ pub async fn handle_ping(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>
 ) -> io::Result<()> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     let mut db_lock = maybe_db.lock().await;
@@ -229,6 +179,7 @@ pub async fn handle_ping(
         my_node_profile_name.to_string(),
         sender_profile_name,
         &mut db_lock,
+        maybe_identity_manager,
     )
     .await
 }
@@ -244,6 +195,7 @@ pub async fn handle_default_encryption(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>
 ) -> io::Result<()> {
     println!(
         "{} > handle_default_encryption message: {:?}",
@@ -272,6 +224,7 @@ pub async fn handle_default_encryption(
                 my_node_profile_name.to_string(),
                 sender_profile_name,
                 &mut db_lock,
+                maybe_identity_manager,
             )
             .await
         }
@@ -293,6 +246,7 @@ pub async fn handle_other_cases(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     println!(
         "{} > Got message from {:?}. Sending ACK",
@@ -307,6 +261,7 @@ pub async fn handle_other_cases(
         my_node_profile_name.to_string(),
         sender_profile_name,
         &mut db_lock,
+        maybe_identity_manager,
     )
     .await
 }
@@ -319,6 +274,7 @@ pub async fn send_ack(
     sender: ProfileName,
     receiver: ProfileName,
     db: &mut ShinkaiMessageDB,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
@@ -329,7 +285,7 @@ pub async fn send_ack(
     )
     .unwrap();
 
-    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db).await?;
+    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db, maybe_identity_manager).await?;
     Ok(())
 }
 
@@ -350,6 +306,7 @@ pub async fn ping_pong(
     sender: ProfileName,
     receiver: ProfileName,
     db: &mut ShinkaiMessageDB,
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
@@ -365,5 +322,5 @@ pub async fn ping_pong(
         receiver,
     )
     .unwrap();
-    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db).await
+    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db, maybe_identity_manager).await
 }

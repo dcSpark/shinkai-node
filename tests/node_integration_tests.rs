@@ -1,5 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::managers::NewIdentityManager;
+use shinkai_node::managers::IdentityManager;
 use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
@@ -236,7 +236,7 @@ fn subidentity_registration() {
                 .build()
                 .unwrap();
 
-                // println!("Message: {:?}", unchanged_message);
+                println!("here Message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<NodeCommand>,
@@ -395,7 +395,7 @@ fn subidentity_registration() {
                     .await
                     .unwrap();
                 let node1_all_subidentities = res1_all_subidentities_receiver.recv().await.unwrap();
-                let node1_just_subidentity_name = NewIdentityManager::extract_subidentity(node1_subidentity_name);
+                let node1_just_subidentity_name = IdentityManager::extract_subidentity(node1_subidentity_name);
                 assert_eq!(node1_all_subidentities[0].full_identity_name, node1_just_subidentity_name, "Node 1 has the right subidentity");
 
                 // Send message from Node 1 subidentity to Node 2 subidentity

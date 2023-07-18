@@ -172,6 +172,7 @@ impl ShinkaiMessageDB {
 
                                     let identity = Identity::new(
                                         full_identity_name,
+                                        None,
                                         node_encryption_public_key.clone(),
                                         node_signature_public_key.clone(),
                                         Some(subidentity_encryption_public_key),

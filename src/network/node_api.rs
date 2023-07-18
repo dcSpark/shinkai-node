@@ -125,10 +125,10 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
                     Ok::<_, warp::Rejection>(warp::reply::json(
                         &IdentityNameToExternalProfileDataResponse {
                             signature_public_key: signature_public_key_to_string(
-                                external_profile_data.signature_public_key,
+                                external_profile_data.node_signature_public_key,
                             ),
                             encryption_public_key: encryption_public_key_to_string(
-                                external_profile_data.encryption_public_key,
+                                external_profile_data.node_encryption_public_key,
                             ),
                         },
                     ))
