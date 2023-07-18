@@ -2,10 +2,70 @@
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
-use std::sync::Arc;
+use std::collections::HashMap;
 
 lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
+}
+
+//#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct Embedding {
+    pub id: String,
+    pub vector: Vec<f32>,
+    pub metadata: Option<HashMap<String, String>>,
+}
+
+impl Embedding {
+    /// Print embedding.
+    ///
+    /// # Parameters
+    /// - `embedding`: The embedding to print.
+    pub fn print(&self) {
+        println!("Embedding ID: {}", self.id);
+        println!("  Embeddings length: {}", self.vector.len());
+        println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);
+    }
+
+    /// Calculate the cosine similarity between two embedding vectors
+    /// (self + another Embedding).
+    ///
+    /// # Parameters
+    /// - `self`: The first embedding.
+    /// - `embedding2`: The embedding to compare with self.
+    ///
+    /// # Returns
+    /// The cosine similarity between the two embedding vectors as an f32.
+    pub fn cosine_similarity(&self, embedding2: &Embedding) -> f32 {
+        let dot_product = self.dot(&self.vector, &embedding2.vector);
+        let magnitude1 = self.magnitude(&self.vector);
+        let magnitude2 = self.magnitude(&embedding2.vector);
+
+        dot_product / (magnitude1 * magnitude2)
+    }
+
+    /// Calculate the dot product between two vectors.
+    ///
+    /// # Parameters
+    /// - `v1`: The first vector.
+    /// - `v2`: The second vector.
+    ///
+    /// # Returns
+    /// The dot product between the two vectors.
+    fn dot(&self, v1: &[f32], v2: &[f32]) -> f32 {
+        v1.iter().zip(v2.iter()).map(|(&x, &y)| x * y).sum()
+    }
+
+    /// Calculate the magnitude of a vector.
+    ///
+    /// # Parameters
+    /// - `v`: The vector.
+    ///
+    /// # Returns
+    /// The magnitude of the vector.
+    fn magnitude(&self, v: &[f32]) -> f32 {
+        v.iter().map(|&x| x * x).sum::<f32>().sqrt()
+    }
 }
 
 pub struct EmbeddingGenerator {
@@ -43,15 +103,21 @@ impl EmbeddingGenerator {
         Self { model: default }
     }
 
-    /// Generate embeddings for an input string.
+    /// Generate an Embedding for an input string.
     ///
     /// # Parameters
+    /// - `id`: The id to be associated with the embeddings.
     /// - `input_string`: The input string for which embeddings are generated.
+    /// - `metadata`: The metadata to be associated with the embeddings.
     ///
     /// # Returns
-    /// A vector of `f32` representing the embeddings for the input string or an
-    /// error.
-    pub fn generate_embeddings(&self, input_string: &str) -> Result<Vec<f32>, String> {
+    /// An `Embedding` for the input string or an error.
+    pub fn generate_embedding(
+        &self,
+        input_string: &str,
+        id: &str,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Result<Embedding, String> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
             all_logits: None,
@@ -68,36 +134,18 @@ impl EmbeddingGenerator {
 
         self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
 
-        output_request
+        let vector = output_request
             .embeddings
-            .ok_or_else(|| "Failed to generate embeddings".to_string())
-    }
+            .ok_or_else(|| "Failed to generate embeddings".to_string())?;
 
-    // Print embeddings
-    pub fn print_embeddings(&self, text: &str, embeddings: &[f32]) {
-        println!("{text}");
-        println!("  Embeddings length: {}", embeddings.len());
-        println!("  Embeddings first 10: {:.02?}", embeddings.get(0..10));
-    }
-
-    pub fn cosine_similarity(&self, v1: &[f32], v2: &[f32]) -> f32 {
-        let dot_product = self.dot(v1, v2);
-        let magnitude1 = self.magnitude(v1);
-        let magnitude2 = self.magnitude(v2);
-
-        dot_product / (magnitude1 * magnitude2)
-    }
-
-    fn dot(&self, v1: &[f32], v2: &[f32]) -> f32 {
-        v1.iter().zip(v2.iter()).map(|(&x, &y)| x * y).sum()
-    }
-
-    fn magnitude(&self, v: &[f32]) -> f32 {
-        v.iter().map(|&x| x * x).sum::<f32>().sqrt()
+        Ok(Embedding {
+            id: String::from(id),
+            vector,
+            metadata,
+        })
     }
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -105,10 +153,54 @@ mod tests {
     fn test_embeddings_generation() {
         let generator = EmbeddingGenerator::new_default();
 
-        let dog_embeddings = generator.generate_embeddings("dog").unwrap();
-        let cat_embeddings = generator.generate_embeddings("cat").unwrap();
+        let dog_embeddings = generator.generate_embedding("dog", "1", None).unwrap();
+        let cat_embeddings = generator.generate_embedding("cat", "2", None).unwrap();
 
         assert_eq!(dog_embeddings, dog_embeddings);
+        assert_eq!(cat_embeddings, cat_embeddings);
         assert_ne!(dog_embeddings, cat_embeddings);
+    }
+
+    #[test]
+    fn test_vector_similarity() {
+        let generator = EmbeddingGenerator::new_default();
+
+        let query = "What can fly in the sky?";
+        let comparands = vec![
+            "A golden retriever dog".to_string(),
+            "A four legged frog".to_string(),
+            "A plane in the sky".to_string(),
+        ];
+
+        // Generate embeddings for query and comparands
+        let query_embedding = generator.generate_embedding(query, query, None).unwrap();
+        let comparand_embeddings: Vec<Embedding> = comparands
+            .iter()
+            .map(|text| generator.generate_embedding(text, text, None).unwrap())
+            .collect();
+
+        // Print the embeddings
+        query_embedding.print();
+        println!("---");
+        for embedding in &comparand_embeddings {
+            embedding.print();
+        }
+
+        // Calculate the cosine similarity between the query and each comparand, and
+        // sort by similarity
+        let mut similarities: Vec<(Embedding, f32)> = comparand_embeddings
+            .iter()
+            .map(|embedding| (embedding.clone(), query_embedding.cosine_similarity(&embedding)))
+            .collect();
+        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+        // Print similarities
+        println!("---");
+        println!("Similarities:");
+        for (embedding, score) in similarities {
+            println!("  {}: {}", embedding.id, score);
+        }
+
+        assert!(5 == 2);
     }
 }
