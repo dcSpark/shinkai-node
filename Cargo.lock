@@ -4384,6 +4384,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_os",
  "regex",
+ "reqwest",
  "rocksdb",
  "serde",
  "serde_json",
