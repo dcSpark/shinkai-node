@@ -1,21 +1,78 @@
 use crate::resources::embeddings::*;
+use std::error::Error;
+use std::fmt;
 
+#[derive(Debug)]
+/// `InvalidChunkIdError` is an error that occurs when an invalid chunk id is
+/// provided to a function.
+struct InvalidChunkIdError;
+
+impl fmt::Display for InvalidChunkIdError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Invalid chunk id")
+    }
+}
+
+impl Error for InvalidChunkIdError {}
+
+/// `ResourceEmptyError` is an error that occurs when an attempt is made to
+/// remove a data chunk and associated embedding from an empty resource.
+#[derive(Debug)]
+struct ResourceEmptyError;
+
+impl fmt::Display for ResourceEmptyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Resource is empty")
+    }
+}
+
+impl Error for ResourceEmptyError {}
+
+/// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DataChunk {
     pub id: String,
     pub data: String,
     pub metadata: Option<String>,
 }
+
 impl DataChunk {
+    /// Creates a new `DataChunk` with a `String` id, data, and optional
+    /// metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - A `String` that holds the id of the `DataChunk`.
+    /// * `data` - The data of the `DataChunk`.
+    /// * `metadata` - Optional metadata for the `DataChunk`.
+    ///
+    /// # Returns
+    ///
+    /// A new `DataChunk` instance.
     pub fn new(id: String, data: String, metadata: Option<String>) -> Self {
         Self { id, data, metadata }
     }
 
+    /// Creates a new `DataChunk` with a `u64` id converted to a `String`, data,
+    /// and optional metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - A `u64` that holds the id of the `DataChunk`. It gets converted
+    ///   to a `String`.
+    /// * `data` - The data of the `DataChunk`.
+    /// * `metadata` - Optional metadata for the `DataChunk`.
+    ///
+    /// # Returns
+    ///
+    /// A new `DataChunk` instance.
     pub fn new_with_integer_id(id: u64, data: String, metadata: Option<String>) -> Self {
         Self::new(id.to_string(), data, metadata)
     }
 }
 
+/// Represents a Resource which includes properties and operations related to
+/// data chunks and embeddings.
 pub trait Resource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
@@ -23,9 +80,28 @@ pub trait Resource {
     fn resource_embedding(&self) -> &Embedding;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
 
-    // Method to retrieve data chunk
+    /// Retrieves a data chunk given its id.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The `String` id of the data chunk.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, Box<dyn std::error::Error>>;
 
+    /// Performs a similarity search using a query embedding and returns the
+    /// most similar data chunks.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query `Embedding`.
+    /// * `num_of_results` - The number of top results to return.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `DataChunk`s sorted by similarity, or an error.
     fn similarity_search(
         &self,
         query: Embedding,
@@ -57,6 +133,8 @@ pub trait Resource {
     }
 }
 
+/// Represents a document resource with properties and operations related to
+/// data chunks and embeddings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentResource {
     name: String,
@@ -69,26 +147,50 @@ pub struct DocumentResource {
 }
 
 impl Resource for DocumentResource {
+    /// # Returns
+    ///
+    /// The name of the `DocumentResource`.
     fn name(&self) -> &str {
         &self.name
     }
 
+    /// # Returns
+    ///
+    /// The optional description of the `DocumentResource`.
     fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
 
+    /// # Returns
+    ///
+    /// The optional source of the `DocumentResource`.
     fn source(&self) -> Option<&str> {
         self.source.as_deref()
     }
 
+    /// # Returns
+    ///
+    /// The resource `Embedding` of the `DocumentResource`.
     fn resource_embedding(&self) -> &Embedding {
         &self.resource_embedding
     }
 
+    /// # Returns
+    ///
+    /// The chunk `Embedding`s of the `DocumentResource`.
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
     }
 
+    /// Retrieves a data chunk given its id.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The `String` id of the data chunk.
+    ///
+    /// # Returns
+    ///
+    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, Box<dyn std::error::Error>> {
         let id = id.parse::<u64>().map_err(|_| "Chunk id must be a u64")?;
         if id > self.chunk_count {
@@ -103,6 +205,26 @@ impl Resource for DocumentResource {
 }
 
 impl DocumentResource {
+    // Constructors
+    /// Creates a new instance of a `DocumentResource`.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - A string slice that holds the name of the document resource.
+    /// * `desc` - An optional string slice that holds the description of the
+    ///   document resource.
+    /// * `source` - An optional string slice that holds the source of the
+    ///   document resource.
+    /// * `resource_embedding` - An `Embedding` struct that holds the embedding
+    ///   of the document resource.
+    /// * `chunk_embeddings` - A vector of `Embedding` structs that hold the
+    ///   embeddings of the data chunks.
+    /// * `data_chunks` - A vector of `DataChunk` structs that hold the data
+    ///   chunks.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new instance of `DocumentResource`.
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -158,9 +280,8 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// * `Ok(DataChunk)` - If successful, returns the old data chunk that was
-    ///   replaced.
-    /// * `Err(&'static str)` - If the provided id is invalid, returns an error.
+    /// * `Result<DataChunk, Box<dyn std::error::Error>>` - If successful,
+    ///   returns the old `DataChunk` that was replaced.
     ///
     /// The method checks if the provided id is valid, and if so, it creates a
     /// new data chunk using the provided new data and metadata, clones the
@@ -173,9 +294,9 @@ impl DocumentResource {
         new_data: String,
         new_metadata: Option<String>,
         embedding: &Embedding,
-    ) -> Result<DataChunk, &'static str> {
+    ) -> Result<DataChunk, Box<dyn Error>> {
         if id > self.chunk_count {
-            return Err("Invalid chunk id");
+            return Err(Box::new(InvalidChunkIdError));
         }
         let index = (id - 1) as usize;
         let mut embedding = embedding.clone();
@@ -193,18 +314,24 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// A tuple containing the removed data chunk and embedding, or `None` if
-    /// the resource is empty.
-    pub fn pop_data(&mut self) -> Option<(DataChunk, Embedding)> {
+    /// * `Result<(DataChunk, Embedding), Box<dyn std::error::Error>>` - If
+    ///   successful, returns a tuple containing the removed data chunk and
+    ///   embedding. If the resource is empty, returns a `ResourceEmptyError`.
+    ///
+    /// The method attempts to pop the last `DataChunk` and `Embedding` from
+    /// their respective vectors. If this is successful, it decrements
+    /// `chunk_count` and returns the popped `DataChunk` and `Embedding`. If
+    /// the resource is empty, it returns a `ResourceEmptyError`.
+    pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), Box<dyn std::error::Error>> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
 
         match (popped_chunk, popped_embedding) {
             (Some(chunk), Some(embedding)) => {
                 self.chunk_count -= 1;
-                Some((chunk, embedding))
+                Ok((chunk, embedding))
             }
-            _ => None,
+            _ => Err(Box::new(ResourceEmptyError)),
         }
     }
 
@@ -216,43 +343,40 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// A tuple containing the removed data chunk and embedding, or `None` if
-    /// the id was invalid.
-    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), &'static str> {
-        let deleted_chunk_result = self.delete_data_chunk(id);
+    /// A tuple containing the removed data chunk and embedding, or error.
+    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), Box<dyn Error>> {
+        let deleted_chunk = self.delete_data_chunk(id)?;
 
-        if let Ok(deleted_chunk) = deleted_chunk_result {
-            let index = (id - 1) as usize;
-            let deleted_embedding = self.chunk_embeddings.remove(index);
+        let index = (id - 1) as usize;
+        let deleted_embedding = self.chunk_embeddings.remove(index);
 
-            // Adjust the ids of the remaining embeddings
-            for i in index..self.chunk_embeddings.len() {
-                self.chunk_embeddings[i].set_id_with_integer((i + 1) as u64);
-            }
-
-            return Ok((deleted_chunk, deleted_embedding));
+        // Adjust the ids of the remaining embeddings
+        for i in index..self.chunk_embeddings.len() {
+            self.chunk_embeddings[i].set_id_with_integer((i + 1) as u64);
         }
 
-        Err("Invalid chunk id")
+        Ok((deleted_chunk, deleted_embedding))
     }
 
-    fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
-        self.chunk_count += 1;
-        data_chunk.id = self.chunk_count.to_string();
-        self.data_chunks.push(data_chunk);
-    }
-
-    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, &'static str> {
+    // Internal data chunk deletion
+    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, Box<dyn Error>> {
         if id > self.chunk_count {
-            return Err("Invalid chunk id");
+            return Err(Box::new(InvalidChunkIdError));
         }
         let index = (id - 1) as usize;
         let removed_chunk = self.data_chunks.remove(index);
         self.chunk_count -= 1;
         for chunk in self.data_chunks.iter_mut().skip(index) {
-            let chunk_id: u64 = chunk.id.parse().expect("Chunk id must be a u64");
+            let chunk_id: u64 = chunk.id.parse().unwrap();
             chunk.id = format!("{}", chunk_id - 1);
         }
         Ok(removed_chunk)
+    }
+
+    // Internal adding a data chunk
+    fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
+        self.chunk_count += 1;
+        data_chunk.id = self.chunk_count.to_string();
+        self.data_chunks.push(data_chunk);
     }
 }
