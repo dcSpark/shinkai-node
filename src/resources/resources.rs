@@ -96,17 +96,80 @@ pub trait Resource {
     ///
     /// # Arguments
     ///
-    /// * `query` - The query `Embedding`.
+    /// * `query` - An embedding that is the basis for the similarity search.
     /// * `num_of_results` - The number of top results to return.
     ///
     /// # Returns
     ///
-    /// A vector of `DataChunk`s sorted by similarity, or an error.
+    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
+    /// score in descending order, or an error if something goes wrong.
     fn similarity_search(
         &self,
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+        let results = self._similarity_search(query, num_of_results)?;
+        Ok(results.into_iter().map(|(chunk, _)| chunk).collect())
+    }
+
+    /// Performs a similarity search using a query embedding and returns the
+    /// most similar data chunks within a specific range.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - An embedding that is the basis for the similarity search.
+    /// * `num_of_results` - The number of top results to initially consider
+    ///   (aka. upper max).
+    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
+    ///   determines the range of acceptable similarity scores as a percentage
+    ///   of the highest score. Any result outside this range is ignored.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
+    /// score in descending order, but only including those within the tolerance
+    /// range, or an error if something goes wrong.
+    fn similarity_search_ranged(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        tolerance_range: f32,
+    ) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+        // Clamp the tolerance_range to be between 0 and 1
+        let tolerance_range = tolerance_range.max(0.0).min(1.0);
+
+        let mut results = self._similarity_search(query, num_of_results)?;
+
+        // Calculate the range of acceptable similarity scores
+        if let Some((_, highest_similarity)) = results.first() {
+            let lower_bound = highest_similarity * (1.0 - tolerance_range);
+
+            // Filter the results to only include those within the tolerance range
+            results.retain(|&(_, similarity)| similarity >= lower_bound);
+        }
+
+        Ok(results.into_iter().map(|(chunk, _)| chunk).collect())
+    }
+
+    /// A helper function to perform a similarity search. This function is not
+    /// meant to be used directly, but rather to provide shared
+    /// functionality for the public similarity search methods.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - An embedding that is the basis for the similarity search.
+    /// * `num_of_results` - The number of top results to return.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` that contains a vector of tuples. Each tuple consists of a
+    /// `DataChunk` and its similarity score. The vector is sorted by similarity
+    /// score in descending order.
+    fn _similarity_search(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+    ) -> Result<Vec<(DataChunk, f32)>, Box<dyn std::error::Error>> {
         let num_of_results = num_of_results as usize;
 
         // Calculate the cosine similarity between the query and each comparand, and
@@ -123,10 +186,10 @@ pub trait Resource {
         let top_results = similarities.into_iter().take(num_of_results);
 
         // Map ids to DataChunks
-        let mut chunks: Vec<DataChunk> = Vec::new();
-        for (id, _) in top_results {
+        let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
+        for (id, similarity) in top_results {
             let chunk = self.get_data_chunk(id)?;
-            chunks.push(chunk.clone());
+            chunks.push((chunk.clone(), similarity));
         }
 
         Ok(chunks)
@@ -242,6 +305,49 @@ impl DocumentResource {
             chunk_count: data_chunks.len() as u64,
             data_chunks: data_chunks,
         }
+    }
+
+    /// Performs a similarity search using a query embedding, and then fetches a
+    /// specific number of DataChunks below and above the most similar
+    /// DataChunk.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The query `Embedding`.
+    /// * `proximity_window` - The number of DataChunks to fetch below and above
+    ///   the most similar DataChunk.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `DataChunk`s sorted by their ids, or an error.
+    pub fn similarity_search_proximity(
+        &self,
+        query: Embedding,
+        proximity_window: u64,
+    ) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+        let search_results = self.similarity_search(query, 1)?;
+
+        if search_results.is_empty() {
+            return Err("No matching data chunks found".into());
+        }
+
+        let mut chunks: Vec<DataChunk> = Vec::new();
+        let most_similar_chunk = search_results.first().unwrap(); // This is a safe unwrap
+        let most_similar_id = most_similar_chunk.id.parse::<u64>()?;
+
+        let start_id = if most_similar_id > proximity_window {
+            most_similar_id - proximity_window
+        } else {
+            1
+        };
+
+        let end_id = most_similar_id + proximity_window;
+        for id in start_id..=end_id {
+            let chunk = self.get_data_chunk(id.to_string())?;
+            chunks.push(chunk.clone());
+        }
+
+        Ok(chunks)
     }
 
     /// Appends a new data chunk and associated embedding to the document
