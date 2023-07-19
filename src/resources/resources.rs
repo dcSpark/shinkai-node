@@ -309,6 +309,29 @@ impl DocumentResource {
         }
     }
 
+    /// Initializes an empty `DocumentResource` with an empty resource
+    /// embedding.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the `DocumentResource`.
+    /// * `desc` - The optional description of the `DocumentResource`.
+    /// * `source` - The optional source of the `DocumentResource`.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new instance of `DocumentResource`.
+    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>) -> Self {
+        DocumentResource::new(
+            name,
+            desc,
+            source,
+            Embedding::new(&String::new(), vec![]),
+            Vec::new(),
+            Vec::new(),
+        )
+    }
+
     /// Performs a vector similarity search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
@@ -516,5 +539,21 @@ impl DocumentResource {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_embeddings_generation() {
+        let generator = EmbeddingGenerator::new_default();
+
+        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
+        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+
+        assert_eq!(dog_embeddings, dog_embeddings);
+        assert_eq!(cat_embeddings, cat_embeddings);
+        assert_ne!(dog_embeddings, cat_embeddings);
     }
 }
