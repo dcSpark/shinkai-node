@@ -2,7 +2,6 @@
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
-use std::collections::HashMap;
 
 lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
@@ -29,7 +28,6 @@ impl ScoredEmbedding {
 pub struct Embedding {
     pub id: String,
     pub vector: Vec<f32>,
-    pub metadata: Option<HashMap<String, String>>,
 }
 
 impl Embedding {
@@ -157,12 +155,7 @@ impl EmbeddingGenerator {
     ///
     /// # Returns
     /// An `Embedding` for the input string or an error.
-    pub fn generate_embedding(
-        &self,
-        input_string: &str,
-        id: &str,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Result<Embedding, String> {
+    pub fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, String> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
             all_logits: None,
@@ -186,7 +179,6 @@ impl EmbeddingGenerator {
         Ok(Embedding {
             id: String::from(id),
             vector,
-            metadata,
         })
     }
 }
@@ -198,8 +190,8 @@ mod tests {
     fn test_embeddings_generation() {
         let generator = EmbeddingGenerator::new_default();
 
-        let dog_embeddings = generator.generate_embedding("dog", "1", None).unwrap();
-        let cat_embeddings = generator.generate_embedding("cat", "2", None).unwrap();
+        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
+        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
 
         assert_eq!(dog_embeddings, dog_embeddings);
         assert_eq!(cat_embeddings, cat_embeddings);
@@ -218,10 +210,10 @@ mod tests {
         ];
 
         // Generate embeddings for query and comparands
-        let query_embedding = generator.generate_embedding(query, query, None).unwrap();
+        let query_embedding = generator.generate_embedding(query, query).unwrap();
         let comparand_embeddings: Vec<Embedding> = comparands
             .iter()
-            .map(|text| generator.generate_embedding(text, text, None).unwrap())
+            .map(|text| generator.generate_embedding(text, text).unwrap())
             .collect();
 
         // Print the embeddings
@@ -238,7 +230,7 @@ mod tests {
             .map(|embedding| (embedding.clone(), query_embedding.cosine_similarity(&embedding)))
             .collect();
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let mut similarities = query_embedding.score_similarity(comparand_embeddings);
+        let similarities = query_embedding.score_similarity(comparand_embeddings);
 
         // Print similarities
         println!("---");
