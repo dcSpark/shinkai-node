@@ -1,35 +1,9 @@
 use crate::resources::embeddings::*;
+use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::error::Error;
-use std::fmt;
-
-#[derive(Debug)]
-/// `InvalidChunkIdError` is an error that occurs when an invalid chunk id is
-/// provided to a function.
-struct InvalidChunkIdError;
-
-impl fmt::Display for InvalidChunkIdError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid chunk id")
-    }
-}
-
-impl Error for InvalidChunkIdError {}
-
-/// `ResourceEmptyError` is an error that occurs when an attempt is made to
-/// remove a data chunk and associated embedding from an empty resource.
-#[derive(Debug)]
-struct ResourceEmptyError;
-
-impl fmt::Display for ResourceEmptyError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Resource is empty")
-    }
-}
-
-impl Error for ResourceEmptyError {}
 
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq)]
