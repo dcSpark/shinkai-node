@@ -1,4 +1,7 @@
 use crate::resources::embeddings::*;
+use ordered_float::NotNan;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::error::Error;
 use std::fmt;
 
@@ -91,13 +94,13 @@ pub trait Resource {
     /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, Box<dyn std::error::Error>>;
 
-    /// Performs a similarity search using a query embedding and returns the
-    /// most similar data chunks.
+    /// Performs a vector similarity search using a query embedding and returns
+    /// the most similar data chunks.
     ///
     /// # Arguments
     ///
     /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return.
+    /// * `num_of_results` - The number of top results to return (top-k)
     ///
     /// # Returns
     ///
@@ -112,8 +115,8 @@ pub trait Resource {
         Ok(results.into_iter().map(|(chunk, _)| chunk).collect())
     }
 
-    /// Performs a similarity search using a query embedding and returns the
-    /// most similar data chunks within a specific range.
+    /// Performs a vector similarity search using a query embedding and returns
+    /// the most similar data chunks within a specific range.
     ///
     /// # Arguments
     ///
@@ -129,7 +132,7 @@ pub trait Resource {
     /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
     /// score in descending order, but only including those within the tolerance
     /// range, or an error if something goes wrong.
-    fn similarity_search_ranged(
+    fn similarity_search_tolerance_ranged(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -169,26 +172,51 @@ pub trait Resource {
         &self,
         query: Embedding,
         num_of_results: u64,
-    ) -> Result<Vec<(DataChunk, f32)>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<(DataChunk, f32)>, Box<dyn Error>> {
         let num_of_results = num_of_results as usize;
 
-        // Calculate the cosine similarity between the query and each comparand, and
-        // sort by similarity
-        let mut similarities: Vec<(String, f32)> = self
+        // Calculate the similarity scores for all chunk embeddings and skip any that
+        // are NaN
+        let scores: Vec<(String, NotNan<f32>)> = self
             .chunk_embeddings()
             .iter()
-            .map(|embedding| (embedding.id.clone(), query.cosine_similarity(embedding)))
+            .filter_map(|embedding| {
+                let similarity = query.cosine_similarity(embedding);
+                match NotNan::new(similarity) {
+                    Ok(not_nan_similarity) => Some((embedding.id.clone(), not_nan_similarity)),
+                    Err(_) => None, // Skip this embedding if similarity is NaN
+                }
+            })
             .collect();
 
-        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        // Use a binary heap to more efficiently order the scores to get most similar
+        let mut heap = BinaryHeap::with_capacity(num_of_results);
+        for score in scores {
+            if heap.len() < num_of_results {
+                heap.push(Reverse(score));
+            } else {
+                if let Some(least_similar_score) = heap.peek() {
+                    // Access the tuple via `.0` and then the second element of the tuple via `.1`
+                    if least_similar_score.0 .1 < score.1 {
+                        heap.pop();
+                        heap.push(Reverse(score));
+                    }
+                } else {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Failed to peek from heap",
+                    )));
+                }
+            }
+        }
+        let mut top_results = heap.into_sorted_vec();
+        top_results.reverse();
+        let top_results = top_results.into_iter().map(|Reverse(x)| (x.0, x.1.into_inner()));
 
-        // Take the top num_of_results results
-        let top_results = similarities.into_iter().take(num_of_results);
-
-        // Map ids to DataChunks
+        // Fetch the DataChunks matching the most similar embeddings
         let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
         for (id, similarity) in top_results {
-            let chunk = self.get_data_chunk(id)?;
+            let chunk = self.get_data_chunk(id)?; // Propagate the error if `get_data_chunk` fails
             chunks.push((chunk.clone(), similarity));
         }
 
@@ -307,9 +335,9 @@ impl DocumentResource {
         }
     }
 
-    /// Performs a similarity search using a query embedding, and then fetches a
-    /// specific number of DataChunks below and above the most similar
-    /// DataChunk.
+    /// Performs a vector similarity search using a query embedding, and then
+    /// fetches a specific number of DataChunks below and above the most
+    /// similar DataChunk.
     ///
     /// # Arguments
     ///
