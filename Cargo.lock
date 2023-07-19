@@ -3214,6 +3214,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "3.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fc2dbde8f8a79f2102cc474ceb0ad68e3b80b85289ea62389b60e66777e4213"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "6.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4377,6 +4386,7 @@ dependencies = [
  "libp2p",
  "llm",
  "log",
+ "ordered-float",
  "pdf-extract",
  "prost 0.8.0",
  "prost-build 0.8.0",
