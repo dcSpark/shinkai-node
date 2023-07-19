@@ -216,29 +216,31 @@ pub trait Resource {
         // Use a binary heap to more efficiently order the scores to get most similar
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
-            if heap.len() < num_of_results {
+            println!("Current to be added to heap: (Id: {}, Score: {})", score.0, score.1);
+            if heap.len() < 1 {
+                println!("First score, added to heap: {}", score.1);
                 heap.push(Reverse(score));
             } else if let Some(least_similar_score) = heap.peek() {
                 // Access the tuple via `.0` and then the second element of the tuple via `.1`
                 // Since the heap is a min-heap, we want to replace the least value only if
                 // the new score is larger than the least score.
                 if least_similar_score.0 .1 < score.1 {
+                    println!(
+                        "New score (Id: {}, Score: {}) greater than old (Id: {}, Score: {}). Replacing in heap.",
+                        score.0, score.1, least_similar_score.0 .0, least_similar_score.0 .1
+                    );
                     heap.pop();
                     heap.push(Reverse(score));
                 }
             }
         }
 
-        let mut top_results: Vec<(String, NotNan<f32>)> = heap.into_vec().into_iter().map(|x| x.0).collect();
-        top_results.sort_by(|a, b| b.1.cmp(&a.1));
-        let top_results = top_results.into_iter().map(|x| (x.0, x.1.into_inner()));
-
         // Fetch the DataChunks matching the most similar embeddings
         let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
-        for (id, similarity) in top_results {
+        while let Some(Reverse((id, similarity))) = heap.pop() {
             println!("{}: {}%", id, similarity);
             let chunk = self.get_data_chunk(id)?; // Propagate the error if `get_data_chunk` fails
-            chunks.push((chunk.clone(), similarity));
+            chunks.push((chunk.clone(), similarity.into_inner()));
         }
 
         Ok(chunks)
@@ -611,13 +613,13 @@ mod tests {
         let fact1_embeddings = generator.generate_embedding(fact1, "").unwrap();
         let fact2 = "Camels are slow animals with large humps.";
         let fact2_embeddings = generator.generate_embedding(fact2, "").unwrap();
-        let fact3 = "Hawks are valiant birds that swoop on their prey.";
+        let fact3 = "Seals swim in the ocean.";
         let fact3_embeddings = generator.generate_embedding(fact3, "").unwrap();
         doc.append_data(fact1, None, &fact1_embeddings);
         doc.append_data(fact2, None, &fact2_embeddings);
         doc.append_data(fact3, None, &fact3_embeddings);
 
-        // Test queries
+        // Testing similarity search works
         let query_string = "What animal barks?";
         let query_embedding = generator.generate_embedding(query_string, "").unwrap();
         let res = doc.similarity_search(query_embedding, 3).unwrap();
@@ -628,10 +630,9 @@ mod tests {
         let res2 = doc.similarity_search(query_embedding2, 3).unwrap();
         assert_eq!(fact2, res2[0].data);
 
-        // let query_string = "What animal swoops on their prey?";
-        // let query_embedding = generator.generate_embedding(query_string,
-        // "").unwrap(); let res = doc.
-        // similarity_search(query_embedding, 1).unwrap();
-        // assert_eq!(fact3, res[0].data);
+        let query_string3 = "What animal swims in the ocean?";
+        let query_embedding3 = generator.generate_embedding(query_string3, "").unwrap();
+        let res3 = doc.similarity_search(query_embedding3, 3).unwrap();
+        assert_eq!(fact3, res3[0].data);
     }
 }
