@@ -206,7 +206,6 @@ pub trait Resource {
             .iter()
             .filter_map(|embedding| {
                 let similarity = query.cosine_similarity(embedding);
-                println!("Embedding {}", embedding.id);
                 match NotNan::new(similarity) {
                     Ok(not_nan_similarity) => Some((embedding.id.clone(), not_nan_similarity)),
                     Err(_) => None, // Skip this embedding if similarity is NaN
@@ -219,24 +218,20 @@ pub trait Resource {
         for score in scores {
             if heap.len() < num_of_results {
                 heap.push(Reverse(score));
-            } else {
-                if let Some(least_similar_score) = heap.peek() {
-                    // Access the tuple via `.0` and then the second element of the tuple via `.1`
-                    if least_similar_score.0 .1 < score.1 {
-                        heap.pop();
-                        heap.push(Reverse(score));
-                    }
-                } else {
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Failed to peek from heap",
-                    )));
+            } else if let Some(least_similar_score) = heap.peek() {
+                // Access the tuple via `.0` and then the second element of the tuple via `.1`
+                // Since the heap is a min-heap, we want to replace the least value only if
+                // the new score is larger than the least score.
+                if least_similar_score.0 .1 < score.1 {
+                    heap.pop();
+                    heap.push(Reverse(score));
                 }
             }
         }
-        let mut top_results = heap.into_sorted_vec();
-        top_results.reverse();
-        let top_results = top_results.into_iter().map(|Reverse(x)| (x.0, x.1.into_inner()));
+
+        let mut top_results: Vec<(String, NotNan<f32>)> = heap.into_vec().into_iter().map(|x| x.0).collect();
+        top_results.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_results = top_results.into_iter().map(|x| (x.0, x.1.into_inner()));
 
         // Fetch the DataChunks matching the most similar embeddings
         let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
@@ -595,5 +590,48 @@ impl DocumentResource {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
+    }
+}
+
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_document_resource_similarity_search() {
+        // Prepare generator and doc resource
+        let generator = EmbeddingGenerator::new_default();
+        let mut doc = DocumentResource::new_empty(
+            "3 Animal Facts",
+            Some("A bunch of facts about animals and wildlife"),
+            Some("animalwildlife.com"),
+        );
+
+        // Prepare embeddings + data, then add it to the doc
+        let fact1 = "Dogs are creatures with 4 legs that bark.";
+        let fact1_embeddings = generator.generate_embedding(fact1, "").unwrap();
+        let fact2 = "Camels are slow animals with large humps.";
+        let fact2_embeddings = generator.generate_embedding(fact2, "").unwrap();
+        let fact3 = "Hawks are valiant birds that swoop on their prey.";
+        let fact3_embeddings = generator.generate_embedding(fact3, "").unwrap();
+        doc.append_data(fact1, None, &fact1_embeddings);
+        doc.append_data(fact2, None, &fact2_embeddings);
+        doc.append_data(fact3, None, &fact3_embeddings);
+
+        // Test queries
+        let query_string = "What animal barks?";
+        let query_embedding = generator.generate_embedding(query_string, "").unwrap();
+        let res = doc.similarity_search(query_embedding, 3).unwrap();
+        assert_eq!(fact1, res[0].data);
+
+        let query_string2 = "What animal is slow?";
+        let query_embedding2 = generator.generate_embedding(query_string2, "").unwrap();
+        let res2 = doc.similarity_search(query_embedding2, 3).unwrap();
+        assert_eq!(fact2, res2[0].data);
+
+        // let query_string = "What animal swoops on their prey?";
+        // let query_embedding = generator.generate_embedding(query_string,
+        // "").unwrap(); let res = doc.
+        // similarity_search(query_embedding, 1).unwrap();
+        // assert_eq!(fact3, res[0].data);
     }
 }
