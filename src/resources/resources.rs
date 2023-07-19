@@ -56,6 +56,7 @@ pub trait Resource {
     fn source(&self) -> Option<&str>;
     fn resource_embedding(&self) -> &Embedding;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
+    fn set_resource_embedding(&mut self, embedding: Embedding);
 
     /// Retrieves a data chunk given its id.
     ///
@@ -67,6 +68,51 @@ pub trait Resource {
     ///
     /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, Box<dyn std::error::Error>>;
+
+    /// Regenerates and updates the resource's embedding. The new
+    /// embedding is generated using the provided `EmbeddingGenerator` and
+    /// the resource's name, description, and source.
+    ///
+    /// # Arguments
+    ///
+    /// * `generator` - The `EmbeddingGenerator` to be used for generating the
+    ///   new embedding.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), Box<dyn std::error::Error>>` - Returns `Ok(())` if the
+    ///   embedding
+    /// is successfully updated, or an error if the embedding generation fails.
+    fn update_resource_embedding(&mut self, generator: &EmbeddingGenerator) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = self.resource_embedding_data_formatted();
+        let new_embedding = generator.generate_embedding(&metadata, "1")?;
+        self.set_resource_embedding(new_embedding);
+        Ok(())
+    }
+
+    /// Generates a formatted string that represents the data to be used for the
+    /// resource embedding. This string includes
+    /// the resource's name, description, and source.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The formatted metadata string in the format of "Name: N,
+    ///   Description: D, Source: S". If any are None, they are skipped.
+    fn resource_embedding_data_formatted(&self) -> String {
+        let name = format!("Name: {}", self.name());
+
+        let desc = self
+            .description()
+            .map(|description| format!(", Description: {}", description))
+            .unwrap_or_default();
+
+        let source = self
+            .source()
+            .map(|source| format!(", Source: {}", source))
+            .unwrap_or_default();
+
+        format!("{}{}{}", name, desc, source)
+    }
 
     /// Performs a vector similarity search using a query embedding and returns
     /// the most similar data chunks.
@@ -202,10 +248,10 @@ pub trait Resource {
 /// data chunks and embeddings.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentResource {
-    name: String,
-    description: Option<String>,
-    source: Option<String>,
-    resource_embedding: Embedding,
+    pub name: String,
+    pub description: Option<String>,
+    pub source: Option<String>,
+    pub resource_embedding: Embedding,
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
     data_chunks: Vec<DataChunk>,
@@ -245,6 +291,10 @@ impl Resource for DocumentResource {
     /// The chunk `Embedding`s of the `DocumentResource`.
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
+    }
+
+    fn set_resource_embedding(&mut self, embedding: Embedding) {
+        self.resource_embedding = embedding;
     }
 
     /// Retrieves a data chunk given its id.
@@ -546,8 +596,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_embeddings_generation() {
+    fn test_adding_data_to_document_resource() {
         let generator = EmbeddingGenerator::new_default();
+
+        let mut doc = DocumentResource::new_empty(
+            "3 Animal Facts",
+            Some("A bunch of facts about animals and wildlife"),
+            Some("animalwildlife.com"),
+        );
+        // Try updating resource embedding
+        doc.update_resource_embedding(&generator).unwrap();
 
         let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
         let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
