@@ -31,6 +31,23 @@ pub struct Embedding {
 }
 
 impl Embedding {
+    /// Creates a new `Embedding`.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The id of the `Embedding`.
+    /// * `vector` - The vector of the `Embedding`.
+    ///
+    /// # Returns
+    ///
+    /// * `Self` - A new instance of `Embedding`.
+    pub fn new(id: &str, vector: Vec<f32>) -> Self {
+        Embedding {
+            id: String::from(id),
+            vector,
+        }
+    }
+
     pub fn set_id(&mut self, id: String) {
         self.id = id;
     }
