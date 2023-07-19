@@ -67,6 +67,7 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn message_schema_type(mut self, content: String) -> Self {
+        // TODO: add validation here of the content: String or maybe even switch it to the new enum
         self.message_schema_type = content.clone();
         self
     }

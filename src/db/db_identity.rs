@@ -116,7 +116,7 @@ impl ShinkaiMessageDB {
 
     pub fn load_all_sub_identities(
         &self,
-        my_node_identity_name: String,
+        my_node_identity_name: String, // TODO: move this to the initializer of the db
     ) -> Result<Vec<Identity>, ShinkaiMessageDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();

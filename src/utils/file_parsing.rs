@@ -126,3 +126,36 @@ fn parse_pdf_from_path(file_path: &str) -> Result<String, Box<dyn Error>> {
     let buffer = std::fs::read(file_path)?;
     parse_pdf(&buffer)
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_parse_csv_no_header() {
+//         let csv_data = b"value1,value2,value3";
+//         let parsed_data = parse_csv(csv_data, false).unwrap();
+//         assert_eq!(parsed_data, vec!["value1, value2, value3"]);
+//     }
+
+//     #[test]
+//     fn test_parse_csv_with_header() {
+//         let csv_data = b"name1,name2,name3\nvalue1,value2,value3";
+//         let parsed_data = parse_csv(csv_data, true).unwrap();
+//         assert_eq!(parsed_data, vec!["name1: value1, name2: value2, name3: value3"]);
+//     }
+
+//     #[test]
+//     fn test_parse_csv_auto_no_header() {
+//         let csv_data = b"value1,value2,value3";
+//         let parsed_data = parse_csv_auto(csv_data).unwrap();
+//         assert_eq!(parsed_data, vec!["value1, value2, value3"]);
+//     }
+
+//     #[test]
+//     fn test_parse_csv_auto_with_header() {
+//         let csv_data = b"name1,name2,name3\nvalue1,value2,value3\nvalue4,value5,value6";
+//         let parsed_data = parse_csv_auto(csv_data).unwrap();
+//         assert_eq!(parsed_data, vec!["name1: value1, name2: value2, name3: value3", "name1: value4, name2: value5, name3: value6"]);
+//     }
+// }
