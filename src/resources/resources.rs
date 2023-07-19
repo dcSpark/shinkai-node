@@ -378,6 +378,36 @@ impl DocumentResource {
         Ok(chunks)
     }
 
+    /// Performs a metadata search, returning all DataChunks with the same
+    /// metadata.
+    ///
+    /// # Arguments
+    ///
+    /// * `query_metadata` - The metadata string to search for.
+    ///
+    /// # Returns
+    ///
+    /// A vector of `DataChunk`s with the same metadata, or an error.
+    pub fn metadata_search(&self, query_metadata: String) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+        let mut matching_chunks: Vec<DataChunk> = Vec::new();
+
+        for chunk in &self.data_chunks {
+            match &chunk.metadata {
+                Some(metadata) if metadata == &query_metadata => matching_chunks.push(chunk.clone()),
+                _ => (),
+            }
+        }
+
+        if matching_chunks.is_empty() {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "No matching data chunks found",
+            )));
+        }
+
+        Ok(matching_chunks)
+    }
+
     /// Appends a new data chunk and associated embedding to the document
     /// resource.
     ///
