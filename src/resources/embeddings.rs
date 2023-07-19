@@ -31,6 +31,14 @@ pub struct Embedding {
 }
 
 impl Embedding {
+    pub fn set_id(&mut self, id: String) {
+        self.id = id;
+    }
+
+    pub fn set_id_with_integer(&mut self, id: u64) {
+        self.id = id.to_string();
+    }
+
     /// Print embedding.
     ///
     /// # Parameters
