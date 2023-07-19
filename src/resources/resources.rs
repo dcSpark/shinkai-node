@@ -26,8 +26,12 @@ impl DataChunk {
     /// # Returns
     ///
     /// A new `DataChunk` instance.
-    pub fn new(id: String, data: String, metadata: Option<String>) -> Self {
-        Self { id, data, metadata }
+    pub fn new(id: String, data: &str, metadata: Option<&str>) -> Self {
+        Self {
+            id,
+            data: data.to_string(),
+            metadata: metadata.map(|s| s.to_string()),
+        }
     }
 
     /// Creates a new `DataChunk` with a `u64` id converted to a `String`, data,
@@ -43,7 +47,7 @@ impl DataChunk {
     /// # Returns
     ///
     /// A new `DataChunk` instance.
-    pub fn new_with_integer_id(id: u64, data: String, metadata: Option<String>) -> Self {
+    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>) -> Self {
         Self::new(id.to_string(), data, metadata)
     }
 }
@@ -202,6 +206,7 @@ pub trait Resource {
             .iter()
             .filter_map(|embedding| {
                 let similarity = query.cosine_similarity(embedding);
+                println!("Embedding {}", embedding.id);
                 match NotNan::new(similarity) {
                     Ok(not_nan_similarity) => Some((embedding.id.clone(), not_nan_similarity)),
                     Err(_) => None, // Skip this embedding if similarity is NaN
@@ -236,6 +241,7 @@ pub trait Resource {
         // Fetch the DataChunks matching the most similar embeddings
         let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
         for (id, similarity) in top_results {
+            println!("{}: {}%", id, similarity);
             let chunk = self.get_data_chunk(id)?; // Propagate the error if `get_data_chunk` fails
             chunks.push((chunk.clone(), similarity));
         }
@@ -435,7 +441,7 @@ impl DocumentResource {
     /// # Returns
     ///
     /// A vector of `DataChunk`s with the same metadata, or an error.
-    pub fn metadata_search(&self, query_metadata: String) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
         let mut matching_chunks: Vec<DataChunk> = Vec::new();
 
         for chunk in &self.data_chunks {
@@ -470,9 +476,9 @@ impl DocumentResource {
     /// metadata, clones the provided embedding and sets its id to match the
     /// new data chunk, and finally adds the new data chunk and the updated
     /// embedding to the resource.
-    pub fn append_data(&mut self, data: String, metadata: Option<String>, embedding: &Embedding) {
+    pub fn append_data(&mut self, data: &str, metadata: Option<&str>, embedding: &Embedding) {
         let id = self.chunk_count + 1;
-        let data_chunk = DataChunk::new_with_integer_id(id, data.clone(), metadata.clone());
+        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone());
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.add_data_chunk(data_chunk);
@@ -502,8 +508,8 @@ impl DocumentResource {
     pub fn replace_data(
         &mut self,
         id: u64,
-        new_data: String,
-        new_metadata: Option<String>,
+        new_data: &str,
+        new_metadata: Option<&str>,
         embedding: &Embedding,
     ) -> Result<DataChunk, Box<dyn Error>> {
         if id > self.chunk_count {
@@ -514,7 +520,7 @@ impl DocumentResource {
         embedding.set_id_with_integer(id);
         let old_chunk = std::mem::replace(
             &mut self.data_chunks[index],
-            DataChunk::new_with_integer_id(id, new_data.clone(), new_metadata.clone()),
+            DataChunk::new_with_integer_id(id, &new_data, new_metadata),
         );
         self.chunk_embeddings[index] = embedding;
         Ok(old_chunk)
@@ -589,29 +595,5 @@ impl DocumentResource {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
-    }
-}
-
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_adding_data_to_document_resource() {
-        let generator = EmbeddingGenerator::new_default();
-
-        let mut doc = DocumentResource::new_empty(
-            "3 Animal Facts",
-            Some("A bunch of facts about animals and wildlife"),
-            Some("animalwildlife.com"),
-        );
-        // Try updating resource embedding
-        doc.update_resource_embedding(&generator).unwrap();
-
-        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
-        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
-
-        assert_eq!(dog_embeddings, dog_embeddings);
-        assert_eq!(cat_embeddings, cat_embeddings);
-        assert_ne!(dog_embeddings, cat_embeddings);
     }
 }

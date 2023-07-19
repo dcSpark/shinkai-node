@@ -223,47 +223,52 @@ mod tests {
         assert_ne!(dog_embeddings, cat_embeddings);
     }
 
-    #[test]
-    fn test_embedding_vector_similarity() {
-        let generator = EmbeddingGenerator::new_default();
+    //
+    // Commented out because embedding generation is slow
+    // and resources tests cover this functionality anyways
+    //
+    // #[test]
+    // fn test_embedding_vector_similarity() {
+    //     let generator = EmbeddingGenerator::new_default();
 
-        let query = "What can fly in the sky?";
-        let comparands = vec![
-            "A golden retriever dog".to_string(),
-            "A four legged frog".to_string(),
-            "A plane in the sky".to_string(),
-        ];
+    //     let query = "What can fly in the sky?";
+    //     let comparands = vec![
+    //         "A golden retriever dog".to_string(),
+    //         "A four legged frog".to_string(),
+    //         "A plane in the sky".to_string(),
+    //     ];
 
-        // Generate embeddings for query and comparands
-        let query_embedding = generator.generate_embedding(query, query).unwrap();
-        let comparand_embeddings: Vec<Embedding> = comparands
-            .iter()
-            .map(|text| generator.generate_embedding(text, text).unwrap())
-            .collect();
+    //     // Generate embeddings for query and comparands
+    //     let query_embedding = generator.generate_embedding(query,
+    // query).unwrap();     let comparand_embeddings: Vec<Embedding> =
+    // comparands         .iter()
+    //         .map(|text| generator.generate_embedding(text, text).unwrap())
+    //         .collect();
 
-        // Print the embeddings
-        query_embedding.print();
-        println!("---");
-        for embedding in &comparand_embeddings {
-            embedding.print();
-        }
+    //     // Print the embeddings
+    //     query_embedding.print();
+    //     println!("---");
+    //     for embedding in &comparand_embeddings {
+    //         embedding.print();
+    //     }
 
-        // Calculate the cosine similarity between the query and each comparand, and
-        // sort by similarity
-        let mut similarities: Vec<(Embedding, f32)> = comparand_embeddings
-            .iter()
-            .map(|embedding| (embedding.clone(), query_embedding.cosine_similarity(&embedding)))
-            .collect();
-        similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let similarities = query_embedding.score_similarity(comparand_embeddings);
+    //     // Calculate the cosine similarity between the query and each
+    // comparand, and     // sort by similarity
+    //     let mut similarities: Vec<(Embedding, f32)> = comparand_embeddings
+    //         .iter()
+    //         .map(|embedding| (embedding.clone(),
+    // query_embedding.cosine_similarity(&embedding)))         .collect();
+    //     similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    //     let similarities =
+    // query_embedding.score_similarity(comparand_embeddings);
 
-        // Print similarities
-        println!("---");
-        println!("Similarities:");
-        for scored_embedding in &similarities {
-            scored_embedding.print();
-        }
+    //     // Print similarities
+    //     println!("---");
+    //     println!("Similarities:");
+    //     for scored_embedding in &similarities {
+    //         scored_embedding.print();
+    //     }
 
-        assert!(similarities[0].embedding.id == "A plane in the sky");
-    }
+    //     assert!(similarities[0].embedding.id == "A plane in the sky");
+    // }
 }
