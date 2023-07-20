@@ -375,11 +375,11 @@ impl DocumentResource {
 }
 
 pub fn test_pdf_to_doc() {
-    let grouped_text_list = FileParser::parse_pdf_from_path("llama2.pdf").unwrap();
+    let grouped_text_list = FileParser::parse_pdf_from_path("shinkai.pdf").unwrap();
 
-    for text in grouped_text_list {
-        println!("{}\n-----------\n", &text)
-    }
+    // for text in grouped_text_list {
+    //     println!("{}\n-----------\n", &text)
+    // }
 
     // let generator = LocalEmbeddingGenerator::new_default();
     // let mut doc = DocumentResource::new_empty(

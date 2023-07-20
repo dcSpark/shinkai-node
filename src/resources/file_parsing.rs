@@ -120,8 +120,7 @@ impl FileParser {
     /// contain an `Error`.
     pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-        println!("Early text: {}", text);
-        let grouped_text_list = FileParser::split_into_groups(&text, 3);
+        let grouped_text_list = FileParser::split_into_groups(&text, 300);
         Ok(grouped_text_list)
     }
 
@@ -143,23 +142,86 @@ impl FileParser {
     }
 
     fn clean_text(text: &str) -> String {
-        let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-]"#).unwrap();
-        let cleaned_text = re.replace_all(text, "");
-        cleaned_text.to_string()
+        let text = text.replace("\n", " ");
+        let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#).unwrap();
+        let re_whitespace = Regex::new(r"\s{2,}").unwrap();
+        let re_redundant_periods = Regex::new(r"\.+\s+\d*\.+\s+").unwrap();
+        let re_whitespace_before_punctuation = Regex::new(r#"\s([.,!?)\]])"#).unwrap();
+        let cleaned_text = re.replace_all(&text, " ");
+        let cleaned_text_no_consecutive_spaces = re_whitespace.replace_all(&cleaned_text, " ");
+        let cleaned_text_no_redundant_periods =
+            re_redundant_periods.replace_all(&cleaned_text_no_consecutive_spaces, ". ");
+        let cleaned_text_no_whitespace_before_punctuation =
+            re_whitespace_before_punctuation.replace_all(&cleaned_text_no_redundant_periods, "$1");
+        cleaned_text_no_whitespace_before_punctuation
+            .to_string()
+            .trim()
+            .to_owned()
     }
 
-    fn split_into_groups(text: &str, sentences_per_group: usize) -> Vec<String> {
-        println!("Body text: {}", text);
+    fn split_into_sentences(text: &str) -> Vec<String> {
+        let mut sentences = Vec::new();
+        let mut start = 0;
+        let mut prev_char_is_digit = false;
+        let mut prev_chars = String::new();
+
+        for (i, char) in text.char_indices() {
+            prev_chars.push(char);
+            if prev_chars.len() > 4 {
+                prev_chars.remove(0);
+            }
+            if (char == '.' && !prev_char_is_digit && !prev_chars.ends_with("i.e") && !prev_chars.ends_with("e.g"))
+                || char == '?'
+                || char == '!'
+            {
+                let mut sentence = text[start..i + 1].trim().to_string();
+                while sentence.starts_with(',')
+                    || sentence.starts_with(')')
+                    || sentence.starts_with('.')
+                    || sentence.starts_with(']')
+                {
+                    sentence.remove(0);
+                }
+                if sentence.len() >= 10 {
+                    sentences.push(sentence);
+                }
+                start = i + 1;
+            }
+            prev_char_is_digit = char.is_digit(10);
+        }
+
+        // Add the last sentence if it's not empty and is 10 characters or longer
+        if start < text.len() {
+            let mut sentence = text[start..].trim().to_string();
+            while sentence.starts_with(',') || sentence.starts_with('(') || sentence.starts_with(')') {
+                sentence.remove(0);
+            }
+            if sentence.len() >= 10 {
+                sentences.push(sentence);
+            }
+        }
+
+        sentences
+    }
+
+    fn split_into_groups(text: &str, character_limit: usize) -> Vec<String> {
         let cleaned_text = FileParser::clean_text(text);
-        let sentences = LinesWithEndings::from(cleaned_text.as_str());
+        let sentences = FileParser::split_into_sentences(cleaned_text.as_str());
         let mut groups = Vec::new();
         let mut current_group = Vec::new();
+        let mut current_length = 0;
 
         for sentence in sentences {
+            println!("sentence\n----\n{}", sentence);
+            let sentence_length = sentence.len();
             current_group.push(sentence.to_string());
-            if current_group.len() == sentences_per_group {
+            current_length += sentence_length;
+
+            if current_length > character_limit {
                 groups.push(current_group.join(" "));
+                // println!("Group\n----\n{}", current_group.join(" "));
                 current_group.clear();
+                current_length = 0;
             }
         }
 
