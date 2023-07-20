@@ -2,9 +2,19 @@
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
+pub use llm::ModelArchitecture;
 
 lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
+}
+
+pub enum EmbeddingModelType {
+    LocalModel(ModelArchitecture),
+    ExternalModel,
+}
+
+pub enum ExternalModel {
+    OpenAITextEmbeddingAda002,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -138,6 +148,7 @@ impl Embedding {
 
 pub struct EmbeddingGenerator {
     model: Box<dyn Model>,
+    model_type: EmbeddingModelType,
 }
 
 impl EmbeddingGenerator {
@@ -148,8 +159,11 @@ impl EmbeddingGenerator {
     ///
     /// # Returns
     /// A new `EmbeddingGenerator` that uses the specified model.
-    pub fn new(model: Box<dyn Model>) -> Self {
-        Self { model }
+    pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
+        Self {
+            model,
+            model_type: EmbeddingModelType::LocalModel(model_architecture),
+        }
     }
 
     /// Create a new EmbeddingGenerator that uses the default model.
@@ -160,15 +174,19 @@ impl EmbeddingGenerator {
     /// # Panics
     /// This function will panic if it fails to load the default model.
     pub fn new_default() -> Self {
-        let default = llm::load_dynamic(
-            Some(llm::ModelArchitecture::GptNeoX),
+        let model_architecture = llm::ModelArchitecture::GptNeoX;
+        let model = llm::load_dynamic(
+            Some(model_architecture),
             std::path::Path::new(&*DEFAULT_MODEL_PATH),
             llm::TokenizerSource::Embedded,
             Default::default(),
             load_callback,
         )
         .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-        Self { model: default }
+        Self {
+            model,
+            model_type: EmbeddingModelType::LocalModel(model_architecture),
+        }
     }
 
     /// Generate an Embedding for an input string.
