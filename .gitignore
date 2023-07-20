@@ -4,3 +4,5 @@
 /db_tests
 *.bin
 /db
+*.pdf
+*.csv
