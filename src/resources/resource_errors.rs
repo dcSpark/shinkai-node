@@ -11,6 +11,7 @@ pub enum ResourceError {
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
+    RegexError(regex::Error),
 }
 
 impl fmt::Display for ResourceError {
@@ -24,8 +25,15 @@ impl fmt::Display for ResourceError {
             ResourceError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             ResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             ResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
+            ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
         }
     }
 }
 
 impl Error for ResourceError {}
+
+impl From<regex::Error> for ResourceError {
+    fn from(err: regex::Error) -> ResourceError {
+        ResourceError::RegexError(err)
+    }
+}

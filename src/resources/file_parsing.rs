@@ -120,8 +120,8 @@ impl FileParser {
     /// contain an `Error`.
     pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, 300);
-        Ok(grouped_text_list)
+        let grouped_text_list = FileParser::split_into_groups(&text, 650);
+        grouped_text_list
     }
 
     /// Parse text from a PDF from a file.
@@ -141,24 +141,70 @@ impl FileParser {
         Self::parse_pdf(&buffer)
     }
 
-    fn clean_text(text: &str) -> String {
+    /// Cleans the input text by performing several operations:
+    ///
+    /// 1. Replaces newline characters with spaces.
+    /// 2. Removes characters that are not alphanumeric, whitespace, or common
+    /// punctuation. 3. Replaces sequences of two or more whitespace
+    /// characters with a single space. 4. Replaces sequences of periods
+    /// followed by whitespace and a digit with a single period and a space.
+    /// 5. Removes whitespace before punctuation.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - A string slice that holds the text to be cleaned.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<String, ResourceError>` - The cleaned text, or an error if one
+    ///   occurred during the cleaning process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if a regular expression fails to
+    /// compile.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let text = "Hello, world!\nThis is a test.";
+    /// let cleaned_text = clean_text(text);
+    /// assert_eq!(cleaned_text.unwrap(), "Hello, world! This is a test.");
+    /// ```
+    fn clean_text(text: &str) -> Result<String, ResourceError> {
         let text = text.replace("\n", " ");
-        let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#).unwrap();
-        let re_whitespace = Regex::new(r"\s{2,}").unwrap();
-        let re_redundant_periods = Regex::new(r"\.+\s+\d*\.+\s+").unwrap();
-        let re_whitespace_before_punctuation = Regex::new(r#"\s([.,!?)\]])"#).unwrap();
+        let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#)?;
+        let re_whitespace = Regex::new(r"\s{2,}")?;
+        let re_redundant_periods = Regex::new(r"\.+\s+\d*\.+\s+")?;
+        let re_whitespace_before_punctuation = Regex::new(r#"\s([.,!?)\]])"#)?;
         let cleaned_text = re.replace_all(&text, " ");
         let cleaned_text_no_consecutive_spaces = re_whitespace.replace_all(&cleaned_text, " ");
         let cleaned_text_no_redundant_periods =
             re_redundant_periods.replace_all(&cleaned_text_no_consecutive_spaces, ". ");
         let cleaned_text_no_whitespace_before_punctuation =
             re_whitespace_before_punctuation.replace_all(&cleaned_text_no_redundant_periods, "$1");
-        cleaned_text_no_whitespace_before_punctuation
+        Ok(cleaned_text_no_whitespace_before_punctuation
             .to_string()
             .trim()
-            .to_owned()
+            .to_owned())
     }
 
+    /// Splits the input text into sentences.
+    ///
+    /// A sentence is defined as a sequence of characters that ends with a
+    /// period, question mark, or exclamation point. However, a period is
+    /// not treated as the end of a sentence if it is preceded by a digit or if
+    /// it is part of the abbreviations "i.e" or "e.g". Sentences that are
+    /// less than 10 characters long are not included.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - A string slice that holds the text to be split into
+    ///   sentences.
+    ///
+    /// # Returns
+    ///
+    /// * `<Vec<String>` - A vector of sentences
     fn split_into_sentences(text: &str) -> Vec<String> {
         let mut sentences = Vec::new();
         let mut start = 0;
@@ -204,22 +250,52 @@ impl FileParser {
         sentences
     }
 
-    fn split_into_groups(text: &str, character_limit: usize) -> Vec<String> {
-        let cleaned_text = FileParser::clean_text(text);
-        let sentences = FileParser::split_into_sentences(cleaned_text.as_str());
+    /// Splits the input text into groups of sentences.
+    ///
+    /// A group is defined as a sequence of sentences whose total length exceeds
+    /// a specified character minimum. The text is first cleaned and split
+    /// into sentences, and then the sentences are grouped together until the
+    /// total length of the group exceeds the character minimum. Once the
+    /// character minimum is exceeded, a new group is started.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - A string slice that holds the text to be split into groups.
+    /// * `character_minimum` - The minimum total length of the sentences in a
+    ///   group.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Vec<String>, ResourceError>` - A vector of groups, or an error
+    ///   if one occurred during the grouping process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if a regular expression fails to
+    /// compile.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let text = "Hello, world! This is a test. Another sentence.";
+    /// let groups = split_into_groups(text, 25);
+    /// assert_eq!(groups.unwrap(), vec!["Hello, world! This is a test.", "Another sentence."]);
+    /// ```
+    fn split_into_groups(text: &str, character_minimum: usize) -> Result<Vec<String>, ResourceError> {
+        let cleaned_text = FileParser::clean_text(text)?;
+        let sentences = FileParser::split_into_sentences(&cleaned_text);
         let mut groups = Vec::new();
         let mut current_group = Vec::new();
         let mut current_length = 0;
 
         for sentence in sentences {
-            println!("sentence\n----\n{}", sentence);
             let sentence_length = sentence.len();
-            current_group.push(sentence.to_string());
+            current_group.push(sentence);
             current_length += sentence_length;
 
-            if current_length > character_limit {
+            if current_length > character_minimum {
                 groups.push(current_group.join(" "));
-                // println!("Group\n----\n{}", current_group.join(" "));
+                println!("Group\n----\n{}", current_group.join(" "));
                 current_group.clear();
                 current_length = 0;
             }
@@ -230,6 +306,6 @@ impl FileParser {
             groups.push(current_group.join(" "));
         }
 
-        groups
+        Ok(groups)
     }
 }
