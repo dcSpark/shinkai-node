@@ -1,6 +1,7 @@
 pub use llm::ModelArchitecture;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+
 pub struct ScoredEmbedding {
     pub score: f32,
     pub embedding: Embedding,
@@ -16,8 +17,7 @@ impl ScoredEmbedding {
     }
 }
 
-//#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embedding {
     pub id: String,
     pub vector: Vec<f32>,
