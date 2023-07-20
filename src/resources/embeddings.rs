@@ -8,11 +8,13 @@ lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum EmbeddingModelType {
     LocalModel(ModelArchitecture),
     ExternalModel,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExternalModel {
     OpenAITextEmbeddingAda002,
 }
