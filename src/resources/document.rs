@@ -1,5 +1,8 @@
+use std::fs::File;
+
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
+use crate::resources::file_parsing::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
@@ -371,10 +374,24 @@ impl DocumentResource {
     }
 }
 
+pub fn test_pdf_to_doc() {
+    let grouped_text_list = FileParser::parse_pdf_from_path("llama2.pdf").unwrap();
+
+    for text in grouped_text_list {
+        println!("{}\n-----------\n", &text)
+    }
+
+    // let generator = LocalEmbeddingGenerator::new_default();
+    // let mut doc = DocumentResource::new_empty(
+    //     "Llama2 Paper",
+    //     Some("A bunch of facts about animals and wildlife"),
+    //     Some("animalwildlife.com"),
+    // );
+    // doc.set_embedding_model_used(generator.model_type());
+}
+
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
 
     #[test]
     fn test_document_resource_similarity_search() {

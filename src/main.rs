@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_node::resources::document::test_pdf_to_doc;
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
@@ -47,6 +48,8 @@ fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
 
 fn main() {
     env_logger::init();
+
+    test_pdf_to_doc();
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided

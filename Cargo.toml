@@ -40,6 +40,7 @@ pdf-extract = "0.6.5"
 csv = "1.1.6"
 llm = { git = "https://github.com/rustformers/llm" , branch = "main" }
 ordered-float = "3.7.0"
+syntect = "5.0.0"
 
 [dependencies.rocksdb]
 version = "0.21.0"

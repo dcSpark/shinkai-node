@@ -1,7 +1,9 @@
 use crate::resources::resource_errors::*;
 use csv::Reader;
 use pdf_extract;
+use regex::Regex;
 use std::io::Cursor;
+use syntect::util::LinesWithEndings;
 
 pub struct FileParser {}
 
@@ -85,23 +87,6 @@ impl FileParser {
         Ok(result)
     }
 
-    /// Parse text from a PDF from a buffer.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the PDF data.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `String` of the extracted text from the PDF. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
-    pub fn parse_pdf(buffer: &[u8]) -> Result<String, ResourceError> {
-        let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-
-        Ok(text)
-    }
-
     /// Parse CSV data from a file.
     ///
     /// # Arguments
@@ -122,6 +107,24 @@ impl FileParser {
         Self::parse_csv(&buffer, header)
     }
 
+    /// Parse text from a PDF from a buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - A byte slice containing the PDF data.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a `String` of the extracted text from the PDF. If
+    /// an error occurs while parsing the PDF data, the `Result` will
+    /// contain an `Error`.
+    pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
+        let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
+        println!("Early text: {}", text);
+        let grouped_text_list = FileParser::split_into_groups(&text, 3);
+        Ok(grouped_text_list)
+    }
+
     /// Parse text from a PDF from a file.
     ///
     /// # Arguments
@@ -134,8 +137,37 @@ impl FileParser {
     /// A `Result` containing a `String` of the extracted text from the PDF. If
     /// an error occurs while parsing the PDF data, the `Result` will
     /// contain an `Error`.
-    pub fn parse_pdf_from_path(file_path: &str) -> Result<String, ResourceError> {
+    pub fn parse_pdf_from_path(file_path: &str) -> Result<Vec<String>, ResourceError> {
         let buffer = std::fs::read(file_path).map_err(|_| ResourceError::FailedPDFParsing)?;
         Self::parse_pdf(&buffer)
+    }
+
+    fn clean_text(text: &str) -> String {
+        let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-]"#).unwrap();
+        let cleaned_text = re.replace_all(text, "");
+        cleaned_text.to_string()
+    }
+
+    fn split_into_groups(text: &str, sentences_per_group: usize) -> Vec<String> {
+        println!("Body text: {}", text);
+        let cleaned_text = FileParser::clean_text(text);
+        let sentences = LinesWithEndings::from(cleaned_text.as_str());
+        let mut groups = Vec::new();
+        let mut current_group = Vec::new();
+
+        for sentence in sentences {
+            current_group.push(sentence.to_string());
+            if current_group.len() == sentences_per_group {
+                groups.push(current_group.join(" "));
+                current_group.clear();
+            }
+        }
+
+        // Add the last group if it's not empty
+        if !current_group.is_empty() {
+            groups.push(current_group.join(" "));
+        }
+
+        groups
     }
 }
