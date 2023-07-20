@@ -1,5 +1,6 @@
 #[macro_use]
 use lazy_static::lazy_static;
+use crate::resources::resource_errors::*;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
 pub use llm::ModelArchitecture;
@@ -200,7 +201,7 @@ impl EmbeddingGenerator {
     ///
     /// # Returns
     /// An `Embedding` for the input string or an error.
-    pub fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, String> {
+    pub fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
             all_logits: None,
@@ -211,7 +212,7 @@ impl EmbeddingGenerator {
 
         let tokens = vocab
             .tokenize(input_string, beginning_of_sentence)
-            .map_err(|err| format!("Failed to tokenize input string: {}", err))?;
+            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
 
         let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
 
@@ -219,7 +220,7 @@ impl EmbeddingGenerator {
 
         let vector = output_request
             .embeddings
-            .ok_or_else(|| "Failed to generate embeddings".to_string())?;
+            .ok_or_else(|| ResourceError::FailedEmbeddingGeneration)?;
 
         Ok(Embedding {
             id: String::from(id),
