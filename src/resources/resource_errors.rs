@@ -8,6 +8,7 @@ pub enum ResourceError {
     FailedEmbeddingGeneration,
     NoChunkFound,
     InvalidModelArchitecture,
+    FailedJSONParsing,
 }
 
 impl fmt::Display for ResourceError {
@@ -18,6 +19,7 @@ impl fmt::Display for ResourceError {
             ResourceError::FailedEmbeddingGeneration => write!(f, "Failed to generate embeddings"),
             ResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
             ResourceError::InvalidModelArchitecture => write!(f, "An unsupported model architecture was specified."),
+            ResourceError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
         }
     }
 }
