@@ -2,10 +2,9 @@ use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
-use std::error::Error;
+use serde_json;
 
-/// data chunks and embeddings.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
     pub name: String,
     pub description: Option<String>,
@@ -360,10 +359,22 @@ impl DocumentResource {
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
     }
+
+    // Convert to json
+    pub fn to_json(&self) -> Result<String, ResourceError> {
+        serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
+    }
+
+    // Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ResourceError> {
+        serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
+    }
 }
 
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::io::Write;
 
     #[test]
     fn test_document_resource_similarity_search() {
@@ -402,5 +413,10 @@ mod tests {
         let query_embedding3 = generator.generate_embedding(query_string3, "").unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].data);
+
+        // Testing JSON serialization/deserialization
+        let json = doc.to_json().unwrap();
+        let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+        assert_eq!(doc, deserialized_doc);
     }
 }
