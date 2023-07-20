@@ -76,13 +76,10 @@ impl Resource for DocumentResource {
     /// # Returns
     ///
     /// A reference to the `DataChunk` if found, or an error.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, Box<dyn std::error::Error>> {
-        let id = id.parse::<u64>().map_err(|_| "Chunk id must be a u64")?;
+    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
+        let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
         if id > self.chunk_count {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid chunk id",
-            )));
+            return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
         Ok(&self.data_chunks[index])
@@ -174,16 +171,16 @@ impl DocumentResource {
         &self,
         query: Embedding,
         proximity_window: u64,
-    ) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
-        let search_results = self.similarity_search(query, 1)?;
+    ) -> Result<Vec<DataChunk>, ResourceError> {
+        let search_results = self.similarity_search(query, 1);
 
-        if search_results.is_empty() {
-            return Err("No matching data chunks found".into());
-        }
+        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?; // If there's no first element, return an InvalidChunkId error
 
         let mut chunks: Vec<DataChunk> = Vec::new();
-        let most_similar_chunk = search_results.first().unwrap(); // This is a safe unwrap
-        let most_similar_id = most_similar_chunk.id.parse::<u64>()?;
+        let most_similar_id = most_similar_chunk
+            .id
+            .parse::<u64>()
+            .map_err(|_| ResourceError::InvalidChunkId)?;
 
         let start_id = if most_similar_id > proximity_window {
             most_similar_id - proximity_window
@@ -210,7 +207,7 @@ impl DocumentResource {
     /// # Returns
     ///
     /// A vector of `DataChunk`s with the same metadata, or an error.
-    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, Box<dyn std::error::Error>> {
+    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, ResourceError> {
         let mut matching_chunks: Vec<DataChunk> = Vec::new();
 
         for chunk in &self.data_chunks {
@@ -221,10 +218,7 @@ impl DocumentResource {
         }
 
         if matching_chunks.is_empty() {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "No matching data chunks found",
-            )));
+            return Err(ResourceError::NoChunkFound);
         }
 
         Ok(matching_chunks)
@@ -266,8 +260,8 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// * `Result<DataChunk, Box<dyn std::error::Error>>` - If successful,
-    ///   returns the old `DataChunk` that was replaced.
+    /// * `Result<DataChunk, ResourceError>` - If successful, returns the old
+    ///   `DataChunk` that was replaced.
     ///
     /// The method checks if the provided id is valid, and if so, it creates a
     /// new data chunk using the provided new data and metadata, clones the
@@ -280,9 +274,9 @@ impl DocumentResource {
         new_data: &str,
         new_metadata: Option<&str>,
         embedding: &Embedding,
-    ) -> Result<DataChunk, Box<dyn Error>> {
+    ) -> Result<DataChunk, ResourceError> {
         if id > self.chunk_count {
-            return Err(Box::new(InvalidChunkIdError));
+            return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
         let mut embedding = embedding.clone();
@@ -300,15 +294,15 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// * `Result<(DataChunk, Embedding), Box<dyn std::error::Error>>` - If
-    ///   successful, returns a tuple containing the removed data chunk and
-    ///   embedding. If the resource is empty, returns a `ResourceEmptyError`.
+    /// * `Result<(DataChunk, Embedding), ResourceError>` - If successful,
+    ///   returns a tuple containing the removed data chunk and embedding. If
+    ///   the resource is empty, returns a `ResourceEmptyError`.
     ///
     /// The method attempts to pop the last `DataChunk` and `Embedding` from
     /// their respective vectors. If this is successful, it decrements
     /// `chunk_count` and returns the popped `DataChunk` and `Embedding`. If
-    /// the resource is empty, it returns a `ResourceEmptyError`.
-    pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), Box<dyn std::error::Error>> {
+    /// the resource is empty, it returns a `ResourceError`.
+    pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
 
@@ -317,7 +311,7 @@ impl DocumentResource {
                 self.chunk_count -= 1;
                 Ok((chunk, embedding))
             }
-            _ => Err(Box::new(ResourceEmptyError)),
+            _ => Err(ResourceError::ResourceEmpty),
         }
     }
 
@@ -330,7 +324,7 @@ impl DocumentResource {
     /// # Returns
     ///
     /// A tuple containing the removed data chunk and embedding, or error.
-    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), Box<dyn Error>> {
+    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
 
         let index = (id - 1) as usize;
@@ -345,9 +339,9 @@ impl DocumentResource {
     }
 
     // Internal data chunk deletion
-    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, Box<dyn Error>> {
+    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, ResourceError> {
         if id > self.chunk_count {
-            return Err(Box::new(InvalidChunkIdError));
+            return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
         let removed_chunk = self.data_chunks.remove(index);
@@ -394,17 +388,17 @@ mod tests {
         // Testing similarity search works
         let query_string = "What animal barks?";
         let query_embedding = generator.generate_embedding(query_string, "").unwrap();
-        let res = doc.similarity_search(query_embedding, 1).unwrap();
+        let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(fact1, res[0].data);
 
         let query_string2 = "What animal is slow?";
         let query_embedding2 = generator.generate_embedding(query_string2, "").unwrap();
-        let res2 = doc.similarity_search(query_embedding2, 3).unwrap();
+        let res2 = doc.similarity_search(query_embedding2, 3);
         assert_eq!(fact2, res2[0].data);
 
         let query_string3 = "What animal swims in the ocean?";
         let query_embedding3 = generator.generate_embedding(query_string3, "").unwrap();
-        let res3 = doc.similarity_search(query_embedding3, 2).unwrap();
+        let res3 = doc.similarity_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].data);
     }
 }
