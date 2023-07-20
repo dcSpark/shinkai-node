@@ -1,5 +1,5 @@
 #[derive(Debug)]
-enum MessageSchemaType {
+pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
     PreMessageSchema,
@@ -7,7 +7,7 @@ enum MessageSchemaType {
 }
 
 impl MessageSchemaType {
-    fn from_str(s: &str) -> Option<Self> {
+    pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "JobCreationSchema" => Some(Self::JobCreationSchema),
             "JobMessageSchema" => Some(Self::JobMessageSchema),
@@ -17,7 +17,7 @@ impl MessageSchemaType {
         }
     }
 
-    fn to_str(&self) -> &'static str {
+    pub fn to_str(&self) -> &'static str {
         match self {
             Self::JobCreationSchema => "JobCreationSchema",
             Self::JobMessageSchema => "JobMessageSchema",
