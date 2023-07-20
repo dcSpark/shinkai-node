@@ -58,9 +58,11 @@ pub trait Resource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> Option<&str>;
+    fn embedding_model_used(&self) -> EmbeddingModelType;
     fn resource_embedding(&self) -> &Embedding;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
     fn set_resource_embedding(&mut self, embedding: Embedding);
+    fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
 
     /// Retrieves a data chunk given its id.
     ///
@@ -254,12 +256,20 @@ pub struct DocumentResource {
     pub description: Option<String>,
     pub source: Option<String>,
     pub resource_embedding: Embedding,
+    embedding_model_used: EmbeddingModelType,
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
     data_chunks: Vec<DataChunk>,
 }
 
 impl Resource for DocumentResource {
+    /// # Returns
+    ///
+    /// The LLM model used to generate embeddings for this resource.
+    fn embedding_model_used(&self) -> EmbeddingModelType {
+        self.embedding_model_used.clone()
+    }
+
     /// # Returns
     ///
     /// The name of the `DocumentResource`.
@@ -293,6 +303,10 @@ impl Resource for DocumentResource {
     /// The chunk `Embedding`s of the `DocumentResource`.
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
+    }
+
+    fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
+        self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
@@ -338,6 +352,8 @@ impl DocumentResource {
     ///   embeddings of the data chunks.
     /// * `data_chunks` - A vector of `DataChunk` structs that hold the data
     ///   chunks.
+    /// * `embedding_model_used` - The model used to generate the embeddings for
+    ///   this resource
     ///
     /// # Returns
     ///
@@ -349,6 +365,7 @@ impl DocumentResource {
         resource_embedding: Embedding,
         chunk_embeddings: Vec<Embedding>,
         data_chunks: Vec<DataChunk>,
+        embedding_model_used: EmbeddingModelType,
     ) -> Self {
         DocumentResource {
             name: String::from(name),
@@ -358,6 +375,7 @@ impl DocumentResource {
             chunk_embeddings,
             chunk_count: data_chunks.len() as u64,
             data_chunks: data_chunks,
+            embedding_model_used,
         }
     }
 
@@ -381,6 +399,7 @@ impl DocumentResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
+            EmbeddingModelType::LocalModel(ModelArchitecture::GptNeoX),
         )
     }
 
