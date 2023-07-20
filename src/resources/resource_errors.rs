@@ -2,27 +2,22 @@ use std::error::Error;
 use std::fmt;
 
 #[derive(Debug)]
-/// `InvalidChunkIdError` is an error that occurs when an invalid chunk id is
-/// provided to a function.
-pub struct InvalidChunkIdError;
+pub enum ResourceError {
+    InvalidChunkId,
+    ResourceEmpty,
+    FailedEmbeddingGeneration,
+    NoChunkFound,
+}
 
-impl fmt::Display for InvalidChunkIdError {
+impl fmt::Display for ResourceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Invalid chunk id")
+        match *self {
+            ResourceError::InvalidChunkId => write!(f, "Invalid chunk id"),
+            ResourceError::ResourceEmpty => write!(f, "Resource is empty"),
+            ResourceError::FailedEmbeddingGeneration => write!(f, "Failed to generate embeddings"),
+            ResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
+        }
     }
 }
 
-impl Error for InvalidChunkIdError {}
-
-/// `ResourceEmptyError` is an error that occurs when an attempt is made to
-/// remove a data chunk and associated embedding from an empty resource.
-#[derive(Debug)]
-pub struct ResourceEmptyError;
-
-impl fmt::Display for ResourceEmptyError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Resource is empty")
-    }
-}
-
-impl Error for ResourceEmptyError {}
+impl Error for ResourceError {}
