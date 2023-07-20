@@ -9,6 +9,8 @@ pub enum ResourceError {
     NoChunkFound,
     InvalidModelArchitecture,
     FailedJSONParsing,
+    FailedCSVParsing,
+    FailedPDFParsing,
 }
 
 impl fmt::Display for ResourceError {
@@ -20,6 +22,8 @@ impl fmt::Display for ResourceError {
             ResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
             ResourceError::InvalidModelArchitecture => write!(f, "An unsupported model architecture was specified."),
             ResourceError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
+            ResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
+            ResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
         }
     }
 }
