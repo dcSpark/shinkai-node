@@ -1,3 +1,4 @@
+use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
@@ -296,7 +297,7 @@ impl DocumentResource {
     ///
     /// * `Result<(DataChunk, Embedding), ResourceError>` - If successful,
     ///   returns a tuple containing the removed data chunk and embedding. If
-    ///   the resource is empty, returns a `ResourceEmptyError`.
+    ///   the resource is empty, returns a `ResourceError`.
     ///
     /// The method attempts to pop the last `DataChunk` and `Embedding` from
     /// their respective vectors. If this is successful, it decrements
@@ -367,12 +368,13 @@ mod tests {
     #[test]
     fn test_document_resource_similarity_search() {
         // Prepare generator and doc resource
-        let generator = EmbeddingGenerator::new_default();
+        let generator = LocalEmbeddingGenerator::new_default();
         let mut doc = DocumentResource::new_empty(
             "3 Animal Facts",
             Some("A bunch of facts about animals and wildlife"),
             Some("animalwildlife.com"),
         );
+        doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
         // Prepare embeddings + data, then add it to the doc
         let fact1 = "Dogs are creatures with 4 legs that bark.";

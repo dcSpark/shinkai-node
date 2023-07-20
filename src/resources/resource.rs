@@ -1,9 +1,9 @@
+use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::error::Error;
 
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,19 +76,19 @@ pub trait Resource {
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
     /// Regenerates and updates the resource's embedding. The new
-    /// embedding is generated using the provided `EmbeddingGenerator` and
+    /// embedding is generated using the provided `LocalEmbeddingGenerator` and
     /// the resource's name, description, and source.
     ///
     /// # Arguments
     ///
-    /// * `generator` - The `EmbeddingGenerator` to be used for generating the
-    ///   new embedding.
+    /// * `generator` - The `LocalEmbeddingGenerator` to be used for generating
+    ///   the new embedding.
     ///
     /// # Returns
     ///
     /// * `Result<(), ResourceError>` - Returns `Ok(())` if the embedding
     /// is successfully updated, or an error if the embedding generation fails.
-    fn update_resource_embedding(&mut self, generator: &EmbeddingGenerator) -> Result<(), ResourceError> {
+    fn update_resource_embedding(&mut self, generator: &LocalEmbeddingGenerator) -> Result<(), ResourceError> {
         let metadata = self.resource_embedding_data_formatted();
         let new_embedding = generator
             .generate_embedding(&metadata, "1")
