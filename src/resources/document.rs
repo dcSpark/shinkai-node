@@ -151,7 +151,7 @@ impl DocumentResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::LocalModel(ModelArchitecture::GptNeoX),
+            EmbeddingModelType::LocalModel(LocalModel::GptNeoX),
         )
     }
 

@@ -7,6 +7,7 @@ pub enum ResourceError {
     ResourceEmpty,
     FailedEmbeddingGeneration,
     NoChunkFound,
+    InvalidModelArchitecture,
 }
 
 impl fmt::Display for ResourceError {
@@ -16,6 +17,7 @@ impl fmt::Display for ResourceError {
             ResourceError::ResourceEmpty => write!(f, "Resource is empty"),
             ResourceError::FailedEmbeddingGeneration => write!(f, "Failed to generate embeddings"),
             ResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
+            ResourceError::InvalidModelArchitecture => write!(f, "An unsupported model architecture was specified."),
         }
     }
 }

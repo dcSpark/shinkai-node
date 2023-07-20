@@ -9,13 +9,39 @@ lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EmbeddingModelType {
-    LocalModel(ModelArchitecture),
-    ExternalModel,
+    LocalModel(LocalModel),
+    ExternalModel(ExternalModel),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum LocalModel {
+    Bloom,
+    Gpt2,
+    GptJ,
+    GptNeoX,
+    Llama,
+    Mpt,
+    Falcon,
+}
+
+impl LocalModel {
+    pub fn from_model_architecture(arch: ModelArchitecture) -> LocalModel {
+        match arch {
+            ModelArchitecture::Bloom => LocalModel::Bloom,
+            ModelArchitecture::Gpt2 => LocalModel::Gpt2,
+            ModelArchitecture::GptJ => LocalModel::GptJ,
+            ModelArchitecture::GptNeoX => LocalModel::GptNeoX,
+            ModelArchitecture::Llama => LocalModel::Llama,
+            ModelArchitecture::Mpt => LocalModel::Mpt,
+            //ModelArchitecture::Falcon => LocalModel::Falcon, // Falcon not implemented yet in llm crate
+            _ => LocalModel::Llama,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExternalModel {
     OpenAITextEmbeddingAda002,
 }
@@ -47,7 +73,7 @@ impl LocalEmbeddingGenerator {
     pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
         Self {
             model,
-            model_type: EmbeddingModelType::LocalModel(model_architecture),
+            model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
         }
     }
 
@@ -70,7 +96,7 @@ impl LocalEmbeddingGenerator {
         .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
         Self {
             model,
-            model_type: EmbeddingModelType::LocalModel(model_architecture),
+            model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
         }
     }
 
