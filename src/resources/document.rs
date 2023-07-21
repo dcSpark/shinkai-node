@@ -393,6 +393,7 @@ impl DocumentResource {
     /// contain an `Error`.
     pub fn parse_pdf(
         buffer: &[u8],
+        average_chunk_size: u64,
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<&str>,
@@ -405,7 +406,7 @@ impl DocumentResource {
         println!("Generated resource embedding");
 
         // Parse the pdf into grouped text blocks
-        let grouped_text_list = FileParser::parse_pdf(buffer)?;
+        let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
 
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
@@ -488,6 +489,7 @@ mod tests {
             .unwrap();
         let doc = DocumentResource::parse_pdf(
             &buffer,
+            80,
             &generator,
             "Shinkai Manifesto",
             Some(desc),
@@ -501,9 +503,28 @@ mod tests {
         assert_eq!(doc, deserialized_doc);
 
         // Testing similarity search works
-        let query_string = "What date was the manifesto written on?";
+        let query_string = "Who is building Shinkai?";
         let query_embedding = generator.generate_embedding_default(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
-        // assert_eq!("10", res[0].data);
+        assert_eq!(
+            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
+            res[0].data
+        );
+
+        let query_string = "What about up-front costs?";
+        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let res = doc.similarity_search(query_embedding, 1);
+        assert_eq!(
+            "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
+            res[0].data
+        );
+
+        let query_string = "Does this relate to crypto?";
+        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let res = doc.similarity_search(query_embedding, 1);
+        assert_eq!(
+            "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
+            res[0].data
+        );
     }
 }
