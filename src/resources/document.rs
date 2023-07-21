@@ -1,6 +1,7 @@
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
+use crate::resources::local_ai::LocalAIProcess;
 use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
@@ -21,7 +22,7 @@ pub fn local_pdf_to_doc() {
     // )
     // .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
     // let generator = LocalEmbeddingGenerator::new(model, model_architecture);
-    let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::OpenAITextEmbeddingAda002);
+    let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
     let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
 
     // Read the pdf from file into a buffer, then parse it into a DocumentResource
@@ -465,7 +466,8 @@ mod tests {
         // Prepare generator and doc resource
         // let generator = LocalEmbeddingGenerator::new_default();
 
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::OpenAITextEmbeddingAda002);
+        let lai_process = LocalAIProcess::start();
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
         let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
 
         let mut doc = DocumentResource::new_empty(

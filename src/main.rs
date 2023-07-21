@@ -20,6 +20,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{info, warn};
 use network::Node;
 use shinkai_message::encryption::ephemeral_encryption_keys;
+use shinkai_node::resources::local_ai::LocalAIProcess;
 use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -48,7 +49,7 @@ fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
 
 fn main() {
     env_logger::init();
-
+    let lai_process = LocalAIProcess::start();
     local_pdf_to_doc();
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
