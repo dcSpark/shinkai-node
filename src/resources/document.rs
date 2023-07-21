@@ -5,7 +5,6 @@ use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use llm::load_progress_callback_stdout as load_callback;
-use rayon::prelude::*;
 use serde_json;
 use std::io::prelude::*;
 
@@ -30,7 +29,7 @@ pub fn local_pdf_to_doc() {
     let buffer = std::fs::read("mina.pdf")
         .map_err(|_| ResourceError::FailedPDFParsing)
         .unwrap();
-    let doc = DocumentResource::parse_pdf_parallel(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
+    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
 
     // Convert the DocumentResource into json and save to file
     let json = doc.to_json().unwrap();
@@ -448,62 +447,6 @@ impl DocumentResource {
             i += 1;
             println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
-
-        // Add the text + embeddings into the doc
-        for (i, text) in grouped_text_list.iter().enumerate() {
-            doc.append_data(text, None, &embeddings[i]);
-        }
-
-        Ok(doc)
-    }
-
-    /// This variant makes all HTTP requests to the remote LLM in parallel.
-    ///
-    /// Parses a PDF from a buffer into a Document Resource, automatically
-    /// generating embeddings using the supplied embedding generator.
-    ///
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the PDF data.
-    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
-    /// * `name` - The name of the document.
-    /// * `desc` - An optional description of the document.
-    /// * `source` - An optional source of the document.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a ResourceDocument. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
-    pub fn parse_pdf_parallel(
-        buffer: &[u8],
-        generator: &RemoteEmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
-        source: Option<&str>,
-    ) -> Result<DocumentResource, ResourceError> {
-        // Create doc resource and initial setup
-        let mut doc = DocumentResource::new_empty(name, desc, source);
-        doc.set_embedding_model_used(generator.model_type());
-        //doc.update_resource_embedding(generator)?;
-        println!("Generated resource embedding");
-
-        // Parse the pdf into grouped text blocks
-        let grouped_text_list = FileParser::parse_pdf(buffer)?;
-
-        // Generate embeddings for each group of text
-        let embeddings: Result<Vec<_>, _> = grouped_text_list
-            .par_iter()
-            .enumerate()
-            .map(|(i, text)| {
-                let embedding = generator.generate_embedding_default(text);
-                println!("Generated chunk embedding {}/{}", i + 1, grouped_text_list.len());
-                embedding
-            })
-            .collect();
-
-        let embeddings = embeddings?; // propagate the error if any
 
         // Add the text + embeddings into the doc
         for (i, text) in grouped_text_list.iter().enumerate() {

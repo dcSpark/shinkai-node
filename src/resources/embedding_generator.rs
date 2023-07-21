@@ -16,7 +16,9 @@ lazy_static! {
 pub trait EmbeddingGenerator {
     // Returns the embedding model type
     fn model_type(&self) -> EmbeddingModelType;
-    /// Generates an embedding from the given text.
+
+    /// Generates an embedding from the given input string, and assigns the
+    /// provided id.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
@@ -24,11 +26,26 @@ pub trait EmbeddingGenerator {
     ///
     /// # Parameters
     /// - `input_string`: The input string for which embeddings are generated.
-    ///
-    /// # Returns
-    /// An `Embedding` for the input string or an error.
     fn generate_embedding_default(&self, input_string: &str) -> Result<Embedding, ResourceError> {
         self.generate_embedding(input_string, "")
+    }
+
+    /// Generates embeddings from the given list of input strings,  and assigns
+    /// the provided ids.
+    fn generate_embeddings(&self, input_strings: &[&str], ids: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
+        input_strings
+            .iter()
+            .zip(ids)
+            .map(|(input, id)| self.generate_embedding(input, id))
+            .collect()
+    }
+
+    /// Generate Embeddings for a list of input strings, sets ids to a default
+    fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
+        input_strings
+            .iter()
+            .map(|input| self.generate_embedding_default(input))
+            .collect()
     }
 }
 
