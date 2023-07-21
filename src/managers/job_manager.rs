@@ -1,11 +1,17 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use crate::{
-    db::{ShinkaiMessageDB, db_errors::ShinkaiMessageDBError},
-    schemas::{inbox_name::InboxName, job_schemas::{JobScope, JobCreation, JobMessage, JobPreMessage}, message_schemas::MessageSchemaType},
-    shinkai_message_proto::ShinkaiMessage, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    db::{db_errors::ShinkaiMessageDBError, ShinkaiMessageDB},
+    schemas::{
+        inbox_name::InboxName,
+        job_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope},
+        message_schemas::MessageSchemaType,
+    },
+    shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    shinkai_message_proto::ShinkaiMessage,
 };
-use tokio::sync::Mutex;
+use chashmap::CHashMap;
+use tokio::sync::{mpsc, Mutex, Notify};
 
 pub trait JobLike {
     fn job_id(&self) -> &str;
@@ -64,21 +70,25 @@ impl JobLike for Job {
 }
 
 pub struct JobManager {
-    jobs: HashMap<String, Box<dyn JobLike>>,
+    jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiMessageDB>>,
 }
 
 impl JobManager {
     pub async fn new(db: Arc<Mutex<ShinkaiMessageDB>>) -> Self {
-        let mut jobs_map = HashMap::new();
+        let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let shinkai_db = db.lock().await;
-            let jobs = shinkai_db.get_all_jobs().unwrap();
-            for job in jobs {
-                jobs_map.insert(job.job_id().to_string(), job);
+            let all_jobs = shinkai_db.get_all_jobs().unwrap();
+            let mut jobs = jobs_map.lock().await;
+            for job in all_jobs {
+                jobs.insert(job.job_id().to_string(), job);
             }
         }
-        Self { db, jobs: jobs_map }
+        Self {
+            jobs: jobs_map,
+            db,
+        }
     }
 
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
@@ -95,7 +105,13 @@ impl JobManager {
             return Err("Message is not a job message.".into());
         }
         // Unwrap the message_schema_type
-        let message_type_str = &message.clone().body.unwrap().internal_metadata.unwrap().message_schema_type;
+        let message_type_str = &message
+            .clone()
+            .body
+            .unwrap()
+            .internal_metadata
+            .unwrap()
+            .message_schema_type;
         // Parse it into a MessageSchemaType
         let message_type = MessageSchemaType::from_str(message_type_str).ok_or("Could not parse message type.")?;
 
@@ -104,34 +120,51 @@ impl JobManager {
                 let job_creation: JobCreation = serde_json::from_str(&message.clone().body.unwrap().content)
                     .map_err(|_| "Failed to deserialize JobCreation message.")?;
 
-                let agent_subidentity = message.clone().body.unwrap().internal_metadata.unwrap().recipient_subidentity;
+                let agent_subidentity = message
+                    .clone()
+                    .body
+                    .unwrap()
+                    .internal_metadata
+                    .unwrap()
+                    .recipient_subidentity;
                 // TODO: check if valid recipient_subidentity if not return an error agent not found
                 let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
-                { 
+                {
                     let mut shinkai_db = self.db.lock().await;
-                    shinkai_db.create_new_job(job_id.clone(), agent_subidentity.clone(), job_creation.scope).unwrap();
+                    shinkai_db
+                        .create_new_job(job_id.clone(), agent_subidentity.clone(), job_creation.scope)
+                        .unwrap();
                     // get job
 
                     match shinkai_db.get_job(&job_id) {
                         Ok(job) => {
-                            self.jobs.insert(job_id.clone(), Box::new(job));
-                            return Ok(job_id.clone())
-                        },
+                            self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
+                            return Ok(job_id.clone());
+                        }
                         Err(e) => {
                             assert_eq!(e, ShinkaiMessageDBError::ProfileNameNonExistent);
-                            return Err::<String, Box<dyn std::error::Error>>(Box::new(std::io::Error::new(std::io::ErrorKind::NotFound, "Job not found")))
-                        },
+                            return Err::<String, Box<dyn std::error::Error>>(Box::new(std::io::Error::new(
+                                std::io::ErrorKind::NotFound,
+                                "Job not found",
+                            )));
+                        }
                     }
                 }
             }
             MessageSchemaType::JobMessageSchema => {
+                // Decode job message
                 let job_message: JobMessage = serde_json::from_str(&message.clone().body.unwrap().content)
                     .map_err(|_| "Failed to deserialize JobMessage.")?;
 
-                // Perform some logic related to the JobMessageSchema message type
-                // TODO: implement the real logic
-                if let Some(job) = self.jobs.get_mut(&job_message.job_id) {
-                    // job.step_history.push(job_message.content);
+                // Check if the job exists
+                if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
+                    // Clone the job for use within async block
+                    let job = job.clone();
+                    // Perform some logic related to the JobMessageSchema message type
+                    // The decision phase
+                    let decision_phase_output = self.decision_phase(&**job).await?;
+                    // The execution phase
+                    let execution_phase_output = self.execution_phase(decision_phase_output).await;
                     return Ok(job_message.job_id.clone());
                 } else {
                     return Err("Job not found.".into());
@@ -139,8 +172,8 @@ impl JobManager {
             }
             MessageSchemaType::PreMessageSchema => {
                 let body = &message.clone().body.unwrap();
-                let pre_message: JobPreMessage = serde_json::from_str(&body.content)
-                    .map_err(|_| "Failed to deserialize JobPreMessage.")?;
+                let pre_message: JobPreMessage =
+                    serde_json::from_str(&body.content).map_err(|_| "Failed to deserialize JobPreMessage.")?;
 
                 // Perform some logic related to the PreMessageSchema message type
                 // This is just a placeholder logic
@@ -151,9 +184,21 @@ impl JobManager {
         }
     }
 
-    pub fn execute_job(&self, job_id: String) -> Result<(), Box<dyn Error>> {
-        let job = self.jobs.get(&job_id).ok_or("Job id does not exist.")?;
-        // job execution logic here
-        Ok(())
+    async fn decision_phase(&self, job: &dyn JobLike) -> Result<Vec<JobPreMessage>, Box<dyn Error>> {
+        // Write to the LLM inbox with the job step history
+        // TODO: do agents are constantly pulling messages? or do they have to be notified?
+
+        // Make sure the output is valid
+        // If not valid, keep calling the LLM until a valid output is produced
+        // Return the output
+        unimplemented!()
+    }
+
+    async fn execution_phase(&self, pre_messages: Vec<JobPreMessage>) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
+        // For each Premessage:
+        // 1. Call the necessary tools to fill out the contents
+        // 2. Convert the Premessage into a Message
+        // Return the list of Messages
+        unimplemented!()
     }
 }

@@ -14,10 +14,12 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::db::ShinkaiMessageDB;
 use crate::managers::identity_manager::{self, Identity};
-use crate::managers::IdentityManager;
+use crate::managers::{IdentityManager, job_manager};
+use crate::managers::job_manager::JobManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
+use crate::schemas::job_schemas::{JobScope, JobToolCall};
 use crate::shinkai_message::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     string_to_encryption_public_key,
@@ -110,6 +112,7 @@ pub enum NodeCommand {
     GetLastUnreadMessagesFromInbox {
         inbox_name: String,
         limit: usize,
+        offset: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
     },
     AddInboxPermission {
@@ -130,6 +133,22 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<bool>,
     },
+    CreateNewJob {
+        shinkai_message: ShinkaiMessage,
+        scope: Option<JobScope>,
+        res: Sender<(String, String)>,
+    },
+    JobMessage {
+        shinkai_message: ShinkaiMessage,
+        content: String,
+        res: Sender<(String, String)>,
+    },
+    JobPreMessage {
+        tool_calls: Vec<JobToolCall>,
+        content: String,
+        recipient: String,
+        res: Sender<(String, String)>,
+    }
 }
 
 // A type alias for a string that represents a profile name.
@@ -159,6 +178,8 @@ pub struct Node {
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiMessageDB>>,
+    // The job manager
+    pub job_manager: Arc<Mutex<JobManager>>,
 }
 
 impl Node {
@@ -198,6 +219,7 @@ impl Node {
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
+        let job_manager = Arc::new(Mutex::new(JobManager::new(db_arc.clone()).await));
 
         Node {
             node_profile_name,
@@ -211,6 +233,7 @@ impl Node {
             commands,
             identity_manager: Arc::new(Mutex::new(subidentity_manager)),
             db: db_arc,
+            job_manager,
         }
     }
 
@@ -255,6 +278,15 @@ impl Node {
                             Some(NodeCommand::CreateRegistrationCode { res }) => self.create_and_send_registration_code(res).await?,
                             Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
                             Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_subidentities(res).await?,
+                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
+                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::CreateNewJob { shinkai_message, scope, res }) => self.create_new_job(shinkai_message, scope, res).await,
+                            // Some(NodeCommand::JobMessage { job_id, content, res }) => self.job_message(job_id, content, res).await?,
+                            // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             _ => break,
                         }
                     }

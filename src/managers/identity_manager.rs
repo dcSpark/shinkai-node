@@ -208,6 +208,42 @@ impl IdentityManager {
         Ok(())
     }
 
+    pub fn identities_to_profile_names(identities: Vec<Identity>) -> anyhow::Result<Vec<String>> {
+        let profile_names = identities
+            .into_iter()
+            .map(|identity| identity.full_identity_name)
+            .collect();
+    
+        Ok(profile_names)
+    }
+
+    pub async fn add_agent_subidentity(
+        &mut self,
+        identity: Identity,
+        profiles_with_access: Option<Vec<String>>,
+        toolkits_accessible: Option<Vec<String>>,
+    ) -> anyhow::Result<()> {
+        let mut db = self.db.lock().await;
+    
+        // Handle Option<Vec<String>> for profiles_with_access and toolkits_accessible
+        let profiles_with_access = profiles_with_access.unwrap_or_else(Vec::new);
+        let toolkits_accessible = toolkits_accessible.unwrap_or_else(Vec::new);
+    
+        // Add new agent with provided profiles_with_access and toolkits_accessible
+        db.add_agent(
+            &identity.full_identity_name,
+            &identity.subidentity_signature_public_key.as_ref().map_or_else(|| "".to_string(), |pk| signature_public_key_to_string(*pk)),
+            &identity.subidentity_encryption_public_key.as_ref().map_or_else(|| "".to_string(), |pk| encryption_public_key_to_string(*pk)),
+            profiles_with_access,
+            toolkits_accessible,
+        )?;
+    
+        // TODO: change identities to support multiple types of subidentities
+        self.identities.push(identity.clone());
+    
+        Ok(())
+    }
+    
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
 
@@ -272,7 +308,10 @@ impl IdentityManager {
     pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<Identity> {
         let node_name = IdentityManager::extract_node_name(full_profile_name);
 
-        println!("external_profile_to_global_identity > full_profile_name: {}", full_profile_name);
+        println!(
+            "external_profile_to_global_identity > full_profile_name: {}",
+            full_profile_name
+        );
         println!("external_profile_to_global_identity > node_name: {}", node_name);
         // validate the profile name
         if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) == false {
