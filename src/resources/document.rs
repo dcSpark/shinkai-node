@@ -5,6 +5,8 @@ use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
+use std::fs::File;
+use std::io::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
@@ -427,19 +429,27 @@ impl DocumentResource {
 
 pub fn test_pdf_to_doc() {
     let generator = LocalEmbeddingGenerator::new_default();
-    let buffer = std::fs::read("shinkai.pdf")
+    let buffer = std::fs::read("mina.pdf")
         .map_err(|_| ResourceError::FailedCSVParsing)
         .unwrap();
-    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Shinkai Litepaper", None, None).unwrap();
 
-    let json = doc.to_json();
+    let desc = "We introduce the notion of a succinct blockchain, a replicated state
+        machine in which each state transition (block) can be efficiently veri-
+        fied in constant time regardless of the number of prior transitions in the
+        system. Traditional blockchains require verification time linear in the
+        number of transitions. We show how to construct a succinct blockchain
+        using recursively composed succinct non-interactive arguments of knowl-
+        edge (SNARKs). Finally, we instantiate this construction to implement
+        Mina, a payment system (cryptocurrency) using a succinct blockchain.
+        Mina offers payment functionality similar to Bitcoin, with a dramatically
+        faster verification time of 200ms making it practical for lightweight clients
+        and mobile devices to perform full verification of the system’s history.";
+    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
 
-    // let mut doc = DocumentResource::new_empty(
-    //     "Llama2 Paper",
-    //     Some("A bunch of facts about animals and wildlife"),
-    //     Some("animalwildlife.com"),
-    // );
-    // doc.set_embedding_model_used(generator.model_type());
+    let json = doc.to_json().unwrap();
+    let file_path = "mina_doc_resource.json";
+    let mut file = std::fs::File::create(file_path).expect("Failed to create the file.");
+    file.write_all(json.as_bytes()).expect("Failed to write JSON to file.");
 }
 
 mod tests {
