@@ -8,9 +8,11 @@ use crate::{
     shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
     shinkai_message_proto::ShinkaiMessage,
 };
-use std::fmt;
+use std::{fmt, thread};
 use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
+
+use super::agent::Agent;
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
@@ -113,11 +115,14 @@ impl From<Box<dyn std::error::Error>> for JobManagerError {
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiMessageDB>>,
+    job_manager_sender: mpsc::Sender<ShinkaiMessage>,
+    agents: Vec<Agent>,
 }
 
 impl JobManager {
     pub async fn new(db: Arc<Mutex<ShinkaiMessageDB>>) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
+        let (sender, receiver) = mpsc::channel(100);
         {
             let shinkai_db = db.lock().await;
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
@@ -126,7 +131,12 @@ impl JobManager {
                 jobs.insert(job.job_id().to_string(), job);
             }
         }
-        Self { jobs: jobs_map, db }
+        Self {
+            jobs: jobs_map,
+            db,
+            job_manager_sender: sender,
+            agents: Vec::new(),
+        }
     }
 
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
@@ -142,46 +152,46 @@ impl JobManager {
         if !self.is_job_message(message.clone()) {
             return Err(JobManagerError::NotAJobMessage);
         }
-        // Unwrap the message_schema_type
-        let message_type_str = &message
-            .clone()
+        let message_type_str = message
             .body
-            .unwrap()
-            .internal_metadata
-            .unwrap()
-            .message_schema_type;
-        // Parse it into a MessageSchemaType
+            .as_ref()
+            .and_then(|b| b.internal_metadata.as_ref().map(|i| &i.message_schema_type))
+            .ok_or(JobManagerError::NotAJobMessage)?;
         let message_type =
             MessageSchemaType::from_str(message_type_str).ok_or(JobManagerError::MessageTypeParseFailed)?;
 
         match message_type {
             MessageSchemaType::JobCreationSchema => {
-                let job_creation: JobCreation = serde_json::from_str(&message.clone().body.unwrap().content)
-                    .map_err(|_| JobManagerError::JobCreationDeserializationFailed)?;
+                let job_creation: JobCreation = serde_json::from_str(
+                    message
+                        .body
+                        .as_ref()
+                        .and_then(|b| Some(&b.content))
+                        .ok_or(JobManagerError::JobCreationDeserializationFailed)?,
+                )
+                .map_err(|_| JobManagerError::JobCreationDeserializationFailed)?;
 
                 let agent_subidentity = message
-                    .clone()
                     .body
-                    .unwrap()
-                    .internal_metadata
-                    .unwrap()
-                    .recipient_subidentity;
+                    .as_ref()
+                    .and_then(|b| b.internal_metadata.as_ref().map(|i| &i.recipient_subidentity))
+                    .ok_or(JobManagerError::JobCreationDeserializationFailed)?;
                 // TODO: check if valid recipient_subidentity if not return an error agent not found
                 let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
                 {
                     let mut shinkai_db = self.db.lock().await;
-                    shinkai_db
-                        .create_new_job(job_id.clone(), agent_subidentity.clone(), job_creation.scope)
-                        .unwrap();
-                    // get job
+                    match shinkai_db.create_new_job(job_id.clone(), agent_subidentity.clone(), job_creation.scope) {
+                        Ok(_) => (),
+                        Err(err) => return Err(JobManagerError::ShinkaiDB(err)),
+                    };
 
                     match shinkai_db.get_job(&job_id) {
                         Ok(job) => {
                             self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
                             return Ok(job_id.clone());
                         }
-                        Err(e) => {
-                            return Err(JobManagerError::JobNotFound);
+                        Err(err) => {
+                            return Err(JobManagerError::ShinkaiDB(err));
                         }
                     }
                 }
@@ -206,7 +216,10 @@ impl JobManager {
                 }
             }
             MessageSchemaType::PreMessageSchema => {
-                let body = &message.clone().body.unwrap();
+                let body = message
+                    .body
+                    .as_ref()
+                    .ok_or(JobManagerError::JobPreMessageDeserializationFailed)?;
                 let pre_message: Result<JobPreMessage, _> = serde_json::from_str(&body.content);
 
                 match pre_message {
@@ -240,5 +253,21 @@ impl JobManager {
         // 2. Convert the Premessage into a Message
         // Return the list of Messages
         unimplemented!()
+    }
+
+    pub fn add_agent(&mut self, id: String) {
+        let agent = Agent::new(id, self.job_manager_sender.clone());
+        self.agents.push(agent);
+    }
+
+    pub fn start_agents(&self) {
+        let agents_clone = self.agents.clone(); // clone here
+        for agent in &agents_clone {
+            let agent_clone = agent.clone();
+            let handler = async move {
+                agent_clone.start().await;
+            };
+            tokio::spawn(handler);
+        }
     }
 }
