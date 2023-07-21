@@ -162,14 +162,6 @@ impl FileParser {
     ///
     /// This function will return an error if a regular expression fails to
     /// compile.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let text = "Hello, world!\nThis is a test.";
-    /// let cleaned_text = clean_text(text);
-    /// assert_eq!(cleaned_text.unwrap(), "Hello, world! This is a test.");
-    /// ```
     fn clean_text(text: &str) -> Result<String, ResourceError> {
         let text = text.replace("\n", " ");
         let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#)?;
@@ -272,14 +264,6 @@ impl FileParser {
     ///
     /// This function will return an error if a regular expression fails to
     /// compile.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// let text = "Hello, world! This is a test. Another sentence.";
-    /// let groups = split_into_groups(text, 25);
-    /// assert_eq!(groups.unwrap(), vec!["Hello, world! This is a test.", "Another sentence."]);
-    /// ```
     fn split_into_groups(text: &str, character_minimum: usize) -> Result<Vec<String>, ResourceError> {
         let cleaned_text = FileParser::clean_text(text)?;
         let sentences = FileParser::split_into_sentences(&cleaned_text);
