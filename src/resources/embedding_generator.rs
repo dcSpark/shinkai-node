@@ -119,10 +119,7 @@ impl LocalEmbeddingGenerator {
             load_callback,
         )
         .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-        Self {
-            model,
-            model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
-        }
+        LocalEmbeddingGenerator::new(model, model_architecture)
     }
 }
 

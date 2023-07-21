@@ -1,8 +1,8 @@
+/db_tests
+/db
 /target
 *.pdf
 *.json
-/db_tests
 *.bin
-/db
 *.pdf
 *.csv
