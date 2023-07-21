@@ -406,7 +406,7 @@ impl Node {
             }
             Err(err) => {
                 // If there was an error, send the error message
-                res.send((String::new(), err.to_string())).await;
+                let _ = res.try_send((String::new(), format!("{}", err)));
             }
         };
     }

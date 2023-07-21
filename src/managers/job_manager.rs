@@ -1,5 +1,3 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
-
 use crate::{
     db::{db_errors::ShinkaiMessageDBError, ShinkaiMessageDB},
     schemas::{
@@ -10,10 +8,11 @@ use crate::{
     shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
     shinkai_message_proto::ShinkaiMessage,
 };
-use chashmap::CHashMap;
-use tokio::sync::{mpsc, Mutex, Notify};
+use std::fmt;
+use std::{collections::HashMap, error::Error, sync::Arc};
+use tokio::sync::Mutex;
 
-pub trait JobLike {
+pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
     fn datetime_created(&self) -> &str;
     fn is_finished(&self) -> bool;
@@ -69,6 +68,48 @@ impl JobLike for Job {
     }
 }
 
+#[derive(Debug)]
+pub enum JobManagerError {
+    NotAJobMessage,
+    JobNotFound,
+    JobCreationDeserializationFailed,
+    JobMessageDeserializationFailed,
+    JobPreMessageDeserializationFailed,
+    MessageTypeParseFailed,
+    IO(String),
+    ShinkaiDB(ShinkaiMessageDBError),
+}
+
+impl fmt::Display for JobManagerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            JobManagerError::NotAJobMessage => write!(f, "Message is not a job message"),
+            JobManagerError::JobNotFound => write!(f, "Job not found"),
+            JobManagerError::JobCreationDeserializationFailed => write!(f, "Failed to deserialize JobCreation message"),
+            JobManagerError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
+            JobManagerError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
+            JobManagerError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
+            JobManagerError::IO(err) => write!(f, "IO error: {}", err),
+            JobManagerError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for JobManagerError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            JobManagerError::ShinkaiDB(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for JobManagerError {
+    fn from(err: Box<dyn std::error::Error>) -> JobManagerError {
+        JobManagerError::IO(err.to_string())
+    }
+}
+
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiMessageDB>>,
@@ -85,10 +126,7 @@ impl JobManager {
                 jobs.insert(job.job_id().to_string(), job);
             }
         }
-        Self {
-            jobs: jobs_map,
-            db,
-        }
+        Self { jobs: jobs_map, db }
     }
 
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
@@ -100,9 +138,9 @@ impl JobManager {
         }
     }
 
-    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, Box<dyn Error>> {
+    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, JobManagerError> {
         if !self.is_job_message(message.clone()) {
-            return Err("Message is not a job message.".into());
+            return Err(JobManagerError::NotAJobMessage);
         }
         // Unwrap the message_schema_type
         let message_type_str = &message
@@ -113,12 +151,13 @@ impl JobManager {
             .unwrap()
             .message_schema_type;
         // Parse it into a MessageSchemaType
-        let message_type = MessageSchemaType::from_str(message_type_str).ok_or("Could not parse message type.")?;
+        let message_type =
+            MessageSchemaType::from_str(message_type_str).ok_or(JobManagerError::MessageTypeParseFailed)?;
 
         match message_type {
             MessageSchemaType::JobCreationSchema => {
                 let job_creation: JobCreation = serde_json::from_str(&message.clone().body.unwrap().content)
-                    .map_err(|_| "Failed to deserialize JobCreation message.")?;
+                    .map_err(|_| JobManagerError::JobCreationDeserializationFailed)?;
 
                 let agent_subidentity = message
                     .clone()
@@ -142,11 +181,7 @@ impl JobManager {
                             return Ok(job_id.clone());
                         }
                         Err(e) => {
-                            assert_eq!(e, ShinkaiMessageDBError::ProfileNameNonExistent);
-                            return Err::<String, Box<dyn std::error::Error>>(Box::new(std::io::Error::new(
-                                std::io::ErrorKind::NotFound,
-                                "Job not found",
-                            )));
+                            return Err(JobManagerError::JobNotFound);
                         }
                     }
                 }
@@ -154,7 +189,7 @@ impl JobManager {
             MessageSchemaType::JobMessageSchema => {
                 // Decode job message
                 let job_message: JobMessage = serde_json::from_str(&message.clone().body.unwrap().content)
-                    .map_err(|_| "Failed to deserialize JobMessage.")?;
+                    .map_err(|_| JobManagerError::JobCreationDeserializationFailed)?;
 
                 // Check if the job exists
                 if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
@@ -167,20 +202,25 @@ impl JobManager {
                     let execution_phase_output = self.execution_phase(decision_phase_output).await;
                     return Ok(job_message.job_id.clone());
                 } else {
-                    return Err("Job not found.".into());
+                    return Err(JobManagerError::JobNotFound);
                 }
             }
             MessageSchemaType::PreMessageSchema => {
                 let body = &message.clone().body.unwrap();
-                let pre_message: JobPreMessage =
-                    serde_json::from_str(&body.content).map_err(|_| "Failed to deserialize JobPreMessage.")?;
+                let pre_message: Result<JobPreMessage, _> = serde_json::from_str(&body.content);
 
-                // Perform some logic related to the PreMessageSchema message type
-                // This is just a placeholder logic
-                // TODO: implement the real logic
-                return Ok(String::new());
+                match pre_message {
+                    Ok(_) => {
+                        // Perform some logic related to the PreMessageSchema message type
+                        // This is just a placeholder logic
+                        // TODO: implement the real logic
+                        Ok(String::new())
+                    }
+                    Err(_) => Err(JobManagerError::JobPreMessageDeserializationFailed),
+                }
             }
-            _ => return Err("Message is not a job message.".into()),
+
+            _ => return Err(JobManagerError::NotAJobMessage),
         }
     }
 
