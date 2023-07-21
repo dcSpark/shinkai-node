@@ -1,8 +1,7 @@
-use std::fs::File;
-
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
+use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
@@ -372,16 +371,69 @@ impl DocumentResource {
     pub fn from_json(json: &str) -> Result<Self, ResourceError> {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
     }
+
+    /// Parse a PDF from a buffer into a Document Resource, automatically
+    /// generating embeddings using the supplied embedding generator.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - A byte slice containing the PDF data.
+    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
+    /// * `name` - The name of the document.
+    /// * `desc` - An optional description of the document.
+    /// * `source` - An optional source of the document.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a ResourceDocument. If
+    /// an error occurs while parsing the PDF data, the `Result` will
+    /// contain an `Error`.
+    pub fn parse_pdf(
+        buffer: &[u8],
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<DocumentResource, ResourceError> {
+        // Create doc resource and initial setup
+        let mut doc = DocumentResource::new_empty(name, desc, source);
+        doc.set_embedding_model_used(generator.model_type());
+        doc.update_resource_embedding(generator)?;
+        println!("Generated resource embedding");
+
+        // Parse the pdf into grouped text blocks
+        let grouped_text_list = FileParser::parse_pdf(buffer)?;
+
+        // Generate embeddings for each group of text
+        let mut embeddings = Vec::new();
+        let total_num_embeddings = grouped_text_list.len();
+        let mut i = 0;
+        for text in &grouped_text_list {
+            let embedding = generator.generate_embedding_default(text)?;
+            embeddings.push(embedding);
+
+            i += 1;
+            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+        }
+
+        // Add the text + embeddings into the doc
+        for (i, text) in grouped_text_list.iter().enumerate() {
+            doc.append_data(text, None, &embeddings[i]);
+        }
+
+        Ok(doc)
+    }
 }
 
 pub fn test_pdf_to_doc() {
-    let grouped_text_list = FileParser::parse_pdf_from_path("shinkai.pdf").unwrap();
+    let generator = LocalEmbeddingGenerator::new_default();
+    let buffer = std::fs::read("shinkai.pdf")
+        .map_err(|_| ResourceError::FailedCSVParsing)
+        .unwrap();
+    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Shinkai Litepaper", None, None).unwrap();
 
-    // for text in grouped_text_list {
-    //     println!("{}\n-----------\n", &text)
-    // }
+    let json = doc.to_json();
 
-    // let generator = LocalEmbeddingGenerator::new_default();
     // let mut doc = DocumentResource::new_empty(
     //     "Llama2 Paper",
     //     Some("A bunch of facts about animals and wildlife"),
@@ -406,28 +458,28 @@ mod tests {
 
         // Prepare embeddings + data, then add it to the doc
         let fact1 = "Dogs are creatures with 4 legs that bark.";
-        let fact1_embeddings = generator.generate_embedding(fact1, "").unwrap();
+        let fact1_embeddings = generator.generate_embedding_default(fact1).unwrap();
         let fact2 = "Camels are slow animals with large humps.";
-        let fact2_embeddings = generator.generate_embedding(fact2, "").unwrap();
+        let fact2_embeddings = generator.generate_embedding_default(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
-        let fact3_embeddings = generator.generate_embedding(fact3, "").unwrap();
+        let fact3_embeddings = generator.generate_embedding_default(fact3).unwrap();
         doc.append_data(fact1, None, &fact1_embeddings);
         doc.append_data(fact2, None, &fact2_embeddings);
         doc.append_data(fact3, None, &fact3_embeddings);
 
         // Testing similarity search works
         let query_string = "What animal barks?";
-        let query_embedding = generator.generate_embedding(query_string, "").unwrap();
+        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(fact1, res[0].data);
 
         let query_string2 = "What animal is slow?";
-        let query_embedding2 = generator.generate_embedding(query_string2, "").unwrap();
+        let query_embedding2 = generator.generate_embedding_default(query_string2).unwrap();
         let res2 = doc.similarity_search(query_embedding2, 3);
         assert_eq!(fact2, res2[0].data);
 
         let query_string3 = "What animal swims in the ocean?";
-        let query_embedding3 = generator.generate_embedding(query_string3, "").unwrap();
+        let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].data);
 

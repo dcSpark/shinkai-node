@@ -1,49 +1,33 @@
 use crate::resources::embeddings::*;
+use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
-pub use llm::ModelArchitecture;
+use llm::ModelArchitecture;
 
 lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum EmbeddingModelType {
-    LocalModel(LocalModel),
-    ExternalModel(ExternalModel),
-}
+/// A trait for types that can generate embeddings from text.
+pub trait EmbeddingGenerator {
+    // Returns the embedding model type
+    fn model_type(&self) -> EmbeddingModelType;
+    /// Generates an embedding from the given text.
+    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError>;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum LocalModel {
-    Bloom,
-    Gpt2,
-    GptJ,
-    GptNeoX,
-    Llama,
-    Mpt,
-    Falcon,
-}
-
-impl LocalModel {
-    pub fn from_model_architecture(arch: ModelArchitecture) -> LocalModel {
-        match arch {
-            ModelArchitecture::Bloom => LocalModel::Bloom,
-            ModelArchitecture::Gpt2 => LocalModel::Gpt2,
-            ModelArchitecture::GptJ => LocalModel::GptJ,
-            ModelArchitecture::GptNeoX => LocalModel::GptNeoX,
-            ModelArchitecture::Llama => LocalModel::Llama,
-            ModelArchitecture::Mpt => LocalModel::Mpt,
-            //ModelArchitecture::Falcon => LocalModel::Falcon, // Falcon not implemented yet in llm crate
-            _ => LocalModel::Llama,
-        }
+    /// Generate an Embedding for an input string, sets id to a default value
+    /// of empty string.
+    ///
+    /// # Parameters
+    /// - `input_string`: The input string for which embeddings are generated.
+    ///
+    /// # Returns
+    /// An `Embedding` for the input string or an error.
+    fn generate_embedding_default(&self, input_string: &str) -> Result<Embedding, ResourceError> {
+        self.generate_embedding(input_string, "")
     }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ExternalModel {
-    OpenAITextEmbeddingAda002,
 }
 
 pub struct RemoteEmbeddingGenerator {
@@ -60,6 +44,47 @@ impl RemoteEmbeddingGenerator {
 pub struct LocalEmbeddingGenerator {
     model: Box<dyn Model>,
     model_type: EmbeddingModelType,
+}
+
+impl EmbeddingGenerator for LocalEmbeddingGenerator {
+    /// Generate an Embedding for an input string.
+    ///
+    /// # Parameters
+    /// - `input_string`: The input string for which embeddings are generated.
+    /// - `id`: The id to be associated with the embeddings.
+    ///
+    /// # Returns
+    /// An `Embedding` for the input string or an error.
+    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+        let mut session = self.model.start_session(Default::default());
+        let mut output_request = llm::OutputRequest {
+            all_logits: None,
+            embeddings: Some(Vec::new()),
+        };
+        let vocab = self.model.tokenizer();
+        let beginning_of_sentence = true;
+
+        let tokens = vocab
+            .tokenize(input_string, beginning_of_sentence)
+            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+
+        let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
+
+        self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
+
+        let vector = output_request
+            .embeddings
+            .ok_or_else(|| ResourceError::FailedEmbeddingGeneration)?;
+
+        Ok(Embedding {
+            id: String::from(id),
+            vector,
+        })
+    }
+
+    fn model_type(&self) -> EmbeddingModelType {
+        self.model_type.clone()
+    }
 }
 
 impl LocalEmbeddingGenerator {
@@ -99,46 +124,6 @@ impl LocalEmbeddingGenerator {
             model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
         }
     }
-
-    /// Generate an Embedding for an input string.
-    ///
-    /// # Parameters
-    /// - `id`: The id to be associated with the embeddings.
-    /// - `input_string`: The input string for which embeddings are generated.
-    /// - `metadata`: The metadata to be associated with the embeddings.
-    ///
-    /// # Returns
-    /// An `Embedding` for the input string or an error.
-    pub fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
-        let mut session = self.model.start_session(Default::default());
-        let mut output_request = llm::OutputRequest {
-            all_logits: None,
-            embeddings: Some(Vec::new()),
-        };
-        let vocab = self.model.tokenizer();
-        let beginning_of_sentence = true;
-
-        let tokens = vocab
-            .tokenize(input_string, beginning_of_sentence)
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
-
-        let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
-
-        self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
-
-        let vector = output_request
-            .embeddings
-            .ok_or_else(|| ResourceError::FailedEmbeddingGeneration)?;
-
-        Ok(Embedding {
-            id: String::from(id),
-            vector,
-        })
-    }
-
-    pub fn model_type(&self) -> EmbeddingModelType {
-        self.model_type.clone()
-    }
 }
 
 mod tests {
@@ -172,10 +157,10 @@ mod tests {
     //     ];
 
     //     // Generate embeddings for query and comparands
-    //     let query_embedding = generator.generate_embedding(query,
-    // query).unwrap();     let comparand_embeddings: Vec<Embedding> =
+    //     let query_embedding = generator.generate_embedding_default(query
+    // ).unwrap();     let comparand_embeddings: Vec<Embedding> =
     // comparands         .iter()
-    //         .map(|text| generator.generate_embedding(text, text).unwrap())
+    //         .map(|text| generator.generate_embedding(text).unwrap())
     //         .collect();
 
     //     // Print the embeddings

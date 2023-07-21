@@ -1,5 +1,6 @@
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
+use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
@@ -76,22 +77,22 @@ pub trait Resource {
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
     /// Regenerates and updates the resource's embedding. The new
-    /// embedding is generated using the provided `LocalEmbeddingGenerator` and
+    /// embedding is generated using the provided `EmbeddingGenerator` and
     /// the resource's name, description, and source.
     ///
     /// # Arguments
     ///
-    /// * `generator` - The `LocalEmbeddingGenerator` to be used for generating
-    ///   the new embedding.
+    /// * `generator` - The `EmbeddingGenerator` to be used for generating the
+    ///   new embedding.
     ///
     /// # Returns
     ///
     /// * `Result<(), ResourceError>` - Returns `Ok(())` if the embedding
     /// is successfully updated, or an error if the embedding generation fails.
-    fn update_resource_embedding(&mut self, generator: &LocalEmbeddingGenerator) -> Result<(), ResourceError> {
-        let metadata = self.resource_embedding_data_formatted();
+    fn update_resource_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), ResourceError> {
+        let formatted = self.resource_embedding_data_formatted();
         let new_embedding = generator
-            .generate_embedding(&metadata, "1")
+            .generate_embedding(&formatted, "RE")
             .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
         self.set_resource_embedding(new_embedding);
         Ok(())
