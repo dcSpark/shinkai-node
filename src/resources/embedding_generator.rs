@@ -5,6 +5,8 @@ use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
 use llm::ModelArchitecture;
+use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 
 lazy_static! {
     static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
@@ -30,17 +32,92 @@ pub trait EmbeddingGenerator {
     }
 }
 
-pub struct RemoteEmbeddingGenerator {
-    model_type: EmbeddingModelType,
-    // ...
+#[derive(Serialize)]
+struct EmbeddingRequestBody {
+    input: String,
+    model: String,
 }
 
-impl RemoteEmbeddingGenerator {
-    pub fn model_type(&self) -> EmbeddingModelType {
+#[derive(Deserialize)]
+struct EmbeddingResponse {
+    vector: Vec<f32>,
+}
+
+pub struct RemoteEmbeddingGenerator {
+    model_type: EmbeddingModelType,
+    api_url: String,
+    api_key: Option<String>,
+}
+
+impl EmbeddingGenerator for RemoteEmbeddingGenerator {
+    /// Generate an Embedding for an input string by using the external API.
+    ///
+    /// # Parameters
+    /// - `input_string`: The input string for which embeddings are generated.
+    /// - `id`: The id to be associated with the embeddings.
+    ///
+    /// # Returns
+    /// An `Embedding` for the input string or an error.
+    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+        // Prepare the request body
+        let request_body = EmbeddingRequestBody {
+            input: String::from(input_string),
+            model: self.model_type().to_string(),
+        };
+
+        // Create the HTTP client
+        let client = Client::new();
+
+        // Build the request
+        let request = client
+            .post(&format!("{}/v1/embeddings", self.api_url))
+            .header("Content-Type", "application/json")
+            .json(&request_body);
+
+        // Send the request and check for errors
+        let response = request.send().map_err(|err| {
+            // Handle any HTTP client errors here (e.g., request creation failure)
+            ResourceError::RequestFailed(format!("HTTP request failed: {}", err))
+        })?;
+
+        // Check if the response is successful
+        if response.status().is_success() {
+            // Deserialize the response JSON into a struct (assuming you have an
+            // EmbeddingResponse struct)
+            let embedding_response: EmbeddingResponse = response
+                .json()
+                .map_err(|err| ResourceError::RequestFailed(format!("Failed to deserialize response JSON: {}", err)))?;
+
+            // Use the response to create an Embedding instance
+            Ok(Embedding {
+                id: String::from(id),
+                vector: embedding_response.vector,
+            })
+        } else {
+            // Handle non-successful HTTP responses (e.g., server error)
+            Err(ResourceError::RequestFailed(format!(
+                "HTTP request failed with status: {}",
+                response.status()
+            )))
+        }
+    }
+
+    fn model_type(&self) -> EmbeddingModelType {
         self.model_type.clone()
     }
 }
 
+impl RemoteEmbeddingGenerator {
+    pub fn new(model_type: EmbeddingModelType, api_url: String, api_key: Option<String>) -> RemoteEmbeddingGenerator {
+        RemoteEmbeddingGenerator {
+            model_type,
+            api_url,
+            api_key,
+        }
+    }
+}
+
+/// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
 pub struct LocalEmbeddingGenerator {
     model: Box<dyn Model>,
     model_type: EmbeddingModelType,
