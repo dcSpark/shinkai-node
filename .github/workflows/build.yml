@@ -11,7 +11,7 @@ on:
 
 jobs:
   build-and-deploy:
-    uses: dcSpark/shinkai-node/.github/workflows/build-workflow.yml@devops
+    uses: dcSpark/shinkai-node/.github/workflows/build-workflow.yml@nico/add-poc-message
     with:
       REGISTRY: dcspark
       REPOSITORY: shinkai-node
