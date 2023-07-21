@@ -59,6 +59,8 @@ impl fmt::Display for LocalModel {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum RemoteModel {
     OpenAITextEmbeddingAda002,
+    AllMiniLML6v2,
+    AllMiniLML12v2,
     Other(String),
 }
 
@@ -66,6 +68,10 @@ impl fmt::Display for RemoteModel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             RemoteModel::OpenAITextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
+            RemoteModel::AllMiniLML6v2 => write!(f, "all-MiniLM-L6-v2")
+            RemoteModel::AllMiniLML12v2 => write!(f, "all-MiniLM-L12-v2")
+
+    
             RemoteModel::Other(name) => write!(f, "{}", name),
         }
     }

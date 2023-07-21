@@ -463,7 +463,11 @@ mod tests {
     #[test]
     fn test_document_resource_similarity_search() {
         // Prepare generator and doc resource
-        let generator = LocalEmbeddingGenerator::new_default();
+        // let generator = LocalEmbeddingGenerator::new_default();
+
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::OpenAITextEmbeddingAda002);
+        let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
+
         let mut doc = DocumentResource::new_empty(
             "3 Animal Facts",
             Some("A bunch of facts about animals and wildlife"),
