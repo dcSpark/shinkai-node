@@ -86,58 +86,31 @@ impl FileParser {
         Ok(result)
     }
 
-    /// Parse CSV data from a file.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - A string slice representing the file path of the CSV
-    ///   file.
-    /// * `header` - A boolean indicating whether to prepend column headers to
-    ///   values.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `Vec<Vec<String>>`. Each inner `Vec<String>`
-    /// represents a row in the CSV, and contains the column values for that
-    /// row. If an error occurs while parsing the CSV data, the `Result`
-    /// will contain an `Error`.
-    pub fn parse_csv_from_path(file_path: &str, header: bool) -> Result<Vec<String>, ResourceError> {
-        let buffer = std::fs::read(file_path).map_err(|_| ResourceError::FailedCSVParsing)?;
-        Self::parse_csv(&buffer, header)
-    }
-
     /// Parse text from a PDF from a buffer.
     ///
     /// # Arguments
     ///
     /// * `buffer` - A byte slice containing the PDF data.
+    /// * `average_chunk_size` - Average number of characters per chunk desired.
+    ///   Do note, we stop at fully sentences, so this is just a target minimum.
     ///
     /// # Returns
     ///
     /// A `Result` containing a `String` of the extracted text from the PDF. If
     /// an error occurs while parsing the PDF data, the `Result` will
     /// contain an `Error`.
-    pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_pdf(buffer: &[u8], average_chunk_size: u64) -> Result<Vec<String>, ResourceError> {
+        // Setting average length to 400, to respect small context size LLMs.
+        // Sentences continue past this light 400 cap, so it has to be less than the
+        // hard cap.
+        let num_characters = if average_chunk_size > 400 {
+            400
+        } else {
+            average_chunk_size
+        };
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, 650);
+        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
         grouped_text_list
-    }
-
-    /// Parse text from a PDF from a file.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - A string slice representing the file path of the PDF
-    ///   file.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `String` of the extracted text from the PDF. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
-    pub fn parse_pdf_from_path(file_path: &str) -> Result<Vec<String>, ResourceError> {
-        let buffer = std::fs::read(file_path).map_err(|_| ResourceError::FailedPDFParsing)?;
-        Self::parse_pdf(&buffer)
     }
 
     /// Cleans the input text by performing several operations:
@@ -252,7 +225,7 @@ impl FileParser {
     /// # Arguments
     ///
     /// * `text` - A string slice that holds the text to be split into groups.
-    /// * `character_minimum` - The minimum total length of the sentences in a
+    /// * `average_group_size` - The minimum total length of the sentences in a
     ///   group.
     ///
     /// # Returns
@@ -264,7 +237,7 @@ impl FileParser {
     ///
     /// This function will return an error if a regular expression fails to
     /// compile.
-    fn split_into_groups(text: &str, character_minimum: usize) -> Result<Vec<String>, ResourceError> {
+    fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, ResourceError> {
         let cleaned_text = FileParser::clean_text(text)?;
         let sentences = FileParser::split_into_sentences(&cleaned_text);
         let mut groups = Vec::new();
@@ -273,14 +246,37 @@ impl FileParser {
 
         for sentence in sentences {
             let sentence_length = sentence.len();
-            current_group.push(sentence);
-            current_length += sentence_length;
 
-            if current_length > character_minimum {
+            // A hard 500 character cap to ensure we never go over context length of LLMs.
+            if current_length + sentence_length > 500 {
+                // If adding the sentence would exceed the limit, push the current group
+                // and start a new one. But first, check if the sentence itself is longer
+                // than the limit.
+                if sentence_length > 500 {
+                    // If the sentence is longer than the limit, split it.
+                    let (first, second) = sentence.split_at(500);
+                    groups.push(current_group.join(" "));
+                    groups.push(first.to_string());
+                    current_group = vec![second.to_string()];
+                    current_length = second.len();
+                } else {
+                    // If the sentence is not longer than the limit, just start a new group.
+                    groups.push(current_group.join(" "));
+                    current_group = vec![sentence];
+                    current_length = sentence_length;
+                }
+            } else if current_length + sentence_length > average_group_size {
+                // If adding the sentence would exceed the minimum, add it
+                // and start a new one.
+                current_group.push(sentence);
                 groups.push(current_group.join(" "));
-                println!("Group\n----\n{}", current_group.join(" "));
-                current_group.clear();
+                current_group = vec![];
                 current_length = 0;
+            } else {
+                // If adding the sentence would not exceed the limit or the minimum,
+                // add it to the current group.
+                current_group.push(sentence);
+                current_length += sentence_length;
             }
         }
 

@@ -13,6 +13,7 @@ pub enum ResourceError {
     FailedCSVParsing,
     FailedPDFParsing,
     RegexError(regex::Error),
+    RequestFailed(String), // Add this line
 }
 
 impl fmt::Display for ResourceError {
@@ -27,6 +28,7 @@ impl fmt::Display for ResourceError {
             ResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             ResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
+            ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e), // Add this line
         }
     }
 }
