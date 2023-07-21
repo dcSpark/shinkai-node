@@ -103,6 +103,7 @@ impl LocalEmbeddingGenerator {
     }
 
     /// Create a new LocalEmbeddingGenerator that uses the default model.
+    /// Intended to be used just for testing.
     ///
     /// # Returns
     /// A new `LocalEmbeddingGenerator` that uses the default model.

@@ -4,9 +4,38 @@ use crate::resources::file_parsing::*;
 use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
+use llm::load_progress_callback_stdout as load_callback;
 use serde_json;
 use std::fs::File;
 use std::io::prelude::*;
+
+// Impromptu function for testing local pdf parsing into resource document
+pub fn local_pdf_to_doc() {
+    // Load model and create a generator
+    let model_architecture = llm::ModelArchitecture::GptNeoX;
+    let model = llm::load_dynamic(
+        Some(model_architecture),
+        std::path::Path::new("pythia-160m-q4_0.bin"),
+        llm::TokenizerSource::Embedded,
+        Default::default(),
+        load_callback,
+    )
+    .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
+    let generator = LocalEmbeddingGenerator::new(model, model_architecture);
+
+    // Read the pdf from file into a buffer, then parse it into a DocumentResource
+    let desc = "Description of the pdf";
+    let buffer = std::fs::read("mina.pdf")
+        .map_err(|_| ResourceError::FailedCSVParsing)
+        .unwrap();
+    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
+
+    // Convert the DocumentResource into json and save to file
+    let json = doc.to_json().unwrap();
+    let file_path = "mina_doc_resource.json";
+    let mut file = std::fs::File::create(file_path).expect("Failed to create the file.");
+    file.write_all(json.as_bytes()).expect("Failed to write JSON to file.");
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
@@ -425,31 +454,6 @@ impl DocumentResource {
 
         Ok(doc)
     }
-}
-
-pub fn test_pdf_to_doc() {
-    let generator = LocalEmbeddingGenerator::new_default();
-    let buffer = std::fs::read("mina.pdf")
-        .map_err(|_| ResourceError::FailedCSVParsing)
-        .unwrap();
-
-    let desc = "We introduce the notion of a succinct blockchain, a replicated state
-        machine in which each state transition (block) can be efficiently veri-
-        fied in constant time regardless of the number of prior transitions in the
-        system. Traditional blockchains require verification time linear in the
-        number of transitions. We show how to construct a succinct blockchain
-        using recursively composed succinct non-interactive arguments of knowl-
-        edge (SNARKs). Finally, we instantiate this construction to implement
-        Mina, a payment system (cryptocurrency) using a succinct blockchain.
-        Mina offers payment functionality similar to Bitcoin, with a dramatically
-        faster verification time of 200ms making it practical for lightweight clients
-        and mobile devices to perform full verification of the system’s history.";
-    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
-
-    let json = doc.to_json().unwrap();
-    let file_path = "mina_doc_resource.json";
-    let mut file = std::fs::File::create(file_path).expect("Failed to create the file.");
-    file.write_all(json.as_bytes()).expect("Failed to write JSON to file.");
 }
 
 mod tests {
