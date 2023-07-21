@@ -1,3 +1,4 @@
+use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
@@ -35,5 +36,16 @@ impl Error for ResourceError {}
 impl From<regex::Error> for ResourceError {
     fn from(err: regex::Error) -> ResourceError {
         ResourceError::RegexError(err)
+    }
+}
+
+impl From<SerdeError> for ResourceError {
+    fn from(error: SerdeError) -> Self {
+        match error.classify() {
+            serde_json::error::Category::Io => ResourceError::FailedJSONParsing,
+            serde_json::error::Category::Syntax => ResourceError::FailedJSONParsing,
+            serde_json::error::Category::Data => ResourceError::FailedJSONParsing,
+            serde_json::error::Category::Eof => ResourceError::FailedJSONParsing,
+        }
     }
 }
