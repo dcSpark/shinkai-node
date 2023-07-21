@@ -1,6 +1,8 @@
 // build.rs
+use std::fs::{self, Permissions};
 use std::fs::{create_dir_all, File};
 use std::io::copy;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 fn main() {
@@ -16,11 +18,17 @@ fn main() {
     let output_filename = "local-ai";
 
     download_file(url, output_filename, output_filename);
+    set_execute_permission(output_filename).expect("Failed to set execute permission");
 
     let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
     let model_filename = "models/all-MiniLM-L12-v2.bin";
 
     download_file(model_url, model_filename, model_filename);
+}
+
+fn set_execute_permission(path: &str) -> std::io::Result<()> {
+    let permissions = Permissions::from_mode(0o755); // rwxr-xr-x
+    fs::set_permissions(path, permissions)
 }
 
 fn download_file(url: &str, filename: &str, output_filename: &str) {
