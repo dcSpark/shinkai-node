@@ -3,7 +3,6 @@ use csv::Reader;
 use pdf_extract;
 use regex::Regex;
 use std::io::Cursor;
-use syntect::util::LinesWithEndings;
 
 pub struct FileParser {}
 
