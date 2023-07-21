@@ -1,9 +1,6 @@
 /db_tests
 /db
 /target
-*.pdf
 *.json
 *.bin
-*.pdf
-*.csv
 local-ai

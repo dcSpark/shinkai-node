@@ -1,4 +1,5 @@
 use crate::resources::embeddings::*;
+use crate::resources::local_ai::DEFAULT_LOCAL_AI_PORT;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use lazy_static::lazy_static;
@@ -9,7 +10,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
 lazy_static! {
-    static ref DEFAULT_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
+    static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
 }
 
 /// A trait for types that can generate embeddings from text.
@@ -139,11 +140,27 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 }
 
 impl RemoteEmbeddingGenerator {
+    /// Create a RemoteEmbeddingGenerator
     pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
         RemoteEmbeddingGenerator {
             model_type,
             api_url: api_url.to_string(),
             api_key: api_key.map(|a| a.to_string()),
+        }
+    }
+
+    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
+    /// to the webserver of a local running instance of LocalAI using the
+    /// default set port.
+    ///
+    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
+    pub fn new_default() -> RemoteEmbeddingGenerator {
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
+        let url = format!("http://0.0.0.0:{}", DEFAULT_LOCAL_AI_PORT.to_string());
+        RemoteEmbeddingGenerator {
+            model_type: model_architecture,
+            api_url: url,
+            api_key: None,
         }
     }
 }
@@ -222,7 +239,7 @@ impl LocalEmbeddingGenerator {
         let model_architecture = llm::ModelArchitecture::GptNeoX;
         let model = llm::load_dynamic(
             Some(model_architecture),
-            std::path::Path::new(&*DEFAULT_MODEL_PATH),
+            std::path::Path::new(&*DEFAULT_LOCAL_MODEL_PATH),
             llm::TokenizerSource::Embedded,
             Default::default(),
             load_callback,

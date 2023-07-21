@@ -9,36 +9,6 @@ use llm::load_progress_callback_stdout as load_callback;
 use serde_json;
 use std::io::prelude::*;
 
-// Impromptu function for testing local pdf parsing into resource document
-pub fn local_pdf_to_doc() {
-    // Load model and create a generator
-    // let model_architecture = llm::ModelArchitecture::GptNeoX;
-    // let model = llm::load_dynamic(
-    //     Some(model_architecture),
-    //     std::path::Path::new("pythia-160m-q4_0.bin"),
-    //     llm::TokenizerSource::Embedded,
-    //     Default::default(),
-    //     load_callback,
-    // )
-    // .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-    // let generator = LocalEmbeddingGenerator::new(model, model_architecture);
-    let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
-    let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
-
-    // Read the pdf from file into a buffer, then parse it into a DocumentResource
-    let desc = "Description of the pdf";
-    let buffer = std::fs::read("mina.pdf")
-        .map_err(|_| ResourceError::FailedPDFParsing)
-        .unwrap();
-    let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
-
-    // Convert the DocumentResource into json and save to file
-    let json = doc.to_json().unwrap();
-    let file_path = "mina_doc_resource.json";
-    let mut file = std::fs::File::create(file_path).expect("Failed to create the file.");
-    file.write_all(json.as_bytes()).expect("Failed to write JSON to file.");
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
     pub name: String,
@@ -462,13 +432,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_document_resource_similarity_search() {
-        // Prepare generator and doc resource
-        // let generator = LocalEmbeddingGenerator::new_default();
-
-        let lai_process = LocalAIProcess::start();
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
-        let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
+    fn test_manual_document_resource() {
+        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
 
         let mut doc = DocumentResource::new_empty(
             "3 Animal Facts",
@@ -488,6 +454,11 @@ mod tests {
         doc.append_data(fact2, None, &fact2_embeddings);
         doc.append_data(fact3, None, &fact3_embeddings);
 
+        // Testing JSON serialization/deserialization
+        let json = doc.to_json().unwrap();
+        let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+        assert_eq!(doc, deserialized_doc);
+
         // Testing similarity search works
         let query_string = "What animal barks?";
         let query_embedding = generator.generate_embedding_default(query_string).unwrap();
@@ -503,10 +474,36 @@ mod tests {
         let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].data);
+    }
+
+    #[test]
+    fn test_pdf_parsed_document_resource() {
+        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Read the pdf from file into a buffer, then parse it into a DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
+        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+            .map_err(|_| ResourceError::FailedPDFParsing)
+            .unwrap();
+        let doc = DocumentResource::parse_pdf(
+            &buffer,
+            &generator,
+            "Shinkai Manifesto",
+            Some(desc),
+            Some("http://shinkai.com"),
+        )
+        .unwrap();
 
         // Testing JSON serialization/deserialization
         let json = doc.to_json().unwrap();
         let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
         assert_eq!(doc, deserialized_doc);
+
+        // Testing similarity search works
+        let query_string = "What date was the manifesto written on?";
+        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let res = doc.similarity_search(query_embedding, 1);
+        // assert_eq!("10", res[0].data);
     }
 }

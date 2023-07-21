@@ -1,5 +1,3 @@
-use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::resources::document::local_pdf_to_doc;
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
@@ -16,6 +14,7 @@ use crate::utils::args::parse_args;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
 use anyhow::Error;
+use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{info, warn};
 use network::Node;
@@ -49,8 +48,6 @@ fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
 
 fn main() {
     env_logger::init();
-    let lai_process = LocalAIProcess::start();
-    local_pdf_to_doc();
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
