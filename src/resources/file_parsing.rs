@@ -86,58 +86,29 @@ impl FileParser {
         Ok(result)
     }
 
-    /// Parse CSV data from a file.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - A string slice representing the file path of the CSV
-    ///   file.
-    /// * `header` - A boolean indicating whether to prepend column headers to
-    ///   values.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `Vec<Vec<String>>`. Each inner `Vec<String>`
-    /// represents a row in the CSV, and contains the column values for that
-    /// row. If an error occurs while parsing the CSV data, the `Result`
-    /// will contain an `Error`.
-    pub fn parse_csv_from_path(file_path: &str, header: bool) -> Result<Vec<String>, ResourceError> {
-        let buffer = std::fs::read(file_path).map_err(|_| ResourceError::FailedCSVParsing)?;
-        Self::parse_csv(&buffer, header)
-    }
-
     /// Parse text from a PDF from a buffer.
     ///
     /// # Arguments
     ///
     /// * `buffer` - A byte slice containing the PDF data.
+    /// * `average_chunk_size` - Average number of characters per chunk desired.
+    ///   Do note, we stop at fully sentences, so this is just a target minimum.
     ///
     /// # Returns
     ///
     /// A `Result` containing a `String` of the extracted text from the PDF. If
     /// an error occurs while parsing the PDF data, the `Result` will
     /// contain an `Error`.
-    pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_pdf(buffer: &[u8], average_chunk_size: u64) -> Result<Vec<String>, ResourceError> {
+        // Light capping to 400, to respect small context size LLMs
+        let num_characters = if average_chunk_size > 400 {
+            400
+        } else {
+            average_chunk_size
+        };
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, 400);
+        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
         grouped_text_list
-    }
-
-    /// Parse text from a PDF from a file.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - A string slice representing the file path of the PDF
-    ///   file.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `String` of the extracted text from the PDF. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
-    pub fn parse_pdf_from_path(file_path: &str) -> Result<Vec<String>, ResourceError> {
-        let buffer = std::fs::read(file_path).map_err(|_| ResourceError::FailedPDFParsing)?;
-        Self::parse_pdf(&buffer)
     }
 
     /// Cleans the input text by performing several operations:
