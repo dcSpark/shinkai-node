@@ -53,6 +53,7 @@ struct EmbeddingResponse {
     usage: serde_json::Value, // or define a separate struct for this if you need to use these values
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RemoteEmbeddingGenerator {
     model_type: EmbeddingModelType,
     api_url: String,
