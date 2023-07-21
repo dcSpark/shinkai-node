@@ -12,21 +12,23 @@ use std::io::prelude::*;
 // Impromptu function for testing local pdf parsing into resource document
 pub fn local_pdf_to_doc() {
     // Load model and create a generator
-    let model_architecture = llm::ModelArchitecture::GptNeoX;
-    let model = llm::load_dynamic(
-        Some(model_architecture),
-        std::path::Path::new("pythia-160m-q4_0.bin"),
-        llm::TokenizerSource::Embedded,
-        Default::default(),
-        load_callback,
-    )
-    .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-    let generator = LocalEmbeddingGenerator::new(model, model_architecture);
+    // let model_architecture = llm::ModelArchitecture::GptNeoX;
+    // let model = llm::load_dynamic(
+    //     Some(model_architecture),
+    //     std::path::Path::new("pythia-160m-q4_0.bin"),
+    //     llm::TokenizerSource::Embedded,
+    //     Default::default(),
+    //     load_callback,
+    // )
+    // .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
+    // let generator = LocalEmbeddingGenerator::new(model, model_architecture);
+    let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::OpenAITextEmbeddingAda002);
+    let generator = RemoteEmbeddingGenerator::new(model_architecture, "http://0.0.0.0:8080", None);
 
     // Read the pdf from file into a buffer, then parse it into a DocumentResource
     let desc = "Description of the pdf";
     let buffer = std::fs::read("mina.pdf")
-        .map_err(|_| ResourceError::FailedCSVParsing)
+        .map_err(|_| ResourceError::FailedPDFParsing)
         .unwrap();
     let doc = DocumentResource::parse_pdf(&buffer, &generator, "Mina Whitepaper", Some(desc), None).unwrap();
 

@@ -119,7 +119,7 @@ impl FileParser {
     /// contain an `Error`.
     pub fn parse_pdf(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, 650);
+        let grouped_text_list = FileParser::split_into_groups(&text, 400);
         grouped_text_list
     }
 

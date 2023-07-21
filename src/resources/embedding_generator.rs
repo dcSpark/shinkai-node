@@ -39,8 +39,18 @@ struct EmbeddingRequestBody {
 }
 
 #[derive(Deserialize)]
+struct EmbeddingResponseData {
+    embedding: Vec<f32>,
+    index: usize,
+    object: String,
+}
+
+#[derive(Deserialize)]
 struct EmbeddingResponse {
-    vector: Vec<f32>,
+    object: String,
+    model: String,
+    data: Vec<EmbeddingResponseData>,
+    usage: serde_json::Value, // or define a separate struct for this if you need to use these values
 }
 
 pub struct RemoteEmbeddingGenerator {
@@ -80,8 +90,11 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             ResourceError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
+        println!("Received response");
+
         // Check if the response is successful
         if response.status().is_success() {
+            println!("Is successful");
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
             let embedding_response: EmbeddingResponse = response
@@ -91,7 +104,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
             // Use the response to create an Embedding instance
             Ok(Embedding {
                 id: String::from(id),
-                vector: embedding_response.vector,
+                vector: embedding_response.data[0].embedding.clone(),
             })
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
@@ -108,11 +121,11 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 }
 
 impl RemoteEmbeddingGenerator {
-    pub fn new(model_type: EmbeddingModelType, api_url: String, api_key: Option<String>) -> RemoteEmbeddingGenerator {
+    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
         RemoteEmbeddingGenerator {
             model_type,
-            api_url,
-            api_key,
+            api_url: api_url.to_string(),
+            api_key: api_key.map(|a| a.to_string()),
         }
     }
 }
