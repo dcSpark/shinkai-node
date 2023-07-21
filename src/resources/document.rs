@@ -489,7 +489,7 @@ mod tests {
             .unwrap();
         let doc = DocumentResource::parse_pdf(
             &buffer,
-            80,
+            100,
             &generator,
             "Shinkai Manifesto",
             Some(desc),

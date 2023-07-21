@@ -100,7 +100,9 @@ impl FileParser {
     /// an error occurs while parsing the PDF data, the `Result` will
     /// contain an `Error`.
     pub fn parse_pdf(buffer: &[u8], average_chunk_size: u64) -> Result<Vec<String>, ResourceError> {
-        // Light capping to 400, to respect small context size LLMs
+        // Setting average length to 400, to respect small context size LLMs.
+        // Sentences continue past this light 400 cap, so it has to be less than the
+        // hard cap.
         let num_characters = if average_chunk_size > 400 {
             400
         } else {
@@ -223,7 +225,7 @@ impl FileParser {
     /// # Arguments
     ///
     /// * `text` - A string slice that holds the text to be split into groups.
-    /// * `character_minimum` - The minimum total length of the sentences in a
+    /// * `average_group_size` - The minimum total length of the sentences in a
     ///   group.
     ///
     /// # Returns
@@ -235,7 +237,7 @@ impl FileParser {
     ///
     /// This function will return an error if a regular expression fails to
     /// compile.
-    fn split_into_groups(text: &str, character_minimum: usize) -> Result<Vec<String>, ResourceError> {
+    fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, ResourceError> {
         let cleaned_text = FileParser::clean_text(text)?;
         let sentences = FileParser::split_into_sentences(&cleaned_text);
         let mut groups = Vec::new();
@@ -244,14 +246,37 @@ impl FileParser {
 
         for sentence in sentences {
             let sentence_length = sentence.len();
-            current_group.push(sentence);
-            current_length += sentence_length;
 
-            if current_length > character_minimum {
+            // A hard 500 character cap to ensure we never go over context length of LLMs.
+            if current_length + sentence_length > 500 {
+                // If adding the sentence would exceed the limit, push the current group
+                // and start a new one. But first, check if the sentence itself is longer
+                // than the limit.
+                if sentence_length > 500 {
+                    // If the sentence is longer than the limit, split it.
+                    let (first, second) = sentence.split_at(500);
+                    groups.push(current_group.join(" "));
+                    groups.push(first.to_string());
+                    current_group = vec![second.to_string()];
+                    current_length = second.len();
+                } else {
+                    // If the sentence is not longer than the limit, just start a new group.
+                    groups.push(current_group.join(" "));
+                    current_group = vec![sentence];
+                    current_length = sentence_length;
+                }
+            } else if current_length + sentence_length > average_group_size {
+                // If adding the sentence would exceed the minimum, add it
+                // and start a new one.
+                current_group.push(sentence);
                 groups.push(current_group.join(" "));
-                println!("Group\n----\n{}", current_group.join(" "));
-                current_group.clear();
+                current_group = vec![];
                 current_length = 0;
+            } else {
+                // If adding the sentence would not exceed the limit or the minimum,
+                // add it to the current group.
+                current_group.push(sentence);
+                current_length += sentence_length;
             }
         }
 
