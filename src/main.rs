@@ -33,6 +33,8 @@ mod managers;
 mod network;
 mod shinkai_message;
 mod utils;
+mod managers;
+mod schemas;
 
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
@@ -88,6 +90,18 @@ fn main() {
         let recipient = args
             .recipient
             .expect("recipient argument is required for create_message");
+        let sender_subidentity = args
+            .sender_subidentity
+            .unwrap_or("".to_string());
+        let receiver_subidentity = args
+            .receiver_subidentity
+            .unwrap_or("".to_string());
+        let inbox = args
+            .inbox
+            .unwrap_or("".to_string());
+        let body_content = args
+            .body_content
+            .unwrap_or("body content".to_string());
         let other = args.other.unwrap_or("".to_string());
         let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
 
@@ -131,11 +145,19 @@ fn main() {
                 node_keys.identity_secret_key,
                 node2_encryption_pk,
             )
-            .body("body content".to_string())
+            .body(body_content.to_string())
             .body_encryption(EncryptionMethod::None)
             .message_schema_type("schema type".to_string())
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
-            .external_metadata(recipient.to_string(), global_identity_name.to_string().clone())
+            .internal_metadata(
+                sender_subidentity.to_string(),
+                receiver_subidentity.to_string(),
+                inbox.to_string(),
+                EncryptionMethod::None,
+            )
+            .external_metadata(
+                recipient.to_string(),
+                global_identity_name.to_string().clone(),
+            )
             .build();
 
             println!(

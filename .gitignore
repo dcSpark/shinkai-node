@@ -1,6 +1,7 @@
-/db_tests
-/db
-/target
+target/
+.env
+db/
+db_tests/
 *.json
 *.bin
 local-ai

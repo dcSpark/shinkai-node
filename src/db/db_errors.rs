@@ -1,5 +1,5 @@
 use core::fmt;
-use std::io;
+use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
 pub enum ShinkaiMessageDBError {
@@ -25,6 +25,9 @@ pub enum ShinkaiMessageDBError {
     IdentityNotFound,
     InvalidData,
     InvalidInboxName,
+    JsonSerializationError(serde_json::Error),
+    DataConversionError,
+    DataNotFound,
 }
 
 impl From<rocksdb::Error> for ShinkaiMessageDBError {
@@ -48,6 +51,18 @@ impl From<io::Error> for ShinkaiMessageDBError {
 impl From<&str> for ShinkaiMessageDBError {
     fn from(_: &str) -> Self {
         ShinkaiMessageDBError::PublicKeyParseError
+    }
+}
+
+impl From<serde_json::Error> for ShinkaiMessageDBError {
+    fn from(error: serde_json::Error) -> Self {
+        ShinkaiMessageDBError::JsonSerializationError(error)
+    }
+}
+
+impl From<Utf8Error> for ShinkaiMessageDBError {
+    fn from(_: Utf8Error) -> Self {
+        ShinkaiMessageDBError::Utf8ConversionError
     }
 }
 
@@ -88,6 +103,9 @@ impl fmt::Display for ShinkaiMessageDBError {
             ShinkaiMessageDBError::InvalidIdentityType => write!(f, "Invalid permission type"),
             ShinkaiMessageDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
             ShinkaiMessageDBError::Utf8ConversionError => write!(f, "UTF8 conversion error"),
+            ShinkaiMessageDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
+            ShinkaiMessageDBError::DataConversionError => write!(f, "Data conversion error"),
+            ShinkaiMessageDBError::DataNotFound => write!(f, "Data not found"),
         }
     }
 }
@@ -97,6 +115,7 @@ impl std::error::Error for ShinkaiMessageDBError {
         match self {
             ShinkaiMessageDBError::RocksDBError(e) => Some(e),
             ShinkaiMessageDBError::DecodeError(e) => Some(e),
+            ShinkaiMessageDBError::JsonSerializationError(e) => Some(e),
             _ => None,
         }
     }
@@ -148,6 +167,9 @@ impl PartialEq for ShinkaiMessageDBError {
             (ShinkaiMessageDBError::InvalidIdentityType, ShinkaiMessageDBError::InvalidIdentityType) => true,
             (ShinkaiMessageDBError::InvalidInboxName, ShinkaiMessageDBError::InvalidInboxName) => true,
             (ShinkaiMessageDBError::Utf8ConversionError, ShinkaiMessageDBError::Utf8ConversionError) => true,
+            (ShinkaiMessageDBError::JsonSerializationError(_), ShinkaiMessageDBError::JsonSerializationError(_)) => true,
+            (ShinkaiMessageDBError::DataConversionError, ShinkaiMessageDBError::DataConversionError) => true,
+            (ShinkaiMessageDBError::DataNotFound, ShinkaiMessageDBError::DataNotFound) => true,
             _ => false,
         }
     }

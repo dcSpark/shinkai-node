@@ -31,6 +31,7 @@ pub enum Topic {
     ProfilesIdentityType,
     ExternalNodeIdentityKey,
     ExternalNodeEncryptionKey,
+    AllJobsTimeKeyed,
 }
 
 impl Topic {
@@ -47,6 +48,7 @@ impl Topic {
             Self::ProfilesIdentityType => "profiles_permission_type",
             Self::ExternalNodeIdentityKey => "external_node_identity_key",
             Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
+            Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
         }
     }
 }
@@ -70,6 +72,7 @@ impl ShinkaiMessageDB {
             Topic::ProfilesIdentityType.as_str(),
             Topic::ExternalNodeIdentityKey.as_str(),
             Topic::ExternalNodeEncryptionKey.as_str(),
+            Topic::AllJobsTimeKeyed.as_str(),
         ];
 
         let mut cfs = vec![];
@@ -120,6 +123,12 @@ impl ShinkaiMessageDB {
         Ok(result)
     }
 
+    // we are using a composite_key to avoid the problem that two messages could had been generated at the same time
+    // adding the hash of the message to the key, we can ensure that the key is unique
+    // the key is composed by the time the message was generated and the hash of the message
+    // so the key is in the format: "20230702T20533481346:hash"
+    // we could have an empty value for the key, but we are currently using the hash that could be extracted from the message
+    // maybe this saves parsing time for a big quantity of messages (maybe)
     pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), Error> {
         // Calculate the hash of the message for the key
         let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
@@ -182,43 +191,41 @@ impl ShinkaiMessageDB {
 
     // Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
     // Check out ShinkaiMessageHandler::generate_time_now() for more details.
-    // Note: If you pass just a date like "20230702" without the time component, 
+    // Note: If you pass just a date like "20230702" without the time component,
     // then the function would interpret this as "20230702T00000000000", i.e., the start of the day.
     pub fn get_scheduled_due_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family
         let scheduled_message_cf = self.db.cf_handle(Topic::ScheduledMessage.as_str()).unwrap();
-    
+
         // Get an iterator over the column family from the start
-        let iter = self
-            .db
-            .iterator_cf(scheduled_message_cf, IteratorMode::Start);
-    
+        let iter = self.db.iterator_cf(scheduled_message_cf, IteratorMode::Start);
+
         // Convert up_to_time to &str
         let up_to_time = &*up_to_time;
-    
+
         // Collect all messages before the up_to_time
         let mut messages = Vec::new();
         for item in iter {
             // Unwrap the Result
             let (key, value) = item.map_err(ShinkaiMessageDBError::from)?;
-    
+
             // Convert the Vec<u8> key into a string
             let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiMessageDBError::InvalidData)?;
-    
+
             // Split the composite key to get the time component
             let time_key = key_str.split(':').next().ok_or(ShinkaiMessageDBError::InvalidData)?;
-    
+
             // Compare the time key with the up_to_time
             if time_key > up_to_time {
                 // Break the loop if we've started seeing messages scheduled for later
                 break;
             }
-    
+
             // Decode the message
             let message = ShinkaiMessageHandler::decode_message(value.to_vec()).map_err(ShinkaiMessageDBError::from)?;
             messages.push(message);
         }
-    
+
         Ok(messages)
     }
 
