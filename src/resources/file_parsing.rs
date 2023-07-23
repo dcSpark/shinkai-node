@@ -5,13 +5,6 @@ use pdf_extract;
 use regex::Regex;
 use std::{io::Cursor, vec};
 
-static STOP_WORDS: &'static [&'static str] = &[
-    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at", "be",
-    "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "could", "did", "do", "does",
-    "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "her",
-    "here", "hers", "herself", "him", "himself", "his", "how", "i",
-];
-
 pub struct FileParser {}
 
 impl FileParser {
