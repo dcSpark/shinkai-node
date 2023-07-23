@@ -1,28 +1,25 @@
-use async_channel::{bounded, Receiver, Sender};
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key,
-    string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key, string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::{
-    clone_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key,
-    string_to_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, string_to_signature_secret_key, unsafe_deterministic_signature_keypair
 };
-use crate::shinkai_message::signatures::{
-    signature_public_key_to_string, signature_secret_key_to_string,
-};
+use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_secret_key_to_string};
 use crate::utils::args::parse_args;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
 use anyhow::Error;
+use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{info, warn};
 use network::Node;
 use shinkai_message::encryption::ephemeral_encryption_keys;
+use shinkai_node::resources::local_ai::LocalAIProcess;
 use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -32,6 +29,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
+mod managers;
 mod network;
 mod shinkai_message;
 mod utils;
@@ -55,8 +53,7 @@ fn main() {
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
-    let global_identity_name =
-        env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
+    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
 
     // Initialization
     let args = parse_args();
@@ -71,8 +68,7 @@ fn main() {
 
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
-    let identity_public_key_string =
-        signature_public_key_to_string(node_keys.identity_public_key.clone());
+    let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
 
     // Log the address, port, and public_key
     println!(
@@ -107,8 +103,7 @@ fn main() {
             .body_content
             .unwrap_or("body content".to_string());
         let other = args.other.unwrap_or("".to_string());
-        let node2_encryption_pk =
-            string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
+        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
 
         println!("Creating message for recipient: {}", recipient);
         println!("identity_secret_key: {}", identity_secret_key_string);
@@ -167,12 +162,7 @@ fn main() {
 
             println!(
                 "Message's signature: {}",
-                message
-                    .clone()
-                    .unwrap()
-                    .external_metadata
-                    .unwrap()
-                    .signature
+                message.clone().unwrap().external_metadata.unwrap().signature
             );
 
             // Parse the message to JSON and print to stdout
@@ -189,10 +179,7 @@ fn main() {
         }
     }
 
-    let (node_commands_sender, node_commands_receiver): (
-        Sender<NodeCommand>,
-        Receiver<NodeCommand>,
-    ) = bounded(100);
+    let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
 
     // Create a new node
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(

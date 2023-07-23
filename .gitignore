@@ -2,3 +2,6 @@ target/
 .env
 db/
 db_tests/
+*.json
+*.bin
+local-ai
