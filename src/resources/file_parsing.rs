@@ -1,8 +1,16 @@
 use crate::resources::resource_errors::*;
 use csv::Reader;
+use keyphrases::KeyPhraseExtractor;
 use pdf_extract;
 use regex::Regex;
-use std::io::Cursor;
+use std::{io::Cursor, vec};
+
+static STOP_WORDS: &'static [&'static str] = &[
+    "a", "about", "above", "after", "again", "against", "all", "am", "an", "and", "any", "are", "as", "at", "be",
+    "because", "been", "before", "being", "below", "between", "both", "but", "by", "can", "could", "did", "do", "does",
+    "doing", "down", "during", "each", "few", "for", "from", "further", "had", "has", "have", "having", "he", "her",
+    "here", "hers", "herself", "him", "himself", "his", "how", "i",
+];
 
 pub struct FileParser {}
 
@@ -110,7 +118,35 @@ impl FileParser {
         };
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
         let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
+
         grouped_text_list
+    }
+
+    /// Extracts the most important keywords from a given text,
+    /// using the RAKE algorithm.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - A string slice that holds the text from which keywords are to
+    ///   be extracted.
+    /// * `num` - The number of keywords to extract/return.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<String>` that contains the extracted keywords.
+    pub fn extract_keywords(text: &str, num: u64) -> Vec<String> {
+        // Create a new KeyPhraseExtractor with a maximum of num keywords
+        let extractor = KeyPhraseExtractor::new(text, num as usize);
+
+        // Get the keywords
+        let keywords = extractor.get_keywords();
+
+        keywords
+            .iter()
+            .for_each(|(score, keyword)| println!("{}: {}", keyword, score));
+
+        // Return only the keywords, discarding the scores
+        keywords.into_iter().map(|(_score, keyword)| keyword).collect()
     }
 
     /// Cleans the input text by performing several operations:

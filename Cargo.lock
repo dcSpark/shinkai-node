@@ -1983,6 +1983,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "keyphrases"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3469baa50de5674276e5328795aec868ab2cbf2e52ae830b7c36d39b737a4a2"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4382,6 +4391,7 @@ dependencies = [
  "ed25519-dalek",
  "env_logger",
  "futures",
+ "keyphrases",
  "lazy_static",
  "libp2p",
  "llm",

@@ -1,13 +1,10 @@
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
-use crate::resources::local_ai::LocalAIProcess;
 use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
-use llm::load_progress_callback_stdout as load_callback;
 use serde_json;
-use std::io::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
@@ -407,6 +404,7 @@ impl DocumentResource {
 
         // Parse the pdf into grouped text blocks
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
+        let keywords = FileParser::extract_keywords(&grouped_text_list.join(" "), 30);
 
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
@@ -431,6 +429,7 @@ impl DocumentResource {
 
 mod tests {
     use super::*;
+    use crate::resources::local_ai::LocalAIProcess;
 
     #[test]
     fn test_manual_document_resource() {
@@ -496,6 +495,8 @@ mod tests {
             Some("http://shinkai.com"),
         )
         .unwrap();
+
+        assert_eq!(1, 2);
 
         // Testing JSON serialization/deserialization
         let json = doc.to_json().unwrap();
