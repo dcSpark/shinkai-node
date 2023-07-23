@@ -372,12 +372,74 @@ impl DocumentResource {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
     }
 
+    /// Parses a list of strings filled with text into a Document Resource,
+    /// extracting keywords, and generating embeddings using the supplied
+    /// embedding generator.
+    ///
+    /// Of note, this function assumes you already pre-parsed the text,
+    /// performed cleanup, ensured that each String is under the 512 token
+    /// limit and is ready to be used to create a DataChunk.
+    ///
+    /// # Arguments
+    ///
+    /// * `text_list` - A list of strings with the text.
+    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
+    /// * `name` - The name of the document.
+    /// * `desc` - An optional description of the document.
+    /// * `source` - An optional source of the document.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a ResourceDocument. If
+    /// an error occurs while parsing the PDF data, the `Result` will
+    /// contain an `Error`.
+    pub fn parse_text(
+        text_list: Vec<String>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: Option<&str>,
+    ) -> Result<DocumentResource, ResourceError> {
+        // Create doc resource and initial setup
+        let mut doc = DocumentResource::new_empty(name, desc, source);
+        doc.set_embedding_model_used(generator.model_type());
+
+        // Parse the pdf into grouped text blocks
+        let keywords = FileParser::extract_keywords(&text_list.join(" "), 50);
+
+        // Set the resource embedding, using the keywords + name + desc + source
+        doc.update_resource_embedding(generator, keywords)?;
+        println!("Generated resource embedding");
+
+        // Generate embeddings for each group of text
+        let mut embeddings = Vec::new();
+        let total_num_embeddings = text_list.len();
+        let mut i = 0;
+        for text in &text_list {
+            let embedding = generator.generate_embedding_default(text)?;
+            embeddings.push(embedding);
+
+            i += 1;
+            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+        }
+
+        // Add the text + embeddings into the doc
+        for (i, text) in text_list.iter().enumerate() {
+            doc.append_data(text, None, &embeddings[i]);
+        }
+
+        Ok(doc)
+    }
+
     /// Parses a PDF from a buffer into a Document Resource, automatically
+    /// separating sentences + performing text parsing, as well as
     /// generating embeddings using the supplied embedding generator.
     ///
     /// # Arguments
     ///
     /// * `buffer` - A byte slice containing the PDF data.
+    /// * `average_chunk_size` - The size in characters that you want on average
+    ///   for every DataChunk to be.
     /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
     /// * `name` - The name of the document.
     /// * `desc` - An optional description of the document.
@@ -396,34 +458,8 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
     ) -> Result<DocumentResource, ResourceError> {
-        // Create doc resource and initial setup
-        let mut doc = DocumentResource::new_empty(name, desc, source);
-        doc.set_embedding_model_used(generator.model_type());
-        doc.update_resource_embedding(generator)?;
-        println!("Generated resource embedding");
-
-        // Parse the pdf into grouped text blocks
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
-        let keywords = FileParser::extract_keywords(&grouped_text_list.join(" "), 30);
-
-        // Generate embeddings for each group of text
-        let mut embeddings = Vec::new();
-        let total_num_embeddings = grouped_text_list.len();
-        let mut i = 0;
-        for text in &grouped_text_list {
-            let embedding = generator.generate_embedding_default(text)?;
-            embeddings.push(embedding);
-
-            i += 1;
-            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
-        }
-
-        // Add the text + embeddings into the doc
-        for (i, text) in grouped_text_list.iter().enumerate() {
-            doc.append_data(text, None, &embeddings[i]);
-        }
-
-        Ok(doc)
+        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source)
     }
 }
 
@@ -495,8 +531,6 @@ mod tests {
             Some("http://shinkai.com"),
         )
         .unwrap();
-
-        assert_eq!(1, 2);
 
         // Testing JSON serialization/deserialization
         let json = doc.to_json().unwrap();
