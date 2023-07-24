@@ -1,3 +1,4 @@
+use crate::resources::resource_errors::ResourceError;
 use core::fmt;
 use std::{io, str::Utf8Error};
 
@@ -28,6 +29,13 @@ pub enum ShinkaiDBError {
     JsonSerializationError(serde_json::Error),
     DataConversionError,
     DataNotFound,
+    ResourceError(ResourceError),
+}
+
+impl From<ResourceError> for ShinkaiDBError {
+    fn from(err: ResourceError) -> ShinkaiDBError {
+        ShinkaiDBError::ResourceError(err)
+    }
 }
 
 impl From<rocksdb::Error> for ShinkaiDBError {
@@ -106,6 +114,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
             ShinkaiDBError::DataConversionError => write!(f, "Data conversion error"),
             ShinkaiDBError::DataNotFound => write!(f, "Data not found"),
+            ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
         }
     }
 }
@@ -125,38 +134,17 @@ impl PartialEq for ShinkaiDBError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ShinkaiDBError::InboxNotFound, ShinkaiDBError::InboxNotFound) => true,
-            (ShinkaiDBError::MessageNotFound, ShinkaiDBError::MessageNotFound) => {
-                true
-            }
-            (ShinkaiDBError::CodeAlreadyUsed, ShinkaiDBError::CodeAlreadyUsed) => {
-                true
-            }
-            (ShinkaiDBError::CodeNonExistent, ShinkaiDBError::CodeNonExistent) => {
-                true
-            }
-            (
-                ShinkaiDBError::ProfileNameAlreadyExists,
-                ShinkaiDBError::ProfileNameAlreadyExists,
-            ) => true,
-            (
-                ShinkaiDBError::ProfileNameNonExistent,
-                ShinkaiDBError::ProfileNameNonExistent,
-            ) => true,
-            (
-                ShinkaiDBError::EncryptionKeyNonExistent,
-                ShinkaiDBError::EncryptionKeyNonExistent,
-            ) => true,
+            (ShinkaiDBError::MessageNotFound, ShinkaiDBError::MessageNotFound) => true,
+            (ShinkaiDBError::CodeAlreadyUsed, ShinkaiDBError::CodeAlreadyUsed) => true,
+            (ShinkaiDBError::CodeNonExistent, ShinkaiDBError::CodeNonExistent) => true,
+            (ShinkaiDBError::ProfileNameAlreadyExists, ShinkaiDBError::ProfileNameAlreadyExists) => true,
+            (ShinkaiDBError::ProfileNameNonExistent, ShinkaiDBError::ProfileNameNonExistent) => true,
+            (ShinkaiDBError::EncryptionKeyNonExistent, ShinkaiDBError::EncryptionKeyNonExistent) => true,
             (ShinkaiDBError::PublicKeyParseError, ShinkaiDBError::PublicKeyParseError) => true,
             (ShinkaiDBError::IdentityNotFound, ShinkaiDBError::IdentityNotFound) => true,
-            (
-                ShinkaiDBError::MissingExternalMetadata,
-                ShinkaiDBError::MissingExternalMetadata,
-            ) => true,
+            (ShinkaiDBError::MissingExternalMetadata, ShinkaiDBError::MissingExternalMetadata) => true,
             (ShinkaiDBError::MissingBody, ShinkaiDBError::MissingBody) => true,
-            (
-                ShinkaiDBError::MissingInternalMetadata,
-                ShinkaiDBError::MissingInternalMetadata,
-            ) => true,
+            (ShinkaiDBError::MissingInternalMetadata, ShinkaiDBError::MissingInternalMetadata) => true,
             (ShinkaiDBError::IOError(_), ShinkaiDBError::IOError(_)) => true,
             (ShinkaiDBError::DecodeError(_), ShinkaiDBError::DecodeError(_)) => true,
             (ShinkaiDBError::RocksDBError(_), ShinkaiDBError::RocksDBError(_)) => true,
