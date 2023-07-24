@@ -1,11 +1,11 @@
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
-use crate::managers::identity_manager::{Identity, IdentityType};
-use crate::shinkai_message::encryption::{encryption_public_key_to_string_ref, encryption_public_key_to_string};
-use crate::shinkai_message::signatures::{signature_public_key_to_string_ref, signature_public_key_to_string};
+use crate::managers::identity_manager::{IdentityType, Identity};
+use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
+use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use crate::shinkai_message::{encryption::string_to_encryption_public_key, signatures::string_to_signature_public_key};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
-use rocksdb::Error;
+use rocksdb::{Error, Options};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(PartialEq)]
@@ -50,6 +50,8 @@ impl ShinkaiMessageDB {
         encryption_public_key: &str,
         profile_name: &str,
         permission_type: &str,
+        // TODO: extend with toolkit access permissions
+        // TODO: extend profiles access from
     ) -> Result<(), ShinkaiMessageDBError> {
         // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
         let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
@@ -97,6 +99,101 @@ impl ShinkaiMessageDB {
         Ok(())
     }
 
+    pub fn add_agent(
+        &mut self,
+        identity_public_key: &str,
+        encryption_public_key: &str,
+        profile_name: &str,
+        profiles_with_access: Vec<String>,
+        toolkits_accessible: Vec<String>,
+    ) -> Result<(), ShinkaiMessageDBError> {
+        // Create Options for ColumnFamily
+        let mut cf_opts = Options::default();
+        cf_opts.create_if_missing(true);
+        cf_opts.create_missing_column_families(true);
+
+        // Create ColumnFamilyDescriptors for profiles_with_access and toolkits_accessible
+        let cf_name_profiles_access = format!("agent_{}_profiles_with_access", profile_name);
+        let cf_name_toolkits_accessible = format!("agent_{}_toolkits_accessible", profile_name);
+
+        // Create column families
+        self.db.create_cf(&cf_name_profiles_access, &cf_opts)?;
+        self.db.create_cf(&cf_name_toolkits_accessible, &cf_opts)?;
+
+        // Start write batch for atomic operation
+        let mut batch = rocksdb::WriteBatch::default();
+
+        // Check that the profile name doesn't exist in ProfilesIdentityKey and ProfilesEncryptionKey
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        if self.db.get_cf(cf_identity, profile_name)?.is_some() {
+            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+        }
+
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        if self.db.get_cf(cf_encryption, profile_name)?.is_some() {
+            return Err(ShinkaiMessageDBError::ProfileNameAlreadyExists);
+        }
+
+        // Write to ProfilesIdentityKey and ProfilesEncryptionKey
+        batch.put_cf(cf_identity, profile_name, identity_public_key.as_bytes());
+        batch.put_cf(cf_encryption, profile_name, encryption_public_key.as_bytes());
+
+        // Get handles to the newly created column families
+        let cf_profiles_access = self.db.cf_handle(&cf_name_profiles_access).unwrap();
+        let cf_toolkits_accessible = self.db.cf_handle(&cf_name_toolkits_accessible).unwrap();
+
+        // Write profiles_with_access and toolkits_accessible to respective columns
+        for profile in profiles_with_access {
+            batch.put_cf(cf_profiles_access, profile_name, profile.as_bytes());
+        }
+        for toolkit in toolkits_accessible {
+            batch.put_cf(cf_toolkits_accessible, profile_name, toolkit.as_bytes());
+        }
+
+        // Write the batch
+        self.db.write(batch)?;
+
+        Ok(())
+    }
+
+    pub fn update_agent_access(
+        &mut self,
+        profile_name: &str,
+        new_profiles_with_access: Option<Vec<String>>,
+        new_toolkits_accessible: Option<Vec<String>>,
+    ) -> Result<(), ShinkaiMessageDBError> {
+        // Define the unique column family names
+        let cf_name_profiles_access = format!("agent_{}_profiles_with_access", profile_name);
+        let cf_name_toolkits_access = format!("agent_{}_toolkits_accessible", profile_name);
+    
+        // Get the column families. They should have been created when the agent was added.
+        let cf_profiles_access = self.db.cf_handle(&cf_name_profiles_access).ok_or(ShinkaiMessageDBError::SomeError)?;
+        let cf_toolkits_access = self.db.cf_handle(&cf_name_toolkits_access).ok_or(ShinkaiMessageDBError::SomeError)?;
+    
+        // Start write batch for atomic operation
+        let mut batch = rocksdb::WriteBatch::default();
+    
+        // Update profiles_with_access if new_profiles_with_access is provided
+        if let Some(profiles) = new_profiles_with_access {
+            for profile in profiles {
+                batch.put_cf(cf_profiles_access, profile.as_bytes(), profile_name.as_bytes());
+            }
+        }
+    
+        // Update toolkits_accessible if new_toolkits_accessible is provided
+        if let Some(toolkits) = new_toolkits_accessible {
+            for toolkit in toolkits {
+                batch.put_cf(cf_toolkits_access, toolkit.as_bytes(), profile_name.as_bytes());
+            }
+        }
+    
+        // Write the batch
+        self.db.write(batch)?;
+    
+        Ok(())
+    }
+    
+
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiMessageDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
@@ -116,7 +213,7 @@ impl ShinkaiMessageDB {
 
     pub fn load_all_sub_identities(
         &self,
-        my_node_identity_name: String,
+        my_node_identity_name: String, // TODO: move this to the initializer of the db
     ) -> Result<Vec<Identity>, ShinkaiMessageDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
@@ -203,18 +300,22 @@ impl ShinkaiMessageDB {
     ) -> Result<(), ShinkaiMessageDBError> {
         let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
         let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
-    
+
         let mut batch = rocksdb::WriteBatch::default();
-    
+
         // Convert public keys to bs58 encoded strings
         let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
         let signature_pk_string = signature_public_key_to_string(signature_pk);
-    
-        batch.put_cf(cf_node_encryption, &my_node_identity_name, encryption_pk_string.as_bytes());
+
+        batch.put_cf(
+            cf_node_encryption,
+            &my_node_identity_name,
+            encryption_pk_string.as_bytes(),
+        );
         batch.put_cf(cf_node_identity, &my_node_identity_name, signature_pk_string.as_bytes());
-    
+
         self.db.write(batch)?;
-    
+
         Ok(())
     }
 
@@ -262,6 +363,11 @@ impl ShinkaiMessageDB {
             &identity.full_identity_name,
             identity.permission_type.to_string().as_bytes(),
         );
+
+        // TODO: if identity is agent type then also add
+        // - Permissions specifying which toolkits/which storage buckets the agent has access to
+        // TODO:
+        // - Permissions which sub identity has the ability to message the agent
 
         // Write the batch
         self.db.write(batch)?;

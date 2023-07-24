@@ -1,7 +1,9 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
+    db::db_errors::ShinkaiMessageDBError,
     managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode},
     network::node_message_handlers::{ping_pong, PingPong},
+    schemas::{inbox_permission::InboxPermission, job_schemas::{JobScope, JobCreation}},
     shinkai_message::{
         encryption::{
             clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
@@ -13,8 +15,11 @@ use crate::{
     shinkai_message_proto::ShinkaiMessage,
 };
 use async_channel::Sender;
+use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
+use uuid::Uuid;
+use std::str::FromStr;
 use std::{
     cell::RefCell,
     io::{self, Error},
@@ -198,6 +203,53 @@ impl Node {
         Ok(())
     }
 
+    pub async fn get_last_unread_messages_from_inbox(
+        &self,
+        inbox_name: String,
+        limit: usize,
+        offset: Option<String>,
+        res: Sender<Vec<ShinkaiMessage>>,
+    ) {
+        // check
+        let result = match self
+            .db
+            .lock()
+            .await
+            .get_last_unread_messages_from_inbox(inbox_name, limit, offset)
+        {
+            Ok(messages) => messages,
+            Err(e) => {
+                error!("Failed to get last unread messages from inbox: {}", e);
+                return;
+            }
+        };
+
+        if let Err(e) = res.send(result).await {
+            error!("Failed to send last unread messages: {}", e);
+        }
+    }
+
+    pub async fn get_last_messages_from_inbox(
+        &self,
+        inbox_name: String,
+        limit: usize,
+        res: Sender<Vec<ShinkaiMessage>>,
+    ) {
+        // Query the database for the last `limit` number of messages from the specified inbox.
+        let result = match self.db.lock().await.get_last_messages_from_inbox(inbox_name, limit) {
+            Ok(messages) => messages,
+            Err(e) => {
+                error!("Failed to get last messages from inbox: {}", e);
+                return;
+            }
+        };
+
+        // Send the retrieved messages back to the requester.
+        if let Err(e) = res.send(result).await {
+            error!("Failed to send last messages from inbox: {}", e);
+        }
+    }
+
     pub async fn send_public_keys(&self, res: Sender<(SignaturePublicKey, EncryptionPublicKey)>) -> Result<(), Error> {
         let identity_public_key = self.identity_public_key.clone();
         let encryption_public_key = self.encryption_public_key.clone();
@@ -229,6 +281,136 @@ impl Node {
         Ok(())
     }
 
+    pub async fn mark_as_read_up_to(&self, inbox_name: String, up_to_time: String, res: Sender<String>) {
+        // Attempt to mark messages as read in the database
+        let result = match self.db.lock().await.mark_as_read_up_to(inbox_name, up_to_time) {
+            Ok(()) => "Successfully marked messages as read.".to_string(),
+            Err(e) => {
+                let error_message = format!("Failed to mark messages as read: {}", e);
+                error!("{}", &error_message);
+                error_message
+            }
+        };
+
+        // Send the result back to the requester
+        if let Err(e) = res.send(result).await {
+            error!("Failed to send result: {}", e);
+        }
+    }
+
+    pub async fn add_inbox_permission(
+        &self,
+        inbox_name: String,
+        perm_type: String,
+        identity: String,
+        res: Sender<String>,
+    ) {
+        let identity = self
+            .identity_manager
+            .lock()
+            .await
+            .search_identity(&identity)
+            .await
+            .unwrap()
+            .clone();
+        let perm = InboxPermission::from_str(&perm_type).unwrap();
+        let result = match self.db.lock().await.add_permission(&inbox_name, &identity, perm) {
+            Ok(_) => "Success".to_string(),
+            Err(e) => e.to_string(),
+        };
+
+        let _ = res.send(result);
+    }
+
+    pub async fn remove_inbox_permission(
+        &self,
+        inbox_name: String,
+        perm_type: String,
+        identity: String,
+        res: Sender<String>,
+    ) {
+        let identity = self
+            .identity_manager
+            .lock()
+            .await
+            .search_identity(&identity)
+            .await
+            .unwrap()
+            .clone();
+        // let perm = InboxPermission::from_str(&perm_type).unwrap();
+        // First, check if permission exists and remove it if it does
+        match self.db.lock().await.remove_permission(&inbox_name, &identity.clone()) {
+            Ok(()) => {
+                res.send(format!("Permission removed successfully from identity {}.", identity))
+                    .await;
+            }
+            Err(e) => {
+                res.send(format!("Error removing permission: {:?}", e)).await;
+            }
+        }
+    }
+
+    pub async fn has_inbox_permission(
+        &self,
+        inbox_name: String,
+        perm_type: String,
+        identity_name: String,
+        res: Sender<bool>,
+    ) {
+        // Obtain the IdentityManager and ShinkaiMessageDB locks
+        let identity_manager = self.identity_manager.lock().await;
+        let db = self.db.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(&identity_name).await;
+        if identity.is_none() {
+            // You may want to log an error here or handle it differently
+            res.send(false).await;
+            return;
+        }
+        let identity = identity.unwrap();
+
+        // Convert the permission type string to an InboxPermission
+        let perm = match InboxPermission::from_str(&perm_type) {
+            Ok(perm) => perm,
+            Err(_) => {
+                // You may want to log an error here or handle it differently
+                res.send(false).await;
+                return;
+            }
+        };
+
+        // Call the has_permission function and send the result back
+        match db.has_permission(&inbox_name, &identity, perm) {
+            Ok(result) => {
+                res.send(result).await;
+            }
+            Err(e) => {
+                // Log the error or handle it differently
+                // For now, I'll just send false if there's an error
+                res.send(false).await;
+            }
+        }
+    }
+
+    pub async fn create_new_job(
+        &self,
+        shinkai_message: ShinkaiMessage,
+        scope: Option<JobScope>,
+        res: Sender<(String, String)>,
+    ) {
+        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
+            Ok(job_id) => {
+                // If everything went well, send the job_id back with an empty string for error
+                res.send((job_id, String::new())).await;
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let _ = res.try_send((String::new(), format!("{}", err)));
+            }
+        };
+    }
+      
     pub async fn handle_registration_code_usage(
         &self,
         msg: ShinkaiMessage,

@@ -2,7 +2,6 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::Topic;
 use async_std::task;
 use shinkai_node::db::db_errors::ShinkaiMessageDBError;
-use shinkai_node::db::db_inbox::Permission;
 use shinkai_node::db::ShinkaiMessageDB;
 use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;

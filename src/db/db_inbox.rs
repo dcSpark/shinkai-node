@@ -1,38 +1,15 @@
+use core::fmt;
+use std::str::FromStr;
+
 use libp2p::identity;
 use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
     shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{Identity, IdentityType}},
+    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{Identity, IdentityType}}, schemas::inbox_permission::InboxPermission,
 };
 
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
-
-#[derive(Debug, PartialEq, PartialOrd)]
-pub enum Permission {
-    Read,  // it contains None
-    Write, // it contains Read
-    Admin, // it contains Write
-}
-
-impl Permission {
-    fn to_i32(&self) -> i32 {
-        match self {
-            Permission::Read => 1,
-            Permission::Write => 2,
-            Permission::Admin => 3,
-        }
-    }
-
-    fn from_i32(val: i32) -> Result<Self, ShinkaiMessageDBError> {
-        match val {
-            1 => Ok(Permission::Read),
-            2 => Ok(Permission::Write),
-            3 => Ok(Permission::Admin),
-            _ => Err(ShinkaiMessageDBError::SomeError),
-        }
-    }
-}
 
 impl ShinkaiMessageDB {
     pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
@@ -206,13 +183,13 @@ impl ShinkaiMessageDB {
             Some(cf) => cf,
             None => return Err(ShinkaiMessageDBError::InboxNotFound),
         };
-
+    
         // Create an iterator for the specified unread_list, starting from the beginning
         let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-
+    
         // Convert up_to_time to &str
-        let up_to_time = &up_to_time;
-
+        let up_to_time = up_to_time.as_str();
+    
         // Iterate through the unread_list and delete all messages up to the specified time
         for item in iter {
             // Handle the Result returned by the iterator
@@ -222,12 +199,12 @@ impl ShinkaiMessageDB {
                         Ok(s) => s,
                         Err(_) => return Err(ShinkaiMessageDBError::SomeError),
                     };
-
+    
                     // Split the key_str to separate timestamp and hash
-                    let split_key: Vec<&str> = key_str.split(':').collect();
-
-                    if let Some(timestamp_str) = split_key.get(0) {
-                        if *timestamp_str <= &**up_to_time {
+                    let mut split_key = key_str.splitn(2, ':');
+    
+                    if let Some(timestamp_str) = split_key.next() {
+                        if timestamp_str <= up_to_time {
                             // Delete the message from the unread_list
                             self.db.delete_cf(unread_list_cf, key)?;
                         } else {
@@ -239,9 +216,10 @@ impl ShinkaiMessageDB {
                 Err(e) => return Err(e.into()),
             }
         }
-
+    
         Ok(())
     }
+    
 
     pub fn get_last_unread_messages_from_inbox(
         &self,
@@ -307,7 +285,7 @@ impl ShinkaiMessageDB {
         &mut self,
         inbox_name: &str,
         identity: &Identity,
-        perm: Permission,
+        perm: InboxPermission,
     ) -> Result<(), ShinkaiMessageDBError> {
         // Fetch column family for identity
         let cf_identity = self
@@ -357,7 +335,7 @@ impl ShinkaiMessageDB {
         &self,
         inbox_name: &str,
         identity: &Identity,
-        perm: Permission,
+        perm: InboxPermission,
     ) -> Result<bool, ShinkaiMessageDBError> {
         // Fetch column family for identity
         let cf_identity = self
@@ -396,7 +374,7 @@ impl ShinkaiMessageDB {
             Some(val) => {
                 let val_str = String::from_utf8(val.to_vec()).map_err(|_| ShinkaiMessageDBError::SomeError)?;
                 let val_perm =
-                    Permission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
+                    InboxPermission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiMessageDBError::SomeError)?)?;
                 Ok(val_perm >= perm)
             }
             None => Ok(false),
