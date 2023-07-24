@@ -1,7 +1,6 @@
 use std::{fs, path::Path};
 
 use async_std::task;
-use libp2p::identity;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_node::{
     db::ShinkaiMessageDB,
