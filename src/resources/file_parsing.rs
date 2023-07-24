@@ -1,8 +1,9 @@
 use crate::resources::resource_errors::*;
 use csv::Reader;
+use keyphrases::KeyPhraseExtractor;
 use pdf_extract;
 use regex::Regex;
-use std::io::Cursor;
+use std::{io::Cursor, vec};
 
 pub struct FileParser {}
 
@@ -86,31 +87,61 @@ impl FileParser {
         Ok(result)
     }
 
-    /// Parse text from a PDF from a buffer.
+    /// Parse text from a PDF in a buffer, performing sentence extraction,
+    /// text cleanup, and sentence grouping (for data chunks).
     ///
     /// # Arguments
     ///
     /// * `buffer` - A byte slice containing the PDF data.
-    /// * `average_chunk_size` - Average number of characters per chunk desired.
+    /// * `average_group_size` - Average number of characters per group desired.
     ///   Do note, we stop at fully sentences, so this is just a target minimum.
     ///
     /// # Returns
     ///
-    /// A `Result` containing a `String` of the extracted text from the PDF. If
-    /// an error occurs while parsing the PDF data, the `Result` will
+    /// A `Result` containing a `Vec<String>` of sentences groups from the PDF.
+    /// If an error occurs while parsing the PDF data, the `Result` will
     /// contain an `Error`.
-    pub fn parse_pdf(buffer: &[u8], average_chunk_size: u64) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_pdf(buffer: &[u8], average_group_size: u64) -> Result<Vec<String>, ResourceError> {
         // Setting average length to 400, to respect small context size LLMs.
         // Sentences continue past this light 400 cap, so it has to be less than the
         // hard cap.
-        let num_characters = if average_chunk_size > 400 {
+        let num_characters = if average_group_size > 400 {
             400
         } else {
-            average_chunk_size
+            average_group_size
         };
         let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
         let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
+
         grouped_text_list
+    }
+
+    /// Extracts the most important keywords from a given text,
+    /// using the RAKE algorithm.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - A string slice that holds the text from which keywords are to
+    ///   be extracted.
+    /// * `num` - The number of keywords to extract/return.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<String>` that contains the extracted keywords.
+    pub fn extract_keywords(text: &str, num: u64) -> Vec<String> {
+        // Create a new KeyPhraseExtractor with a maximum of num keywords
+        let extractor = KeyPhraseExtractor::new(text, num as usize);
+
+        // Get the keywords
+        let keywords = extractor.get_keywords();
+
+        // Printing logic
+        // keywords
+        //     .iter()
+        //     .for_each(|(score, keyword)| println!("{}: {}", keyword, score));
+
+        // Return only the keywords, discarding the scores
+        keywords.into_iter().map(|(_score, keyword)| keyword).collect()
     }
 
     /// Cleans the input text by performing several operations:

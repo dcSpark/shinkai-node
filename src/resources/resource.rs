@@ -5,6 +5,7 @@ use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::fmt::format;
 
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -77,20 +78,28 @@ pub trait Resource {
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
     /// Regenerates and updates the resource's embedding. The new
-    /// embedding is generated using the provided `EmbeddingGenerator` and
-    /// the resource's name, description, and source.
+    /// embedding is generated using the provided `EmbeddingGenerator` plus
+    /// the resource's name, description, source, and list of provided keywords.
     ///
     /// # Arguments
     ///
     /// * `generator` - The `EmbeddingGenerator` to be used for generating the
     ///   new embedding.
+    /// * `keywords` - A list of Strings that are keywords from the resource
+    ///   content which were externally extracted. Note these keywords are only
+    ///   used for resource embedding generation, and are not saved in the
+    ///   resource.
     ///
     /// # Returns
     ///
     /// * `Result<(), ResourceError>` - Returns `Ok(())` if the embedding
     /// is successfully updated, or an error if the embedding generation fails.
-    fn update_resource_embedding(&mut self, generator: &dyn EmbeddingGenerator) -> Result<(), ResourceError> {
-        let formatted = self.resource_embedding_data_formatted();
+    fn update_resource_embedding(
+        &mut self,
+        generator: &dyn EmbeddingGenerator,
+        keywords: Vec<String>,
+    ) -> Result<(), ResourceError> {
+        let formatted = self.resource_embedding_data_formatted(keywords);
         let new_embedding = generator
             .generate_embedding(&formatted, "RE")
             .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
@@ -99,27 +108,39 @@ pub trait Resource {
     }
 
     /// Generates a formatted string that represents the data to be used for the
-    /// resource embedding. This string includes
-    /// the resource's name, description, and source.
+    /// resource embedding. This string includes the resource's name,
+    /// description, source, and the maximum number of keywords which can be
+    /// fit.
+    ///
+    /// * `keywords` - A list of Strings that are keywords from the resource
+    ///   content which were externally extracted.
     ///
     /// # Returns
     ///
     /// * `String` - The formatted metadata string in the format of "Name: N,
     ///   Description: D, Source: S". If any are None, they are skipped.
-    fn resource_embedding_data_formatted(&self) -> String {
+    fn resource_embedding_data_formatted(&self, keywords: Vec<String>) -> String {
         let name = format!("Name: {}", self.name());
-
         let desc = self
             .description()
             .map(|description| format!(", Description: {}", description))
             .unwrap_or_default();
-
         let source = self
             .source()
             .map(|source| format!(", Source: {}", source))
             .unwrap_or_default();
 
-        format!("{}{}{}", name, desc, source)
+        // Take keywords until we hit an upper 495 character cap to ensure
+        // we do not go past the embedding LLM context window.
+        let pre_keyword_length = name.len() + desc.len() + source.len();
+        let mut keyword_string = String::new();
+        for phrase in keywords {
+            if pre_keyword_length + keyword_string.len() + phrase.len() <= 495 {
+                keyword_string = format!("{}, {}", keyword_string, phrase);
+            }
+        }
+
+        format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
     }
 
     /// Performs a vector similarity search using a query embedding and returns
