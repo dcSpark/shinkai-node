@@ -10,7 +10,7 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 
 lazy_static! {
-    static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "pythia-160m-q4_0.bin";
+    static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
 }
 
 /// A trait for types that can generate embeddings from text.
