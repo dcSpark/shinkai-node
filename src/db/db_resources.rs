@@ -10,7 +10,7 @@ use super::db_errors::ShinkaiDBError;
 impl ShinkaiDB {
     /// Saves the `ResourceRouter` into the ShinkaiDB in the resources topic as
     /// a JSON string using the default key.
-    fn save_resource_router(&self, router: ResourceRouter) -> Result<(), ShinkaiDBError> {
+    fn save_resource_router(&self, router: &ResourceRouter) -> Result<(), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = router.to_json()?;
         let bytes = json.as_bytes();
@@ -26,7 +26,11 @@ impl ShinkaiDB {
 
     /// Saves the `Resource` into the ShinkaiDB in the resources topic as a JSON
     /// string.
-    fn save_resource_json(&self, resource: Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
+    ///
+    /// Note this is only to be used internally, as this does not add a resource
+    /// pointer in the ResourceRouter. Adding the pointer is required for any
+    /// resource being saved.
+    fn save_resource_pointerless(&self, resource: &Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
         // Convert Resource JSON to bytes for storage
         let json = resource.to_json()?;
         let bytes = json.as_bytes();
@@ -41,16 +45,24 @@ impl ShinkaiDB {
     }
 
     /// Saves the list of `Resource`s into the ShinkaiDB. This updates the
-    /// Resource Router with the embeddings + name of the resources as well. Of
-    /// note, if an existing resource exists in the DB with the same name,
-    /// this will overwrite the old resource completely.
+    /// Resource Router with the resource pointers as well.
+    ///
+    /// Of note, if an existing resource exists in the DB with the same name and
+    /// resource_id, this will overwrite the old resource completely.
     pub fn save_resources(&self, resources: Vec<Box<dyn Resource>>) -> Result<(), ShinkaiDBError> {
-        // Save the JSON of the resources in the DB under their name as the key
-        for resource in resources {
-            self.save_resource_json(resource)?;
-        }
+        // Get the resource router
+        let mut router = self.get_resource_router()?;
 
-        let router = self.get_resource_router()?;
+        // TODO: Batch saving the resource and the router together
+        // to guarantee atomicity and coherence of router.
+        for resource in resources {
+            // Save the JSON of the resources in the DB
+            self.save_resource_pointerless(&resource)?;
+            // Add the pointer to the router, saving the router
+            // to the DB on each iteration
+            router.add_resource_pointer(&resource);
+            self.save_resource_router(&router)?;
+        }
 
         // Add logic here for dealing with the resource router
 

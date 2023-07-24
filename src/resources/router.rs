@@ -17,6 +17,23 @@ pub struct ResourceRouter {
 }
 
 impl ResourceRouter {
+    /// Performs a vector similarity search using a query embedding and returns
+    /// a list of the db_keys (as Strings) of the most similar Resources.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - An embedding that is the basis for the similarity search.
+    /// * `num_of_results` - The number of top results to return (top-k)
+    ///
+    /// # Returns
+    ///
+    /// A `Result` that contains a vector of db_keys sorted by similarity
+    /// score in descending order, or an error if something goes wrong.
+    fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<String> {
+        let chunks = self.routing_resource.similarity_search(query, num_of_results);
+        chunks.iter().map(|c| c.id.to_string()).collect()
+    }
+
     /// Create a new ResourceRouter from scratch
     pub fn new() -> Self {
         let name = "Resource Router";
@@ -36,33 +53,55 @@ impl ResourceRouter {
     }
 
     /// Adds a resource pointer to the ResourceRouter in memory.
-    /// The pointed to resource is expected to have a valid resource embedding
+    /// The pointed-to resource is expected to have a valid resource embedding
     /// and have already been saved into the DB.
-    pub fn add_resource_pointer(&mut self, resource: Box<dyn Resource>) {
+    ///
+    /// If a resource pointer already exists with the same db_key, then
+    /// the old pointer will be replaced.
+    pub fn add_resource_pointer(&mut self, resource: &Box<dyn Resource>) -> Result<(), ResourceError> {
         let data = resource.name();
         let embedding = resource.resource_embedding();
         let metadata = resource.db_key().clone();
-        self.routing_resource.append_data(&data, Some(&metadata), embedding);
+
+        match self.db_key_search(&metadata) {
+            Ok(id) => {
+                // If a resource pointer with matching db_key is found,
+                // replace the existing resource pointer with the new one.
+                self.replace_resource_pointer(&id, resource)?;
+            }
+            Err(_) => {
+                // If no resource pointer with matching db_key is found,
+                // append the new data.
+                self.routing_resource.append_data(&data, Some(&metadata), embedding);
+            }
+        }
+
+        Ok(())
     }
 
-    /// Search through all metadata of all resource pointers (stored as
-    /// DataChunks)
-    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, ResourceError> {
-        self.routing_resource.metadata_search(query_metadata)
+    /// Search through the resource pointers to find if one exists with
+    /// a matching db_key.
+    ///
+    /// Returns the id of the first resource pointer in the Router.
+    pub fn db_key_search(&self, query_metadata: &str) -> Result<String, ResourceError> {
+        let data_chunks = self.routing_resource.metadata_search(query_metadata)?;
+
+        if let Some(chunk) = data_chunks.get(0).cloned() {
+            return Ok(chunk.id);
+        } else {
+            Err(ResourceError::NoChunkFound)
+        }
     }
 
     /// Replaces an existing resource pointer with a new one.
-    ///
-    /// Returns the old resource pointer as a DataChunk
-    pub fn replace_resource_pointer(
-        &mut self,
-        id: u64,
-        resource: Box<dyn Resource>,
-    ) -> Result<DataChunk, ResourceError> {
+    pub fn replace_resource_pointer(&mut self, id: &str, resource: &Box<dyn Resource>) -> Result<(), ResourceError> {
         let data = resource.name();
         let embedding = resource.resource_embedding();
         let metadata = resource.db_key().clone();
-        self.routing_resource.replace_data(id, data, Some(&metadata), embedding)
+        let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
+        self.routing_resource
+            .replace_data(id, &data, Some(&metadata), embedding)?;
+        Ok(())
     }
 
     /// Deletes a resource pointer given the DataChunk id
