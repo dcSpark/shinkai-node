@@ -1,5 +1,5 @@
 # Use a Rust base image
-FROM rust:latest as builder
+FROM rust:bookworm as builder
 RUN apt-get update && apt-get install -y libclang-dev 
 
 # Create a new directory for your app
@@ -20,7 +20,7 @@ RUN cargo test
 #RUN cargo build --release --locked
 
 # Create a new stage for the runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install any necessary system dependencies
 RUN apt-get update && apt-get install -y \
