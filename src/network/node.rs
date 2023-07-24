@@ -19,7 +19,7 @@ use crate::managers::job_manager::JobManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::job_schemas::{JobScope, JobToolCall};
+use crate::schemas::message_schemas::JobToolCall;
 use crate::shinkai_message::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     string_to_encryption_public_key,
@@ -135,12 +135,11 @@ pub enum NodeCommand {
     },
     CreateNewJob {
         shinkai_message: ShinkaiMessage,
-        scope: Option<JobScope>,
         res: Sender<(String, String)>,
     },
     JobMessage {
+        job_id: String,
         shinkai_message: ShinkaiMessage,
-        content: String,
         res: Sender<(String, String)>,
     },
     JobPreMessage {
@@ -284,8 +283,8 @@ impl Node {
                             Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, scope, res }) => self.create_new_job(shinkai_message, scope, res).await,
-                            // Some(NodeCommand::JobMessage { job_id, content, res }) => self.job_message(job_id, content, res).await?,
+                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             _ => break,
                         }

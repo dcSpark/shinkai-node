@@ -4,7 +4,7 @@ use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_node::{
     db::ShinkaiDB,
-    schemas::{inbox_name::InboxName, job_schemas::JobScope},
+    schemas::{inbox_name::InboxName, message_schemas::JobScope},
     shinkai_message::utils::hash_string,
 };
 
@@ -24,7 +24,7 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_node::db::db_errors::ShinkaiDBError;
+    use shinkai_node::{db::db_errors::ShinkaiDBError, schemas::message_schemas::JobScope};
 
     use super::*;
 

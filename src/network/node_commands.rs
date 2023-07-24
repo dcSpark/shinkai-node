@@ -3,7 +3,9 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode},
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::{inbox_permission::InboxPermission, job_schemas::{JobScope, JobCreation}},
+    schemas::{
+        inbox_permission::InboxPermission,
+    },
     shinkai_message::{
         encryption::{
             clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
@@ -18,7 +20,6 @@ use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
-use uuid::Uuid;
 use std::str::FromStr;
 use std::{
     cell::RefCell,
@@ -26,6 +27,7 @@ use std::{
     net::SocketAddr,
 };
 use tokio::sync::oneshot::error;
+use uuid::Uuid;
 use warp::path::full;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -393,13 +395,14 @@ impl Node {
         }
     }
 
-    pub async fn create_new_job(
-        &self,
-        shinkai_message: ShinkaiMessage,
-        scope: Option<JobScope>,
-        res: Sender<(String, String)>,
-    ) {
-        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
+    pub async fn create_new_job(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        match self
+            .job_manager
+            .lock()
+            .await
+            .process_job_message(shinkai_message, None)
+            .await
+        {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 res.send((job_id, String::new())).await;
@@ -410,7 +413,27 @@ impl Node {
             }
         };
     }
-      
+
+    pub async fn job_message(&self, job_id: String, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        // TODO: maybe I don't need job_id?
+        match self
+            .job_manager
+            .lock()
+            .await
+            .process_job_message(shinkai_message, Some(job_id))
+            .await
+        {
+            Ok(job_id) => {
+                // If everything went well, send the job_id back with an empty string for error
+                res.send((job_id, String::new())).await;
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let _ = res.try_send((String::new(), format!("{}", err)));
+            }
+        };
+    }
+
     pub async fn handle_registration_code_usage(
         &self,
         msg: ShinkaiMessage,
