@@ -6,6 +6,6 @@ cd build
 cmake .. -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
 make
 cd ..
-cp build/bin/server ..
+cp build/bin/server ../bert-cpp-server
 cd ..
 rm -rf bert.cpp

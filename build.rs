@@ -18,14 +18,14 @@ fn main() {
         .arg("scripts/compile_bert_cpp.sh")
         .status()
         .unwrap();
-    set_execute_permission("server").expect("Failed to set execute permission");
+    set_execute_permission("bert-cpp-server").expect("Failed to set execute permission");
 
     // Local Embedding Generator model
     let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
     let model_filename = "models/pythia-160m-q4_0.bin";
     download_file(model_url, model_filename, model_filename);
 
-    // Remote Embedding Generator model (used via LocalAI)
+    // Remote Embedding Generator model (used via Bert.cpp server)
     let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
     let model_filename = "models/all-MiniLM-L12-v2.bin";
     download_file(model_url, model_filename, model_filename);

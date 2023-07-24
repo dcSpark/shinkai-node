@@ -1,5 +1,5 @@
+use crate::resources::bert_cpp::DEFAULT_LOCAL_EMBEDDINGS_PORT;
 use crate::resources::embeddings::*;
-use crate::resources::local_ai::DEFAULT_LOCAL_EMBEDDINGS_PORT;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -115,6 +115,30 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
 }
 
 impl RemoteEmbeddingGenerator {
+    /// Create a RemoteEmbeddingGenerator
+    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
+        RemoteEmbeddingGenerator {
+            model_type,
+            api_url: api_url.to_string(),
+            api_key: api_key.map(|a| a.to_string()),
+        }
+    }
+
+    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
+    /// to the webserver of a local running instance of BertCPP using the
+    /// default set port.
+    ///
+    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
+    pub fn new_default() -> RemoteEmbeddingGenerator {
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
+        let url = format!("0.0.0.0:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
+        RemoteEmbeddingGenerator {
+            model_type: model_architecture,
+            api_url: url,
+            api_key: None,
+        }
+    }
+
     /// This function takes a string and a mutable reference to a TcpStream
     /// as input and sends the string to the Bert-CPP server. The server then responds
     /// with a byte array which this function converts into a vector of 32 bit
@@ -226,30 +250,6 @@ impl RemoteEmbeddingGenerator {
             )))
         }
     }
-
-    /// Create a RemoteEmbeddingGenerator
-    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
-        RemoteEmbeddingGenerator {
-            model_type,
-            api_url: api_url.to_string(),
-            api_key: api_key.map(|a| a.to_string()),
-        }
-    }
-
-    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
-    /// to the webserver of a local running instance of BertCPP using the
-    /// default set port.
-    ///
-    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
-    pub fn new_default() -> RemoteEmbeddingGenerator {
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
-        let url = format!("0.0.0.0:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
-        RemoteEmbeddingGenerator {
-            model_type: model_architecture,
-            api_url: url,
-            api_key: None,
-        }
-    }
 }
 
 /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
@@ -338,23 +338,11 @@ impl LocalEmbeddingGenerator {
 
 mod tests {
     use super::*;
-    use crate::resources::local_ai::BertCPPProcess;
-
-    #[test]
-    fn test_local_embeddings_generation() {
-        let generator = LocalEmbeddingGenerator::new_default();
-
-        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
-        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
-
-        assert_eq!(dog_embeddings, dog_embeddings);
-        assert_eq!(cat_embeddings, cat_embeddings);
-        assert_ne!(dog_embeddings, cat_embeddings);
-    }
+    use crate::resources::bert_cpp::BertCPPProcess;
 
     #[test]
     fn test_remote_embeddings_generation() {
-        let lai_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
@@ -366,9 +354,23 @@ mod tests {
     }
 
     //
-    // Commented out because embedding generation is slow
+    // Commented out because embedding generation is slow,
+    // with these models, doesn't seem to work on M1+ macs,
     // and resources tests cover this functionality anyways
     //
+
+    // #[test]
+    // fn test_local_embeddings_generation() {
+    //     let generator = LocalEmbeddingGenerator::new_default();
+
+    //     let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
+    //     let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+
+    //     assert_eq!(dog_embeddings, dog_embeddings);
+    //     assert_eq!(cat_embeddings, cat_embeddings);
+    //     assert_ne!(dog_embeddings, cat_embeddings);
+    // }
+
     // #[test]
     // fn test_embedding_vector_similarity() {
     //     let generator = LocalEmbeddingGenerator::new_default();

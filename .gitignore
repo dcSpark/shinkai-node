@@ -8,3 +8,4 @@ local-ai
 server
 embeddings
 bert.cpp/
+bert-cpp-server
