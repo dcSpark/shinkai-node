@@ -72,12 +72,6 @@ pub trait Resource {
     // with &self.
     fn to_json(&self) -> Result<String, ResourceError>;
 
-    /// Saves the `Resource` into the ShinkaiDB in the resources topic as a JSON
-    /// string using the Resource name as the key.
-    fn save_to_db(&self, db: ShinkaiDB) {
-
-    }
-
     /// Retrieves a data chunk given its id.
     ///
     /// # Arguments
