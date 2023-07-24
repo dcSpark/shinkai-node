@@ -237,7 +237,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
-    /// to the webserver of a local running instance of LocalAI using the
+    /// to the webserver of a local running instance of BertCPP using the
     /// default set port.
     ///
     /// Expected to have downloaded & be using the AllMiniLML12v2 model.
@@ -338,7 +338,7 @@ impl LocalEmbeddingGenerator {
 
 mod tests {
     use super::*;
-    use crate::resources::local_ai::LocalAIProcess;
+    use crate::resources::local_ai::BertCPPProcess;
 
     #[test]
     fn test_local_embeddings_generation() {
@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn test_remote_embeddings_generation() {
-        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let lai_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
