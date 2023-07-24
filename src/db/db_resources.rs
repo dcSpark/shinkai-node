@@ -33,6 +33,10 @@ impl ShinkaiDB {
             self.save_resource_json(resource)?;
         }
 
+        let router = self.get_resource_router()?;
+
+        
+
         // Add logic here for dealing with the resource router
 
         Ok(())

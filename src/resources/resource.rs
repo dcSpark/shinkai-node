@@ -61,8 +61,9 @@ pub trait Resource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> Option<&str>;
-    fn embedding_model_used(&self) -> EmbeddingModelType;
+    fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
+    fn embedding_model_used(&self) -> EmbeddingModelType;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);

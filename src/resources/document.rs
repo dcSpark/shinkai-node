@@ -8,10 +8,11 @@ use serde_json;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
-    pub name: String,
-    pub description: Option<String>,
-    pub source: Option<String>,
-    pub resource_embedding: Embedding,
+    name: String,
+    description: Option<String>,
+    source: Option<String>,
+    resource_id: String,
+    resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
@@ -45,6 +46,13 @@ impl Resource for DocumentResource {
     /// The optional source of the `DocumentResource`.
     fn source(&self) -> Option<&str> {
         self.source.as_deref()
+    }
+
+    /// # Returns
+    ///
+    /// The data hash of the `DocumentResource`.
+    fn resource_id(&self) -> &str {
+        &self.resource_id()
     }
 
     /// # Returns
@@ -104,6 +112,9 @@ impl DocumentResource {
     ///   document resource.
     /// * `source` - An optional string slice that holds the source of the
     ///   document resource.
+    /// * `resource_id` - A Sha256 hash as a String, which should be generated
+    ///   by hashing the bytes of the original data that the DocumentResource
+    ///   was created from
     /// * `resource_embedding` - An `Embedding` struct that holds the embedding
     ///   of the document resource.
     /// * `chunk_embeddings` - A vector of `Embedding` structs that hold the
@@ -120,6 +131,7 @@ impl DocumentResource {
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        resource_id: &str,
         resource_embedding: Embedding,
         chunk_embeddings: Vec<Embedding>,
         data_chunks: Vec<DataChunk>,
@@ -129,6 +141,7 @@ impl DocumentResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source.map(String::from),
+            resource_id: String::from(resource_id),
             resource_embedding,
             chunk_embeddings,
             chunk_count: data_chunks.len() as u64,
@@ -145,15 +158,18 @@ impl DocumentResource {
     /// * `name` - The name of the `DocumentResource`.
     /// * `desc` - The optional description of the `DocumentResource`.
     /// * `source` - The optional source of the `DocumentResource`.
+    /// * `id` - A unique id that the creator of the Doc defines (generally
+    ///   Sha256 hash of the original content)
     ///
     /// # Returns
     ///
     /// * `Self` - A new instance of `DocumentResource`.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>) -> Self {
+    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
         DocumentResource::new(
             name,
             desc,
             source,
+            resource_id,
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
@@ -372,6 +388,10 @@ impl DocumentResource {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
     }
 
+    pub fn set_resource_id(&mut self, resource_id: String) {
+        self.resource_id = resource_id;
+    }
+
     /// Parses a list of strings filled with text into a Document Resource,
     /// extracting keywords, and generating embeddings using the supplied
     /// embedding generator.
@@ -399,9 +419,10 @@ impl DocumentResource {
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        resource_id: &str,
     ) -> Result<DocumentResource, ResourceError> {
         // Create doc resource and initial setup
-        let mut doc = DocumentResource::new_empty(name, desc, source);
+        let mut doc = DocumentResource::new_empty(name, desc, source, resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Parse the pdf into grouped text blocks
@@ -458,8 +479,10 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
     ) -> Result<DocumentResource, ResourceError> {
+        // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
-        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source)
+        let resource_id = FileParser::generate_data_hash(buffer);
+        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source, &resource_id)
     }
 }
 
@@ -476,6 +499,7 @@ mod tests {
             "3 Animal Facts",
             Some("A bunch of facts about animals and wildlife"),
             Some("animalwildlife.com"),
+            "animal_resource",
         );
         doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
@@ -517,11 +541,13 @@ mod tests {
         let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
-        // Read the pdf from file into a buffer, then parse it into a DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
+        // Read the pdf from file into a buffer
         let buffer = std::fs::read("files/shinkai_manifesto.pdf")
             .map_err(|_| ResourceError::FailedPDFParsing)
             .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
         let doc = DocumentResource::parse_pdf(
             &buffer,
             100,
