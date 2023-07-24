@@ -84,6 +84,14 @@ pub trait Resource {
     /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
+    /// Returns a String representing the Key that this Resource
+    /// will be/is saved to in the Topic::Resources in the DB.
+    ///
+    /// The db key is: `{name}.{resource_id}`
+    fn db_key(&self) -> String {
+        format!("{}.{}", self.name(), self.resource_id())
+    }
+
     /// Regenerates and updates the resource's embedding. The new
     /// embedding is generated using the provided `EmbeddingGenerator` plus
     /// the resource's name, description, source, and list of provided keywords.

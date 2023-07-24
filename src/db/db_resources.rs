@@ -18,7 +18,7 @@ impl ShinkaiDB {
         let cf = self.get_cf_handle(Topic::Resources)?;
 
         // Insert the message into the "Resources" column family
-        self.db.put_cf(cf, resource.name(), bytes)?;
+        self.db.put_cf(cf, resource.db_key(), bytes)?;
 
         Ok(())
     }
@@ -34,8 +34,6 @@ impl ShinkaiDB {
         }
 
         let router = self.get_resource_router()?;
-
-        
 
         // Add logic here for dealing with the resource router
 
