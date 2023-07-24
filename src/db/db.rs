@@ -1,20 +1,5 @@
-use std::collections::HashMap;
-
-use crate::{
-    shinkai_message::{
-        encryption::{
-            encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
-        },
-        shinkai_message_handler::ShinkaiMessageHandler,
-        signatures::{
-            signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
-        },
-    },
-    shinkai_message_proto::ShinkaiMessage,
-};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, ReadOptions, DB};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use crate::{shinkai_message::shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_proto::ShinkaiMessage};
+use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 
 use super::db_errors::ShinkaiMessageDBError;
 
@@ -98,12 +83,13 @@ impl ShinkaiMessageDB {
         })
     }
 
-    pub fn write_to_peers(&self, key: &str, address: &str) -> Result<(), Error> {
+    pub fn insert_peer(&self, key: &str, address: &str) -> Result<(), Error> {
         let cf = self.db.cf_handle(Topic::Peers.as_str()).unwrap();
         self.db.put_cf(cf, key, address.as_bytes())
     }
 
-    pub fn get_all_peers(&self) -> Result<Vec<(String, String)>, Error> {
+    /// Fetches all peers from the Peers topic
+    pub fn get_peers(&self) -> Result<Vec<(String, String)>, Error> {
         let cf = self.db.cf_handle(Topic::Peers.as_str()).unwrap();
         let mut result = Vec::new();
 
@@ -123,12 +109,14 @@ impl ShinkaiMessageDB {
         Ok(result)
     }
 
-    // we are using a composite_key to avoid the problem that two messages could had been generated at the same time
-    // adding the hash of the message to the key, we can ensure that the key is unique
-    // the key is composed by the time the message was generated and the hash of the message
-    // so the key is in the format: "20230702T20533481346:hash"
-    // we could have an empty value for the key, but we are currently using the hash that could be extracted from the message
-    // maybe this saves parsing time for a big quantity of messages (maybe)
+    // we are using a composite_key to avoid the problem that two messages could had
+    // been generated at the same time adding the hash of the message to the
+    // key, we can ensure that the key is unique the key is composed by the time
+    // the message was generated and the hash of the message so the key is in
+    // the format: "20230702T20533481346:hash" we could have an empty value for
+    // the key, but we are currently using the hash that could be extracted from the
+    // message maybe this saves parsing time for a big quantity of messages
+    // (maybe)
     pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), Error> {
         // Calculate the hash of the message for the key
         let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
@@ -143,7 +131,8 @@ impl ShinkaiMessageDB {
             false => ext_metadata.scheduled_time.clone(),
         };
 
-        // Create a composite key by concatenating the time_key and the hash_key, with a separator
+        // Create a composite key by concatenating the time_key and the hash_key, with a
+        // separator
         let composite_key = format!("{}:{}", time_key, hash_key);
 
         // Create a write batch
@@ -174,7 +163,8 @@ impl ShinkaiMessageDB {
             false => message.external_metadata.clone().unwrap().scheduled_time.clone(),
         };
 
-        // Create a composite key by concatenating the time_key and the hash_key, with a separator
+        // Create a composite key by concatenating the time_key and the hash_key, with a
+        // separator
         let composite_key = format!("{}:{}", time_key, hash_key);
 
         // Convert ShinkaiMessage into bytes for storage
@@ -189,11 +179,13 @@ impl ShinkaiMessageDB {
         Ok(())
     }
 
-    // Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
+    // Format: "20230702T20533481346" or
+    // Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
     // Check out ShinkaiMessageHandler::generate_time_now() for more details.
     // Note: If you pass just a date like "20230702" without the time component,
-    // then the function would interpret this as "20230702T00000000000", i.e., the start of the day.
-    pub fn get_scheduled_due_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
+    // then the function would interpret this as "20230702T00000000000", i.e., the
+    // start of the day.
+    pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family
         let scheduled_message_cf = self.db.cf_handle(Topic::ScheduledMessage.as_str()).unwrap();
 
