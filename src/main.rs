@@ -31,9 +31,10 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 mod db;
 mod managers;
 mod network;
+mod resources;
+mod schemas;
 mod shinkai_message;
 mod utils;
-mod schemas;
 
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
@@ -89,18 +90,10 @@ fn main() {
         let recipient = args
             .recipient
             .expect("recipient argument is required for create_message");
-        let sender_subidentity = args
-            .sender_subidentity
-            .unwrap_or("".to_string());
-        let receiver_subidentity = args
-            .receiver_subidentity
-            .unwrap_or("".to_string());
-        let inbox = args
-            .inbox
-            .unwrap_or("".to_string());
-        let body_content = args
-            .body_content
-            .unwrap_or("body content".to_string());
+        let sender_subidentity = args.sender_subidentity.unwrap_or("".to_string());
+        let receiver_subidentity = args.receiver_subidentity.unwrap_or("".to_string());
+        let inbox = args.inbox.unwrap_or("".to_string());
+        let body_content = args.body_content.unwrap_or("body content".to_string());
         let other = args.other.unwrap_or("".to_string());
         let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
 
@@ -153,10 +146,7 @@ fn main() {
                 inbox.to_string(),
                 EncryptionMethod::None,
             )
-            .external_metadata(
-                recipient.to_string(),
-                global_identity_name.to_string().clone(),
-            )
+            .external_metadata(recipient.to_string(), global_identity_name.to_string().clone())
             .build();
 
             println!(

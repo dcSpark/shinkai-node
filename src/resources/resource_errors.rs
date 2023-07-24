@@ -1,3 +1,4 @@
+use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
@@ -14,9 +15,10 @@ pub enum ResourceError {
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
+    RocksDBError(RocksError),
     DBError(ShinkaiDBError),
     RegexError(regex::Error),
-    RequestFailed(String), // Add this line
+    RequestFailed(String),
 }
 
 impl fmt::Display for ResourceError {
@@ -33,11 +35,18 @@ impl fmt::Display for ResourceError {
             ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e), // Add this line
             ResourceError::DBError(ref e) => write!(f, "Shinkai DB Error: {}", e),          // Add this line
+            ResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),       // Add this line
         }
     }
 }
 
 impl Error for ResourceError {}
+
+impl From<RocksError> for ResourceError {
+    fn from(err: RocksError) -> ResourceError {
+        ResourceError::RocksDBError(err)
+    }
+}
 
 impl From<regex::Error> for ResourceError {
     fn from(err: regex::Error) -> ResourceError {

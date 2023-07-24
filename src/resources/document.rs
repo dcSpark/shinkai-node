@@ -61,6 +61,11 @@ impl Resource for DocumentResource {
         &self.chunk_embeddings
     }
 
+    /// Convert to json
+    fn to_json(&self) -> Result<String, ResourceError> {
+        serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
+    }
+
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
         self.embedding_model_used = model_type;
     }
@@ -362,12 +367,7 @@ impl DocumentResource {
         self.data_chunks.push(data_chunk);
     }
 
-    // Convert to json
-    pub fn to_json(&self) -> Result<String, ResourceError> {
-        serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
-    }
-
-    // Convert from json
+    /// Convert from json
     pub fn from_json(json: &str) -> Result<Self, ResourceError> {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
     }

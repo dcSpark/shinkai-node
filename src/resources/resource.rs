@@ -1,3 +1,4 @@
+use crate::db::ShinkaiDB;
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::model_type::*;
@@ -65,6 +66,17 @@ pub trait Resource {
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
+
+    /// Convert to json
+    // Note we cannot add from_json in the trait due to trait object limitations
+    // with &self.
+    fn to_json(&self) -> Result<String, ResourceError>;
+
+    /// Saves the `Resource` into the ShinkaiDB in the resources topic as a JSON
+    /// string using the Resource name as the key.
+    fn save_to_db(&self, db: ShinkaiDB) {
+
+    }
 
     /// Retrieves a data chunk given its id.
     ///

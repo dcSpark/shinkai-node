@@ -17,6 +17,7 @@ pub enum Topic {
     ExternalNodeIdentityKey,
     ExternalNodeEncryptionKey,
     AllJobsTimeKeyed,
+    Resources,
 }
 
 impl Topic {
@@ -34,6 +35,7 @@ impl Topic {
             Self::ExternalNodeIdentityKey => "external_node_identity_key",
             Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
             Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
+            Self::Resources => "resources",
         }
     }
 }
@@ -58,6 +60,7 @@ impl ShinkaiDB {
             Topic::ExternalNodeIdentityKey.as_str(),
             Topic::ExternalNodeEncryptionKey.as_str(),
             Topic::AllJobsTimeKeyed.as_str(),
+            Topic::Resources.as_str(),
         ];
 
         let mut cfs = vec![];
