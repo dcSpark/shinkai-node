@@ -1,6 +1,6 @@
 target/
 .env
-db/
+/db
 db_tests/
 *.json
 *.bin

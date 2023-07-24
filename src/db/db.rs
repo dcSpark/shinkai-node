@@ -1,5 +1,5 @@
 use crate::{shinkai_message::shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_proto::ShinkaiMessage};
-use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
+use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 
 use super::db_errors::ShinkaiDBError;
 
@@ -17,6 +17,7 @@ pub enum Topic {
     ExternalNodeIdentityKey,
     ExternalNodeEncryptionKey,
     AllJobsTimeKeyed,
+    Resources,
 }
 
 impl Topic {
@@ -34,6 +35,7 @@ impl Topic {
             Self::ExternalNodeIdentityKey => "external_node_identity_key",
             Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
             Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
+            Self::Resources => "resources",
         }
     }
 }
@@ -58,6 +60,7 @@ impl ShinkaiDB {
             Topic::ExternalNodeIdentityKey.as_str(),
             Topic::ExternalNodeEncryptionKey.as_str(),
             Topic::AllJobsTimeKeyed.as_str(),
+            Topic::Resources.as_str(),
         ];
 
         let mut cfs = vec![];
@@ -83,14 +86,40 @@ impl ShinkaiDB {
         })
     }
 
+    /// Fetches the ColumnFamily handle.
+    ///
+    /// This is a method that which wraps the RocksDB cf_handle function, and
+    /// converts the output option into a ShinkaiDBError Result to make it
+    /// composable with the rest of the errors.
+    pub fn get_cf_handle(&self, topic: Topic) -> Result<&ColumnFamily, ShinkaiDBError> {
+        Ok(self
+            .db
+            .cf_handle(topic.as_str())
+            .ok_or(ShinkaiDBError::FailedFetchingCF)?)
+    }
+
+    /// Fetches the value of a KV pair and returns it as a Vector of bytes.
+    ///
+    /// This is a method which wraps the RocksDB get_cf function, making it
+    /// simpler to call using just the Topic and the key, and removes the option
+    /// to make it more composable.
+    pub fn get_cf<K: AsRef<[u8]>>(&self, topic: Topic, key: K) -> Result<Vec<u8>, ShinkaiDBError> {
+        let colfam = self.get_cf_handle(topic)?;
+        let bytes = self
+            .db
+            .get_cf(colfam, key)?
+            .ok_or(ShinkaiDBError::FailedFetchingValue)?;
+        Ok(bytes)
+    }
+
     pub fn insert_peer(&self, key: &str, address: &str) -> Result<(), Error> {
-        let cf = self.db.cf_handle(Topic::Peers.as_str()).unwrap();
+        let cf = self.get_cf_handle(Topic::Peers).unwrap();
         self.db.put_cf(cf, key, address.as_bytes())
     }
 
     /// Fetches all peers from the Peers topic
     pub fn get_peers(&self) -> Result<Vec<(String, String)>, Error> {
-        let cf = self.db.cf_handle(Topic::Peers.as_str()).unwrap();
+        let cf = self.get_cf_handle(Topic::Peers).unwrap();
         let mut result = Vec::new();
 
         let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
@@ -139,12 +168,12 @@ impl ShinkaiDB {
         let mut batch = rocksdb::WriteBatch::default();
 
         // Define the data for AllMessages
-        let all_messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
+        let all_messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
         let message_bytes = ShinkaiMessageHandler::encode_message(message.clone());
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
 
         // Define the data for AllMessagesTimeKeyed
-        let all_messages_time_keyed_cf = self.db.cf_handle(Topic::AllMessagesTimeKeyed.as_str()).unwrap();
+        let all_messages_time_keyed_cf = self.get_cf_handle(Topic::AllMessagesTimeKeyed).unwrap();
         batch.put_cf(all_messages_time_keyed_cf, &composite_key, &hash_key);
 
         // Atomically apply the updates
@@ -171,7 +200,7 @@ impl ShinkaiDB {
         let message_bytes = ShinkaiMessageHandler::encode_message(message.clone());
 
         // Retrieve the handle to the "ToSend" column family
-        let to_send_cf = self.db.cf_handle(Topic::ScheduledMessage.as_str()).unwrap();
+        let to_send_cf = self.get_cf_handle(Topic::ScheduledMessage).unwrap();
 
         // Insert the message into the "ToSend" column family using the composite key
         self.db.put_cf(to_send_cf, composite_key, message_bytes)?;
@@ -187,7 +216,7 @@ impl ShinkaiDB {
     // start of the day.
     pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family
-        let scheduled_message_cf = self.db.cf_handle(Topic::ScheduledMessage.as_str()).unwrap();
+        let scheduled_message_cf = self.get_cf_handle(Topic::ScheduledMessage).unwrap();
 
         // Get an iterator over the column family from the start
         let iter = self.db.iterator_cf(scheduled_message_cf, IteratorMode::Start);
@@ -222,8 +251,8 @@ impl ShinkaiDB {
     }
 
     pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
-        let time_keyed_cf = self.db.cf_handle(Topic::AllMessagesTimeKeyed.as_str()).unwrap();
-        let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
+        let time_keyed_cf = self.get_cf_handle(Topic::AllMessagesTimeKeyed).unwrap();
+        let messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
 
         let iter = self.db.iterator_cf(time_keyed_cf, rocksdb::IteratorMode::End);
 
