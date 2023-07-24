@@ -488,11 +488,11 @@ impl DocumentResource {
 
 mod tests {
     use super::*;
-    use crate::resources::local_ai::LocalAIProcess;
+    use crate::resources::bert_cpp::BertCPPProcess;
 
     #[test]
     fn test_manual_document_resource() {
-        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         let mut doc = DocumentResource::new_empty(
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn test_pdf_parsed_document_resource() {
-        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         // Read the pdf from file into a buffer

@@ -1,17 +1,22 @@
+use crate::resources::bert_cpp::DEFAULT_LOCAL_EMBEDDINGS_PORT;
 use crate::resources::embeddings::*;
-use crate::resources::local_ai::DEFAULT_LOCAL_AI_PORT;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
+use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;
 use llm::Model;
 use llm::ModelArchitecture;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
+use std::io::prelude::*;
+use std::io::Cursor;
+use std::net::TcpStream;
 
 lazy_static! {
     static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
 }
+const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
 pub trait EmbeddingGenerator {
@@ -71,7 +76,7 @@ struct EmbeddingResponse {
     usage: serde_json::Value, // or define a separate struct for this if you need to use these values
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RemoteEmbeddingGenerator {
     model_type: EmbeddingModelType,
     api_url: String,
@@ -88,6 +93,118 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// # Returns
     /// An `Embedding` for the input string or an error.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+        // If we're using a Bert model with a Bert-CPP server
+        if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
+            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
+        {
+            let vector = self.generate_embedding_bert_cpp(input_string)?;
+            return Ok(Embedding {
+                vector,
+                id: id.to_string(),
+            });
+        }
+        // Else we're using OpenAI API
+        else {
+            return self.generate_embedding_open_ai(input_string, id);
+        }
+    }
+
+    fn model_type(&self) -> EmbeddingModelType {
+        self.model_type.clone()
+    }
+}
+
+impl RemoteEmbeddingGenerator {
+    /// Create a RemoteEmbeddingGenerator
+    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
+        RemoteEmbeddingGenerator {
+            model_type,
+            api_url: api_url.to_string(),
+            api_key: api_key.map(|a| a.to_string()),
+        }
+    }
+
+    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
+    /// to the webserver of a local running instance of BertCPP using the
+    /// default set port.
+    ///
+    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
+    pub fn new_default() -> RemoteEmbeddingGenerator {
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
+        let url = format!("0.0.0.0:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
+        RemoteEmbeddingGenerator {
+            model_type: model_architecture,
+            api_url: url,
+            api_key: None,
+        }
+    }
+
+    /// This function takes a string and a mutable reference to a TcpStream
+    /// as input and sends the string to the Bert-CPP server. The server then responds
+    /// with a byte array which this function converts into a vector of 32 bit
+    /// floating point numbers (f32).
+    ///
+    /// # Returns
+    ///
+    /// A vector of 32 bit floating point numbers that represent the embeddings.
+    fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, ResourceError> {
+        // Send the input text to the server
+        server
+            .write_all(input_text.as_bytes())
+            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+
+        // Receive the data from the server
+        let mut data = vec![0u8; N_EMBD * 4];
+        server
+            .read_exact(&mut data)
+            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+
+        // Convert the data into a vector of floats
+        let mut rdr = Cursor::new(data);
+        let mut embeddings = Vec::new();
+
+        while let Ok(x) = rdr.read_f32::<LittleEndian>() {
+            embeddings.push(x);
+        }
+
+        Ok(embeddings)
+    }
+
+    /// Generates embeddings for a given text using a local BERT C++ server.
+    ///
+    /// This function takes a string slice as input, establishes a connection
+    /// to a BERT C++ server, and sends the string to the server for processing.
+    /// The server responds with a byte array representing the embeddings of the
+    /// input text, which this function then returns as a vector of 32 bit floating
+    /// point numbers.
+    ///
+    /// # Returns
+    ///
+    /// A vector of 32 bit floating point numbers that represent the embeddings.
+    fn generate_embedding_bert_cpp(&self, input_text: &str) -> Result<Vec<f32>, ResourceError> {
+        let mut server_connection =
+            TcpStream::connect(self.api_url.clone()).map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+        let mut buffer = [0; 4];
+        server_connection
+            .read_exact(&mut buffer)
+            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+
+        let embedding = Self::bert_cpp_embeddings_fetch(&input_text, &mut server_connection);
+        match embedding {
+            Ok(embed) => Ok(embed),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
+    ///
+    /// # Parameters
+    /// - `input_string`: The input string for which embeddings are generated.
+    /// - `id`: The id to be associated with the embeddings.
+    ///
+    /// # Returns
+    /// An `Embedding` for the input string or an error.
+    fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {
             input: String::from(input_string),
@@ -131,36 +248,6 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
                 "HTTP request failed with status: {}",
                 response.status()
             )))
-        }
-    }
-
-    fn model_type(&self) -> EmbeddingModelType {
-        self.model_type.clone()
-    }
-}
-
-impl RemoteEmbeddingGenerator {
-    /// Create a RemoteEmbeddingGenerator
-    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
-        RemoteEmbeddingGenerator {
-            model_type,
-            api_url: api_url.to_string(),
-            api_key: api_key.map(|a| a.to_string()),
-        }
-    }
-
-    /// Create a RemoteEmbeddingGenerator that automatically attempts to connect
-    /// to the webserver of a local running instance of LocalAI using the
-    /// default set port.
-    ///
-    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
-    pub fn new_default() -> RemoteEmbeddingGenerator {
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
-        let url = format!("http://0.0.0.0:{}", DEFAULT_LOCAL_AI_PORT.to_string());
-        RemoteEmbeddingGenerator {
-            model_type: model_architecture,
-            api_url: url,
-            api_key: None,
         }
     }
 }
@@ -251,23 +338,11 @@ impl LocalEmbeddingGenerator {
 
 mod tests {
     use super::*;
-    use crate::resources::local_ai::LocalAIProcess;
-
-    #[test]
-    fn test_local_embeddings_generation() {
-        let generator = LocalEmbeddingGenerator::new_default();
-
-        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
-        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
-
-        assert_eq!(dog_embeddings, dog_embeddings);
-        assert_eq!(cat_embeddings, cat_embeddings);
-        assert_ne!(dog_embeddings, cat_embeddings);
-    }
+    use crate::resources::bert_cpp::BertCPPProcess;
 
     #[test]
     fn test_remote_embeddings_generation() {
-        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
@@ -279,9 +354,23 @@ mod tests {
     }
 
     //
-    // Commented out because embedding generation is slow
+    // Commented out because embedding generation is slow,
+    // with these models, doesn't seem to work on M1+ macs,
     // and resources tests cover this functionality anyways
     //
+
+    // #[test]
+    // fn test_local_embeddings_generation() {
+    //     let generator = LocalEmbeddingGenerator::new_default();
+
+    //     let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
+    //     let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+
+    //     assert_eq!(dog_embeddings, dog_embeddings);
+    //     assert_eq!(cat_embeddings, cat_embeddings);
+    //     assert_ne!(dog_embeddings, cat_embeddings);
+    // }
+
     // #[test]
     // fn test_embedding_vector_similarity() {
     //     let generator = LocalEmbeddingGenerator::new_default();

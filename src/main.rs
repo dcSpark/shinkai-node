@@ -2,12 +2,14 @@
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::shinkai_message::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key, string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod
+    encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key,
+    string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
 use crate::shinkai_message::signatures::{
-    clone_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, string_to_signature_secret_key, unsafe_deterministic_signature_keypair
+    clone_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, string_to_signature_secret_key,
+    unsafe_deterministic_signature_keypair,
 };
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_secret_key_to_string};
 use crate::utils::args::parse_args;
@@ -19,7 +21,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{info, warn};
 use network::Node;
 use shinkai_message::encryption::ephemeral_encryption_keys;
-use shinkai_node::resources::local_ai::LocalAIProcess;
+use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
 use std::env;
 use std::net::{IpAddr, SocketAddr};

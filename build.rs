@@ -5,27 +5,27 @@ use std::io::copy;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use std::env;
+use std::process::Command;
+
 fn main() {
     prost_build::compile_protos(&["protos/shinkai_message_proto.proto"], &["protos"]).unwrap();
 
-    let url = if cfg!(target_os = "macos") {
-        "https://github.com/go-skynet/LocalAI/releases/download/v1.20.1/local-ai-avx2-Darwin-x86_64"
-    } else if cfg!(target_os = "linux") {
-        "https://github.com/go-skynet/LocalAI/releases/download/v1.20.1/local-ai-avx2-Linux-x86_64"
-    } else {
-        panic!("Unsupported OS");
-    };
-    let output_filename = "local-ai";
-
-    download_file(url, output_filename, output_filename);
-    set_execute_permission(output_filename).expect("Failed to set execute permission");
+    // Clone repo, build, and copy the Bert.cpp compiled binary server to root
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let status = Command::new("sh")
+        .current_dir(&manifest_dir)
+        .arg("scripts/compile_bert_cpp.sh")
+        .status()
+        .unwrap();
+    set_execute_permission("bert-cpp-server").expect("Failed to set execute permission");
 
     // Local Embedding Generator model
     let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
     let model_filename = "models/pythia-160m-q4_0.bin";
     download_file(model_url, model_filename, model_filename);
 
-    // Remote Embedding Generator model (used via LocalAI)
+    // Remote Embedding Generator model (used via Bert.cpp server)
     let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
     let model_filename = "models/all-MiniLM-L12-v2.bin";
     download_file(model_url, model_filename, model_filename);
