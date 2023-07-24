@@ -7,3 +7,4 @@ db_tests/
 local-ai
 server
 embeddings
+bert.cpp/
