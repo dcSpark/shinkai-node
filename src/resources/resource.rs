@@ -89,7 +89,9 @@ pub trait Resource {
     ///
     /// The db key is: `{name}.{resource_id}`
     fn db_key(&self) -> String {
-        format!("{}.{}", self.name(), self.resource_id())
+        let name = self.name().replace(" ", "_");
+        let resource_id = self.resource_id().replace(" ", "_");
+        format!("{}.{}", name, resource_id)
     }
 
     /// Regenerates and updates the resource's embedding. The new

@@ -6,3 +6,4 @@ pub mod local_ai;
 pub mod model_type;
 pub mod resource;
 pub mod resource_errors;
+pub mod router;
