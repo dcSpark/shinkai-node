@@ -2,6 +2,8 @@ use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
+use crate::db::db_errors::ShinkaiDBError;
+
 #[derive(Debug)]
 pub enum ResourceError {
     InvalidChunkId,
@@ -12,6 +14,7 @@ pub enum ResourceError {
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
+    DBError(ShinkaiDBError),
     RegexError(regex::Error),
     RequestFailed(String), // Add this line
 }
@@ -29,6 +32,7 @@ impl fmt::Display for ResourceError {
             ResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e), // Add this line
+            ResourceError::DBError(ref e) => write!(f, "Shinkai DB Error: {}", e),          // Add this line
         }
     }
 }
@@ -38,6 +42,12 @@ impl Error for ResourceError {}
 impl From<regex::Error> for ResourceError {
     fn from(err: regex::Error) -> ResourceError {
         ResourceError::RegexError(err)
+    }
+}
+
+impl From<ShinkaiDBError> for ResourceError {
+    fn from(err: ShinkaiDBError) -> ResourceError {
+        ResourceError::DBError(err)
     }
 }
 
