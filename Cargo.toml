@@ -58,3 +58,4 @@ features = ["unstable"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+mockito = "1.0.2"

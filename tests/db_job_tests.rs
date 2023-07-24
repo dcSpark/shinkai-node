@@ -4,8 +4,7 @@ use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_node::{
     db::ShinkaiMessageDB,
-    schemas::{inbox_name::InboxName, job_schemas::JobScope},
-    shinkai_message::utils::hash_string,
+    shinkai_message::utils::hash_string, schemas::message_schemas::JobScope,
 };
 
 fn create_new_job(db: &mut ShinkaiMessageDB, job_id: String, agent_id: String, scope: JobScope) {
@@ -24,7 +23,7 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_node::db::db_errors::ShinkaiMessageDBError;
+    use shinkai_node::{db::db_errors::ShinkaiMessageDBError, schemas::{inbox_name::InboxName, message_schemas::JobScope}};
 
     use super::*;
 
