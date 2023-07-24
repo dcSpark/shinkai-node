@@ -30,48 +30,8 @@ pub enum ShinkaiDBError {
     DataConversionError,
     DataNotFound,
     ResourceError(ResourceError),
-}
-
-impl From<ResourceError> for ShinkaiDBError {
-    fn from(err: ResourceError) -> ShinkaiDBError {
-        ShinkaiDBError::ResourceError(err)
-    }
-}
-
-impl From<rocksdb::Error> for ShinkaiDBError {
-    fn from(error: rocksdb::Error) -> Self {
-        ShinkaiDBError::RocksDBError(error)
-    }
-}
-
-impl From<prost::DecodeError> for ShinkaiDBError {
-    fn from(error: prost::DecodeError) -> Self {
-        ShinkaiDBError::DecodeError(error)
-    }
-}
-
-impl From<io::Error> for ShinkaiDBError {
-    fn from(error: io::Error) -> Self {
-        ShinkaiDBError::IOError(error)
-    }
-}
-
-impl From<&str> for ShinkaiDBError {
-    fn from(_: &str) -> Self {
-        ShinkaiDBError::PublicKeyParseError
-    }
-}
-
-impl From<serde_json::Error> for ShinkaiDBError {
-    fn from(error: serde_json::Error) -> Self {
-        ShinkaiDBError::JsonSerializationError(error)
-    }
-}
-
-impl From<Utf8Error> for ShinkaiDBError {
-    fn from(_: Utf8Error) -> Self {
-        ShinkaiDBError::Utf8ConversionError
-    }
+    FailedFetchingCF,
+    FailedFetchingValue,
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -114,6 +74,8 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
             ShinkaiDBError::DataConversionError => write!(f, "Data conversion error"),
             ShinkaiDBError::DataNotFound => write!(f, "Data not found"),
+            ShinkaiDBError::FailedFetchingCF => write!(f, "Failed fetching Column Family"),
+            ShinkaiDBError::FailedFetchingValue => write!(f, "Failed fetching value. Likely invalid CF or key."),
             ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
         }
     }
@@ -160,5 +122,47 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
             _ => false,
         }
+    }
+}
+
+impl From<ResourceError> for ShinkaiDBError {
+    fn from(err: ResourceError) -> ShinkaiDBError {
+        ShinkaiDBError::ResourceError(err)
+    }
+}
+
+impl From<rocksdb::Error> for ShinkaiDBError {
+    fn from(error: rocksdb::Error) -> Self {
+        ShinkaiDBError::RocksDBError(error)
+    }
+}
+
+impl From<prost::DecodeError> for ShinkaiDBError {
+    fn from(error: prost::DecodeError) -> Self {
+        ShinkaiDBError::DecodeError(error)
+    }
+}
+
+impl From<io::Error> for ShinkaiDBError {
+    fn from(error: io::Error) -> Self {
+        ShinkaiDBError::IOError(error)
+    }
+}
+
+impl From<&str> for ShinkaiDBError {
+    fn from(_: &str) -> Self {
+        ShinkaiDBError::PublicKeyParseError
+    }
+}
+
+impl From<serde_json::Error> for ShinkaiDBError {
+    fn from(error: serde_json::Error) -> Self {
+        ShinkaiDBError::JsonSerializationError(error)
+    }
+}
+
+impl From<Utf8Error> for ShinkaiDBError {
+    fn from(_: Utf8Error) -> Self {
+        ShinkaiDBError::Utf8ConversionError
     }
 }
