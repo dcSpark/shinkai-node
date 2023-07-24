@@ -1,5 +1,5 @@
 use crate::{
-    db::ShinkaiMessageDB,
+    db::ShinkaiDB,
     managers::{IdentityManager, identity_manager},
     network::Node,
     shinkai_message::{
@@ -34,7 +34,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SignatureStaticKey,
     my_node_profile_name: &str,
-    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -165,7 +165,7 @@ pub async fn handle_ping(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>
 ) -> io::Result<()> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
@@ -194,7 +194,7 @@ pub async fn handle_default_encryption(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>
 ) -> io::Result<()> {
     println!(
@@ -245,7 +245,7 @@ pub async fn handle_other_cases(
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-    maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     println!(
@@ -273,7 +273,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &mut ShinkaiMessageDB,
+    db: &mut ShinkaiDB,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     let msg = ShinkaiMessageBuilder::ack_message(
@@ -305,7 +305,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &mut ShinkaiMessageDB,
+    db: &mut ShinkaiDB,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> io::Result<()> {
     let message = match ping_or_pong {

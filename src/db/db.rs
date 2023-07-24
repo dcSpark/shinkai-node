@@ -1,7 +1,7 @@
 use crate::{shinkai_message::shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_proto::ShinkaiMessage};
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 
-use super::db_errors::ShinkaiMessageDBError;
+use super::db_errors::ShinkaiDBError;
 
 pub enum Topic {
     Inbox,
@@ -38,12 +38,12 @@ impl Topic {
     }
 }
 
-pub struct ShinkaiMessageDB {
+pub struct ShinkaiDB {
     pub db: DB,
     pub path: String,
 }
 
-impl ShinkaiMessageDB {
+impl ShinkaiDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
         let cf_names = vec![
             Topic::Inbox.as_str(),
@@ -77,7 +77,7 @@ impl ShinkaiMessageDB {
         db_opts.create_missing_column_families(true);
         let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
 
-        Ok(ShinkaiMessageDB {
+        Ok(ShinkaiDB {
             db,
             path: db_path.to_string(),
         })
@@ -185,7 +185,7 @@ impl ShinkaiMessageDB {
     // Note: If you pass just a date like "20230702" without the time component,
     // then the function would interpret this as "20230702T00000000000", i.e., the
     // start of the day.
-    pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
+    pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family
         let scheduled_message_cf = self.db.cf_handle(Topic::ScheduledMessage.as_str()).unwrap();
 
@@ -199,13 +199,13 @@ impl ShinkaiMessageDB {
         let mut messages = Vec::new();
         for item in iter {
             // Unwrap the Result
-            let (key, value) = item.map_err(ShinkaiMessageDBError::from)?;
+            let (key, value) = item.map_err(ShinkaiDBError::from)?;
 
             // Convert the Vec<u8> key into a string
-            let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiMessageDBError::InvalidData)?;
+            let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiDBError::InvalidData)?;
 
             // Split the composite key to get the time component
-            let time_key = key_str.split(':').next().ok_or(ShinkaiMessageDBError::InvalidData)?;
+            let time_key = key_str.split(':').next().ok_or(ShinkaiDBError::InvalidData)?;
 
             // Compare the time key with the up_to_time
             if time_key > up_to_time {
@@ -214,14 +214,14 @@ impl ShinkaiMessageDB {
             }
 
             // Decode the message
-            let message = ShinkaiMessageHandler::decode_message(value.to_vec()).map_err(ShinkaiMessageDBError::from)?;
+            let message = ShinkaiMessageHandler::decode_message(value.to_vec()).map_err(ShinkaiDBError::from)?;
             messages.push(message);
         }
 
         Ok(messages)
     }
 
-    pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiMessageDBError> {
+    pub fn get_last_messages_from_all(&self, n: usize) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         let time_keyed_cf = self.db.cf_handle(Topic::AllMessagesTimeKeyed.as_str()).unwrap();
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
 
@@ -241,7 +241,7 @@ impl ShinkaiMessageDB {
                             let message = ShinkaiMessageHandler::decode_message(bytes.to_vec())?;
                             messages.push(message);
                         }
-                        None => return Err(ShinkaiMessageDBError::MessageNotFound),
+                        None => return Err(ShinkaiDBError::MessageNotFound),
                     }
                 }
                 Err(e) => return Err(e.into()),

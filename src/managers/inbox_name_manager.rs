@@ -1,5 +1,5 @@
 use crate::{
-    db::db_errors::ShinkaiMessageDBError, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
+    db::db_errors::ShinkaiDBError, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
     shinkai_message_proto::ShinkaiMessage,
 };
 
@@ -21,22 +21,22 @@ impl InboxNameManager {
         InboxNameManager { inbox_name }
     }
 
-    pub fn parse_parts(&self) -> Result<InboxNameParts, ShinkaiMessageDBError> {
+    pub fn parse_parts(&self) -> Result<InboxNameParts, ShinkaiDBError> {
         let parts: Vec<&str> = self.inbox_name.split("::").collect();
         if parts.len() != 4 {
-            return Err(ShinkaiMessageDBError::InvalidInboxName);
+            return Err(ShinkaiDBError::InvalidInboxName);
         }
 
         let is_e2e = match parts[3].parse::<bool>() {
             Ok(b) => b,
-            Err(_) => return Err(ShinkaiMessageDBError::InvalidInboxName),
+            Err(_) => return Err(ShinkaiDBError::InvalidInboxName),
         };
 
         let sender_parts: Vec<&str> = parts[1].split("|").collect();
         let recipient_parts: Vec<&str> = parts[2].split("|").collect();
 
         if sender_parts.len() != 2 || recipient_parts.len() != 2 {
-            return Err(ShinkaiMessageDBError::InvalidInboxName);
+            return Err(ShinkaiDBError::InvalidInboxName);
         }
 
         let sender = sender_parts[0].to_string();
@@ -54,7 +54,7 @@ impl InboxNameManager {
         })
     }
 
-    pub fn is_e2e(&self) -> Result<bool, ShinkaiMessageDBError> {
+    pub fn is_e2e(&self) -> Result<bool, ShinkaiDBError> {
         let parts = self.parse_parts()?;
         Ok(parts.is_e2e)
     }
@@ -66,17 +66,17 @@ impl InboxNameManager {
         }
     }
 
-    pub fn from_message(message: &ShinkaiMessage) -> Result<Self, ShinkaiMessageDBError> {
+    pub fn from_message(message: &ShinkaiMessage) -> Result<Self, ShinkaiDBError> {
         let is_e2e = ShinkaiMessageHandler::is_content_currently_encrypted(message);
         let external_metadata = message
             .external_metadata
             .as_ref()
-            .ok_or(ShinkaiMessageDBError::MissingExternalMetadata)?;
-        let body = message.body.as_ref().ok_or(ShinkaiMessageDBError::MissingBody)?;
+            .ok_or(ShinkaiDBError::MissingExternalMetadata)?;
+        let body = message.body.as_ref().ok_or(ShinkaiDBError::MissingBody)?;
         let internal_metadata = body
             .internal_metadata
             .as_ref()
-            .ok_or(ShinkaiMessageDBError::MissingInternalMetadata)?;
+            .ok_or(ShinkaiDBError::MissingInternalMetadata)?;
 
         let inbox_name = Self::get_inbox_name_from_params(
             is_e2e,
@@ -89,7 +89,7 @@ impl InboxNameManager {
         Ok(InboxNameManager { inbox_name })
     }
 
-    pub fn get_inbox_name_from_message(message: &ShinkaiMessage) -> Result<String, ShinkaiMessageDBError> {
+    pub fn get_inbox_name_from_message(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
         // Check if message is encrypted
         let is_e2e = ShinkaiMessageHandler::is_content_currently_encrypted(message);
 
@@ -97,12 +97,12 @@ impl InboxNameManager {
         let external_metadata = message
             .external_metadata
             .as_ref()
-            .ok_or(ShinkaiMessageDBError::MissingExternalMetadata)?;
-        let body = message.body.as_ref().ok_or(ShinkaiMessageDBError::MissingBody)?;
+            .ok_or(ShinkaiDBError::MissingExternalMetadata)?;
+        let body = message.body.as_ref().ok_or(ShinkaiDBError::MissingBody)?;
         let internal_metadata = body
             .internal_metadata
             .as_ref()
-            .ok_or(ShinkaiMessageDBError::MissingInternalMetadata)?;
+            .ok_or(ShinkaiDBError::MissingInternalMetadata)?;
 
         let sender = external_metadata.sender.clone();
         let sender_subidentity = internal_metadata.sender_subidentity.clone();
@@ -188,7 +188,7 @@ mod tests {
         let result = manager.parse_parts();
 
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InvalidInboxName);
+        assert_eq!(result.unwrap_err(), ShinkaiDBError::InvalidInboxName);
     }
 
     // Test is_e2e method

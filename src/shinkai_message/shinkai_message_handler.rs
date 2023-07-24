@@ -2,7 +2,7 @@
 
 use std::io::{Error, ErrorKind};
 
-use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}, db::db_errors::ShinkaiMessageDBError};
+use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}, db::db_errors::ShinkaiDBError};
 use chrono::Utc;
 use prost::Message;
 use sha2::{Digest, Sha256};
@@ -151,7 +151,7 @@ impl ShinkaiMessageHandler {
         }
     }
 
-    pub fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiMessageDBError> {
+    pub fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
         // Calculate the hash of the message for the key
         let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
     

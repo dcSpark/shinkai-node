@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::db::db_errors::ShinkaiMessageDBError;
-use shinkai_node::db::ShinkaiMessageDB;
+use shinkai_node::db::db_errors::ShinkaiDBError;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::{InboxNameManager, IdentityManager};
 use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
@@ -84,7 +84,7 @@ fn db_inbox() {
         node1_identity_name.to_string(),
     );
 
-    let mut shinkai_db = ShinkaiMessageDB::new(&node1_db_path).unwrap();
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let _ = shinkai_db.insert_inbox_message(&message.clone());
 
     let last_messages_all = shinkai_db.get_last_messages_from_all(10).unwrap();
@@ -235,7 +235,7 @@ fn test_permission_errors() {
     let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name.clone()));
 
     // Assuming the shinkai_db is created and node1_subencryption_pk, node1_subidentity_pk are defined
-    let mut shinkai_db = ShinkaiMessageDB::new(&node1_db_path).unwrap();
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let subidentity_name = "device1";
     let full_subidentity_name =  IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
     
@@ -267,30 +267,30 @@ fn test_permission_errors() {
     // Test 1: Adding a permission to a nonexistent inbox should result in an error
     let result = shinkai_db.add_permission("nonexistent_inbox", &device1_subidentity, InboxPermission::Admin);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::InboxNotFound);
 
     // Test 2: Adding a permission for a nonexistent identity should result in an error
     let result = shinkai_db.add_permission("existing_inbox", &nonexistent_identity, InboxPermission::Admin);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::IdentityNotFound);
 
     // Test 3: Removing a permission from a nonexistent inbox should result in an error
     let result = shinkai_db.remove_permission("nonexistent_inbox", &device1_subidentity);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::InboxNotFound);
 
     // Test 4: Removing a permission for a nonexistent identity should result in an error
     let result = shinkai_db.remove_permission("existing_inbox", &nonexistent_identity);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::IdentityNotFound);
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
     let result = shinkai_db.has_permission("nonexistent_inbox", &device1_subidentity, InboxPermission::Admin);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::InboxNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::InboxNotFound);
 
     // Test 6: Checking permission for a nonexistent identity should result in an error
     let result = shinkai_db.has_permission("existing_inbox", &nonexistent_identity, InboxPermission::Admin);
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), ShinkaiMessageDBError::IdentityNotFound);
+    assert_eq!(result.unwrap_err(), ShinkaiDBError::IdentityNotFound);
 }

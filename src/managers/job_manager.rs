@@ -1,5 +1,5 @@
 use crate::{
-    db::{db_errors::ShinkaiMessageDBError, ShinkaiMessageDB},
+    db::{db_errors::ShinkaiDBError, ShinkaiDB},
     schemas::{
         inbox_name::InboxName,
         job_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope},
@@ -79,7 +79,7 @@ pub enum JobManagerError {
     JobPreMessageDeserializationFailed,
     MessageTypeParseFailed,
     IO(String),
-    ShinkaiDB(ShinkaiMessageDBError),
+    ShinkaiDB(ShinkaiDBError),
 }
 
 impl fmt::Display for JobManagerError {
@@ -114,13 +114,13 @@ impl From<Box<dyn std::error::Error>> for JobManagerError {
 
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
-    db: Arc<Mutex<ShinkaiMessageDB>>,
+    db: Arc<Mutex<ShinkaiDB>>,
     job_manager_sender: mpsc::Sender<ShinkaiMessage>,
     agents: Vec<Agent>,
 }
 
 impl JobManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiMessageDB>>) -> Self {
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         let (sender, receiver) = mpsc::channel(100);
         {

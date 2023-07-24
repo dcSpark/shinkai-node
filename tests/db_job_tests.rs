@@ -3,12 +3,12 @@ use std::{fs, path::Path};
 use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_node::{
-    db::ShinkaiMessageDB,
+    db::ShinkaiDB,
     schemas::{inbox_name::InboxName, job_schemas::JobScope},
     shinkai_message::utils::hash_string,
 };
 
-fn create_new_job(db: &mut ShinkaiMessageDB, job_id: String, agent_id: String, scope: JobScope) {
+fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: JobScope) {
     match db.create_new_job(job_id, agent_id, scope) {
         Ok(_) => (),
         Err(e) => panic!("Failed to create a new job: {}", e),
@@ -24,7 +24,7 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_node::db::db_errors::ShinkaiMessageDBError;
+    use shinkai_node::db::db_errors::ShinkaiDBError;
 
     use super::*;
 
@@ -38,7 +38,7 @@ mod tests {
                 .unwrap();
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
-        let mut shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Create a new job
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
@@ -64,7 +64,7 @@ mod tests {
         setup();
         let agent_id = "agent2".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-        let mut shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Create new jobs for the agent
         for i in 1..=5 {
@@ -101,7 +101,7 @@ mod tests {
                 .unwrap();
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-        let mut shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Create a new job
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
@@ -125,7 +125,7 @@ mod tests {
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let step = "step1".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-        let mut shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Create a new job
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
@@ -144,11 +144,11 @@ mod tests {
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id));
-        let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         match shinkai_db.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiMessageDBError::ProfileNameNonExistent),
+            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent),
         }
     }
 
@@ -157,7 +157,7 @@ mod tests {
         setup();
         let agent_id = "agent_without_jobs".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-        let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Attempt to get all jobs for the agent
         let jobs_result = shinkai_db.get_agent_jobs(agent_id.clone());
@@ -169,7 +169,7 @@ mod tests {
             }
             Err(e) => {
                 // If we got an error, check if it's because the agent doesn't exist
-                assert_eq!(e, ShinkaiMessageDBError::ProfileNameNonExistent);
+                assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent);
             }
         }
     }
@@ -180,11 +180,11 @@ mod tests {
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id));
-        let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         match shinkai_db.update_job_to_finished(job_id) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiMessageDBError::ProfileNameNonExistent),
+            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent),
         }
     }
 
@@ -193,7 +193,7 @@ mod tests {
         setup();
         let agent_id = "agent5".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-        let mut shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
         // Create new jobs for the agent
         for i in 1..=5 {

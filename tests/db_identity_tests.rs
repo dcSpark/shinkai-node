@@ -1,8 +1,8 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::Topic;
 use async_std::task;
-use shinkai_node::db::db_errors::ShinkaiMessageDBError;
-use shinkai_node::db::ShinkaiMessageDB;
+use shinkai_node::db::db_errors::ShinkaiDBError;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
@@ -34,7 +34,7 @@ fn setup() {
 }
 
 async fn create_local_node_profile(
-    db: &ShinkaiMessageDB,
+    db: &ShinkaiDB,
     node_profile_name: String,
     encryption_public_key: EncryptionPublicKey,
     identity_public_key: SignaturePublicKey,
@@ -56,7 +56,7 @@ fn test_new_load_all_sub_identities() {
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
-    let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     
     // Create a local node profile
     task::block_on(create_local_node_profile(&shinkai_db, node_profile_name.clone().to_string(), encryption_pk.clone(), identity_pk.clone()));
@@ -113,7 +113,7 @@ fn test_update_local_node_keys() {
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
-    let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Test update_local_node_keys
     shinkai_db.update_local_node_keys(node_profile_name.clone().to_string(), encryption_pk.clone(), identity_pk.clone()).unwrap();
@@ -136,7 +136,7 @@ fn test_new_insert_sub_identity() {
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
-    let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let subidentity_name = "subidentity_1";
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
@@ -176,7 +176,7 @@ fn test_remove_subidentity() {
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
-    let shinkai_db = ShinkaiMessageDB::new(&db_path).unwrap();
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     let subidentity_name = "subidentity_1";
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);

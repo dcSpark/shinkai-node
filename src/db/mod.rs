@@ -1,5 +1,5 @@
 mod db;
-pub use db::ShinkaiMessageDB;
+pub use db::ShinkaiDB;
 pub use db::Topic;
 pub mod db_errors;
 pub mod db_identity;

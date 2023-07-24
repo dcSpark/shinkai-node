@@ -1,6 +1,6 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    db::db_errors::ShinkaiMessageDBError,
+    db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{inbox_permission::InboxPermission, job_schemas::{JobScope, JobCreation}},
@@ -357,7 +357,7 @@ impl Node {
         identity_name: String,
         res: Sender<bool>,
     ) {
-        // Obtain the IdentityManager and ShinkaiMessageDB locks
+        // Obtain the IdentityManager and ShinkaiDB locks
         let identity_manager = self.identity_manager.lock().await;
         let db = self.db.lock().await;
 
