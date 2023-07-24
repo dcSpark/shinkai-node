@@ -14,6 +14,7 @@ COPY protos ./protos
 
 # Build the dependencies (cached)
 RUN cargo build
+RUN cargo test
 
 # Build your application
 #RUN cargo build --release --locked

@@ -3,7 +3,7 @@ name: Build shinkai-node docker image
 on:
   push:
     branches:
-      - 'nico/add-poc-message'
+      - 'main'
       - 'devops'
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
