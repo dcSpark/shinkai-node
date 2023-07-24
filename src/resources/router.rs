@@ -28,6 +28,13 @@ impl ResourceRouter {
         }
     }
 
+    /// A hard-coded DB key for the resource router in Topic::Resources
+    /// No other resource is allowed to use this db_key (this is enforced
+    /// automatically because all resources have a two-part key)
+    pub fn db_key() -> String {
+        "resource_router".to_string()
+    }
+
     /// Adds a resource pointer to the ResourceRouter in memory.
     /// The pointed to resource is expected to have a valid resource embedding
     /// and have already been saved into the DB.
@@ -69,7 +76,7 @@ impl ResourceRouter {
         })
     }
     /// Convert to json
-    fn to_json(&self) -> Result<String, ResourceError> {
+    pub fn to_json(&self) -> Result<String, ResourceError> {
         serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
     }
 }
