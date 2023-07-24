@@ -5,7 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 lazy_static! {
-    pub static ref DEFAULT_LOCAL_AI_PORT: &'static str = "7999";
+    pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
 }
 
 pub struct LocalAIProcess {
@@ -20,7 +20,7 @@ impl LocalAIProcess {
             .arg("--threads")
             .arg("8")
             .arg("--address")
-            .arg(format!(":{}", DEFAULT_LOCAL_AI_PORT.to_string()))
+            .arg(format!(":{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string()))
             .spawn()?;
 
         // Wait for 1/10th of a second for the LocalAI process to boot up/initialize its
