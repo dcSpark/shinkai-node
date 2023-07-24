@@ -1,5 +1,5 @@
 use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
-use crate::managers::identity_manager::{Identity, IdentityType};
+use crate::managers::identity_manager::{IdentityType, Identity};
 use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use crate::shinkai_message::{encryption::string_to_encryption_public_key, signatures::string_to_signature_public_key};
