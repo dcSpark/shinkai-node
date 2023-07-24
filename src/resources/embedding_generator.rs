@@ -251,10 +251,24 @@ impl LocalEmbeddingGenerator {
 
 mod tests {
     use super::*;
+    use crate::resources::local_ai::LocalAIProcess;
 
     #[test]
-    fn test_embeddings_generation() {
+    fn test_local_embeddings_generation() {
         let generator = LocalEmbeddingGenerator::new_default();
+
+        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
+        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+
+        assert_eq!(dog_embeddings, dog_embeddings);
+        assert_eq!(cat_embeddings, cat_embeddings);
+        assert_ne!(dog_embeddings, cat_embeddings);
+    }
+
+    #[test]
+    fn test_remote_embeddings_generation() {
+        let lai_process = LocalAIProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
 
         let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
         let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
