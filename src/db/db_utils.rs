@@ -6,14 +6,14 @@ use crate::{
     shinkai_message_proto::ShinkaiMessage,
 };
 
-use super::{db::Topic, db_errors::ShinkaiMessageDBError, ShinkaiMessageDB};
+use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
-impl ShinkaiMessageDB {
+impl ShinkaiDB {
     #[cfg(debug_assertions)]
-    pub fn print_all_from_cf(&self, cf_name: &str) -> Result<(), ShinkaiMessageDBError> {
+    pub fn print_all_from_cf(&self, cf_name: &str) -> Result<(), ShinkaiDBError> {
         println!("printing all for {}", cf_name);
         // Fetch column family handle
-        let cf = self.db.cf_handle(cf_name).ok_or(ShinkaiMessageDBError::InboxNotFound)?;
+        let cf = self.db.cf_handle(cf_name).ok_or(ShinkaiDBError::InboxNotFound)?;
 
         // Create an iterator for the column family
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);

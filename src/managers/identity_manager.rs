@@ -1,5 +1,5 @@
-use crate::db::db_errors::ShinkaiMessageDBError;
-use crate::db::ShinkaiMessageDB;
+use crate::db::db_errors::ShinkaiDBError;
+use crate::db::ShinkaiDB;
 use crate::shinkai_message::encryption::{self, encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use crate::shinkai_message_proto::ShinkaiMessage;
@@ -145,13 +145,13 @@ impl fmt::Display for Identity {
 pub struct IdentityManager {
     pub local_node_name: String,
     pub identities: Vec<Identity>,
-    pub db: Arc<Mutex<ShinkaiMessageDB>>,
+    pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
 }
 
 impl IdentityManager {
     pub async fn new(
-        db: Arc<Mutex<ShinkaiMessageDB>>,
+        db: Arc<Mutex<ShinkaiDB>>,
         local_node_name: String,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         if local_node_name.clone().is_empty() {

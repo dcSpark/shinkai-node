@@ -12,7 +12,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::ShinkaiMessageDB;
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self, Identity};
 use crate::managers::{IdentityManager, job_manager};
 use crate::managers::job_manager::JobManager;
@@ -177,7 +177,7 @@ pub struct Node {
     // The manager for subidentities.
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
-    pub db: Arc<Mutex<ShinkaiMessageDB>>,
+    pub db: Arc<Mutex<ShinkaiDB>>,
     // The job manager
     pub job_manager: Arc<Mutex<JobManager>>,
 }
@@ -202,7 +202,7 @@ impl Node {
 
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-        let db = ShinkaiMessageDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
+        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
         {
             let db_lock = db_arc.lock().await;
@@ -365,7 +365,7 @@ impl Node {
     // pub async fn get_encryption_public_key(
     //     &self,
     //     identity_public_key: String,
-    // ) -> Result<String, ShinkaiMessageDBError> {
+    // ) -> Result<String, ShinkaiDBError> {
     //     let db = self.db.lock().await;
     //     db.get_encryption_public_key(&identity_public_key)
     // }
@@ -417,7 +417,7 @@ impl Node {
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
         peer: (SocketAddr, ProfileName),
-        db: &mut ShinkaiMessageDB,
+        db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // println!("Sending {:?} to {:?}", message, peer);
@@ -446,7 +446,7 @@ impl Node {
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: &mut ShinkaiMessageDB,
+        db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
@@ -516,7 +516,7 @@ impl Node {
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
-        maybe_db: Arc<Mutex<ShinkaiMessageDB>>,
+        maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         info!("{} > Got message from {:?}", receiver_address, unsafe_sender_address);

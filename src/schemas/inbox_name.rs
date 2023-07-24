@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use crate::db::db_errors::ShinkaiMessageDBError;
+use crate::db::db_errors::ShinkaiDBError;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InboxName {
@@ -7,26 +7,26 @@ pub struct InboxName {
 }
 
 impl InboxName {
-    pub fn new(s: String) -> Result<Self, ShinkaiMessageDBError> {
+    pub fn new(s: String) -> Result<Self, ShinkaiDBError> {
         Self::from_str(&s)
     }
 
-    fn from_str(s: &str) -> Result<Self, ShinkaiMessageDBError> {
+    fn from_str(s: &str) -> Result<Self, ShinkaiDBError> {
         let parts: Vec<&str> = s.split("::").collect();
         if parts.len() != 4 {
-            return Err(ShinkaiMessageDBError::InvalidInboxName);
+            return Err(ShinkaiDBError::InvalidInboxName);
         }
 
         let is_e2e = match parts[3].parse::<bool>() {
             Ok(b) => b,
-            Err(_) => return Err(ShinkaiMessageDBError::InvalidInboxName),
+            Err(_) => return Err(ShinkaiDBError::InvalidInboxName),
         };
 
         let sender_parts: Vec<&str> = parts[1].split("|").collect();
         let recipient_parts: Vec<&str> = parts[2].split("|").collect();
 
         if sender_parts.len() != 2 || recipient_parts.len() != 2 {
-            return Err(ShinkaiMessageDBError::InvalidInboxName);
+            return Err(ShinkaiDBError::InvalidInboxName);
         }
 
         Ok(InboxName { value: s.to_string() })

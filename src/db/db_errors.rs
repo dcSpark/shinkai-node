@@ -2,7 +2,7 @@ use core::fmt;
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
-pub enum ShinkaiMessageDBError {
+pub enum ShinkaiDBError {
     RocksDBError(rocksdb::Error),
     DecodeError(prost::DecodeError),
     IOError(io::Error),
@@ -30,146 +30,146 @@ pub enum ShinkaiMessageDBError {
     DataNotFound,
 }
 
-impl From<rocksdb::Error> for ShinkaiMessageDBError {
+impl From<rocksdb::Error> for ShinkaiDBError {
     fn from(error: rocksdb::Error) -> Self {
-        ShinkaiMessageDBError::RocksDBError(error)
+        ShinkaiDBError::RocksDBError(error)
     }
 }
 
-impl From<prost::DecodeError> for ShinkaiMessageDBError {
+impl From<prost::DecodeError> for ShinkaiDBError {
     fn from(error: prost::DecodeError) -> Self {
-        ShinkaiMessageDBError::DecodeError(error)
+        ShinkaiDBError::DecodeError(error)
     }
 }
 
-impl From<io::Error> for ShinkaiMessageDBError {
+impl From<io::Error> for ShinkaiDBError {
     fn from(error: io::Error) -> Self {
-        ShinkaiMessageDBError::IOError(error)
+        ShinkaiDBError::IOError(error)
     }
 }
 
-impl From<&str> for ShinkaiMessageDBError {
+impl From<&str> for ShinkaiDBError {
     fn from(_: &str) -> Self {
-        ShinkaiMessageDBError::PublicKeyParseError
+        ShinkaiDBError::PublicKeyParseError
     }
 }
 
-impl From<serde_json::Error> for ShinkaiMessageDBError {
+impl From<serde_json::Error> for ShinkaiDBError {
     fn from(error: serde_json::Error) -> Self {
-        ShinkaiMessageDBError::JsonSerializationError(error)
+        ShinkaiDBError::JsonSerializationError(error)
     }
 }
 
-impl From<Utf8Error> for ShinkaiMessageDBError {
+impl From<Utf8Error> for ShinkaiDBError {
     fn from(_: Utf8Error) -> Self {
-        ShinkaiMessageDBError::Utf8ConversionError
+        ShinkaiDBError::Utf8ConversionError
     }
 }
 
-impl fmt::Display for ShinkaiMessageDBError {
+impl fmt::Display for ShinkaiDBError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ShinkaiMessageDBError::RocksDBError(e) => write!(f, "RocksDB error: {}", e),
-            ShinkaiMessageDBError::CodeAlreadyUsed => {
+            ShinkaiDBError::RocksDBError(e) => write!(f, "RocksDB error: {}", e),
+            ShinkaiDBError::CodeAlreadyUsed => {
                 write!(f, "Registration code has already been used")
             }
-            ShinkaiMessageDBError::CodeNonExistent => write!(f, "Registration code does not exist"),
-            ShinkaiMessageDBError::ProfileNameAlreadyExists => {
+            ShinkaiDBError::CodeNonExistent => write!(f, "Registration code does not exist"),
+            ShinkaiDBError::ProfileNameAlreadyExists => {
                 write!(f, "Profile name already exists")
             }
-            ShinkaiMessageDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
-            ShinkaiMessageDBError::MessageNotFound => write!(f, "Message not found"),
-            ShinkaiMessageDBError::SomeError => write!(f, "Some mysterious error..."),
-            ShinkaiMessageDBError::ProfileNameNonExistent => {
+            ShinkaiDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
+            ShinkaiDBError::MessageNotFound => write!(f, "Message not found"),
+            ShinkaiDBError::SomeError => write!(f, "Some mysterious error..."),
+            ShinkaiDBError::ProfileNameNonExistent => {
                 write!(f, "Profile name does not exist")
             }
-            ShinkaiMessageDBError::EncryptionKeyNonExistent => {
+            ShinkaiDBError::EncryptionKeyNonExistent => {
                 write!(f, "Encryption key does not exist")
             }
-            ShinkaiMessageDBError::PublicKeyParseError => write!(f, "Error parsing public key"),
-            ShinkaiMessageDBError::InboxNotFound => write!(f, "Inbox not found"),
-            ShinkaiMessageDBError::IOError(e) => write!(f, "IO Error: {}", e),
-            ShinkaiMessageDBError::MissingExternalMetadata => {
+            ShinkaiDBError::PublicKeyParseError => write!(f, "Error parsing public key"),
+            ShinkaiDBError::InboxNotFound => write!(f, "Inbox not found"),
+            ShinkaiDBError::IOError(e) => write!(f, "IO Error: {}", e),
+            ShinkaiDBError::MissingExternalMetadata => {
                 write!(f, "Missing external metadata")
             }
-            ShinkaiMessageDBError::MissingBody => write!(f, "Missing body"),
-            ShinkaiMessageDBError::MissingInternalMetadata => {
+            ShinkaiDBError::MissingBody => write!(f, "Missing body"),
+            ShinkaiDBError::MissingInternalMetadata => {
                 write!(f, "Missing internal metadata")
             }
-            ShinkaiMessageDBError::IdentityNotFound => write!(f, "Identity not found"),
-            ShinkaiMessageDBError::InvalidData => write!(f, "Invalid data"),
-            ShinkaiMessageDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
-            ShinkaiMessageDBError::PermissionNotFound => write!(f, "Permission not found"),
-            ShinkaiMessageDBError::InvalidIdentityType => write!(f, "Invalid permission type"),
-            ShinkaiMessageDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
-            ShinkaiMessageDBError::Utf8ConversionError => write!(f, "UTF8 conversion error"),
-            ShinkaiMessageDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
-            ShinkaiMessageDBError::DataConversionError => write!(f, "Data conversion error"),
-            ShinkaiMessageDBError::DataNotFound => write!(f, "Data not found"),
+            ShinkaiDBError::IdentityNotFound => write!(f, "Identity not found"),
+            ShinkaiDBError::InvalidData => write!(f, "Invalid data"),
+            ShinkaiDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
+            ShinkaiDBError::PermissionNotFound => write!(f, "Permission not found"),
+            ShinkaiDBError::InvalidIdentityType => write!(f, "Invalid permission type"),
+            ShinkaiDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
+            ShinkaiDBError::Utf8ConversionError => write!(f, "UTF8 conversion error"),
+            ShinkaiDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
+            ShinkaiDBError::DataConversionError => write!(f, "Data conversion error"),
+            ShinkaiDBError::DataNotFound => write!(f, "Data not found"),
         }
     }
 }
 
-impl std::error::Error for ShinkaiMessageDBError {
+impl std::error::Error for ShinkaiDBError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ShinkaiMessageDBError::RocksDBError(e) => Some(e),
-            ShinkaiMessageDBError::DecodeError(e) => Some(e),
-            ShinkaiMessageDBError::JsonSerializationError(e) => Some(e),
+            ShinkaiDBError::RocksDBError(e) => Some(e),
+            ShinkaiDBError::DecodeError(e) => Some(e),
+            ShinkaiDBError::JsonSerializationError(e) => Some(e),
             _ => None,
         }
     }
 }
 
-impl PartialEq for ShinkaiMessageDBError {
+impl PartialEq for ShinkaiDBError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ShinkaiMessageDBError::InboxNotFound, ShinkaiMessageDBError::InboxNotFound) => true,
-            (ShinkaiMessageDBError::MessageNotFound, ShinkaiMessageDBError::MessageNotFound) => {
+            (ShinkaiDBError::InboxNotFound, ShinkaiDBError::InboxNotFound) => true,
+            (ShinkaiDBError::MessageNotFound, ShinkaiDBError::MessageNotFound) => {
                 true
             }
-            (ShinkaiMessageDBError::CodeAlreadyUsed, ShinkaiMessageDBError::CodeAlreadyUsed) => {
+            (ShinkaiDBError::CodeAlreadyUsed, ShinkaiDBError::CodeAlreadyUsed) => {
                 true
             }
-            (ShinkaiMessageDBError::CodeNonExistent, ShinkaiMessageDBError::CodeNonExistent) => {
+            (ShinkaiDBError::CodeNonExistent, ShinkaiDBError::CodeNonExistent) => {
                 true
             }
             (
-                ShinkaiMessageDBError::ProfileNameAlreadyExists,
-                ShinkaiMessageDBError::ProfileNameAlreadyExists,
+                ShinkaiDBError::ProfileNameAlreadyExists,
+                ShinkaiDBError::ProfileNameAlreadyExists,
             ) => true,
             (
-                ShinkaiMessageDBError::ProfileNameNonExistent,
-                ShinkaiMessageDBError::ProfileNameNonExistent,
+                ShinkaiDBError::ProfileNameNonExistent,
+                ShinkaiDBError::ProfileNameNonExistent,
             ) => true,
             (
-                ShinkaiMessageDBError::EncryptionKeyNonExistent,
-                ShinkaiMessageDBError::EncryptionKeyNonExistent,
+                ShinkaiDBError::EncryptionKeyNonExistent,
+                ShinkaiDBError::EncryptionKeyNonExistent,
             ) => true,
-            (ShinkaiMessageDBError::PublicKeyParseError, ShinkaiMessageDBError::PublicKeyParseError) => true,
-            (ShinkaiMessageDBError::IdentityNotFound, ShinkaiMessageDBError::IdentityNotFound) => true,
+            (ShinkaiDBError::PublicKeyParseError, ShinkaiDBError::PublicKeyParseError) => true,
+            (ShinkaiDBError::IdentityNotFound, ShinkaiDBError::IdentityNotFound) => true,
             (
-                ShinkaiMessageDBError::MissingExternalMetadata,
-                ShinkaiMessageDBError::MissingExternalMetadata,
+                ShinkaiDBError::MissingExternalMetadata,
+                ShinkaiDBError::MissingExternalMetadata,
             ) => true,
-            (ShinkaiMessageDBError::MissingBody, ShinkaiMessageDBError::MissingBody) => true,
+            (ShinkaiDBError::MissingBody, ShinkaiDBError::MissingBody) => true,
             (
-                ShinkaiMessageDBError::MissingInternalMetadata,
-                ShinkaiMessageDBError::MissingInternalMetadata,
+                ShinkaiDBError::MissingInternalMetadata,
+                ShinkaiDBError::MissingInternalMetadata,
             ) => true,
-            (ShinkaiMessageDBError::IOError(_), ShinkaiMessageDBError::IOError(_)) => true,
-            (ShinkaiMessageDBError::DecodeError(_), ShinkaiMessageDBError::DecodeError(_)) => true,
-            (ShinkaiMessageDBError::RocksDBError(_), ShinkaiMessageDBError::RocksDBError(_)) => true,
-            (ShinkaiMessageDBError::SomeError, ShinkaiMessageDBError::SomeError) => true,
-            (ShinkaiMessageDBError::InvalidData, ShinkaiMessageDBError::InvalidData) => true,
-            (ShinkaiMessageDBError::PermissionDenied(_), ShinkaiMessageDBError::PermissionDenied(_)) => true,
-            (ShinkaiMessageDBError::PermissionNotFound, ShinkaiMessageDBError::PermissionNotFound) => true,
-            (ShinkaiMessageDBError::InvalidIdentityType, ShinkaiMessageDBError::InvalidIdentityType) => true,
-            (ShinkaiMessageDBError::InvalidInboxName, ShinkaiMessageDBError::InvalidInboxName) => true,
-            (ShinkaiMessageDBError::Utf8ConversionError, ShinkaiMessageDBError::Utf8ConversionError) => true,
-            (ShinkaiMessageDBError::JsonSerializationError(_), ShinkaiMessageDBError::JsonSerializationError(_)) => true,
-            (ShinkaiMessageDBError::DataConversionError, ShinkaiMessageDBError::DataConversionError) => true,
-            (ShinkaiMessageDBError::DataNotFound, ShinkaiMessageDBError::DataNotFound) => true,
+            (ShinkaiDBError::IOError(_), ShinkaiDBError::IOError(_)) => true,
+            (ShinkaiDBError::DecodeError(_), ShinkaiDBError::DecodeError(_)) => true,
+            (ShinkaiDBError::RocksDBError(_), ShinkaiDBError::RocksDBError(_)) => true,
+            (ShinkaiDBError::SomeError, ShinkaiDBError::SomeError) => true,
+            (ShinkaiDBError::InvalidData, ShinkaiDBError::InvalidData) => true,
+            (ShinkaiDBError::PermissionDenied(_), ShinkaiDBError::PermissionDenied(_)) => true,
+            (ShinkaiDBError::PermissionNotFound, ShinkaiDBError::PermissionNotFound) => true,
+            (ShinkaiDBError::InvalidIdentityType, ShinkaiDBError::InvalidIdentityType) => true,
+            (ShinkaiDBError::InvalidInboxName, ShinkaiDBError::InvalidInboxName) => true,
+            (ShinkaiDBError::Utf8ConversionError, ShinkaiDBError::Utf8ConversionError) => true,
+            (ShinkaiDBError::JsonSerializationError(_), ShinkaiDBError::JsonSerializationError(_)) => true,
+            (ShinkaiDBError::DataConversionError, ShinkaiDBError::DataConversionError) => true,
+            (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
             _ => false,
         }
     }

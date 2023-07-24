@@ -1,17 +1,15 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::db::db_errors::ShinkaiMessageDBError;
-use shinkai_node::db::ShinkaiMessageDB;
+use shinkai_node::db::db_errors::ShinkaiDBError;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Node};
+use shinkai_node::network::Node;
 use shinkai_node::shinkai_message::encryption::{
-    decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod
 };
 use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_node::shinkai_message::signatures::{
-    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string, unsafe_deterministic_signature_keypair
 };
 use shinkai_node::shinkai_message::utils::hash_string;
 use shinkai_node::shinkai_message_proto::ShinkaiMessage;
@@ -80,11 +78,11 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string()
+        "20230702T20533481345".to_string(),
     );
 
     // Create the DB and insert the message to all
-    let mut shinkai_db = ShinkaiMessageDB::new(&node1_db_path).unwrap();
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     assert!(shinkai_db.insert_message_to_all(&message).is_ok());
 
     // Fetch the message using `get_last_messages_from_all` method
@@ -102,7 +100,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string()
+        "20230702T20533481345".to_string(),
     );
     let message_before = generate_message_with_text(
         "Hello All before".to_string(),
@@ -111,7 +109,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481344".to_string()
+        "20230702T20533481344".to_string(),
     );
     let message_after = generate_message_with_text(
         "Hello All after".to_string(),
@@ -120,7 +118,7 @@ fn test_insert_message_to_all() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481346".to_string()
+        "20230702T20533481346".to_string(),
     );
 
     assert!(shinkai_db.insert_message_to_all(&message2).is_ok());
@@ -134,7 +132,8 @@ fn test_insert_message_to_all() {
         last_messages_all[0].clone().body.unwrap().content,
         "Hello All after".to_string()
     );
-    // Note: Hello All and Hello All 2 have the same scheduled time, so the order is not guaranteed
+    // Note: Hello All and Hello All 2 have the same scheduled time, so the order is
+    // not guaranteed
     assert_eq!(
         last_messages_all[1].clone().body.unwrap().content,
         "Hello All".to_string()
@@ -150,7 +149,7 @@ fn test_insert_message_to_all() {
 }
 
 #[test]
-fn test_schedule_and_get_scheduled_due_messages() {
+fn test_schedule_and_get_due_scheduled_messages() {
     setup();
 
     // Initialization same as in db_inbox test
@@ -170,7 +169,7 @@ fn test_schedule_and_get_scheduled_due_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string()
+        "20230702T20533481345".to_string(),
     );
     let message2 = generate_message_with_text(
         "Hello Scheduled 2".to_string(),
@@ -179,7 +178,7 @@ fn test_schedule_and_get_scheduled_due_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string()
+        "20230702T20533481345".to_string(),
     );
     let message_before = generate_message_with_text(
         "Hello Scheduled before".to_string(),
@@ -188,7 +187,7 @@ fn test_schedule_and_get_scheduled_due_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481344".to_string()
+        "20230702T20533481344".to_string(),
     );
     let message_after = generate_message_with_text(
         "Hello Scheduled after".to_string(),
@@ -197,11 +196,11 @@ fn test_schedule_and_get_scheduled_due_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481346".to_string()
+        "20230702T20533481346".to_string(),
     );
 
     // Create the DB and schedule the message
-    let mut shinkai_db = ShinkaiMessageDB::new(&node1_db_path).unwrap();
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     assert!(shinkai_db.schedule_message(&message).is_ok());
     assert!(shinkai_db.schedule_message(&message2).is_ok());
@@ -209,7 +208,9 @@ fn test_schedule_and_get_scheduled_due_messages() {
     assert!(shinkai_db.schedule_message(&message_after).is_ok());
 
     // Fetch the due messages
-    let due_messages = shinkai_db.get_scheduled_due_messages("20230702T20533481346".to_string()).unwrap();
+    let due_messages = shinkai_db
+        .get_due_scheduled_messages("20230702T20533481346".to_string())
+        .unwrap();
     assert_eq!(due_messages.len(), 4);
     assert_eq!(
         due_messages[0].clone().body.unwrap().content,
@@ -228,17 +229,18 @@ fn test_schedule_and_get_scheduled_due_messages() {
         "Hello Scheduled after".to_string()
     );
 
-    let due_messages = shinkai_db.get_scheduled_due_messages("20230702T20533481344".to_string()).unwrap();
+    let due_messages = shinkai_db
+        .get_due_scheduled_messages("20230702T20533481344".to_string())
+        .unwrap();
     assert_eq!(due_messages.len(), 1);
     assert_eq!(
         due_messages[0].clone().body.unwrap().content,
         "Hello Scheduled before".to_string()
     );
 
-    let due_messages = shinkai_db.get_scheduled_due_messages("20230703".to_string()).unwrap();
+    let due_messages = shinkai_db.get_due_scheduled_messages("20230703".to_string()).unwrap();
     assert_eq!(due_messages.len(), 4);
 
-    let due_messages = shinkai_db.get_scheduled_due_messages("20230701".to_string()).unwrap();
+    let due_messages = shinkai_db.get_due_scheduled_messages("20230701".to_string()).unwrap();
     assert_eq!(due_messages.len(), 0);
 }
-

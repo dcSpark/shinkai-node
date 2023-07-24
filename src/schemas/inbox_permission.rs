@@ -1,7 +1,7 @@
 use core::fmt;
 use std::str::FromStr;
 
-use crate::db::db_errors::ShinkaiMessageDBError;
+use crate::db::db_errors::ShinkaiDBError;
 
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -20,12 +20,12 @@ impl InboxPermission {
         }
     }
 
-    pub fn from_i32(val: i32) -> Result<Self, ShinkaiMessageDBError> {
+    pub fn from_i32(val: i32) -> Result<Self, ShinkaiDBError> {
         match val {
             1 => Ok(InboxPermission::Read),
             2 => Ok(InboxPermission::Write),
             3 => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiMessageDBError::SomeError),
+            _ => Err(ShinkaiDBError::SomeError),
         }
     }
 }
@@ -41,14 +41,14 @@ impl fmt::Display for InboxPermission {
 }
 
 impl FromStr for InboxPermission {
-    type Err = ShinkaiMessageDBError;
+    type Err = ShinkaiDBError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Read" => Ok(InboxPermission::Read),
             "Write" => Ok(InboxPermission::Write),
             "Admin" => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiMessageDBError::SomeError),
+            _ => Err(ShinkaiDBError::SomeError),
         }
     }
 }
