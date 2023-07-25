@@ -7,6 +7,7 @@ use crate::resources::resource_errors::ResourceError;
 use crate::resources::router::ResourceRouter;
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 use serde_json::{from_str, to_string};
+use std::any::Any;
 
 use super::db_errors::ShinkaiDBError;
 
@@ -93,6 +94,17 @@ impl ShinkaiDB {
         }
     }
 
+    /// Fetches a DocumentResource from the DB using the provided key
+    /// in the resources topic
+    pub fn get_document<K: AsRef<[u8]>>(&self, key: K) -> Result<DocumentResource, ShinkaiDBError> {
+        // Fetch and convert the bytes to a valid UTF-8 string
+        let bytes = self.get_cf(Topic::Resources, key)?;
+        let json_str = std::str::from_utf8(&bytes)?;
+
+        // Parse the JSON string into a Resource implementing struct
+        Ok(from_str(json_str)?)
+    }
+
     /// Fetches the Resource Router from the `resource_router` key
     /// in the resources topic, and attempts to parse it into a ResourceRouter
     pub fn get_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
@@ -124,14 +136,64 @@ impl ShinkaiDB {
     /// # Returns
     ///
     /// A `vector of `RetrievedDataChunk`s, potentially from multiple resources
-    /// sorted by similarity score in descending order.
-    pub fn similarity_search(
+    /// sorted by similarity score in descending order, or error.
+    pub fn similarity_search_data(
         &self,
         query: Embedding,
         num_of_resources: u64,
         num_of_results: u64,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        Ok(vec![])
+        let resources = self.similarity_search_resources(query.clone(), num_of_resources)?;
+
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results = resource.similarity_search(query.clone(), num_of_results);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort retrieved_chunks in descending order of score.
+        // TODO: In the future use a binary heap like in the resource
+        // similarity_search(). Not as important here due to less chunks.
+        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Only return the top num_of_results
+        let num_of_results = num_of_results as usize;
+        if retrieved_chunks.len() > num_of_results {
+            retrieved_chunks.truncate(num_of_results);
+        }
+
+        Ok(retrieved_chunks)
+    }
+
+    /// Performs a 2-tier vector similarity search using a query embedding across all DocumentResources
+    /// and fetches the most similar data chunk + proximity_window number of chunks around it.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - An embedding that is the basis for the similarity search.
+    /// * `num_of_resources` - The number of most similar resources to perform
+    ///   similarity searches inside of. Increasing this improves search quality, but makes it slower.
+    /// * `proximity_window` - The number of DataChunks to fetch below and above
+    ///   the most similar DataChunk.
+    ///
+    /// # Returns
+    ///
+    /// A `vector of `RetrievedDataChunk`s, or error.
+    pub fn similarity_search_data_proximity(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        proximity_window: u64,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let docs = self.similarity_search_docs(query.clone(), num_of_resources)?;
+
+        let mut retrieved_chunks = Vec::new();
+        for doc in docs {
+            let results = doc.similarity_search_proximity(query.clone(), proximity_window)?;
+            retrieved_chunks.extend(results);
+        }
+
+        Ok(retrieved_chunks)
     }
 
     /// Performs a vector similarity search using a query embedding and returns the
@@ -140,7 +202,7 @@ impl ShinkaiDB {
     /// # Arguments
     ///
     /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_resources` - The number of most similar resources to perform
+    /// * `num_of_resources` - The number of most similar resources
     pub fn similarity_search_resources(
         &self,
         query: Embedding,
@@ -152,6 +214,29 @@ impl ShinkaiDB {
         let mut resources = vec![];
         for res_pointer in resource_pointers {
             resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type))?);
+        }
+
+        Ok(resources)
+    }
+
+    /// Performs a vector similarity search using a query embedding and returns the
+    /// num_of_docs amount of most similar DocumentResources.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - An embedding that is the basis for the similarity search.
+    /// * `num_of_docs` - The number of most similar docs
+    pub fn similarity_search_docs(
+        &self,
+        query: Embedding,
+        num_of_docs: u64,
+    ) -> Result<Vec<DocumentResource>, ShinkaiDBError> {
+        let router = self.get_resource_router()?;
+        let resource_pointers = router.similarity_search(query, num_of_docs);
+
+        let mut resources = vec![];
+        for res_pointer in resource_pointers {
+            resources.push(self.get_document(res_pointer.db_key)?);
         }
 
         Ok(resources)
