@@ -4,7 +4,8 @@ use reqwest::Client;
 use std::fmt;
 use std::{error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
-use super::providers::openai::Response as APIResponse;
+use super::providers::openai::{Response as APIResponse, OpenAI};
+use super::providers::sleep_api::{SleepAPI, self};
 use serde::{Serialize, Deserialize};
 
 pub struct Agent {
@@ -24,9 +25,8 @@ pub struct Agent {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum AgentAPIModel {
-    OpenAI(String), // it takes the model name
-    Sleep,
-    OtherModel,
+    OpenAI(OpenAI), 
+    Sleep(SleepAPI),
 }
 
 impl Agent {
@@ -62,51 +62,9 @@ impl Agent {
     }
 
     pub async fn call_external_api(&self, content: &str) -> Result<String, AgentError> {
-        match self.model {
-            AgentAPIModel::OpenAI(ref model_type) => {
-                if let Some(ref base_url) = self.external_url {
-                    if let Some(ref key) = self.api_key {
-                        let url = format!("{}{}", base_url, "/v1/chat/completions");
-                        let body = format!(
-                            r#"{{
-                            "model": "{}",
-                            "messages": [
-                                {{"role": "system", "content": "You are a helpful assistant."}},
-                                {{"role": "user", "content": "{}"}}
-                            ],
-                            "temperature": 0,
-                            "max_tokens": 1024
-                        }}"#,
-                            model_type, content
-                        );
-
-                        let res = self
-                            .client
-                            .post(url)
-                            .bearer_auth(key)
-                            .header("Content-Type", "application/json")
-                            .body(body)
-                            .send()
-                            .await?;
-
-                        println!("Status: {}", res.status());
-                        let data: APIResponse = res.json().await.map_err(AgentError::ReqwestError)?;
-                        Ok(openai::Response::extract_content(&data))
-                    } else {
-                        Err(AgentError::ApiKeyNotSet)
-                    }
-                } else {
-                    Err(AgentError::UrlNotSet)
-                }
-            }
-            AgentAPIModel::Sleep => {
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                Ok("OK".to_string())
-            }
-            AgentAPIModel::OtherModel => {
-                // handle for OtherModel
-                unimplemented!()
-            }
+        match &self.model {
+            AgentAPIModel::OpenAI(openai) => openai.call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content).await,
+            AgentAPIModel::Sleep(sleep_api) => sleep_api.call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content).await,
         }
     }
 
@@ -197,6 +155,7 @@ mod tests {
     #[tokio::test]
     async fn test_agent_creation() {
         let (tx, mut rx) = mpsc::channel(1);
+        let sleep_api = SleepAPI {};
         let agent = Agent::new(
             "1".to_string(),
             "Agent".to_string(),
@@ -204,7 +163,7 @@ mod tests {
             false,
             Some("http://localhost:8000".to_string()),
             Some("paramparam".to_string()),
-            AgentAPIModel::Sleep,
+            AgentAPIModel::Sleep(sleep_api),
             vec!["tk1".to_string(), "tk2".to_string()],
             vec!["sb1".to_string(), "sb2".to_string()],
             vec!["allowed1".to_string(), "allowed2".to_string()],
@@ -267,6 +226,7 @@ mod tests {
             .create();
 
         let (tx, _rx) = mpsc::channel(1);
+        let openai = OpenAI { model_type: "gpt-3.5-turbo".to_string() };
         let agent = Agent::new(
             "1".to_string(),
             "Agent".to_string(),
@@ -274,7 +234,7 @@ mod tests {
             false,
             Some(server.url()), // use the url of the mock server
             Some("mockapikey".to_string()),
-            AgentAPIModel::OpenAI("gpt-3.5-turbo".to_string()),
+            AgentAPIModel::OpenAI(openai),
             vec!["tk1".to_string(), "tk2".to_string()],
             vec!["sb1".to_string(), "sb2".to_string()],
             vec!["allowed1".to_string(), "allowed2".to_string()],
