@@ -31,7 +31,7 @@ impl ResourceRouter {
     /// score in descending order, or an error if something goes wrong.
     fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<String> {
         let chunks = self.routing_resource.similarity_search(query, num_of_results);
-        chunks.iter().map(|c| c.id.to_string()).collect()
+        chunks.iter().map(|c| c.chunk.id.to_string()).collect()
     }
 
     /// Create a new ResourceRouter from scratch

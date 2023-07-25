@@ -52,7 +52,7 @@ impl Resource for DocumentResource {
     ///
     /// The data hash of the `DocumentResource`.
     fn resource_id(&self) -> &str {
-        &self.resource_id()
+        &self.resource_id
     }
 
     /// # Returns
@@ -201,6 +201,7 @@ impl DocumentResource {
 
         let mut chunks: Vec<DataChunk> = Vec::new();
         let most_similar_id = most_similar_chunk
+            .chunk
             .id
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
@@ -430,7 +431,7 @@ impl DocumentResource {
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
-        println!("Generated resource embedding");
+        // println!("Generated resource embedding");
 
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
@@ -441,7 +442,7 @@ impl DocumentResource {
             embeddings.push(embedding);
 
             i += 1;
-            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
 
         // Add the text + embeddings into the doc
@@ -501,6 +502,7 @@ mod tests {
             Some("animalwildlife.com"),
             "animal_resource",
         );
+
         doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
         // Prepare embeddings + data, then add it to the doc
@@ -523,17 +525,17 @@ mod tests {
         let query_string = "What animal barks?";
         let query_embedding = generator.generate_embedding_default(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
-        assert_eq!(fact1, res[0].data);
+        assert_eq!(fact1, res[0].chunk.data);
 
         let query_string2 = "What animal is slow?";
         let query_embedding2 = generator.generate_embedding_default(query_string2).unwrap();
         let res2 = doc.similarity_search(query_embedding2, 3);
-        assert_eq!(fact2, res2[0].data);
+        assert_eq!(fact2, res2[0].chunk.data);
 
         let query_string3 = "What animal swims in the ocean?";
         let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
-        assert_eq!(fact3, res3[0].data);
+        assert_eq!(fact3, res3[0].chunk.data);
     }
 
     #[test]
@@ -569,7 +571,7 @@ mod tests {
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
-            res[0].data
+            res[0].chunk.data
         );
 
         let query_string = "What about up-front costs?";
@@ -577,7 +579,7 @@ mod tests {
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].data
+            res[0].chunk.data
         );
 
         let query_string = "Does this relate to crypto?";
@@ -585,7 +587,7 @@ mod tests {
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
-            res[0].data
+            res[0].chunk.data
         );
     }
 }

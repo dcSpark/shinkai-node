@@ -8,6 +8,16 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fmt::format;
 
+/// A data chunk that was retrieved from a vector similarity search.
+/// Includes extra data like the resource_id of the resource it was from
+/// and the similarity search score.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RetrievedDataChunk {
+    pub chunk: DataChunk,
+    pub score: f32,
+    pub resource_id: String,
+}
+
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataChunk {
@@ -161,23 +171,6 @@ pub trait Resource {
     }
 
     /// Performs a vector similarity search using a query embedding and returns
-    /// the most similar data chunks.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return (top-k)
-    ///
-    /// # Returns
-    ///
-    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
-    /// score in descending order, or an error if something goes wrong.
-    fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<DataChunk> {
-        let results = self._similarity_search(query, num_of_results);
-        results.into_iter().map(|(chunk, _)| chunk).collect()
-    }
-
-    /// Performs a vector similarity search using a query embedding and returns
     /// the most similar data chunks within a specific range.
     ///
     /// # Arguments
@@ -199,38 +192,36 @@ pub trait Resource {
         query: Embedding,
         num_of_results: u64,
         tolerance_range: f32,
-    ) -> Vec<DataChunk> {
+    ) -> Vec<RetrievedDataChunk> {
         // Clamp the tolerance_range to be between 0 and 1
         let tolerance_range = tolerance_range.max(0.0).min(1.0);
 
-        let mut results = self._similarity_search(query, num_of_results);
+        let mut results = self.similarity_search(query, num_of_results);
 
         // Calculate the range of acceptable similarity scores
-        if let Some((_, highest_similarity)) = results.first() {
-            let lower_bound = highest_similarity * (1.0 - tolerance_range);
+        if let Some(ret_chunk) = results.first() {
+            let lower_bound = ret_chunk.score * (1.0 - tolerance_range);
 
             // Filter the results to only include those within the tolerance range
-            results.retain(|&(_, similarity)| similarity >= lower_bound);
+            results.retain(|ret_chunk| ret_chunk.score >= lower_bound);
         }
 
-        results.into_iter().map(|(chunk, _)| chunk).collect()
+        results
     }
 
-    /// A helper function to perform a similarity search. This function is not
-    /// meant to be used directly, but rather to provide shared
-    /// functionality for the public similarity search methods.
+    /// Performs a vector similarity search using a query embedding and returns
+    /// the most similar data chunks.
     ///
     /// # Arguments
     ///
     /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return.
+    /// * `num_of_results` - The number of top results to return (top-k)
     ///
     /// # Returns
     ///
-    /// A `Result` that contains a vector of tuples. Each tuple consists of a
-    /// `DataChunk` and its similarity score. The vector is sorted by similarity
-    /// score in descending order.
-    fn _similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<(DataChunk, f32)> {
+    /// A `Result` that contains a vector of `RetrievedDataChunk`s sorted by similarity
+    /// score in descending order, or an error if something goes wrong.
+    fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         let num_of_results = num_of_results as usize;
 
         // Calculate the similarity scores for all chunk embeddings and skip any that
@@ -250,8 +241,7 @@ pub trait Resource {
         // Use a binary heap to more efficiently order the scores to get most similar
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
-            // println!("Current to be added to heap: (Id: {}, Score: {})", score.1,
-            // score.0);
+            println!("Current to be added to heap: (Id: {}, Score: {})", score.1, score.0);
             if heap.len() < num_of_results {
                 heap.push(Reverse(score));
             } else if let Some(least_similar_score) = heap.peek() {
@@ -265,17 +255,26 @@ pub trait Resource {
             }
         }
 
-        // Fetch the DataChunks matching the most similar embeddings
-        let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
+        // Fetch the RetrievedDataChunk matching the most similar embeddings
+        let mut chunks: Vec<RetrievedDataChunk> = vec![];
         while let Some(Reverse((similarity, id))) = heap.pop() {
-            // println!("{}: {}%", id, similarity);
+            println!("{}: {}%", id, similarity);
             if let Ok(chunk) = self.get_data_chunk(id) {
-                chunks.push((chunk.clone(), similarity.into_inner()));
+                println!("Pushing chunk: {:?}", chunk);
+                chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: similarity.into_inner(),
+                    resource_id: self.resource_id().to_string(),
+                });
+                println!("pusehd");
             }
         }
 
+        println!("before rev Chunks: {:?}", chunks);
         // Reverse the order of chunks so that the highest score is first
         chunks.reverse();
+
+        println!("Chunks: {:?}", chunks);
 
         chunks
     }
