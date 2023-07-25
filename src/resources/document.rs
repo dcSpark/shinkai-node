@@ -64,6 +64,15 @@ impl Resource for DocumentResource {
 
     /// # Returns
     ///
+    /// A hardcoded string which represents the type of Resource.
+    ///
+    ///
+    fn resource_type(&self) -> ResourceType {
+        ResourceType::Document
+    }
+
+    /// # Returns
+    ///
     /// The chunk `Embedding`s of the `DocumentResource`.
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
@@ -189,17 +198,16 @@ impl DocumentResource {
     ///
     /// # Returns
     ///
-    /// A vector of `DataChunk`s sorted by their ids, or an error.
+    /// A vector of `RetrievedDataChunk`s sorted by their ids, or an error.
     pub fn similarity_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
-    ) -> Result<Vec<DataChunk>, ResourceError> {
+    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
         let search_results = self.similarity_search(query, 1);
 
-        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?; // If there's no first element, return an InvalidChunkId error
+        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?;
 
-        let mut chunks: Vec<DataChunk> = Vec::new();
         let most_similar_id = most_similar_chunk
             .chunk
             .id
@@ -212,10 +220,15 @@ impl DocumentResource {
             1
         };
 
+        let mut chunks = Vec::new();
         let end_id = most_similar_id + proximity_window;
         for id in start_id..=end_id {
             let chunk = self.get_data_chunk(id.to_string())?;
-            chunks.push(chunk.clone());
+            chunks.push(RetrievedDataChunk {
+                chunk: chunk.clone(),
+                score: 0.00,
+                resource_id: self.resource_id().to_string(),
+            });
         }
 
         Ok(chunks)
@@ -231,12 +244,16 @@ impl DocumentResource {
     /// # Returns
     ///
     /// A vector of `DataChunk`s with the same metadata, or an error.
-    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, ResourceError> {
-        let mut matching_chunks: Vec<DataChunk> = Vec::new();
+    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+        let mut matching_chunks = Vec::new();
 
         for chunk in &self.data_chunks {
             match &chunk.metadata {
-                Some(metadata) if metadata == &query_metadata => matching_chunks.push(chunk.clone()),
+                Some(metadata) if metadata == &query_metadata => matching_chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: 0.00,
+                    resource_id: self.resource_id().to_string(),
+                }),
                 _ => (),
             }
         }

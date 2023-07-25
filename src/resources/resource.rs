@@ -6,7 +6,36 @@ use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::fmt::format;
+use std::str::FromStr;
+
+/// Enum used for all Resources to specify their type
+/// when dealing with Trait objects.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ResourceType {
+    Document,
+    KeyValue,
+}
+
+impl ResourceType {
+    pub fn to_str(&self) -> &str {
+        match self {
+            ResourceType::Document => "Document",
+            ResourceType::KeyValue => "KeyValue",
+        }
+    }
+}
+
+impl FromStr for ResourceType {
+    type Err = ResourceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Document" => Ok(ResourceType::Document),
+            "KeyValue" => Ok(ResourceType::KeyValue),
+            _ => Err(ResourceError::InvalidResourceType),
+        }
+    }
+}
 
 /// A data chunk that was retrieved from a vector similarity search.
 /// Includes extra data like the resource_id of the resource it was from
@@ -73,6 +102,7 @@ pub trait Resource {
     fn source(&self) -> Option<&str>;
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
+    fn resource_type(&self) -> ResourceType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
     fn set_resource_embedding(&mut self, embedding: Embedding);
@@ -184,9 +214,9 @@ pub trait Resource {
     ///
     /// # Returns
     ///
-    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
+    /// A vector of `DataChunk`s sorted by similarity
     /// score in descending order, but only including those within the tolerance
-    /// range, or an error if something goes wrong.
+    /// range
     fn similarity_search_tolerance_ranged(
         &self,
         query: Embedding,
@@ -219,8 +249,7 @@ pub trait Resource {
     ///
     /// # Returns
     ///
-    /// A `Result` that contains a vector of `RetrievedDataChunk`s sorted by similarity
-    /// score in descending order, or an error if something goes wrong.
+    /// A vector of `RetrievedDataChunk`s sorted by similarity score in descending order
     fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         let num_of_results = num_of_results as usize;
 
