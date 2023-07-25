@@ -1,30 +1,43 @@
+use crate::managers::providers::{openai, Provider};
 use crate::{shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper, shinkai_message_proto::ShinkaiMessage};
 use reqwest::Client;
 use std::fmt;
 use std::{error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
+use super::providers::openai::Response as APIResponse;
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone)]
 pub struct Agent {
-    id: String,
-    name: String, // user-specified name (sub-identity)
-    job_manager_sender: mpsc::Sender<ShinkaiMessage>,
-    agent_receiver: Arc<Mutex<mpsc::Receiver<ShinkaiMessage>>>,
-    client: Client,
-    perform_locally: bool,                   // flag to perform computation locally or not
-    external_url: Option<String>,            // external API URL
-    toolkit_permissions: Vec<String>,        // list of toolkits the agent has access to
-    storage_bucket_permissions: Vec<String>, // list of storage buckets the agent has access to
-    allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
+    pub id: String,
+    pub name: String, // user-specified name (sub-identity)
+    pub job_manager_sender: mpsc::Sender<String>,
+    pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
+    pub client: Client,
+    pub perform_locally: bool,        // flag to perform computation locally or not
+    pub external_url: Option<String>, // external API URL
+    pub api_key: Option<String>,
+    pub model: AgentAPIModel,
+    pub toolkit_permissions: Vec<String>,        // list of toolkits the agent has access to
+    pub storage_bucket_permissions: Vec<String>, // list of storage buckets the agent has access to
+    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub enum AgentAPIModel {
+    OpenAI(String), // it takes the model name
+    Sleep,
+    OtherModel,
 }
 
 impl Agent {
     pub fn new(
         id: String,
         name: String,
-        job_manager_sender: mpsc::Sender<ShinkaiMessage>,
+        job_manager_sender: mpsc::Sender<String>,
         perform_locally: bool,
         external_url: Option<String>,
+        api_key: Option<String>,
+        model: AgentAPIModel,
         toolkit_permissions: Vec<String>,
         storage_bucket_permissions: Vec<String>,
         allowed_message_senders: Vec<String>,
@@ -40,74 +53,103 @@ impl Agent {
             client,
             perform_locally,
             external_url,
+            api_key,
+            model,
             toolkit_permissions,
             storage_bucket_permissions,
             allowed_message_senders,
         }
     }
 
-    pub async fn call_external_api(&self) -> Result<ShinkaiMessage, AgentError> {
-        if let Some(ref url) = self.external_url {
-            let res = self.client.get(url).send().await?;
-            let data: ShinkaiMessageWrapper = res.json().await.map_err(AgentError::ReqwestError)?;
-            Ok(data.into())
-        } else {
-            Err(AgentError::UrlNotSet)
+    pub async fn call_external_api(&self, content: &str) -> Result<String, AgentError> {
+        match self.model {
+            AgentAPIModel::OpenAI(ref model_type) => {
+                if let Some(ref base_url) = self.external_url {
+                    if let Some(ref key) = self.api_key {
+                        let url = format!("{}{}", base_url, "/v1/chat/completions");
+                        let body = format!(
+                            r#"{{
+                            "model": "{}",
+                            "messages": [
+                                {{"role": "system", "content": "You are a helpful assistant."}},
+                                {{"role": "user", "content": "{}"}}
+                            ],
+                            "temperature": 0,
+                            "max_tokens": 1024
+                        }}"#,
+                            model_type, content
+                        );
+
+                        let res = self
+                            .client
+                            .post(url)
+                            .bearer_auth(key)
+                            .header("Content-Type", "application/json")
+                            .body(body)
+                            .send()
+                            .await?;
+
+                        println!("Status: {}", res.status());
+                        let data: APIResponse = res.json().await.map_err(AgentError::ReqwestError)?;
+                        Ok(openai::Response::extract_content(&data))
+                    } else {
+                        Err(AgentError::ApiKeyNotSet)
+                    }
+                } else {
+                    Err(AgentError::UrlNotSet)
+                }
+            }
+            AgentAPIModel::Sleep => {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                Ok("OK".to_string())
+            }
+            AgentAPIModel::OtherModel => {
+                // handle for OtherModel
+                unimplemented!()
+            }
         }
     }
 
-    pub async fn process_message(&self, message: ShinkaiMessage) {
+    pub async fn process_message(&self, content: String) {
         // Here we run our GPU-intensive task on a separate thread
+        let mut response = "";
         let handle = tokio::task::spawn_blocking(move || {
             // perform GPU-intensive work
+            response = "Update response!";
         });
 
         let result = handle.await;
         match result {
-            Ok(_) => (),
+            Ok(_) => {
+                // create ShinkaiMessage based on result and send to AgentManager
+                let _ = self.job_manager_sender.send(response.to_string()).await;
+            }
             Err(e) => eprintln!("Error in processing message: {:?}", e),
         }
     }
 
-    // pub async fn send_message(&self, msg: ShinkaiMessage) {
-    //     // Check if the sender is in the list of allowed senders
-    //     if self.allowed_message_senders.contains(&msg.get_sender()) {
-    //         let _ = self.sender.send(msg).await;
-    //     } else {
-    //         eprintln!("Unauthorized message sender!");
-    //     }
-    // }
-
-    pub async fn start(&self) {
+    pub async fn execute(&self, content: String) {
         loop {
             if self.perform_locally {
-                // Extract message from queue and process it locally
-                let message = self.agent_receiver.lock().await.recv().await;
-                match message {
-                    Some(message) => {
-                        self.process_message(message).await;
-                    }
-                    None => {
-                        eprintln!("Error when getting message from the queue.");
-                    }
-                }
+                self.process_message(content.clone()).await; // Assuming the content doesn't change
             } else {
                 // Call external API
-                let response = self.call_external_api().await;
+                let response = self.call_external_api(&content.clone()).await; // Assuming the content doesn't change
                 match response {
                     Ok(message) => {
-                        self.process_message(message).await;
+                        // Send the message to AgentManager
+                        let _ = self.job_manager_sender.send(message).await;
                     }
                     Err(e) => eprintln!("Error when calling API: {}", e),
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await; // sleep for 5 seconds
         }
     }
 }
 
 pub enum AgentError {
     UrlNotSet,
+    ApiKeyNotSet,
     ReqwestError(reqwest::Error),
 }
 
@@ -115,6 +157,7 @@ impl fmt::Display for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             AgentError::UrlNotSet => write!(f, "URL is not set"),
+            AgentError::ApiKeyNotSet => write!(f, "API Key not set"),
             AgentError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
         }
     }
@@ -124,6 +167,7 @@ impl fmt::Debug for AgentError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AgentError::UrlNotSet => f.debug_tuple("UrlNotSet").finish(),
+            AgentError::ApiKeyNotSet => f.debug_tuple("ApiKeyNotSet").finish(),
             AgentError::ReqwestError(err) => f.debug_tuple("ReqwestError").field(err).finish(),
         }
     }
@@ -137,6 +181,8 @@ impl From<reqwest::Error> for AgentError {
 
 #[cfg(test)]
 mod tests {
+    use std::{thread::sleep, time::Duration};
+
     use crate::shinkai_message::{
         encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
         shinkai_message_builder::ShinkaiMessageBuilder,
@@ -150,13 +196,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_creation() {
-        let (tx, _rx) = mpsc::channel(1);
+        let (tx, mut rx) = mpsc::channel(1);
         let agent = Agent::new(
             "1".to_string(),
             "Agent".to_string(),
             tx,
-            true,
+            false,
             Some("http://localhost:8000".to_string()),
+            Some("paramparam".to_string()),
+            AgentAPIModel::Sleep,
             vec!["tk1".to_string(), "tk2".to_string()],
             vec!["sb1".to_string(), "sb2".to_string()],
             vec!["allowed1".to_string(), "allowed2".to_string()],
@@ -164,7 +212,7 @@ mod tests {
 
         assert_eq!(agent.id, "1");
         assert_eq!(agent.name, "Agent");
-        assert_eq!(agent.perform_locally, true);
+        assert_eq!(agent.perform_locally, false);
         assert_eq!(agent.external_url, Some("http://localhost:8000".to_string()));
         assert_eq!(agent.toolkit_permissions, vec!["tk1".to_string(), "tk2".to_string()]);
         assert_eq!(
@@ -175,45 +223,67 @@ mod tests {
             agent.allowed_message_senders,
             vec!["allowed1".to_string(), "allowed2".to_string()]
         );
+
+        tokio::spawn(async move {
+            agent.execute("Test".to_string()).await;
+        });
+
+        let val = tokio::time::timeout(std::time::Duration::from_millis(501), rx.recv()).await;
+        match val {
+            Ok(Some(response)) => assert_eq!(response, "OK"),
+            Ok(None) => panic!("Channel is empty"),
+            Err(_) => panic!("Timeout exceeded"),
+        }
     }
 
-    // #[tokio::test]
-    // async fn test_shinkai_message_with_mockito() {
-    //     let mut server = mockito::Server::new_async().await;
-    //     let m1 = server.mock("GET", "/a").with_body("aaa").create_async().await;
+    #[tokio::test]
+    async fn test_agent_call_external_api_openai() {
+        let mut server = Server::new();
+        let _m = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer mockapikey")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "created": 1677652288,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "\n\nHello there, how may I assist you today?"
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 12,
+                    "total_tokens": 21
+                }
+            }"#,
+            )
+            .create();
 
-    //     let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    //     let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    //     let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        let (tx, _rx) = mpsc::channel(1);
+        let agent = Agent::new(
+            "1".to_string(),
+            "Agent".to_string(),
+            tx,
+            false,
+            Some(server.url()), // use the url of the mock server
+            Some("mockapikey".to_string()),
+            AgentAPIModel::OpenAI("gpt-3.5-turbo".to_string()),
+            vec!["tk1".to_string(), "tk2".to_string()],
+            vec!["sb1".to_string(), "sb2".to_string()],
+            vec!["allowed1".to_string(), "allowed2".to_string()],
+        );
 
-    //     let recipient = "@@other_node.shinkai".to_string();
-    //     let sender = "@@my_node.shinkai".to_string();
-
-    //     let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
-    //         .body(server.url().to_string()) // Here we're using the mocked URL as the message body
-    //         .no_body_encryption()
-    //         .message_schema_type("schema type".to_string())
-    //         .internal_metadata(
-    //             "".to_string(),
-    //             "".to_string(),
-    //             "".to_string(),
-    //             EncryptionMethod::DiffieHellmanChaChaPoly1305,
-    //         )
-    //         .external_metadata(recipient, sender.clone())
-    //         .build();
-
-    //     assert!(message_result.is_ok());
-    //     let message = message_result.unwrap();
-
-    //     let url = message.body.clone().unwrap().content;
-    //     println!("URL: {:?}", url); // Debug print
-
-    //     // Perform an HTTP request using the message body as the URL
-    //     let response = reqwest::get(message.body.unwrap().content).await.unwrap();
-    //     assert_eq!(response.status().as_u16(), 200);
-    //     let response_body = response.text().await.unwrap();
-    //     assert_eq!(response_body, "aaa");
-
-    //     m1.assert_async().await;
-    // }
+        let response = agent.call_external_api("Hello!").await;
+        match response {
+            Ok(res) => assert_eq!(res, "\n\nHello there, how may I assist you today?"),
+            Err(e) => panic!("Error when calling API: {}", e),
+        }
+    }
 }

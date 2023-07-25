@@ -140,7 +140,7 @@ impl JobManager {
                                     // or use some logic to select the right agent
                                     let agent = agent.lock().await;
                                     // TODO: check that process_message is not awaited
-                                    agent.process_message(shinkai_message);
+                                    // agent.process_message(shinkai_message);
                                 }
 
                                 return Ok(job_id.clone());
@@ -210,17 +210,17 @@ impl JobManager {
         // self.agents.push(agent);
     }
 
-    pub fn start_agents(&self) {
-        let agents_clone = self.agents.clone();
-        for agent in &agents_clone {
-            let agent_clone = agent.clone();
-            let handler = async move {
-                // let mut agent_locked = agent_clone.lock().unwrap();
-                // agent_locked.start().await;
-            };
-            tokio::spawn(handler);
-        }
-    }
+    // pub fn start_agents(&self) {
+    //     let agents_clone = self.agents.clone();
+    //     for agent in &agents_clone {
+    //         let agent_clone = agent.clone();
+    //         let handler = async move {
+    //             // let mut agent_locked = agent_clone.lock().unwrap();
+    //             // agent_locked.start().await;
+    //         };
+    //         tokio::spawn(handler);
+    //     }
+    // }
 }
 
 #[derive(Debug)]
