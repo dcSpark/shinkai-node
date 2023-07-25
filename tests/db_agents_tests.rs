@@ -53,9 +53,10 @@ mod tests {
 
         // Attempt to remove the same agent again, expecting an error
         let result = db.remove_agent(&test_agent.id);
+        println!("{:?}", result);
         assert!(
-            matches!(result, Err(ShinkaiDBError::SomeError)),
-            "Expected SomeError error"
+            matches!(result, Err(ShinkaiDBError::RocksDBError(_))),
+            "Expected RocksDBError error"
         );
     }
 

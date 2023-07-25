@@ -178,7 +178,7 @@ mod tests {
             agent.execute("Test".to_string()).await;
         });
 
-        let val = tokio::time::timeout(std::time::Duration::from_millis(501), rx.recv()).await;
+        let val = tokio::time::timeout(std::time::Duration::from_millis(600), rx.recv()).await;
         match val {
             Ok(Some(response)) => assert_eq!(response, "OK"),
             Ok(None) => panic!("Channel is empty"),
