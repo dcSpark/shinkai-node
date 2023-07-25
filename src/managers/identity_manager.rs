@@ -11,6 +11,8 @@ use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use super::agent::Agent;
+use super::agent_serialization::SerializedAgent;
 use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone)]
@@ -52,8 +54,14 @@ pub struct RegistrationCode {
     pub permission_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub enum Identity {
+    Standard(StandardIdentity),
+    Agent(Agent),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Identity {
+pub struct StandardIdentity {
     pub full_identity_name: String,
     pub addr: Option<SocketAddr>,
     pub node_encryption_public_key: EncryptionPublicKey,
@@ -63,7 +71,7 @@ pub struct Identity {
     pub permission_type: IdentityType,
 }
 
-impl Identity {
+impl StandardIdentity {
     pub fn new(
         full_identity_name: String,
         addr: Option<SocketAddr>,
@@ -114,7 +122,7 @@ impl Identity {
     }
 }
 
-impl fmt::Display for Identity {
+impl fmt::Display for StandardIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
         let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
@@ -144,16 +152,13 @@ impl fmt::Display for Identity {
 
 pub struct IdentityManager {
     pub local_node_name: String,
-    pub identities: Vec<Identity>,
+    pub local_identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
 }
 
 impl IdentityManager {
-    pub async fn new(
-        db: Arc<Mutex<ShinkaiDB>>,
-        local_node_name: String,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: String) -> Result<Self, Box<dyn std::error::Error>> {
         if local_node_name.clone().is_empty() {
             return Err(Box::new(std::io::Error::new(
                 std::io::ErrorKind::Other,
@@ -173,7 +178,14 @@ impl IdentityManager {
         let identities = {
             let db = db.lock().await;
             db.load_all_sub_identities(local_node_name.clone())?
+                .into_iter()
+                .map(Identity::Standard)
+                .collect()
         };
+
+        // let agents = {
+
+        // }
 
         // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
         // if identities.is_empty() {
@@ -186,15 +198,15 @@ impl IdentityManager {
 
         Ok(Self {
             local_node_name,
-            identities,
+            local_identities: identities,
             db,
             external_identity_manager,
         })
     }
 
-    pub async fn add_subidentity(&mut self, identity: Identity) -> anyhow::Result<()> {
+    pub async fn add_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
         let db = self.db.lock().await;
-        let normalized_identity = Identity::new(
+        let normalized_identity = StandardIdentity::new(
             IdentityManager::extract_subidentity(&identity.full_identity_name.clone()),
             identity.addr.clone(),
             identity.node_encryption_public_key.clone(),
@@ -204,55 +216,71 @@ impl IdentityManager {
             identity.permission_type.clone(),
         );
         db.insert_sub_identity(normalized_identity.clone())?;
-        self.identities.push(normalized_identity.clone());
+        self.local_identities.push(Identity::Standard(normalized_identity.clone()));
         Ok(())
     }
 
-    pub fn identities_to_profile_names(identities: Vec<Identity>) -> anyhow::Result<Vec<String>> {
+    pub fn identities_to_profile_names(identities: Vec<StandardIdentity>) -> anyhow::Result<Vec<String>> {
         let profile_names = identities
             .into_iter()
             .map(|identity| identity.full_identity_name)
             .collect();
-    
+
         Ok(profile_names)
     }
 
     pub async fn add_agent_subidentity(
         &mut self,
-        identity: Identity,
-        profiles_with_access: Option<Vec<String>>,
-        toolkits_accessible: Option<Vec<String>>,
+        identity: StandardIdentity,
+        agent: SerializedAgent,
     ) -> anyhow::Result<()> {
         let mut db = self.db.lock().await;
-    
-        // Handle Option<Vec<String>> for profiles_with_access and toolkits_accessible
-        let profiles_with_access = profiles_with_access.unwrap_or_else(Vec::new);
-        let toolkits_accessible = toolkits_accessible.unwrap_or_else(Vec::new);
-    
-        // Add new agent with provided profiles_with_access and toolkits_accessible
-        db.add_agent(
-            &identity.full_identity_name,
-            &identity.subidentity_signature_public_key.as_ref().map_or_else(|| "".to_string(), |pk| signature_public_key_to_string(*pk)),
-            &identity.subidentity_encryption_public_key.as_ref().map_or_else(|| "".to_string(), |pk| encryption_public_key_to_string(*pk)),
-            profiles_with_access,
-            toolkits_accessible,
-        )?;
-    
-        // TODO: change identities to support multiple types of subidentities
-        self.identities.push(identity.clone());
-    
+        db.add_agent(agent)?;
+        self.local_identities.push(Identity::Standard(identity.clone()));
+
         Ok(())
     }
-    
+
+    // pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<StandardIdentity> {
+    //     let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
+
+    //     // If the node name matches local node, search in self.identities
+    //     if self.local_node_name == node_name {
+    //         self.identities
+    //             .iter()
+    //             .find(|&identity| identity.full_identity_name == full_identity_name)
+    //             .cloned()
+    //     } else {
+    //         None
+    //     }
+    // }
+
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-
+    
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
-            self.identities
+            self.local_identities
                 .iter()
-                .find(|&identity| identity.full_identity_name == full_identity_name)
-                .cloned()
+                .filter_map(|identity| {
+                    match identity {
+                        Identity::Standard(standard_identity) => {
+                            if standard_identity.full_identity_name == full_identity_name {
+                                Some(Identity::Standard(standard_identity.clone()))
+                            } else {
+                                None
+                            }
+                        },
+                        Identity::Agent(agent) => {
+                            if agent.id == full_identity_name {
+                                Some(Identity::Agent(agent.clone()))
+                            } else {
+                                None
+                            }
+                        },
+                    }
+                })
+                .next()
         } else {
             None
         }
@@ -261,13 +289,10 @@ impl IdentityManager {
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
         // Extract node name from the full identity name
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-
+    
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
-            self.identities
-                .iter()
-                .find(|&identity| identity.full_identity_name == full_identity_name)
-                .cloned()
+            self.search_local_identity(full_identity_name).await
         } else {
             // If not, query the identity network manager
             let external_im = self.external_identity_manager.lock().await;
@@ -275,7 +300,7 @@ impl IdentityManager {
                 .external_identity_to_profile_data(full_identity_name.to_string())
                 .await
             {
-                Ok(identity_network_manager) => Some(Identity::new(
+                Ok(identity_network_manager) => Some(Identity::Standard(StandardIdentity::new(
                     node_name.to_string(),
                     Some(identity_network_manager.addr),
                     identity_network_manager.encryption_public_key,
@@ -283,29 +308,40 @@ impl IdentityManager {
                     None,
                     None,
                     IdentityType::Global,
-                )),
+                ))),
                 Err(_) => None, // return None if the identity is not found in the network manager
             }
         }
     }
+    
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
-        self.identities.clone()
+        self.local_identities.clone()
     }
 
     pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
-        self.identities
+        self.local_identities
             .iter()
-            .find(|identity| identity.subidentity_signature_public_key.as_ref() == Some(key))
+            .find(|identity| {
+                match identity {
+                    Identity::Standard(identity) => identity.subidentity_signature_public_key.as_ref() == Some(key),
+                    Identity::Agent(_) => false, // Return false if the identity is an Agent
+                }
+            })
     }
-
+    
     pub fn find_by_profile_name(&self, full_profile_name: &str) -> Option<&Identity> {
-        self.identities
+        self.local_identities
             .iter()
-            .find(|identity| identity.full_identity_name == full_profile_name)
+            .find(|identity| {
+                match identity {
+                    Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                    Identity::Agent(agent) => agent.name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+                }
+            })
     }
 
-    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<Identity> {
+    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
         let node_name = IdentityManager::extract_node_name(full_profile_name);
 
         println!(
@@ -323,7 +359,7 @@ impl IdentityManager {
             .external_identity_to_profile_data(node_name.to_string())
             .await
         {
-            Ok(identity_network_manager) => Some(Identity::new(
+            Ok(identity_network_manager) => Some(StandardIdentity::new(
                 node_name.to_string(),
                 Some(identity_network_manager.addr),
                 identity_network_manager.encryption_public_key,
@@ -372,5 +408,12 @@ impl IdentityManager {
     pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
         let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
         IdentityManager::extract_node_name(&sender_profile_name)
+    }
+
+    pub fn get_full_identity_name(identity: &Identity) -> Option<String> {
+        match identity {
+            Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone()),
+            Identity::Agent(agent) => Some(agent.name.clone()),
+        }
     }
 }

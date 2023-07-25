@@ -58,6 +58,7 @@ impl JobScope {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JobCreation {
     pub scope: JobScope,
+    // TODO: add agent id here
 }
 
 #[derive(Serialize, Deserialize, Debug)]

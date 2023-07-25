@@ -37,7 +37,7 @@ struct Usage {
     total_tokens: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct OpenAI {
     pub model_type: String,
 }

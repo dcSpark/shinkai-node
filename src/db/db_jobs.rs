@@ -1,5 +1,5 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::identity_manager::{Identity, IdentityType};
+use crate::managers::identity_manager::{StandardIdentity, IdentityType};
 use crate::managers::job_manager::{Job, JobLike};
 use crate::schemas::inbox_name::InboxName;
 use crate::schemas::message_schemas::JobScope;

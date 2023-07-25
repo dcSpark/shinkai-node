@@ -1,13 +1,13 @@
-use crate::managers::providers::{openai, Provider};
-use crate::{shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper, shinkai_message_proto::ShinkaiMessage};
+use crate::managers::providers::{Provider};
 use reqwest::Client;
 use std::fmt;
-use std::{error::Error, sync::Arc};
+use std::{sync::Arc};
 use tokio::sync::{mpsc, Mutex};
-use super::providers::openai::{Response as APIResponse, OpenAI};
-use super::providers::sleep_api::{SleepAPI, self};
+use super::providers::openai::{OpenAI};
+use super::providers::sleep_api::{SleepAPI};
 use serde::{Serialize, Deserialize};
 
+#[derive(Debug, Clone)]
 pub struct Agent {
     pub id: String,
     pub name: String, // user-specified name (sub-identity)
@@ -23,7 +23,7 @@ pub struct Agent {
     pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AgentAPIModel {
     OpenAI(OpenAI), 
     Sleep(SleepAPI),
@@ -43,7 +43,7 @@ impl Agent {
         allowed_message_senders: Vec<String>,
     ) -> Self {
         let client = Client::new();
-        let (agent_sender, agent_receiver) = mpsc::channel(1);
+        let (_, agent_receiver) = mpsc::channel(1);
         let agent_receiver = Arc::new(Mutex::new(agent_receiver)); // wrap the receiver
         Self {
             id,
@@ -139,17 +139,8 @@ impl From<reqwest::Error> for AgentError {
 
 #[cfg(test)]
 mod tests {
-    use std::{thread::sleep, time::Duration};
-
-    use crate::shinkai_message::{
-        encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod},
-        shinkai_message_builder::ShinkaiMessageBuilder,
-        signatures::unsafe_deterministic_signature_keypair,
-    };
-
     use super::*;
     use mockito::Server;
-    use tokio::runtime::Runtime;
     use tokio::sync::mpsc;
 
     #[tokio::test]

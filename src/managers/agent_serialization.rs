@@ -7,17 +7,17 @@ use tokio::sync::{mpsc, Mutex};
 use super::agent::{AgentAPIModel, Agent};
 
 // Agent has a few fields that are not serializable, so we need to create a struct that is serializable
-#[derive(Serialize, Deserialize)]
-struct SerializedAgent {
-    id: String,
-    name: String,
-    perform_locally: bool,
-    external_url: Option<String>,
-    api_key: Option<String>,
-    model: AgentAPIModel,
-    toolkit_permissions: Vec<String>,
-    storage_bucket_permissions: Vec<String>,
-    allowed_message_senders: Vec<String>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SerializedAgent {
+    pub id: String,
+    pub name: String,
+    pub perform_locally: bool,
+    pub external_url: Option<String>,
+    pub api_key: Option<String>,
+    pub model: AgentAPIModel,
+    pub toolkit_permissions: Vec<String>,
+    pub storage_bucket_permissions: Vec<String>,
+    pub allowed_message_senders: Vec<String>,
 }
 
 impl From<Agent> for SerializedAgent {

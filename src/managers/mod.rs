@@ -6,4 +6,4 @@ pub mod identity_network_manager;
 pub mod job_manager;
 pub mod agent;
 pub mod agent_serialization;
-mod providers;
+pub mod providers;

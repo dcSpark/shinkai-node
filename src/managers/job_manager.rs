@@ -81,7 +81,7 @@ pub struct JobManager {
 impl JobManager {
     pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
-        let (sender, receiver) = mpsc::channel(100);
+        let (job_manager_sender, _) = mpsc::channel(100);
         {
             let shinkai_db = db.lock().await;
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
@@ -93,7 +93,7 @@ impl JobManager {
         Self {
             jobs: jobs_map,
             db,
-            job_manager_sender: sender,
+            job_manager_sender,
             agents: Vec::new(),
         }
     }
@@ -206,9 +206,12 @@ impl JobManager {
     }
 
     pub fn add_agent(&mut self, id: String) {
-        // let agent = Agent::new(id, self.job_manager_sender.clone());
-        // self.agents.push(agent);
+        // TODO: maybe leave the add agent part to identity_manager
+        // every time that you need to use an agent that doesn't exist, you check
+        // with the db if new agents have been added
     }
+
+
 
     // pub fn start_agents(&self) {
     //     let agents_clone = self.agents.clone();

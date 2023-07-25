@@ -6,7 +6,7 @@ use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
     shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{Identity, IdentityType}}, schemas::inbox_permission::InboxPermission,
+    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{StandardIdentity, IdentityType}}, schemas::inbox_permission::InboxPermission,
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -284,7 +284,7 @@ impl ShinkaiDB {
     pub fn add_permission(
         &mut self,
         inbox_name: &str,
-        identity: &Identity,
+        identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<(), ShinkaiDBError> {
         // Fetch column family for identity
@@ -309,7 +309,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn remove_permission(&mut self, inbox_name: &str, identity: &Identity) -> Result<(), ShinkaiDBError> {
+    pub fn remove_permission(&mut self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
         // Fetch column family for identity
         let cf_identity = self
             .db
@@ -334,7 +334,7 @@ impl ShinkaiDB {
     pub fn has_permission(
         &self,
         inbox_name: &str,
-        identity: &Identity,
+        identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<bool, ShinkaiDBError> {
         // Fetch column family for identity

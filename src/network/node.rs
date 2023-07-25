@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self, Identity};
+use crate::managers::identity_manager::{self, StandardIdentity};
 use crate::managers::{IdentityManager, job_manager};
 use crate::managers::job_manager::JobManager;
 use crate::network::node_message_handlers::{
@@ -83,7 +83,7 @@ pub enum NodeCommand {
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
         name: String,
-        res: Sender<Identity>,
+        res: Sender<StandardIdentity>,
     },
     // Command to make the node connect to a new node, given the node's address and profile name.
     Connect {
@@ -97,7 +97,7 @@ pub enum NodeCommand {
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
-        res: Sender<Vec<Identity>>,
+        res: Sender<Vec<StandardIdentity>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
