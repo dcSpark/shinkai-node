@@ -1,10 +1,11 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::document::DocumentResource;
+use crate::resources::embedding_generator::RemoteEmbeddingGenerator;
 use crate::resources::embeddings::Embedding;
 use crate::resources::resource::RetrievedDataChunk;
 use crate::resources::resource::{Resource, ResourceType};
 use crate::resources::resource_errors::ResourceError;
-use crate::resources::router::ResourceRouter;
+use crate::resources::router::{ResourcePointer, ResourceRouter};
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 use serde_json::{from_str, to_string};
 use std::any::Any;
@@ -23,7 +24,7 @@ impl ShinkaiDB {
         let cf = self.get_cf_handle(Topic::Resources)?;
 
         // Insert the message into the "Resources" column family
-        self.db.put_cf(cf, ResourceRouter::db_key(), bytes)?;
+        self.db.put_cf(cf, ResourceRouter::global_router_db_key(), bytes)?;
 
         Ok(())
     }
@@ -64,7 +65,8 @@ impl ShinkaiDB {
             self.save_resource_pointerless(&resource)?;
             // Add the pointer to the router, saving the router
             // to the DB on each iteration
-            router.add_resource_pointer(&resource);
+            let pointer = ResourcePointer::from(&resource);
+            router.add_resource_pointer(&pointer);
             self.save_resource_router(&router)?;
         }
 
@@ -109,7 +111,7 @@ impl ShinkaiDB {
     /// in the resources topic, and attempts to parse it into a ResourceRouter
     pub fn get_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, ResourceRouter::db_key())?;
+        let bytes = self.get_cf(Topic::Resources, ResourceRouter::global_router_db_key())?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a DocumentResource object
@@ -240,5 +242,87 @@ impl ShinkaiDB {
         }
 
         Ok(resources)
+    }
+
+    /// If a resource router does not exist in the DB, automatically
+    /// creates a new one and saves it in the DB so it is ready to be
+    /// called and used
+    pub fn init_resource_router(&self) {
+        if let Err(_) = self.get_resource_router() {
+            let router = ResourceRouter::new();
+        }
+    }
+}
+
+mod tests {
+    use super::*;
+    use crate::resources::bert_cpp::BertCPPProcess;
+
+    #[test]
+    fn test_pdf_resource_save_to_db() {
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Read the pdf from file into a buffer
+        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+            .map_err(|_| ResourceError::FailedPDFParsing)
+            .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
+        let doc = DocumentResource::parse_pdf(
+            &buffer,
+            100,
+            &generator,
+            "Shinkai Manifesto",
+            Some(desc),
+            Some("http://shinkai.com"),
+        )
+        .unwrap();
+
+        // Init Database
+        let db_path = format!("db_tests/{}", "embeddings");
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Save/fetch doc
+        let resource = Box::new(doc.clone()) as Box<dyn Resource>;
+        shinkai_db.save_resource_pointerless(&resource).unwrap();
+        let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
+
+        assert_eq!(doc, fetched_doc);
+    }
+
+    fn test_single_resource_similarity_search() {
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Read the pdf from file into a buffer
+        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+            .map_err(|_| ResourceError::FailedPDFParsing)
+            .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
+        let doc = DocumentResource::parse_pdf(
+            &buffer,
+            100,
+            &generator,
+            "Shinkai Manifesto",
+            Some(desc),
+            Some("http://shinkai.com"),
+        )
+        .unwrap();
+
+        // Init Database
+        let db_path = format!("db_tests/{}", "embeddings");
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Init a resource router
+
+        let resource = Box::new(doc.clone()) as Box<dyn Resource>;
+        shinkai_db.save_resource_pointerless(&resource).unwrap();
+        let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
+
+        assert_eq!(doc, fetched_doc);
     }
 }

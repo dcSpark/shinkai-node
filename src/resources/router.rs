@@ -3,27 +3,42 @@ use crate::resources::embeddings::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
+use std::convert::From;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
-/// Type which holds the data about how to fetch and parse a resource from the DB.
+/// Type which holds reference data about a resource in the DB.
+///
 /// This hides away the implementation details of the current underlying DocumentResource
 /// and allows us to offer an equivalent interface in the future even if we swap to
 /// a different underlying internal model of how the resource pointer data is stored.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResourcePointer {
-    pub db_key: String,              // Key of the resource in the Topic::Resources
+    pub id: String,     // Id of the ResourcePointer in the ResourceRouter (currently DataChunk id)
+    pub db_key: String, // Key of the resource in the Topic::Resources in the db
     pub resource_type: ResourceType, // Type of the resource
-    pub id: String,                  // Id of the DataChunk in the Router
+    resource_embedding: Option<Embedding>, // Resource Embedding
 }
 
 impl ResourcePointer {
-    pub fn new(db_key: &str, resource_type: ResourceType, id: &str) -> Self {
+    /// Create a new ResourcePointer
+    pub fn new(id: &str, db_key: &str, resource_type: ResourceType, resource_embedding: Option<Embedding>) -> Self {
         Self {
+            id: id.to_string(),
             db_key: db_key.to_string(),
             resource_type,
-            id: id.to_string(),
+            resource_embedding: resource_embedding.clone(),
         }
+    }
+}
+
+impl From<&Box<dyn Resource>> for ResourcePointer {
+    fn from(resource: &Box<dyn Resource>) -> Self {
+        let db_key = resource.db_key();
+        let resource_type = resource.resource_type();
+        let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
+        let embedding = resource.resource_embedding().clone();
+        ResourcePointer::new(id, &db_key, resource_type, Some(embedding))
     }
 }
 
@@ -36,7 +51,7 @@ impl TryFrom<RetrievedDataChunk> for ResourcePointer {
         let db_key = ret_data.chunk.metadata.unwrap_or_default();
         let id = ret_data.chunk.id;
 
-        Ok(ResourcePointer::new(&db_key, resource_type, &id))
+        Ok(ResourcePointer::new(&id, &db_key, resource_type, None))
     }
 }
 
@@ -57,7 +72,7 @@ pub struct ResourceRouter {
 }
 
 impl ResourceRouter {
-    /// Create a new ResourceRouter from scratch
+    /// Create a new ResourceRouter instance from scratch.
     pub fn new() -> Self {
         let name = "Resource Router";
         let desc = Some("Enables performing vector searches to find relevant resources.");
@@ -68,11 +83,11 @@ impl ResourceRouter {
         }
     }
 
-    /// A hard-coded DB key for the resource router in Topic::Resources
+    /// A hard-coded DB key for the global resource router in Topic::Resources.
     /// No other resource is allowed to use this db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn db_key() -> String {
-        "resource_router".to_string()
+    pub fn global_router_db_key() -> String {
+        "global_resource_router".to_string()
     }
 
     /// Performs a vector similarity search using a query embedding and returns
@@ -107,31 +122,33 @@ impl ResourceRouter {
         resource_pointers
     }
 
-    /// Adds a resource pointer to the ResourceRouter in memory.
-    /// The pointed-to resource is expected to have a valid resource embedding
-    /// and have already been saved into the DB.
+    /// Adds a resource pointer into the ResourceRouter instance.
+    /// The pointer is expected to have a valid resource embedding
+    /// and the resource having already been saved into the DB.
     ///
     /// If a resource pointer already exists with the same db_key, then
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
     /// of the chunk and the db_key in the `metadata` of the chunk.
-    pub fn add_resource_pointer(&mut self, resource: &Box<dyn Resource>) -> Result<(), ResourceError> {
-        let data = resource.resource_type();
-        let embedding = resource.resource_embedding();
-        let metadata = resource.db_key().clone();
+    pub fn add_resource_pointer(&mut self, resource_pointer: &ResourcePointer) -> Result<(), ResourceError> {
+        let data = resource_pointer.resource_type.to_str();
+        let embedding = resource_pointer
+            .resource_embedding
+            .clone()
+            .ok_or(ResourceError::NoEmbeddingProvided)?;
+        let metadata = resource_pointer.db_key.clone();
 
         match self.db_key_search(&metadata) {
-            Ok(res_pointer) => {
+            Ok(old_pointer) => {
                 // If a resource pointer with matching db_key is found,
                 // replace the existing resource pointer with the new one.
-                self.replace_resource_pointer(&res_pointer.id, resource)?;
+                self.replace_resource(&old_pointer.id, resource_pointer)?;
             }
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
                 // append the new data.
-                self.routing_resource
-                    .append_data(&data.to_str(), Some(&metadata), embedding);
+                self.routing_resource.append_data(&data, Some(&metadata), &embedding);
             }
         }
 
@@ -151,20 +168,46 @@ impl ResourceRouter {
     }
 
     /// Replaces an existing resource pointer with a new one.
-    pub fn replace_resource_pointer(&mut self, id: &str, resource: &Box<dyn Resource>) -> Result<(), ResourceError> {
-        let data = resource.name();
-        let embedding = resource.resource_embedding();
-        let metadata = resource.db_key().clone();
-        let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
+    pub fn replace_resource(
+        &mut self,
+        old_pointer_id: &str,
+        resource_pointer: &ResourcePointer,
+    ) -> Result<(), ResourceError> {
+        let data = resource_pointer.resource_type.to_str();
+        let embedding = resource_pointer
+            .resource_embedding
+            .clone()
+            .ok_or(ResourceError::NoEmbeddingProvided)?;
+        let metadata = resource_pointer.db_key.clone();
+        let old_pointer_id = old_pointer_id
+            .parse::<u64>()
+            .map_err(|_| ResourceError::InvalidChunkId)?;
+
         self.routing_resource
-            .replace_data(id, &data, Some(&metadata), embedding)?;
+            .replace_data(old_pointer_id, &data, Some(&metadata), &embedding)?;
         Ok(())
     }
 
-    /// Deletes a resource pointer given the DataChunk id
-    pub fn delete_resource_pointer(&mut self, id: u64) -> Result<(), ResourceError> {
+    /// Deletes the resource pointer inside of the ResourceRouter given a valid id
+    pub fn delete_resource(&mut self, old_pointer_id: String) -> Result<(), ResourceError> {
+        let id: u64 = old_pointer_id.parse().map_err(|_| ResourceError::InvalidChunkId)?;
         self.routing_resource.delete_data(id)?;
         Ok(())
+    }
+
+    /// Acquire the resource_embedding for a given ResourcePointer.
+    /// If the pointer itself doesn't have the embedding attached to it,
+    /// we use the id to fetch the embedding directly from the ResourceRouter.
+    pub fn get_resource_embedding(&self, resource_pointer: &ResourcePointer) -> Result<Embedding, ResourceError> {
+        if let Some(embedding) = resource_pointer.resource_embedding.clone() {
+            Ok(embedding)
+        } else {
+            let id: usize = resource_pointer.id.parse().map_err(|_| ResourceError::InvalidChunkId)?;
+            match self.routing_resource.chunk_embeddings().get(id - 1) {
+                Some(embedding) => Ok(embedding.clone()),
+                None => Err(ResourceError::InvalidChunkId),
+            }
+        }
     }
 
     pub fn from_json(json: &str) -> Result<Self, ResourceError> {

@@ -17,6 +17,7 @@ pub enum ResourceError {
     RocksDBError(RocksError),
     RegexError(regex::Error),
     RequestFailed(String),
+    NoEmbeddingProvided,
 }
 
 impl fmt::Display for ResourceError {
@@ -30,6 +31,7 @@ impl fmt::Display for ResourceError {
             ResourceError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             ResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             ResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
+            ResourceError::NoEmbeddingProvided => write!(f, "No embedding provided."),
             ResourceError::InvalidResourceType => write!(f, "The resource type does not exist."),
             ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e), // Add this line
