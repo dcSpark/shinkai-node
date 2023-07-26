@@ -131,7 +131,7 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         // Update step history
-        shinkai_db.update_step_history(job_id.clone(), step.clone()).unwrap();
+        shinkai_db.add_step_history(job_id.clone(), step.clone()).unwrap();
 
         // Retrieve the job and check that step history is updated
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();

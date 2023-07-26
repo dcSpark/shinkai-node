@@ -4,7 +4,7 @@ use serde_json;
 use std::error::Error;
 use async_trait::async_trait;
 
-use crate::managers::agent::AgentError;
+use crate::{managers::agent::AgentError, schemas::message_schemas::{JobPreMessage, JobRecipient}};
 
 use super::Provider;
 
@@ -54,20 +54,24 @@ impl Provider for OpenAI {
         }
     }
 
-    fn extract_content(response: &Self::Response) -> String {
-        response
-            .choices
-            .get(0)
-            .map_or(String::new(), |choice| choice.message.content.clone())
+    fn extract_content(response: &Self::Response) -> Vec<JobPreMessage> {
+        response.choices.iter().map(|choice| {
+            JobPreMessage {
+                tool_calls: Vec::new(), // TODO: You might want to replace this with actual values
+                content: choice.message.content.clone(),
+                recipient: JobRecipient::SelfNode, // TODO: This is a placeholder. You should replace this with the actual recipient.
+            }
+        }).collect()
     }
-
+    
     async fn call_api(
         &self,
         client: &Client,
         url: Option<&String>,
         api_key: Option<&String>,
         content: &str,
-    ) -> Result<String, AgentError> {
+        context: Vec<String>,
+    ) -> Result<Vec<JobPreMessage>, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");

@@ -57,7 +57,7 @@ pub struct RegistrationCode {
 #[derive(Debug, Clone)]
 pub enum Identity {
     Standard(StandardIdentity),
-    Agent(Agent),
+    Agent(SerializedAgent),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,6 +150,7 @@ impl fmt::Display for StandardIdentity {
     }
 }
 
+#[derive(Clone)]
 pub struct IdentityManager {
     pub local_node_name: String,
     pub local_identities: Vec<Identity>,
@@ -175,7 +176,7 @@ impl IdentityManager {
             false => (),
         }
 
-        let identities = {
+        let mut identities: Vec<Identity> = {
             let db = db.lock().await;
             db.load_all_sub_identities(local_node_name.clone())?
                 .into_iter()
@@ -183,9 +184,15 @@ impl IdentityManager {
                 .collect()
         };
 
-        // let agents = {
+        let agents = {
+            let db = db.lock().await;
+            db.get_all_agents()?
+                .into_iter()
+                .map(Identity::Agent)
+                .collect::<Vec<_>>()
+        };
 
-        // }
+        identities.extend(agents);
 
         // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
         // if identities.is_empty() {
@@ -231,29 +238,13 @@ impl IdentityManager {
 
     pub async fn add_agent_subidentity(
         &mut self,
-        identity: StandardIdentity,
         agent: SerializedAgent,
     ) -> anyhow::Result<()> {
         let mut db = self.db.lock().await;
-        db.add_agent(agent)?;
-        self.local_identities.push(Identity::Standard(identity.clone()));
-
+        db.add_agent(agent.clone())?;
+        self.local_identities.push(Identity::Agent(agent.clone()));
         Ok(())
     }
-
-    // pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<StandardIdentity> {
-    //     let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-
-    //     // If the node name matches local node, search in self.identities
-    //     if self.local_node_name == node_name {
-    //         self.identities
-    //             .iter()
-    //             .find(|&identity| identity.full_identity_name == full_identity_name)
-    //             .cloned()
-    //     } else {
-    //         None
-    //     }
-    // }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
@@ -284,6 +275,11 @@ impl IdentityManager {
         } else {
             None
         }
+    }
+
+    pub async fn search_local_agent(&self, agent_id: &str) -> Option<SerializedAgent> {
+        let db = self.db.lock().await;
+        db.get_agent(agent_id).ok().flatten()
     }
 
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
@@ -317,6 +313,11 @@ impl IdentityManager {
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
         self.local_identities.clone()
+    }
+
+    pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, rocksdb::Error> {
+        let db = self.db.lock().await;
+        db.get_all_agents()
     }
 
     pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
@@ -392,6 +393,12 @@ impl IdentityManager {
         let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
         re.is_match(s)
     }
+
+    pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
+        let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
+        re.is_match(s)
+    }
+    
 
     pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
         let name = format!("{}/{}", node_name, subidentity_name);

@@ -1,31 +1,35 @@
-use crate::managers::providers::{Provider};
+use super::agent_serialization::SerializedAgent;
+use super::providers::openai::OpenAI;
+use super::providers::sleep_api::SleepAPI;
+use crate::{
+    managers::providers::Provider,
+    schemas::message_schemas::{JobPreMessage, JobRecipient},
+};
 use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::{sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
-use super::providers::openai::{OpenAI};
-use super::providers::sleep_api::{SleepAPI};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone)]
 pub struct Agent {
     pub id: String,
     pub name: String, // user-specified name (sub-identity)
-    pub job_manager_sender: mpsc::Sender<String>,
+    pub job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
     pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     pub client: Client,
     pub perform_locally: bool,        // flag to perform computation locally or not
     pub external_url: Option<String>, // external API URL
     pub api_key: Option<String>,
     pub model: AgentAPIModel,
-    pub toolkit_permissions: Vec<String>,        // list of toolkits the agent has access to
+    pub toolkit_permissions: Vec<String>, // list of toolkits the agent has access to
     pub storage_bucket_permissions: Vec<String>, // list of storage buckets the agent has access to
-    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
+    pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum AgentAPIModel {
-    OpenAI(OpenAI), 
+    OpenAI(OpenAI),
     Sleep(SleepAPI),
 }
 
@@ -33,7 +37,7 @@ impl Agent {
     pub fn new(
         id: String,
         name: String,
-        job_manager_sender: mpsc::Sender<String>,
+        job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
         perform_locally: bool,
         external_url: Option<String>,
         api_key: Option<String>,
@@ -61,47 +65,79 @@ impl Agent {
         }
     }
 
-    pub async fn call_external_api(&self, content: &str) -> Result<String, AgentError> {
+    pub async fn call_external_api(
+        &self,
+        content: &str,
+        context: Vec<String>,
+    ) -> Result<Vec<JobPreMessage>, AgentError> {
         match &self.model {
-            AgentAPIModel::OpenAI(openai) => openai.call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content).await,
-            AgentAPIModel::Sleep(sleep_api) => sleep_api.call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content).await,
+            AgentAPIModel::OpenAI(openai) => {
+                openai
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content, context)
+                    .await
+            }
+            AgentAPIModel::Sleep(sleep_api) => {
+                sleep_api
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content, context)
+                    .await
+            }
         }
     }
 
-    pub async fn process_message(&self, content: String) {
+    pub async fn process_locally(&self, content: String, context: Vec<String>) {
         // Here we run our GPU-intensive task on a separate thread
-        let mut response = "";
         let handle = tokio::task::spawn_blocking(move || {
             // perform GPU-intensive work
-            response = "Update response!";
+            vec![JobPreMessage {
+                tool_calls: Vec::new(), // You might want to replace this with actual values
+                content: "Updated response!".to_string(),
+                recipient: JobRecipient::SelfNode, // This is a placeholder. You should replace this with the actual recipient.
+            }]
         });
 
         let result = handle.await;
         match result {
-            Ok(_) => {
+            Ok(response) => {
                 // create ShinkaiMessage based on result and send to AgentManager
-                let _ = self.job_manager_sender.send(response.to_string()).await;
+                let _ = self.job_manager_sender.send(response).await;
             }
             Err(e) => eprintln!("Error in processing message: {:?}", e),
         }
     }
 
-    pub async fn execute(&self, content: String) {
-        loop {
-            if self.perform_locally {
-                self.process_message(content.clone()).await; // Assuming the content doesn't change
-            } else {
-                // Call external API
-                let response = self.call_external_api(&content.clone()).await; // Assuming the content doesn't change
-                match response {
-                    Ok(message) => {
-                        // Send the message to AgentManager
-                        let _ = self.job_manager_sender.send(message).await;
-                    }
-                    Err(e) => eprintln!("Error when calling API: {}", e),
+    // TODO: add context as input which should be a Vec<String>
+    pub async fn execute(&self, content: String, context: Vec<String>) {
+        if self.perform_locally {
+            // No need to spawn a new task here
+            self.process_locally(content.clone(), context).await;
+        } else {
+            // Call external API
+            let response = self.call_external_api(&content.clone(), context).await; // Assuming the content doesn't change
+            match response {
+                Ok(message) => {
+                    // Send the message to AgentManager
+                    let _ = self.job_manager_sender.send(message).await;
                 }
+                Err(e) => eprintln!("Error when calling API: {}", e),
             }
         }
+    }
+}
+
+impl Agent {
+    pub fn from_serialized_agent(serialized_agent: SerializedAgent, sender: mpsc::Sender<Vec<JobPreMessage>>) -> Self {
+        Self::new(
+            serialized_agent.id,
+            serialized_agent.name,
+            sender,
+            serialized_agent.perform_locally,
+            serialized_agent.external_url,
+            serialized_agent.api_key,
+            serialized_agent.model,
+            serialized_agent.toolkit_permissions,
+            serialized_agent.storage_bucket_permissions,
+            serialized_agent.allowed_message_senders,
+        )
     }
 }
 
@@ -159,6 +195,7 @@ mod tests {
             vec!["sb1".to_string(), "sb2".to_string()],
             vec!["allowed1".to_string(), "allowed2".to_string()],
         );
+        let context = vec![String::from("context1"), String::from("context2")];
 
         assert_eq!(agent.id, "1");
         assert_eq!(agent.name, "Agent");
@@ -175,12 +212,18 @@ mod tests {
         );
 
         tokio::spawn(async move {
-            agent.execute("Test".to_string()).await;
+            agent.execute("Test".to_string(), context).await;
         });
 
         let val = tokio::time::timeout(std::time::Duration::from_millis(600), rx.recv()).await;
+        let expected_resp = JobPreMessage {
+            tool_calls: Vec::new(),
+            content: "Updated response!".to_string(),
+            recipient: JobRecipient::SelfNode,
+        };
+
         match val {
-            Ok(Some(response)) => assert_eq!(response, "OK"),
+            Ok(Some(response)) => assert_eq!(response.first().unwrap(), &expected_resp),
             Ok(None) => panic!("Channel is empty"),
             Err(_) => panic!("Timeout exceeded"),
         }
@@ -216,8 +259,11 @@ mod tests {
             )
             .create();
 
+        let context = vec![String::from("context1"), String::from("context2")];
         let (tx, _rx) = mpsc::channel(1);
-        let openai = OpenAI { model_type: "gpt-3.5-turbo".to_string() };
+        let openai = OpenAI {
+            model_type: "gpt-3.5-turbo".to_string(),
+        };
         let agent = Agent::new(
             "1".to_string(),
             "Agent".to_string(),
@@ -231,9 +277,14 @@ mod tests {
             vec!["allowed1".to_string(), "allowed2".to_string()],
         );
 
-        let response = agent.call_external_api("Hello!").await;
+        let response = agent.call_external_api("Hello!", context).await;
+        let expected_resp = JobPreMessage {
+            tool_calls: Vec::new(),
+            content: "\n\nHello there, how may I assist you today?".to_string(),
+            recipient: JobRecipient::SelfNode,
+        };
         match response {
-            Ok(res) => assert_eq!(res, "\n\nHello there, how may I assist you today?"),
+            Ok(res) => assert_eq!(res.first().unwrap(), &expected_resp),
             Err(e) => panic!("Error when calling API: {}", e),
         }
     }

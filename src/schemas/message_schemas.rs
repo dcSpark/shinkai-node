@@ -1,5 +1,7 @@
+use crate::managers::IdentityManager;
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
+
 use super::inbox_name::InboxName;
 
 #[derive(Debug)]
@@ -34,7 +36,7 @@ impl MessageSchemaType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobScope {
     pub buckets: Vec<InboxName>,
-    pub documents: Vec<String>,
+    pub documents: Vec<String>, // TODO: link to embedding of documents uploaded
 }
 
 impl JobScope {
@@ -58,7 +60,6 @@ impl JobScope {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JobCreation {
     pub scope: JobScope,
-    // TODO: add agent id here
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -67,15 +68,37 @@ pub struct JobMessage {
     pub content: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobToolCall {
     pub tool_id: String,
     pub inputs: std::collections::HashMap<String, String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum JobRecipient {
+    SelfNode,
+    User,
+    ExternalIdentity(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobPreMessage {
     pub tool_calls: Vec<JobToolCall>,
     pub content: String,
-    pub recipient: String,
+    pub recipient: JobRecipient,
+}
+
+impl JobRecipient {
+    pub fn validate_external(&self) -> std::result::Result<(), &'static str> {
+        match self {
+            Self::ExternalIdentity(identity) => {
+                if IdentityManager::is_valid_node_identity_name_with_subidentities(identity) {
+                    Ok(())
+                } else {
+                    Err("Invalid identity")
+                }
+            }
+            _ => Ok(()), // For other variants we do not perform validation, so return Ok
+        }
+    }
 }

@@ -218,7 +218,8 @@ impl Node {
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
-        let job_manager = Arc::new(Mutex::new(JobManager::new(db_arc.clone()).await));
+        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+        let job_manager = Arc::new(Mutex::new(JobManager::new(db_arc.clone(), identity_manager.clone()).await));
 
         Node {
             node_profile_name,
@@ -230,7 +231,7 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
-            identity_manager: Arc::new(Mutex::new(subidentity_manager)),
+            identity_manager,
             db: db_arc,
             job_manager,
         }

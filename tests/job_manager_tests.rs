@@ -1,0 +1,127 @@
+use async_channel::{bounded, Receiver, Sender};
+use shinkai_node::managers::identity_manager::{Identity, IdentityType};
+use shinkai_node::managers::IdentityManager;
+use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::Node;
+use shinkai_node::shinkai_message::encryption::{
+    decrypt_body_message, decrypt_content_message, encrypt_body, encryption_public_key_to_string,
+    encryption_secret_key_to_string, hash_encryption_public_key, unsafe_deterministic_encryption_keypair,
+    EncryptionMethod,
+};
+use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_node::shinkai_message::signatures::{
+    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string,
+    unsafe_deterministic_signature_keypair,
+};
+use shinkai_node::shinkai_message::utils::hash_string;
+use std::fs;
+use std::net::{IpAddr, Ipv4Addr};
+use std::path::Path;
+use std::{net::SocketAddr, time::Duration};
+use tokio::runtime::Runtime;
+
+fn setup() {
+    let path = Path::new("db_tests/");
+    let _ = fs::remove_dir_all(&path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use shinkai_node::{
+        db::ShinkaiDB,
+        managers::{
+            agent::{Agent, AgentAPIModel},
+            agent_serialization::SerializedAgent,
+            job_manager::{JobLike, JobManager},
+            providers::openai::OpenAI,
+        },
+        schemas::{inbox_name::InboxName, message_schemas::JobScope},
+    };
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::{mpsc, Mutex};
+
+    #[tokio::test]
+    async fn test_process_job_message_creation() {
+        setup();
+        let node_profile_name = "@@node1.shinkai";
+
+        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
+        let mut db = ShinkaiDB::new(&db_path).unwrap();
+
+        let db_arc = Arc::new(Mutex::new(db));
+        {
+            let db_lock = db_arc.lock().await;
+            match db_lock.update_local_node_keys(
+                node_profile_name.clone().to_string(),
+                node1_encryption_pk.clone(),
+                node1_identity_pk.clone(),
+            ) {
+                Ok(_) => (),
+                Err(e) => panic!("Failed to update local node keys: {}", e),
+            }
+            // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
+        }
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.to_string())
+            .await
+            .unwrap();
+        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+
+        // Create an agent
+        let openai = OpenAI {
+            model_type: "gpt-3.5-turbo".to_string(),
+        };
+
+        let agent = SerializedAgent {
+            id: "test_agent_id".to_string(),
+            name: "test_name".to_string(),
+            perform_locally: false,
+            external_url: Some("http://localhost:8080".to_string()),
+            api_key: Some("123".to_string()),
+            model: AgentAPIModel::OpenAI(openai),
+            toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
+            storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
+            allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
+        };
+        {
+            let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone());
+        }
+
+        // Create JobManager
+        let mut job_manager = JobManager::new(db_arc.clone(), identity_manager).await;
+
+        // Create a JobCreationMessage ShinkaiMessage
+        let scope = JobScope {
+            buckets: vec![InboxName::new("inbox::@@node1.shinkai|test_name::@@|::false".to_string()).unwrap()],
+            documents: vec!["document1".to_string(), "document2".to_string()],
+        };
+        let agent_identity_name = format!("{}/{}", node_profile_name, agent.id);
+        let shinkai_message_creation = ShinkaiMessageBuilder::job_creation(
+            scope,
+            node1_encryption_sk,
+            node1_identity_sk,
+            node1_encryption_pk,
+            node_profile_name.to_string(),
+            agent_identity_name,
+        ).unwrap();
+
+        // Process the JobCreationSchema message
+        match job_manager.process_job_message(shinkai_message_creation, None).await {
+            Ok(job_id) => {
+                println!("Job ID: {}", job_id);
+                // Check that the job was created correctly
+                let retrieved_job = db_arc.clone().lock().await.get_job(&job_id);
+                assert!(retrieved_job.is_ok());
+            }
+            Err(e) => {
+                panic!("Unexpected error processing job message: {}", e);
+            }
+        }
+    }
+}

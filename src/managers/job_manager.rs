@@ -1,4 +1,5 @@
 use crate::{
+    db::{db_errors::ShinkaiDBError, ShinkaiDB},
     schemas::{
         inbox_name::InboxName,
         message_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope, MessageSchemaType},
@@ -7,13 +8,17 @@ use crate::{
         shinkai_message_extension::{ParsedContent, ShinkaiMessageWrapper},
         shinkai_message_handler::ShinkaiMessageHandler,
     },
-    shinkai_message_proto::ShinkaiMessage, db::{ShinkaiDB, db_errors::ShinkaiDBError},
+    shinkai_message_proto::ShinkaiMessage,
 };
+use chrono::Utc;
+use reqwest::Identity;
+use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use std::{fmt, thread};
 use tokio::sync::{mpsc, Mutex};
+use warp::path::full;
 
-use super::agent::Agent;
+use super::{agent::Agent, agent_serialization::SerializedAgent, IdentityManager};
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;
@@ -74,12 +79,13 @@ impl JobLike for Job {
 pub struct JobManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiDB>>,
-    job_manager_sender: mpsc::Sender<ShinkaiMessage>,
+    identity_manager: Arc<Mutex<IdentityManager>>,
+    job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
     agents: Vec<Arc<Mutex<Agent>>>,
 }
 
 impl JobManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Self {
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, identity_manager: Arc<Mutex<IdentityManager>>) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         let (job_manager_sender, _) = mpsc::channel(100);
         {
@@ -90,11 +96,24 @@ impl JobManager {
                 jobs.insert(job.job_id().to_string(), job);
             }
         }
+
+        // Get all serialized_agents and convert them to Agents
+        let mut agents: Vec<Arc<Mutex<Agent>>> = Vec::new();
+        {
+            let identity_manager = identity_manager.lock().await;
+            let serialized_agents = identity_manager.get_all_agents().await.unwrap();
+            for serialized_agent in serialized_agents {
+                let agent = Agent::from_serialized_agent(serialized_agent, job_manager_sender.clone());
+                agents.push(Arc::new(Mutex::new(agent)));
+            }
+        }
+
         Self {
             jobs: jobs_map,
             db,
             job_manager_sender,
-            agents: Vec::new(),
+            identity_manager,
+            agents,
         }
     }
 
@@ -117,6 +136,7 @@ impl JobManager {
         let message_type_str = &body.internal_metadata.message_schema_type;
         let message_type =
             MessageSchemaType::from_str(message_type_str).ok_or(JobManagerError::MessageTypeParseFailed)?;
+        let agent_id = &body.internal_metadata.recipient_subidentity;
 
         match message_type {
             MessageSchemaType::JobCreationSchema => {
@@ -135,15 +155,36 @@ impl JobManager {
                             Ok(job) => {
                                 self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
 
-                                // TODO: Start job by calling
-                                if let Some(agent) = self.agents.first() {
-                                    // or use some logic to select the right agent
-                                    let agent = agent.lock().await;
-                                    // TODO: check that process_message is not awaited
-                                    // agent.process_message(shinkai_message);
+                                // find the right agent to start the job by checking job_creation.agent_id
+                                let mut agent_found = None;
+                                for agent in &self.agents {
+                                    let locked_agent = agent.lock().await;
+                                    if &locked_agent.id == agent_id {
+                                        agent_found = Some(agent.clone());
+                                        break;
+                                    }
                                 }
 
-                                return Ok(job_id.clone());
+                                // If agent not found in the current list, check in the DB
+                                if agent_found.is_none() {
+                                    let identity_manager = self.identity_manager.lock().await;
+                                    if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id).await
+                                    {
+                                        let agent = Agent::from_serialized_agent(
+                                            serialized_agent,
+                                            self.job_manager_sender.clone(),
+                                        );
+                                        agent_found = Some(Arc::new(Mutex::new(agent)));
+                                        self.agents.push(agent_found.clone().unwrap());
+                                    }
+                                }
+
+                                let job_id_to_return = match agent_found {
+                                    Some(_) => Ok(job_id.clone()),
+                                    None => Err(anyhow::Error::new(JobManagerError::AgentNotFound)),
+                                };
+
+                                job_id_to_return.map_err(|_| JobManagerError::AgentNotFound)
                             }
                             Err(err) => {
                                 return Err(JobManagerError::ShinkaiDB(err));
@@ -160,9 +201,10 @@ impl JobManager {
                     if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
                         // Clone the job for use within async block
                         let job = job.clone();
-                        // Perform some logic related to the JobMessageSchema message type
+
                         // The decision phase
                         let decision_phase_output = self.decision_phase(&**job).await?;
+
                         // The execution phase
                         let execution_phase_output = self.execution_phase(decision_phase_output).await;
                         return Ok(job_message.job_id.clone());
@@ -188,12 +230,66 @@ impl JobManager {
     }
 
     async fn decision_phase(&self, job: &dyn JobLike) -> Result<Vec<JobPreMessage>, Box<dyn Error>> {
-        // Write to the LLM inbox with the job step history
-        // TODO: do agents are constantly pulling messages? or do they have to be notified?
+        // When a new message is supplied to the job, the decision phase of the new step begins running
+        // (with its existing step history as context) which triggers calling the Agent's LLM.
+        {
+            // Add current time as ISO8601 to step history
+            self.db
+                .lock()
+                .await
+                .add_step_history(job.job_id().to_string(), Utc::now().to_string())
+                .unwrap();
+        }
+
+        let full_job = { self.db.lock().await.get_job(job.job_id()).unwrap() };
+        let context = full_job.step_history;
+
+        let agent_id = full_job.parent_agent_id;
+        let mut agent_found = None;
+        for agent in &self.agents {
+            let locked_agent = agent.lock().await;
+            if locked_agent.id == agent_id {
+                agent_found = Some(agent.clone());
+                break;
+            }
+        }
+
+        let response = match agent_found {
+            Some(agent) => {
+                // Create a new async task where the agent's execute method will run
+                // Note: agent execute run in a separate thread
+                tokio::spawn(async move {
+                    let mut agent = agent.lock().await;
+                    agent.execute("test".to_string(), context).await;
+                })
+                .await?;
+                Ok(())
+            }
+            None => Err(Box::new(JobManagerError::AgentNotFound)),
+        };
+
+        // TODO: update this fn so it allows for recursion
+        // let is_valid = self.is_decision_phase_output_valid().await;
+        // if is_valid == false {
+        //     self.decision_phase(job).await?;
+        // }
+
+        // The expected output from the LLM is one or more `Premessage`s (a message that potentially
+        // still has computation that needs to be performed via tools to fill out its contents).
+        // If the output from the LLM does not fit the expected structure, then the LLM is queried again
+        // with the exact same inputs until a valid output is provided (potentially supplying extra text
+        // each time to the LLM clarifying the previous result was invalid with an example/error message).
 
         // Make sure the output is valid
         // If not valid, keep calling the LLM until a valid output is produced
         // Return the output
+        unimplemented!()
+    }
+
+    async fn is_decision_phase_output_valid(&self) -> bool {
+        // Check if the output is valid
+        // If not valid, return false
+        // If valid, return true
         unimplemented!()
     }
 
@@ -204,26 +300,6 @@ impl JobManager {
         // Return the list of Messages
         unimplemented!()
     }
-
-    pub fn add_agent(&mut self, id: String) {
-        // TODO: maybe leave the add agent part to identity_manager
-        // every time that you need to use an agent that doesn't exist, you check
-        // with the db if new agents have been added
-    }
-
-
-
-    // pub fn start_agents(&self) {
-    //     let agents_clone = self.agents.clone();
-    //     for agent in &agents_clone {
-    //         let agent_clone = agent.clone();
-    //         let handler = async move {
-    //             // let mut agent_locked = agent_clone.lock().unwrap();
-    //             // agent_locked.start().await;
-    //         };
-    //         tokio::spawn(handler);
-    //     }
-    // }
 }
 
 #[derive(Debug)]
@@ -236,6 +312,7 @@ pub enum JobManagerError {
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(ShinkaiDBError),
+    AgentNotFound,
 }
 
 impl fmt::Display for JobManagerError {
@@ -249,6 +326,7 @@ impl fmt::Display for JobManagerError {
             JobManagerError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
             JobManagerError::IO(err) => write!(f, "IO error: {}", err),
             JobManagerError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
+            JobManagerError::AgentNotFound => write!(f, "Agent not found"),
         }
     }
 }
