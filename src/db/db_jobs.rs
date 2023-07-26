@@ -47,8 +47,6 @@ impl ShinkaiDB {
         agent_id: String,
         scope: JobScope,
     ) -> Result<(), ShinkaiDBError> {
-        println!("Creating job with id: {}", job_id);
-
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);

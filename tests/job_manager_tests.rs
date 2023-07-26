@@ -30,11 +30,13 @@ fn setup() {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use mockito::Server;
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
             agent::{Agent, AgentAPIModel},
             agent_serialization::SerializedAgent,
+            identity_manager,
             job_manager::{JobLike, JobManager},
             providers::openai::OpenAI,
         },
@@ -52,6 +54,34 @@ mod tests {
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
+        let mut server = Server::new();
+        let _m = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer mockapikey")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+                "id": "chatcmpl-123",
+                "object": "chat.completion",
+                "created": 1677652288,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "\n\nHello there, how may I assist you today?"
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 9,
+                    "completion_tokens": 12,
+                    "total_tokens": 21
+                }
+            }"#,
+            )
+            .create();
+
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
 
@@ -66,7 +96,6 @@ mod tests {
                 Ok(_) => (),
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
-            // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.to_string())
             .await
@@ -82,15 +111,15 @@ mod tests {
             id: "test_agent_id".to_string(),
             name: "test_name".to_string(),
             perform_locally: false,
-            external_url: Some("http://localhost:8080".to_string()),
-            api_key: Some("123".to_string()),
+            external_url: Some(server.url()),
+            api_key: Some("mockapikey".to_string()),
             model: AgentAPIModel::OpenAI(openai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
         {
-            let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone());
+            let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone()).await;
         }
 
         // Create JobManager
@@ -101,20 +130,52 @@ mod tests {
             buckets: vec![InboxName::new("inbox::@@node1.shinkai|test_name::@@|::false".to_string()).unwrap()],
             documents: vec!["document1".to_string(), "document2".to_string()],
         };
-        let agent_identity_name = format!("{}/{}", node_profile_name, agent.id);
         let shinkai_message_creation = ShinkaiMessageBuilder::job_creation(
             scope,
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_pk.clone(),
+            node_profile_name.to_string().clone(),
+            node_profile_name.to_string(),
+            agent.id.clone(),
+        )
+        .unwrap();
+
+        // Process the JobCreationSchema message
+        let mut job_created_id = String::new();
+        match job_manager.process_job_message(shinkai_message_creation, None).await {
+            Ok(job_id) => {
+                job_created_id = job_id.clone();
+                println!("Job ID: {}", job_id);
+                // Check that the job was created correctly
+                let retrieved_job = db_arc.clone().lock().await.get_job(&job_id);
+                assert!(retrieved_job.is_ok());
+            }
+            Err(e) => {
+                panic!("Unexpected error processing job message: {}", e);
+            }
+        }
+
+        //
+        // Second part of the test after job is created trilogy
+        //
+
+        let shinkai_job_message = ShinkaiMessageBuilder::job_message(
+            job_created_id.clone(),
+            "hello?".to_string(),
             node1_encryption_sk,
             node1_identity_sk,
             node1_encryption_pk,
+            node_profile_name.to_string().clone(),
             node_profile_name.to_string(),
-            agent_identity_name,
-        ).unwrap();
+            agent.id,
+        )
+        .unwrap();
 
-        // Process the JobCreationSchema message
-        match job_manager.process_job_message(shinkai_message_creation, None).await {
+        match job_manager.process_job_message(shinkai_job_message, None).await {
             Ok(job_id) => {
-                println!("Job ID: {}", job_id);
+                job_created_id = job_id.clone();
+                println!("Job Message ID: {}", job_id);
                 // Check that the job was created correctly
                 let retrieved_job = db_arc.clone().lock().await.get_job(&job_id);
                 assert!(retrieved_job.is_ok());

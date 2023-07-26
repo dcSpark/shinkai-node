@@ -142,7 +142,7 @@ impl JobManager {
             MessageSchemaType::JobCreationSchema => {
                 if let ParsedContent::JobCreation(job_creation) = body.parsed_content {
                     let agent_subidentity = &body.internal_metadata.recipient_subidentity;
-                    // TODO: check if valid recipient_subidentity if not return an error agent not found
+
                     let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
                     {
                         let mut shinkai_db = self.db.lock().await;
