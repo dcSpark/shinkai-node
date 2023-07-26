@@ -91,7 +91,7 @@ impl ResourceRouter {
     }
 
     /// Performs a vector similarity search using a query embedding and returns
-    /// a list of the db_keys (as Strings) of the most similar Resources.
+    /// a list of ResourcePointers of the most similar Resources.
     ///
     /// # Arguments
     ///
@@ -100,7 +100,7 @@ impl ResourceRouter {
     ///
     /// # Returns
     ///
-    /// A `Result` that contains a vector of db_keys sorted by similarity
+    /// A `Result` that contains a vector of ResourcePointers sorted by similarity
     /// score in descending order, or an error if something goes wrong.
     pub fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
         let chunks = self.routing_resource.similarity_search(query, num_of_results);
@@ -124,7 +124,7 @@ impl ResourceRouter {
 
     /// Adds a resource pointer into the ResourceRouter instance.
     /// The pointer is expected to have a valid resource embedding
-    /// and the resource having already been saved into the DB.
+    /// and the matching resource having already been saved into the DB.
     ///
     /// If a resource pointer already exists with the same db_key, then
     /// the old pointer will be replaced.
@@ -143,7 +143,7 @@ impl ResourceRouter {
             Ok(old_pointer) => {
                 // If a resource pointer with matching db_key is found,
                 // replace the existing resource pointer with the new one.
-                self.replace_resource(&old_pointer.id, resource_pointer)?;
+                self.replace_resource_pointer(&old_pointer.id, resource_pointer)?;
             }
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
@@ -168,7 +168,7 @@ impl ResourceRouter {
     }
 
     /// Replaces an existing resource pointer with a new one.
-    pub fn replace_resource(
+    pub fn replace_resource_pointer(
         &mut self,
         old_pointer_id: &str,
         resource_pointer: &ResourcePointer,
@@ -189,7 +189,7 @@ impl ResourceRouter {
     }
 
     /// Deletes the resource pointer inside of the ResourceRouter given a valid id
-    pub fn delete_resource(&mut self, old_pointer_id: String) -> Result<(), ResourceError> {
+    pub fn delete_resource_pointer(&mut self, old_pointer_id: String) -> Result<(), ResourceError> {
         let id: u64 = old_pointer_id.parse().map_err(|_| ResourceError::InvalidChunkId)?;
         self.routing_resource.delete_data(id)?;
         Ok(())

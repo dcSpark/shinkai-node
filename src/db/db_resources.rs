@@ -13,9 +13,9 @@ use std::any::Any;
 use super::db_errors::ShinkaiDBError;
 
 impl ShinkaiDB {
-    /// Saves the `ResourceRouter` into the ShinkaiDB in the resources topic as
-    /// a JSON string using the default key.
-    fn save_resource_router(&self, router: &ResourceRouter) -> Result<(), ShinkaiDBError> {
+    /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the global router.
+    /// It is saved in the resources topic as a JSON string using the default key.
+    fn save_global_resource_router(&self, router: &ResourceRouter) -> Result<(), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = router.to_json()?;
         let bytes = json.as_bytes();
@@ -33,8 +33,8 @@ impl ShinkaiDB {
     /// string.
     ///
     /// Note this is only to be used internally, as this does not add a resource
-    /// pointer in the ResourceRouter. Adding the pointer is required for any
-    /// resource being saved.
+    /// pointer in the global ResourceRouter. Adding the pointer is required for any
+    /// resource being saved and is implemented in `.save_resources`.
     fn save_resource_pointerless(&self, resource: &Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
         // Convert Resource JSON to bytes for storage
         let json = resource.to_json()?;
@@ -50,13 +50,13 @@ impl ShinkaiDB {
     }
 
     /// Saves the list of `Resource`s into the ShinkaiDB. This updates the
-    /// Resource Router with the resource pointers as well.
+    /// Global ResourceRouter with the resource pointers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
     pub fn save_resources(&self, resources: Vec<Box<dyn Resource>>) -> Result<(), ShinkaiDBError> {
         // Get the resource router
-        let mut router = self.get_resource_router()?;
+        let mut router = self.get_global_resource_router()?;
 
         // TODO: Batch saving the resource and the router together
         // to guarantee atomicity and coherence of router.
@@ -67,7 +67,7 @@ impl ShinkaiDB {
             // to the DB on each iteration
             let pointer = ResourcePointer::from(&resource);
             router.add_resource_pointer(&pointer);
-            self.save_resource_router(&router)?;
+            self.save_global_resource_router(&router)?;
         }
 
         // Add logic here for dealing with the resource router
@@ -109,7 +109,7 @@ impl ShinkaiDB {
 
     /// Fetches the Resource Router from the `resource_router` key
     /// in the resources topic, and attempts to parse it into a ResourceRouter
-    pub fn get_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
+    pub fn get_global_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf(Topic::Resources, ResourceRouter::global_router_db_key())?;
         let json_str = std::str::from_utf8(&bytes)?;
@@ -120,7 +120,7 @@ impl ShinkaiDB {
         Ok(router)
     }
 
-    /// Performs a 2-tier vector similarity search using a query embedding across all resources.
+    /// Performs a 2-tier vector similarity search across all resources using a query embedding .
     /// The search first finds the most similar resources based on their resource_embedding
     /// and takes the num_of_resources amount of resources.
     ///
@@ -170,10 +170,13 @@ impl ShinkaiDB {
     /// Performs a 2-tier vector similarity search using a query embedding across all DocumentResources
     /// and fetches the most similar data chunk + proximity_window number of chunks around it.
     ///
+    /// Note: This only searches DocumentResources in Topic::Resources, not all resources. This is
+    /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
+    ///
     /// # Arguments
     ///
     /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_resources` - The number of most similar resources to perform
+    /// * `num_of_docs` - The number of most similar docs to perform
     ///   similarity searches inside of. Increasing this improves search quality, but makes it slower.
     /// * `proximity_window` - The number of DataChunks to fetch below and above
     ///   the most similar DataChunk.
@@ -181,13 +184,13 @@ impl ShinkaiDB {
     /// # Returns
     ///
     /// A `vector of `RetrievedDataChunk`s, or error.
-    pub fn similarity_search_data_proximity(
+    pub fn similarity_search_data_doc_proximity(
         &self,
         query: Embedding,
-        num_of_resources: u64,
+        num_of_docs: u64,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let docs = self.similarity_search_docs(query.clone(), num_of_resources)?;
+        let docs = self.similarity_search_docs(query.clone(), num_of_docs)?;
 
         let mut retrieved_chunks = Vec::new();
         for doc in docs {
@@ -210,7 +213,7 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_resources: u64,
     ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
-        let router = self.get_resource_router()?;
+        let router = self.get_global_resource_router()?;
         let resource_pointers = router.similarity_search(query, num_of_resources);
 
         let mut resources = vec![];
@@ -233,7 +236,7 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_docs: u64,
     ) -> Result<Vec<DocumentResource>, ShinkaiDBError> {
-        let router = self.get_resource_router()?;
+        let router = self.get_global_resource_router()?;
         let resource_pointers = router.similarity_search(query, num_of_docs);
 
         let mut resources = vec![];
@@ -246,11 +249,15 @@ impl ShinkaiDB {
 
     /// If a resource router does not exist in the DB, automatically
     /// creates a new one and saves it in the DB so it is ready to be
-    /// called and used
-    pub fn init_resource_router(&self) {
-        if let Err(_) = self.get_resource_router() {
+    /// called and used.
+    ///
+    /// If one exists, nothing happens.
+    pub fn init_global_resource_router(&self) -> Result<(), ShinkaiDBError> {
+        if let Err(_) = self.get_global_resource_router() {
             let router = ResourceRouter::new();
+            self.save_global_resource_router(&router)?;
         }
+        Ok(())
     }
 }
 
@@ -316,11 +323,13 @@ mod tests {
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
         let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        shinkai_db.init_global_resource_router();
 
         // Init a resource router
 
         let resource = Box::new(doc.clone()) as Box<dyn Resource>;
-        shinkai_db.save_resource_pointerless(&resource).unwrap();
+        shinkai_db.save_resources(vec![resource]).unwrap();
+        // shinkai_db.save_resource_pointerless(&resource).unwrap();
         let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
 
         assert_eq!(doc, fetched_doc);
