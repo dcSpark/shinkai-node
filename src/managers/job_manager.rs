@@ -77,6 +77,39 @@ impl JobLike for Job {
 }
 
 pub struct JobManager {
+    pub agent_manager: AgentManager,
+    pub job_manager_receiver: Option<mpsc::Receiver<Vec<JobPreMessage>>>,
+}
+
+impl JobManager {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+    ) -> Self {
+        let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
+        let agent_manager = AgentManager::new(db, identity_manager, job_manager_sender).await;
+
+        let mut job_manager = Self {
+            agent_manager,
+            job_manager_receiver: Some(job_manager_receiver),
+        };
+        job_manager.process_job_messages().await;
+        job_manager
+    }
+
+    pub async fn process_job_messages(&mut self) {
+        if let Some(mut receiver) = self.job_manager_receiver.take() {
+            tokio::spawn(async move {
+                while let Some(message) = receiver.recv().await {
+                    // Process the message here...
+                    println!("Job Manager received: {:?}", message);
+                }
+            });
+        }
+    }
+}
+
+pub struct AgentManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiDB>>,
     identity_manager: Arc<Mutex<IdentityManager>>,
@@ -84,10 +117,13 @@ pub struct JobManager {
     agents: Vec<Arc<Mutex<Agent>>>,
 }
 
-impl JobManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, identity_manager: Arc<Mutex<IdentityManager>>) -> Self {
+impl AgentManager {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
+    ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
-        let (job_manager_sender, _) = mpsc::channel(100);
         {
             let shinkai_db = db.lock().await;
             let all_jobs = shinkai_db.get_all_jobs().unwrap();
@@ -108,13 +144,14 @@ impl JobManager {
             }
         }
 
-        Self {
+        let mut job_manager = Self {
             jobs: jobs_map,
             db,
             job_manager_sender,
             identity_manager,
             agents,
-        }
+        };
+        job_manager
     }
 
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
@@ -206,7 +243,7 @@ impl JobManager {
                         let decision_phase_output = self.decision_phase(&**job).await?;
 
                         // The execution phase
-                        let execution_phase_output = self.execution_phase(decision_phase_output).await;
+                        // let execution_phase_output = self.execution_phase(decision_phase_output).await;
                         return Ok(job_message.job_id.clone());
                     } else {
                         return Err(JobManagerError::JobNotFound);
@@ -229,15 +266,17 @@ impl JobManager {
         }
     }
 
-    async fn decision_phase(&self, job: &dyn JobLike) -> Result<Vec<JobPreMessage>, Box<dyn Error>> {
+    // Vec<JobPreMessage>
+    async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
         // When a new message is supplied to the job, the decision phase of the new step begins running
         // (with its existing step history as context) which triggers calling the Agent's LLM.
         {
             // Add current time as ISO8601 to step history
+            let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
             self.db
                 .lock()
                 .await
-                .add_step_history(job.job_id().to_string(), Utc::now().to_string())
+                .add_step_history(job.job_id().to_string(), time_with_comment)
                 .unwrap();
         }
 
@@ -267,6 +306,7 @@ impl JobManager {
             }
             None => Err(Box::new(JobManagerError::AgentNotFound)),
         };
+        println!("decision_phase> response: {:?}", response);
 
         // TODO: update this fn so it allows for recursion
         // let is_valid = self.is_decision_phase_output_valid().await;
@@ -283,7 +323,7 @@ impl JobManager {
         // Make sure the output is valid
         // If not valid, keep calling the LLM until a valid output is produced
         // Return the output
-        unimplemented!()
+        Ok(())
     }
 
     async fn is_decision_phase_output_valid(&self) -> bool {

@@ -64,6 +64,7 @@ pub struct JobCreation {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct JobMessage {
+    // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
 }

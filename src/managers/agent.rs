@@ -105,7 +105,6 @@ impl Agent {
         }
     }
 
-    // TODO: add context as input which should be a Vec<String>
     pub async fn execute(&self, content: String, context: Vec<String>) {
         if self.perform_locally {
             // No need to spawn a new task here
@@ -116,6 +115,7 @@ impl Agent {
             match response {
                 Ok(message) => {
                     // Send the message to AgentManager
+                    println!("Sending message to AgentManager");
                     let _ = self.job_manager_sender.send(message).await;
                 }
                 Err(e) => eprintln!("Error when calling API: {}", e),

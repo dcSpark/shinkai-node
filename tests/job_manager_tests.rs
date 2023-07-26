@@ -37,7 +37,7 @@ mod tests {
             agent::{Agent, AgentAPIModel},
             agent_serialization::SerializedAgent,
             identity_manager,
-            job_manager::{JobLike, JobManager},
+            job_manager::{JobLike, AgentManager},
             providers::openai::OpenAI,
         },
         schemas::{inbox_name::InboxName, message_schemas::JobScope},
@@ -123,7 +123,8 @@ mod tests {
         }
 
         // Create JobManager
-        let mut job_manager = JobManager::new(db_arc.clone(), identity_manager).await;
+        let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
+        let mut job_manager = AgentManager::new(db_arc.clone(), identity_manager, job_manager_sender).await;
 
         // Create a JobCreationMessage ShinkaiMessage
         let scope = JobScope {
@@ -172,6 +173,16 @@ mod tests {
         )
         .unwrap();
 
+        // Job Manager receiver
+        let mut receiver = job_manager_receiver;
+        tokio::spawn(async move {
+            while let Some(message) = receiver.recv().await {  // This will be None when the channel is closed.
+                // Process the message here...
+                println!("Job Manager received: {:?}", message.clone());
+                job_manager.process_job_message(message, None).await.unwrap();
+            }
+        });        
+
         match job_manager.process_job_message(shinkai_job_message, None).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();
@@ -184,5 +195,7 @@ mod tests {
                 panic!("Unexpected error processing job message: {}", e);
             }
         }
+
+        // tokio::time::sleep(Duration::from_millis(5000)).await;
     }
 }

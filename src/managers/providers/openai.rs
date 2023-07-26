@@ -70,7 +70,7 @@ impl Provider for OpenAI {
         url: Option<&String>,
         api_key: Option<&String>,
         content: &str,
-        context: Vec<String>,
+        step_history: Vec<String>,
     ) -> Result<Vec<JobPreMessage>, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
