@@ -193,7 +193,7 @@ pub trait Resource {
         // Use a binary heap to more efficiently order the scores to get most similar
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
-            println!("Current to be added to heap: (Id: {}, Score: {})", score.1, score.0);
+            // println!("Current to be added to heap: (Id: {}, Score: {})", score.1, score.0);
             if heap.len() < num_of_results {
                 heap.push(Reverse(score));
             } else if let Some(least_similar_score) = heap.peek() {

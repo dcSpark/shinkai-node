@@ -67,10 +67,10 @@ impl Resource for DocumentResource {
     /// Retrieves a data chunk given its id.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
         let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
-        if id > self.chunk_count {
+        if id == 0 || id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
         }
-        let index = (id - 1) as usize;
+        let index = id.checked_sub(1).ok_or(ResourceError::InvalidChunkId)? as usize;
         Ok(&self.data_chunks[index])
     }
 }
@@ -124,30 +124,39 @@ impl DocumentResource {
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
         let search_results = self.similarity_search(query, 1);
-
         let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?;
-
         let most_similar_id = most_similar_chunk
             .chunk
             .id
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
 
-        let start_id = if most_similar_id > proximity_window {
+        // Get Start/End ids
+        let start_id = if most_similar_id >= proximity_window {
             most_similar_id - proximity_window
         } else {
             1
         };
+        let end_id = if let Some(end_boundary) = self.chunk_count.checked_sub(1) {
+            if let Some(potential_end_id) = most_similar_id.checked_add(proximity_window) {
+                potential_end_id.min(end_boundary)
+            } else {
+                end_boundary // Or any appropriate default
+            }
+        } else {
+            1
+        };
 
+        // Acquire surrounding chunks
         let mut chunks = Vec::new();
-        let end_id = most_similar_id + proximity_window;
-        for id in start_id..=end_id {
-            let chunk = self.get_data_chunk(id.to_string())?;
-            chunks.push(RetrievedDataChunk {
-                chunk: chunk.clone(),
-                score: 0.00,
-                resource_pointer: self.get_resource_pointer(),
-            });
+        for id in start_id..=(end_id + 1) {
+            if let Ok(chunk) = self.get_data_chunk(id.to_string()) {
+                chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: 0.00,
+                    resource_pointer: self.get_resource_pointer(),
+                });
+            }
         }
 
         Ok(chunks)
