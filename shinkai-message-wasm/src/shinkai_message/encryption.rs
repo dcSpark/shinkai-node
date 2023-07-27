@@ -1,6 +1,7 @@
 use core::fmt;
 use std::convert::TryInto;
 use std::error::Error;
+use wasm_bindgen::prelude::*;
 
 use bs58::decode;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
@@ -8,32 +9,30 @@ use chacha20poly1305::ChaCha20Poly1305; // Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
+use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::shinkai_message_proto::{Body, ShinkaiMessage};
 
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 
-pub enum EncryptionMethod {
-    DiffieHellmanChaChaPoly1305,
-    None,
+#[wasm_bindgen]
+pub struct EncryptionMethod {
+    value: String,
 }
 
+#[wasm_bindgen]
 impl EncryptionMethod {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::DiffieHellmanChaChaPoly1305 => "default",
-            Self::None => "None",
-        }
+    pub fn as_str(&self) -> String {
+        self.value.clone()
     }
 
-    pub fn from_str(s: &str) -> EncryptionMethod {
-        match s {
-            "DiffieHellmanChaChaPoly1305" | "default" => {
-                EncryptionMethod::DiffieHellmanChaChaPoly1305
-            }
-            _ => EncryptionMethod::None,
-        }
+    pub fn from_str(s: &str) -> Self {
+        let value = match s {
+            "DiffieHellmanChaChaPoly1305" | "default" => "default".to_string(),
+            _ => "None".to_string(),
+        };
+        EncryptionMethod { value }
     }
 }
 
