@@ -1,6 +1,6 @@
 # Use a Rust base image
 FROM rust:bookworm as builder
-RUN apt-get update && apt-get install -y libclang-dev 
+RUN apt-get update && apt-get install -y libclang-dev cmake 
 
 # Create a new directory for your app
 WORKDIR /app
