@@ -12,7 +12,7 @@ use std::any::Any;
 use std::fs;
 use std::path::Path;
 
-use super::db_errors::ShinkaiDBError;
+use super::db_errors::*;
 
 impl ShinkaiDB {
     /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the global router.
@@ -182,12 +182,27 @@ impl ShinkaiDB {
         let docs = self.similarity_search_docs(query.clone(), num_of_docs)?;
 
         let mut retrieved_chunks = Vec::new();
-        for doc in docs {
-            let results = doc.similarity_search_proximity(query.clone(), proximity_window)?;
+        for doc in &docs {
+            let results = doc.similarity_search(query.clone(), 1);
             retrieved_chunks.extend(results);
         }
 
-        Ok(retrieved_chunks)
+        // Sort retrieved_chunks in descending order of score.
+        // TODO: In the future use a binary heap like in the resource
+        // similarity_search(). Not as important here due to less chunks.
+        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        let top_chunk = retrieved_chunks
+            .get(0)
+            .ok_or(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))?;
+
+        for doc in &docs {
+            if doc.db_key() == top_chunk.resource_pointer.db_key {
+                return Ok(doc.similarity_search_proximity(query, proximity_window)?);
+            }
+        }
+
+        Err(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))
     }
 
     /// Performs a vector similarity search using a query embedding and returns the
@@ -279,5 +294,109 @@ mod tests {
         let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
 
         assert_eq!(doc, fetched_doc);
+    }
+
+    #[test]
+    fn test_multi_resource_similarity_search() {
+        setup();
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Create a doc
+        let mut doc = DocumentResource::new_empty(
+            "3 Animal Facts",
+            Some("A bunch of facts about animals and wildlife"),
+            Some("animalwildlife.com"),
+            "animal_resource",
+        );
+
+        doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+        doc.update_resource_embedding(
+            &generator,
+            vec!["Dog".to_string(), "Camel".to_string(), "Seals".to_string()],
+        )
+        .unwrap();
+
+        // Prepare embeddings + data, then add it to the doc
+        let fact1 = "Dogs are creatures with 4 legs that bark.";
+        let fact1_embeddings = generator.generate_embedding(fact1).unwrap();
+        let fact2 = "Camels are slow animals with large humps.";
+        let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
+        let fact3 = "Seals swim in the ocean.";
+        let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
+        doc.append_data(fact1, None, &fact1_embeddings);
+        doc.append_data(fact2, None, &fact2_embeddings);
+        doc.append_data(fact3, None, &fact3_embeddings);
+
+        // Read the pdf from file into a buffer
+        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+            .map_err(|_| ResourceError::FailedPDFParsing)
+            .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
+        let doc2 = DocumentResource::parse_pdf(
+            &buffer,
+            100,
+            &generator,
+            "Shinkai Manifesto",
+            Some(desc),
+            Some("http://shinkai.com"),
+        )
+        .unwrap();
+
+        // Init Database
+        let db_path = format!("db_tests/{}", "embeddings");
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        shinkai_db.init_global_resource_router().unwrap();
+
+        // Save resources to DB
+        let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
+        let resource2 = Box::new(doc2.clone()) as Box<dyn Resource>;
+        shinkai_db.save_resources(vec![resource1, resource2]).unwrap();
+
+        // Animal resource vector search
+        let query = generator.generate_embedding("Animals").unwrap();
+        let fetched_resources = shinkai_db.similarity_search_resources(query, 100).unwrap();
+        let fetched_doc = fetched_resources.get(0).unwrap();
+        assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
+
+        // Shinkai manifesto resource vector search
+        let query = generator.generate_embedding("Shinkai").unwrap();
+        let fetched_resources = shinkai_db.similarity_search_resources(query, 1).unwrap();
+        let fetched_doc = fetched_resources.get(0).unwrap();
+        assert_eq!(&doc2.resource_id(), &fetched_doc.resource_id());
+
+        // Camel DataChunk vector search
+        let query = generator.generate_embedding("Camels").unwrap();
+        let ret_data_chunks = shinkai_db.similarity_search_data(query, 10, 10).unwrap();
+        let ret_data_chunk = ret_data_chunks.get(0).unwrap();
+        assert_eq!(fact2, &ret_data_chunk.chunk.data);
+
+        // Camel DataChunk vector search
+        let query = generator.generate_embedding("Does this relate to crypto?").unwrap();
+        let ret_data_chunks = shinkai_db.similarity_search_data(query, 10, 10).unwrap();
+        let ret_data_chunk = ret_data_chunks.get(0).unwrap();
+        assert_eq!(
+            "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
+            &ret_data_chunk.chunk.data
+        );
+
+        // Camel DataChunk proximity vector search
+        let query = generator.generate_embedding("Camel").unwrap();
+        let ret_data_chunks = shinkai_db.similarity_search_data_doc_proximity(query, 10, 2).unwrap();
+        let ret_data_chunk = ret_data_chunks.get(0).unwrap();
+        let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
+        let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
+        assert_eq!(fact1, &ret_data_chunk.chunk.data);
+        assert_eq!(fact2, &ret_data_chunk2.chunk.data);
+        assert_eq!(fact3, &ret_data_chunk3.chunk.data);
+
+        // for ret_data in ret_data_chunks {
+        //     println!(
+        //         "Origin: {}\nData: {}\nScore: {}\n\n",
+        //         ret_data.resource_pointer.db_key, ret_data.chunk.data, ret_data.score
+        //     )
+        // }
     }
 }
