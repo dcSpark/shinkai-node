@@ -32,13 +32,9 @@ impl ResourcePointer {
     }
 }
 
-impl From<&Box<dyn Resource>> for ResourcePointer {
-    fn from(resource: &Box<dyn Resource>) -> Self {
-        let db_key = resource.db_key();
-        let resource_type = resource.resource_type();
-        let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
-        let embedding = resource.resource_embedding().clone();
-        ResourcePointer::new(id, &db_key, resource_type, Some(embedding))
+impl From<Box<dyn Resource>> for ResourcePointer {
+    fn from(resource: Box<dyn Resource>) -> Self {
+        resource.get_resource_pointer()
     }
 }
 

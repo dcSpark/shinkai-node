@@ -8,6 +8,8 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::str::FromStr;
 
+use super::router::ResourcePointer;
+
 /// Enum used for all Resources to specify their type
 /// when dealing with Trait objects.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -44,7 +46,7 @@ impl FromStr for ResourceType {
 pub struct RetrievedDataChunk {
     pub chunk: DataChunk,
     pub score: f32,
-    pub resource_id: String,
+    pub resource_pointer: ResourcePointer,
 }
 
 /// Represents a data chunk with an id, data, and optional metadata.
@@ -107,7 +109,7 @@ pub trait Resource {
     ) -> Result<(), ResourceError> {
         let formatted = self.resource_embedding_data_formatted(keywords);
         let new_embedding = generator
-            .generate_embedding(&formatted, "RE")
+            .generate_embedding_with_id(&formatted, "RE")
             .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
         self.set_resource_embedding(new_embedding);
         Ok(())
@@ -213,7 +215,7 @@ pub trait Resource {
                 chunks.push(RetrievedDataChunk {
                     chunk: chunk.clone(),
                     score: similarity.into_inner(),
-                    resource_id: self.resource_id().to_string(),
+                    resource_pointer: self.get_resource_pointer(),
                 });
             }
         }
@@ -222,5 +224,15 @@ pub trait Resource {
         chunks.reverse();
 
         chunks
+    }
+
+    /// Generates a pointer out of the resource. Of note this is required to get around
+    /// the fact that this is a trait object.
+    fn get_resource_pointer(&self) -> ResourcePointer {
+        let db_key = self.db_key();
+        let resource_type = self.resource_type();
+        let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
+        let embedding = self.resource_embedding().clone();
+        ResourcePointer::new(id, &db_key, resource_type, Some(embedding))
     }
 }
