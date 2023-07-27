@@ -1,6 +1,6 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::document::DocumentResource;
-use crate::resources::embedding_generator::RemoteEmbeddingGenerator;
+use crate::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::resources::embeddings::Embedding;
 use crate::resources::resource::RetrievedDataChunk;
 use crate::resources::resource::{Resource, ResourceType};
@@ -9,6 +9,8 @@ use crate::resources::router::{ResourcePointer, ResourceRouter};
 use rocksdb::{ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
 use serde_json::{from_str, to_string};
 use std::any::Any;
+use std::fs;
+use std::path::Path;
 
 use super::db_errors::ShinkaiDBError;
 
@@ -48,6 +50,15 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    /// Saves the `Resource` into the ShinkaiDB. This updates the
+    /// Global ResourceRouter with the resource pointers as well.
+    ///
+    /// Of note, if an existing resource exists in the DB with the same name and
+    /// resource_id, this will overwrite the old resource completely.
+    pub fn save_resource(&self, resource: Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
+        self.save_resources(vec![resource])
+    }
+
     /// Saves the list of `Resource`s into the ShinkaiDB. This updates the
     /// Global ResourceRouter with the resource pointers as well.
     ///
@@ -60,18 +71,27 @@ impl ShinkaiDB {
         // TODO: Batch saving the resource and the router together
         // to guarantee atomicity and coherence of router.
         for resource in resources {
+            println!("saving resource");
             // Save the JSON of the resources in the DB
             self.save_resource_pointerless(&resource)?;
             // Add the pointer to the router, saving the router
             // to the DB on each iteration
-            let pointer = ResourcePointer::from(&resource);
-            router.add_resource_pointer(&pointer);
+            let pointer = resource.get_resource_pointer();
+            router.add_resource_pointer(&pointer)?;
             self.save_global_resource_router(&router)?;
         }
 
         // Add logic here for dealing with the resource router
 
         Ok(())
+    }
+
+    /// Fetches the Resource from the DB using a ResourcePointer
+    pub fn get_resource_by_pointer(
+        &self,
+        resource_pointer: &ResourcePointer,
+    ) -> Result<Box<dyn Resource>, ShinkaiDBError> {
+        self.get_resource(resource_pointer.db_key.clone(), &resource_pointer.resource_type)
     }
 
     /// Fetches the Resource from the DB
@@ -220,41 +240,14 @@ mod tests {
     use super::*;
     use crate::resources::bert_cpp::BertCPPProcess;
 
-    #[test]
-    fn test_pdf_resource_save_to_db() {
-        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
-        let generator = RemoteEmbeddingGenerator::new_default();
-
-        // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
-            .map_err(|_| ResourceError::FailedPDFParsing)
-            .unwrap();
-
-        // Generate DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
-        let doc = DocumentResource::parse_pdf(
-            &buffer,
-            100,
-            &generator,
-            "Shinkai Manifesto",
-            Some(desc),
-            Some("http://shinkai.com"),
-        )
-        .unwrap();
-
-        // Init Database
-        let db_path = format!("db_tests/{}", "embeddings");
-        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-
-        // Save/fetch doc
-        let resource = Box::new(doc.clone()) as Box<dyn Resource>;
-        shinkai_db.save_resource_pointerless(&resource).unwrap();
-        let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
-
-        assert_eq!(doc, fetched_doc);
+    fn setup() {
+        let path = Path::new("db_tests/");
+        let _ = fs::remove_dir_all(&path);
     }
 
-    fn test_single_resource_similarity_search() {
+    #[test]
+    fn test_pdf_resource_save_to_db() {
+        setup();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
@@ -278,13 +271,11 @@ mod tests {
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
         let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-        shinkai_db.init_global_resource_router();
+        shinkai_db.init_global_resource_router().unwrap();
 
-        // Init a resource router
-
-        let resource = Box::new(doc.clone()) as Box<dyn Resource>;
-        shinkai_db.save_resources(vec![resource]).unwrap();
-        // shinkai_db.save_resource_pointerless(&resource).unwrap();
+        // Save/fetch doc
+        let resource: Box<dyn Resource> = Box::new(doc.clone());
+        shinkai_db.save_resource(resource).unwrap();
         let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
 
         assert_eq!(doc, fetched_doc);
