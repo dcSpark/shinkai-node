@@ -1,7 +1,6 @@
 use core::fmt;
 use std::str::FromStr;
 
-use libp2p::identity;
 use rocksdb::{Error, Options, WriteBatch};
 
 use crate::{
