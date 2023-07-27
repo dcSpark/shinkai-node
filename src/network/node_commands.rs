@@ -1,9 +1,9 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode},
+    managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode, StandardIdentity},
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::{inbox_permission::InboxPermission, job_schemas::{JobScope, JobCreation}},
+    schemas::inbox_permission::InboxPermission,
     shinkai_message::{
         encryption::{
             clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
@@ -18,7 +18,6 @@ use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
-use uuid::Uuid;
 use std::str::FromStr;
 use std::{
     cell::RefCell,
@@ -26,6 +25,7 @@ use std::{
     net::SocketAddr,
 };
 use tokio::sync::oneshot::error;
+use uuid::Uuid;
 use warp::path::full;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -36,7 +36,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_external_profile_data(&self, name: String, res: Sender<Identity>) -> Result<(), Error> {
+    pub async fn handle_external_profile_data(&self, name: String, res: Sender<StandardIdentity>) -> Result<(), Error> {
         let external_global_identity = self
             .identity_manager
             .lock()
@@ -115,13 +115,19 @@ impl Node {
         let subidentity = subidentity.unwrap();
 
         // Validate that the message actually came from the subidentity
-        let signature_public_key = subidentity.subidentity_signature_public_key.clone();
+        let signature_public_key = match &subidentity {
+            Identity::Standard(std_identity) => std_identity.subidentity_signature_public_key.clone(),
+            Identity::Agent(_) => {
+                eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
+                return Ok(());
+            }
+        };
+
         if signature_public_key.is_none() {
             eprintln!(
                 "handle_onionized_message > Signature public key doesn't exist for identity: {}",
-                subidentity.full_identity_name.clone()
+                IdentityManager::get_full_identity_name(&subidentity).unwrap_or_default()
             );
-            // TODO: add error messages here
             return Ok(());
         }
 
@@ -302,19 +308,41 @@ impl Node {
         &self,
         inbox_name: String,
         perm_type: String,
-        identity: String,
+        identity_name: String,
         res: Sender<String>,
     ) {
-        let identity = self
-            .identity_manager
+        // Obtain the IdentityManager and ShinkaiDB locks
+        let mut identity_manager = self.identity_manager.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(&identity_name).await;
+
+        // If identity is None (doesn't exist), return an error message
+        if identity.is_none() {
+            res.send(format!("No identity found with the name: {}", identity_name))
+                .await;
+            return;
+        }
+
+        let identity = identity.unwrap();
+
+        // Check if the found identity is a StandardIdentity. If not, send an error message.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Agent(_) => {
+                res.send(format!("Agent identities cannot have inbox permissions"))
+                    .await;
+                return;
+            }
+        };
+
+        let perm = InboxPermission::from_str(&perm_type).unwrap();
+        let result = match self
+            .db
             .lock()
             .await
-            .search_identity(&identity)
-            .await
-            .unwrap()
-            .clone();
-        let perm = InboxPermission::from_str(&perm_type).unwrap();
-        let result = match self.db.lock().await.add_permission(&inbox_name, &identity, perm) {
+            .add_permission(&inbox_name, &standard_identity, perm)
+        {
             Ok(_) => "Success".to_string(),
             Err(e) => e.to_string(),
         };
@@ -326,23 +354,42 @@ impl Node {
         &self,
         inbox_name: String,
         perm_type: String,
-        identity: String,
+        identity_name: String,
         res: Sender<String>,
     ) {
-        let identity = self
-            .identity_manager
-            .lock()
-            .await
-            .search_identity(&identity)
-            .await
-            .unwrap()
-            .clone();
-        // let perm = InboxPermission::from_str(&perm_type).unwrap();
-        // First, check if permission exists and remove it if it does
-        match self.db.lock().await.remove_permission(&inbox_name, &identity.clone()) {
-            Ok(()) => {
-                res.send(format!("Permission removed successfully from identity {}.", identity))
+        // Obtain the IdentityManager and ShinkaiDB locks
+        let mut identity_manager = self.identity_manager.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(&identity_name).await;
+
+        // If identity is None (doesn't exist), return an error message
+        if identity.is_none() {
+            res.send(format!("No identity found with the name: {}", identity_name))
+                .await;
+            return;
+        }
+
+        let identity = identity.unwrap();
+
+        // Check if the found identity is a StandardIdentity. If not, send an error message.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Agent(_) => {
+                res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
+                return;
+            }
+        };
+
+        // First, check if permission exists and remove it if it does
+        match self.db.lock().await.remove_permission(&inbox_name, &standard_identity) {
+            Ok(()) => {
+                res.send(format!(
+                    "Permission removed successfully from identity {}.",
+                    identity_name
+                ))
+                .await;
             }
             Err(e) => {
                 res.send(format!("Error removing permission: {:?}", e)).await;
@@ -358,48 +405,59 @@ impl Node {
         res: Sender<bool>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let identity_manager = self.identity_manager.lock().await;
-        let db = self.db.lock().await;
+        let mut identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
+
+        // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            // You may want to log an error here or handle it differently
             res.send(false).await;
             return;
         }
+
         let identity = identity.unwrap();
 
-        // Convert the permission type string to an InboxPermission
-        let perm = match InboxPermission::from_str(&perm_type) {
-            Ok(perm) => perm,
-            Err(_) => {
-                // You may want to log an error here or handle it differently
+        // Check if the found identity is a StandardIdentity. If not, send an error message.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Agent(_) => {
                 res.send(false).await;
                 return;
             }
         };
 
-        // Call the has_permission function and send the result back
-        match db.has_permission(&inbox_name, &identity, perm) {
+        let perm = match InboxPermission::from_str(&perm_type) {
+            Ok(perm) => perm,
+            Err(_) => {
+                res.send(false).await;
+                return;
+            }
+        };
+
+        match self
+            .db
+            .lock()
+            .await
+            .has_permission(&inbox_name, &standard_identity, perm)
+        {
             Ok(result) => {
                 res.send(result).await;
             }
-            Err(e) => {
-                // Log the error or handle it differently
-                // For now, I'll just send false if there's an error
+            Err(_) => {
                 res.send(false).await;
             }
         }
     }
 
-    pub async fn create_new_job(
-        &self,
-        shinkai_message: ShinkaiMessage,
-        scope: Option<JobScope>,
-        res: Sender<(String, String)>,
-    ) {
-        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
+    pub async fn create_new_job(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        match self
+            .job_manager
+            .lock()
+            .await
+            .process_job_message(shinkai_message, None)
+            .await
+        {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 res.send((job_id, String::new())).await;
@@ -410,7 +468,27 @@ impl Node {
             }
         };
     }
-      
+
+    pub async fn job_message(&self, job_id: String, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        // TODO: maybe I don't need job_id?
+        match self
+            .job_manager
+            .lock()
+            .await
+            .process_job_message(shinkai_message, Some(job_id))
+            .await
+        {
+            Ok(job_id) => {
+                // If everything went well, send the job_id back with an empty string for error
+                res.send((job_id, String::new())).await;
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let _ = res.try_send((String::new(), format!("{}", err)));
+            }
+        };
+    }
+
     pub async fn handle_registration_code_usage(
         &self,
         msg: ShinkaiMessage,
@@ -473,7 +551,7 @@ impl Node {
                 let permission_type = IdentityType::to_enum(&permission_type).unwrap();
                 let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                let subidentity = Identity {
+                let subidentity = StandardIdentity {
                     full_identity_name: full_identity_name,
                     addr: None,
                     subidentity_signature_public_key: Some(signature_pk_obj),
@@ -502,11 +580,29 @@ impl Node {
 
     pub async fn get_all_subidentities(
         &self,
-        res: Sender<Vec<Identity>>,
+        res: Sender<Vec<StandardIdentity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let subidentity_manager = self.identity_manager.lock().await;
-        let subidentities = subidentity_manager.get_all_subidentities();
+        // Obtain the IdentityManager lock
+        let identity_manager = self.identity_manager.lock().await;
+
+        // Get all identities (both standard and agent)
+        let identities = identity_manager.get_all_subidentities();
+
+        // Filter out only the StandardIdentity instances
+        let subidentities: Vec<StandardIdentity> = identities
+            .into_iter()
+            .filter_map(|identity| {
+                if let Identity::Standard(std_identity) = identity {
+                    Some(std_identity)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Send the result back
         let _ = res.send(subidentities).await.map_err(|_| ());
+
         Ok(())
     }
 

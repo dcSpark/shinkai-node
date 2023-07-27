@@ -2,7 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::{InboxNameManager, IdentityManager};
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
+use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
 use shinkai_node::schemas::inbox_permission::InboxPermission;
@@ -185,7 +185,7 @@ fn db_inbox() {
     // Test permissions
     let subidentity_name = "device1";
     let full_subidentity_name =  IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
-    let device1_subidentity = Identity::new(
+    let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone().to_string(),
         None,
         node1_encryption_pk.clone(),
@@ -239,7 +239,7 @@ fn test_permission_errors() {
     let subidentity_name = "device1";
     let full_subidentity_name =  IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
     
-    let device1_subidentity = Identity::new(
+    let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone().to_string(),
         None,
         node1_encryption_pk.clone(),
@@ -254,7 +254,7 @@ fn test_permission_errors() {
     println!("subidentity: {}", device1_subidentity);
 
     // Create a fake identity for tests
-    let nonexistent_identity = Identity::new(
+    let nonexistent_identity = StandardIdentity::new(
         "nonexistent_identity".to_string(),
         None,
         node1_encryption_pk.clone(),

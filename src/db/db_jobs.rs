@@ -1,8 +1,8 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::identity_manager::{Identity, IdentityType};
+use crate::managers::identity_manager::{StandardIdentity, IdentityType};
 use crate::managers::job_manager::{Job, JobLike};
 use crate::schemas::inbox_name::InboxName;
-use crate::schemas::job_schemas::JobScope;
+use crate::schemas::message_schemas::JobScope;
 use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
 use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
@@ -47,8 +47,6 @@ impl ShinkaiDB {
         agent_id: String,
         scope: JobScope,
     ) -> Result<(), ShinkaiDBError> {
-        println!("Creating job with id: {}", job_id);
-
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -120,6 +118,43 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
+        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, step_history) =
+            self.get_job_data(job_id, true)?;
+
+        // Construct the job
+        let job = Job {
+            job_id: job_id.to_string(),
+            datetime_created,
+            is_finished,
+            parent_agent_id,
+            scope,
+            conversation_inbox_name: conversation_inbox,
+            step_history: step_history.unwrap_or_else(Vec::new),
+        };
+
+        Ok(job)
+    }
+
+    pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
+        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _) =
+            self.get_job_data(job_id, false)?;
+
+        // Construct the job
+        let job = Job {
+            job_id: job_id.to_string(),
+            datetime_created,
+            is_finished,
+            parent_agent_id,
+            scope,
+            conversation_inbox_name: conversation_inbox,
+            step_history: Vec::new(), // Empty step history for JobLike
+        };
+
+        Ok(Box::new(job))
+    }
+
+    // Use get_job or get_job_like instead
     fn get_job_data(
         &self,
         job_id: &str,
@@ -219,42 +254,6 @@ impl ShinkaiDB {
         ))
     }
 
-    pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
-        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, step_history) =
-            self.get_job_data(job_id, true)?;
-
-        // Construct the job
-        let job = Job {
-            job_id: job_id.to_string(),
-            datetime_created,
-            is_finished,
-            parent_agent_id,
-            scope,
-            conversation_inbox_name: conversation_inbox,
-            step_history: step_history.unwrap_or_else(Vec::new),
-        };
-
-        Ok(job)
-    }
-
-    pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
-        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _) =
-            self.get_job_data(job_id, false)?;
-
-        // Construct the job
-        let job = Job {
-            job_id: job_id.to_string(),
-            datetime_created,
-            is_finished,
-            parent_agent_id,
-            scope,
-            conversation_inbox_name: conversation_inbox,
-            step_history: Vec::new(), // Empty step history for JobLike
-        };
-
-        Ok(Box::new(job))
-    }
-
     pub fn get_all_jobs(&self) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_handle = self
             .db
@@ -312,7 +311,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn update_step_history(&self, job_id: String, step: String) -> Result<(), ShinkaiDBError> {
+    pub fn add_step_history(&self, job_id: String, step: String) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("{}_step_history", &job_id);
         let cf_handle = self
             .db

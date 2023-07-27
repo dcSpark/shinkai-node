@@ -4,7 +4,7 @@ use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_node::{
     db::ShinkaiDB,
-    schemas::{inbox_name::InboxName, job_schemas::JobScope},
+    schemas::{inbox_name::InboxName, message_schemas::JobScope},
     shinkai_message::utils::hash_string,
 };
 
@@ -24,7 +24,7 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_node::db::db_errors::ShinkaiDBError;
+    use shinkai_node::{db::db_errors::ShinkaiDBError, schemas::message_schemas::JobScope};
 
     use super::*;
 
@@ -131,7 +131,7 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         // Update step history
-        shinkai_db.update_step_history(job_id.clone(), step.clone()).unwrap();
+        shinkai_db.add_step_history(job_id.clone(), step.clone()).unwrap();
 
         // Retrieve the job and check that step history is updated
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();

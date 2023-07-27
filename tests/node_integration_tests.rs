@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_node::managers::IdentityManager;
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
+use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
 use shinkai_node::shinkai_message::encryption::{
@@ -177,8 +177,8 @@ fn subidentity_registration() {
                 );
 
                 let (res_all_subidentities_sender, res_all_subidentities_receiver): (
-                    async_channel::Sender<Vec<Identity>>,
-                    async_channel::Receiver<Vec<Identity>>,
+                    async_channel::Sender<Vec<StandardIdentity>>,
+                    async_channel::Receiver<Vec<StandardIdentity>>,
                 ) = async_channel::bounded(1);
                 node2_commands_sender
                     .send(NodeCommand::GetAllSubidentities {
@@ -385,8 +385,8 @@ fn subidentity_registration() {
                 );
 
                 let (res1_all_subidentities_sender, res1_all_subidentities_receiver): (
-                    async_channel::Sender<Vec<Identity>>,
-                    async_channel::Receiver<Vec<Identity>>,
+                    async_channel::Sender<Vec<StandardIdentity>>,
+                    async_channel::Receiver<Vec<StandardIdentity>>,
                 ) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::GetAllSubidentities {

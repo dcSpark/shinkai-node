@@ -6,7 +6,9 @@ use super::{
     signatures::{sign_message, signature_public_key_to_string},
 };
 use crate::{
-    shinkai_message_proto::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage}, managers::identity_manager::RegistrationCode,
+    managers::identity_manager::RegistrationCode,
+    schemas::message_schemas::{JobCreation, JobScope, MessageSchemaType, JobMessage},
+    shinkai_message_proto::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -83,6 +85,24 @@ impl ShinkaiMessageBuilder {
             sender_subidentity,
             recipient_subidentity,
             message_schema_type: self.message_schema_type.clone(),
+            inbox,
+            encryption: encryption.as_str().to_string(),
+        });
+        self
+    }
+
+    pub fn internal_metadata_with_schema(
+        mut self,
+        sender_subidentity: String,
+        recipient_subidentity: String,
+        inbox: String,
+        message_schema: String,
+        encryption: EncryptionMethod,
+    ) -> Self {
+        self.internal_metadata = Some(InternalMetadata {
+            sender_subidentity,
+            recipient_subidentity,
+            message_schema_type: message_schema,
             inbox,
             encryption: encryption.as_str().to_string(),
         });
@@ -188,7 +208,6 @@ impl ShinkaiMessageBuilder {
 
                     encrypted_content
                 } else {
-                    println!("No internal_metadata.encryption");
                     // If encryption method is None, just return body
                     body_content
                 }
@@ -281,6 +300,59 @@ impl ShinkaiMessageBuilder {
             .empty_non_encrypted_internal_metadata()
             .no_body_encryption()
             .external_metadata(receiver, sender)
+            .build()
+    }
+
+    pub fn job_creation(
+        scope: JobScope,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        node_sender: ProfileName,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let job_creation = JobCreation { scope };
+        let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
+
+        ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .body(body)
+            .internal_metadata_with_schema(
+                "".to_string(),
+                node_receiver_subidentity.clone(),
+                "".to_string(),
+                MessageSchemaType::JobCreationSchema.to_str().to_string(),
+                EncryptionMethod::None,
+            )
+            .no_body_encryption()
+            .external_metadata(node_receiver, node_sender)
+            .build()
+    }
+
+    pub fn job_message(
+        job_id: String,
+        content: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        node_sender: ProfileName,
+        node_receiver: ProfileName,
+        node_receiver_subidentity: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let job_message = JobMessage { job_id, content };
+        let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
+
+        ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .body(body)
+            .internal_metadata_with_schema(
+                "".to_string(),
+                node_receiver_subidentity.clone(),
+                "".to_string(),
+                MessageSchemaType::JobMessageSchema.to_str().to_string(),
+                EncryptionMethod::None,
+            )
+            .no_body_encryption()
+            .external_metadata(node_receiver, node_sender)
             .build()
     }
 

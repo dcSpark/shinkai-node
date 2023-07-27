@@ -1,43 +1,60 @@
-use crate::shinkai_message_proto;
 use serde::{Deserialize, Serialize};
-use shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage, InternalMetadata};
+
+use crate::{schemas::message_schemas::{JobMessage, JobCreation, JobPreMessage, MessageSchemaType}, shinkai_message_proto::{self, Body, InternalMetadata, ExternalMetadata}};
 
 #[derive(Serialize, Deserialize)]
 pub struct BodyWrapper {
-    content: String,
-    internal_metadata: InternalMetadataWrapper,
+    pub content: String,
+    pub parsed_content: ParsedContent,
+    pub internal_metadata: InternalMetadataWrapper,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum ParsedContent {
+    JobCreation(JobCreation),
+    JobMessage(JobMessage),
+    PreMessage(JobPreMessage),
+    PureText(String),
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ExternalMetadataWrapper {
-    sender: String,
-    recipient: String,
-    scheduled_time: String,
-    signature: String,
-    other: String,
+    pub sender: String,
+    pub recipient: String,
+    pub scheduled_time: String,
+    pub signature: String,
+    pub other: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct ShinkaiMessageWrapper {
-    body: BodyWrapper,
-    external_metadata: ExternalMetadataWrapper,
-    encryption: String,
+    pub body: BodyWrapper,
+    pub external_metadata: ExternalMetadataWrapper,
+    pub encryption: String,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct InternalMetadataWrapper {
-    sender_subidentity: String,
-    recipient_subidentity: String,
-    message_schema_type: String,
-    inbox: String,
-    encryption: String,
+    pub sender_subidentity: String,
+    pub recipient_subidentity: String,
+    pub message_schema_type: String,
+    pub inbox: String,
+    pub encryption: String,
 }
 
 impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
     fn from(msg: &shinkai_message_proto::ShinkaiMessage) -> Self {
+        let parsed_content = match msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| MessageSchemaType::from_str(&im.message_schema_type)).unwrap_or(MessageSchemaType::PureText) {
+            MessageSchemaType::JobCreationSchema => ParsedContent::JobCreation(serde_json::from_str(&msg.body.as_ref().unwrap().content).unwrap()),
+            MessageSchemaType::JobMessageSchema => ParsedContent::JobMessage(serde_json::from_str(&msg.body.as_ref().unwrap().content).unwrap()),
+            MessageSchemaType::PreMessageSchema => ParsedContent::PreMessage(serde_json::from_str(&msg.body.as_ref().unwrap().content).unwrap()),
+            MessageSchemaType::PureText => ParsedContent::PureText(msg.body.as_ref().unwrap().content.clone()),
+        };
+
         ShinkaiMessageWrapper {
             body: BodyWrapper {
                 content: msg.body.as_ref().map_or(String::from(""), |b| b.content.clone()),
+                parsed_content,
                 internal_metadata: msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).map(|im| {
                     InternalMetadataWrapper {
                         sender_subidentity: im.sender_subidentity.clone(),
