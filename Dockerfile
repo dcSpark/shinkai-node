@@ -11,6 +11,7 @@ COPY Cargo.toml Cargo.lock build.rs ./
 # Copy the source code to the container
 COPY src ./src
 COPY protos ./protos
+COPY scripts ./scripts
 
 # Build the dependencies (cached)
 RUN cargo build
