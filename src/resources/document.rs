@@ -146,7 +146,7 @@ impl DocumentResource {
             chunks.push(RetrievedDataChunk {
                 chunk: chunk.clone(),
                 score: 0.00,
-                resource_id: self.resource_id().to_string(),
+                resource_pointer: self.get_resource_pointer(),
             });
         }
 
@@ -162,7 +162,7 @@ impl DocumentResource {
                 Some(metadata) if metadata == &query_metadata => matching_chunks.push(RetrievedDataChunk {
                     chunk: chunk.clone(),
                     score: 0.00,
-                    resource_id: self.resource_id().to_string(),
+                    resource_pointer: self.get_resource_pointer(),
                 }),
                 _ => (),
             }
@@ -299,7 +299,7 @@ impl DocumentResource {
         let total_num_embeddings = text_list.len();
         let mut i = 0;
         for text in &text_list {
-            let embedding = generator.generate_embedding_default(text)?;
+            let embedding = generator.generate_embedding(text)?;
             embeddings.push(embedding);
 
             i += 1;
@@ -352,11 +352,11 @@ mod tests {
 
         // Prepare embeddings + data, then add it to the doc
         let fact1 = "Dogs are creatures with 4 legs that bark.";
-        let fact1_embeddings = generator.generate_embedding_default(fact1).unwrap();
+        let fact1_embeddings = generator.generate_embedding(fact1).unwrap();
         let fact2 = "Camels are slow animals with large humps.";
-        let fact2_embeddings = generator.generate_embedding_default(fact2).unwrap();
+        let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
-        let fact3_embeddings = generator.generate_embedding_default(fact3).unwrap();
+        let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
         doc.append_data(fact1, None, &fact1_embeddings);
         doc.append_data(fact2, None, &fact2_embeddings);
         doc.append_data(fact3, None, &fact3_embeddings);
@@ -368,17 +368,17 @@ mod tests {
 
         // Testing similarity search works
         let query_string = "What animal barks?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(fact1, res[0].chunk.data);
 
         let query_string2 = "What animal is slow?";
-        let query_embedding2 = generator.generate_embedding_default(query_string2).unwrap();
+        let query_embedding2 = generator.generate_embedding(query_string2).unwrap();
         let res2 = doc.similarity_search(query_embedding2, 3);
         assert_eq!(fact2, res2[0].chunk.data);
 
         let query_string3 = "What animal swims in the ocean?";
-        let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
+        let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].chunk.data);
     }
@@ -412,7 +412,7 @@ mod tests {
 
         // Testing similarity search works
         let query_string = "Who is building Shinkai?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
@@ -420,7 +420,7 @@ mod tests {
         );
 
         let query_string = "What about up-front costs?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
@@ -428,7 +428,7 @@ mod tests {
         );
 
         let query_string = "Does this relate to crypto?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",

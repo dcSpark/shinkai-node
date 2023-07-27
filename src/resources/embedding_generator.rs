@@ -24,12 +24,13 @@ pub trait EmbeddingGenerator {
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
-    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError>;
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
-    /// of empty string.
-    fn generate_embedding_default(&self, input_string: &str) -> Result<Embedding, ResourceError> {
-        self.generate_embedding(input_string, "")
+    /// of empty string. Default id is fine in most cases, due to the fact that
+    /// when embeddings are added into Resources, the id are rewritten anyways.
+    fn generate_embedding(&self, input_string: &str) -> Result<Embedding, ResourceError> {
+        self.generate_embedding_with_id(input_string, "")
     }
 
     /// Generates embeddings from the given list of input strings and ids.
@@ -37,7 +38,7 @@ pub trait EmbeddingGenerator {
         input_strings
             .iter()
             .zip(ids)
-            .map(|(input, id)| self.generate_embedding(input, id))
+            .map(|(input, id)| self.generate_embedding_with_id(input, id))
             .collect()
     }
 
@@ -45,7 +46,7 @@ pub trait EmbeddingGenerator {
     fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
         input_strings
             .iter()
-            .map(|input| self.generate_embedding_default(input))
+            .map(|input| self.generate_embedding(input))
             .collect()
     }
 }
@@ -80,7 +81,7 @@ pub struct RemoteEmbeddingGenerator {
 
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
-    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         // If we're using a Bert model with a Bert-CPP server
         if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
             || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
@@ -228,7 +229,7 @@ pub struct LocalEmbeddingGenerator {
 impl EmbeddingGenerator for LocalEmbeddingGenerator {
     /// Generate an Embedding for an input string.
     /// - `id`: The id to be associated with the embeddings.
-    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
             all_logits: None,
@@ -294,8 +295,8 @@ mod tests {
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
-        let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
-        let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+        let dog_embeddings = generator.generate_embedding("dog").unwrap();
+        let cat_embeddings = generator.generate_embedding("cat").unwrap();
 
         assert_eq!(dog_embeddings, dog_embeddings);
         assert_eq!(cat_embeddings, cat_embeddings);
@@ -312,8 +313,8 @@ mod tests {
     // fn test_local_embeddings_generation() {
     //     let generator = LocalEmbeddingGenerator::new_default();
 
-    //     let dog_embeddings = generator.generate_embedding("dog", "1").unwrap();
-    //     let cat_embeddings = generator.generate_embedding("cat", "2").unwrap();
+    //     let dog_embeddings = generator.generate_embedding_with_id("dog", "1").unwrap();
+    //     let cat_embeddings = generator.generate_embedding_with_id("cat", "2").unwrap();
 
     //     assert_eq!(dog_embeddings, dog_embeddings);
     //     assert_eq!(cat_embeddings, cat_embeddings);
@@ -332,10 +333,10 @@ mod tests {
     //     ];
 
     //     // Generate embeddings for query and comparands
-    //     let query_embedding = generator.generate_embedding_default(query
+    //     let query_embedding = generator.generate_embedding(query
     // ).unwrap();     let comparand_embeddings: Vec<Embedding> =
     // comparands         .iter()
-    //         .map(|text| generator.generate_embedding(text).unwrap())
+    //         .map(|text| generator.generate_embedding_with_id(text).unwrap())
     //         .collect();
 
     //     // Print the embeddings
