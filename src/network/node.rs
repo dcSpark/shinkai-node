@@ -14,7 +14,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self, StandardIdentity};
-use crate::managers::job_manager::AgentManager;
+use crate::managers::job_manager::{JobManager};
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -178,9 +178,7 @@ pub struct Node {
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiDB>>,
     // The job manager
-    pub job_manager: Arc<Mutex<AgentManager>>,
-    // Job Manager receiver
-    pub job_manager_receiver: Option<mpsc::Receiver<Vec<JobPreMessage>>>,
+    pub job_manager: Arc<Mutex<JobManager>>,
 }
 
 impl Node {
@@ -221,9 +219,8 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-        let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
         let job_manager = Arc::new(Mutex::new(
-            AgentManager::new(db_arc.clone(), identity_manager.clone(), job_manager_sender).await,
+            JobManager::new(db_arc.clone(), identity_manager.clone()).await,
         ));
 
         Node {
@@ -239,7 +236,6 @@ impl Node {
             identity_manager,
             db: db_arc,
             job_manager,
-            job_manager_receiver: Some(job_manager_receiver),
         }
     }
 
@@ -362,19 +358,6 @@ impl Node {
             });
         }
     }
-
-    // A method for processing incoming job messages
-    pub async fn process_job_messages(&mut self) {
-        if let Some(mut receiver) = self.job_manager_receiver.take() {
-            tokio::spawn(async move {
-                while let Some(message) = receiver.recv().await {
-                    // Process the message here...
-                    println!("Job Manager received: {:?}", message);
-                }
-            });
-        }
-    }
-    
 
     // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {

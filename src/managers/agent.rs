@@ -218,7 +218,7 @@ mod tests {
         let val = tokio::time::timeout(std::time::Duration::from_millis(600), rx.recv()).await;
         let expected_resp = JobPreMessage {
             tool_calls: Vec::new(),
-            content: "Updated response!".to_string(),
+            content: "OK".to_string(),
             recipient: JobRecipient::SelfNode,
         };
 
