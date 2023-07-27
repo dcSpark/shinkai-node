@@ -20,7 +20,6 @@ const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
 pub trait EmbeddingGenerator {
-    // Returns the embedding model type
     fn model_type(&self) -> EmbeddingModelType;
 
     /// Generates an embedding from the given input string, and assigns the
@@ -29,15 +28,11 @@ pub trait EmbeddingGenerator {
 
     /// Generate an Embedding for an input string, sets id to a default value
     /// of empty string.
-    ///
-    /// # Parameters
-    /// - `input_string`: The input string for which embeddings are generated.
     fn generate_embedding_default(&self, input_string: &str) -> Result<Embedding, ResourceError> {
         self.generate_embedding(input_string, "")
     }
 
-    /// Generates embeddings from the given list of input strings,  and assigns
-    /// the provided ids.
+    /// Generates embeddings from the given list of input strings and ids.
     fn generate_embeddings(&self, input_strings: &[&str], ids: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
         input_strings
             .iter()
@@ -46,7 +41,7 @@ pub trait EmbeddingGenerator {
             .collect()
     }
 
-    /// Generate Embeddings for a list of input strings, sets ids to a default
+    /// Generate Embeddings for a list of input strings, sets ids to default
     fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
         input_strings
             .iter()
@@ -85,13 +80,6 @@ pub struct RemoteEmbeddingGenerator {
 
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
-    ///
-    /// # Parameters
-    /// - `input_string`: The input string for which embeddings are generated.
-    /// - `id`: The id to be associated with the embeddings.
-    ///
-    /// # Returns
-    /// An `Embedding` for the input string or an error.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         // If we're using a Bert model with a Bert-CPP server
         if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
@@ -139,14 +127,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// This function takes a string and a mutable reference to a TcpStream
-    /// as input and sends the string to the Bert-CPP server. The server then responds
-    /// with a byte array which this function converts into a vector of 32 bit
-    /// floating point numbers (f32).
-    ///
-    /// # Returns
-    ///
-    /// A vector of 32 bit floating point numbers that represent the embeddings.
+    /// This function takes a string and a TcpStream and sends the string to the Bert-CPP server
     fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, ResourceError> {
         // Send the input text to the server
         server
@@ -171,16 +152,8 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// Generates embeddings for a given text using a local BERT C++ server.
-    ///
-    /// This function takes a string slice as input, establishes a connection
-    /// to a BERT C++ server, and sends the string to the server for processing.
-    /// The server responds with a byte array representing the embeddings of the
-    /// input text, which this function then returns as a vector of 32 bit floating
-    /// point numbers.
-    ///
-    /// # Returns
-    ///
-    /// A vector of 32 bit floating point numbers that represent the embeddings.
+    /// Of note, requires using TcpStream as the server has an arbitrary
+    /// implementation that is not proper HTTP.
     fn generate_embedding_bert_cpp(&self, input_text: &str) -> Result<Vec<f32>, ResourceError> {
         let mut server_connection =
             TcpStream::connect(self.api_url.clone()).map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
@@ -196,14 +169,8 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
+    // TODO: Add authorization logic
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
-    ///
-    /// # Parameters
-    /// - `input_string`: The input string for which embeddings are generated.
-    /// - `id`: The id to be associated with the embeddings.
-    ///
-    /// # Returns
-    /// An `Embedding` for the input string or an error.
     fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {
@@ -260,13 +227,7 @@ pub struct LocalEmbeddingGenerator {
 
 impl EmbeddingGenerator for LocalEmbeddingGenerator {
     /// Generate an Embedding for an input string.
-    ///
-    /// # Parameters
-    /// - `input_string`: The input string for which embeddings are generated.
     /// - `id`: The id to be associated with the embeddings.
-    ///
-    /// # Returns
-    /// An `Embedding` for the input string or an error.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
@@ -301,12 +262,6 @@ impl EmbeddingGenerator for LocalEmbeddingGenerator {
 
 impl LocalEmbeddingGenerator {
     /// Create a new LocalEmbeddingGenerator with a specified model.
-    ///
-    /// # Parameters
-    /// - `model`: The model to be used for generating embeddings.
-    ///
-    /// # Returns
-    /// A new `LocalEmbeddingGenerator` that uses the specified model.
     pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
         Self {
             model,
@@ -316,12 +271,6 @@ impl LocalEmbeddingGenerator {
 
     /// Create a new LocalEmbeddingGenerator that uses the default model.
     /// Intended to be used just for testing.
-    ///
-    /// # Returns
-    /// A new `LocalEmbeddingGenerator` that uses the default model.
-    ///
-    /// # Panics
-    /// This function will panic if it fails to load the default model.
     pub fn new_default() -> Self {
         let model_architecture = llm::ModelArchitecture::GptNeoX;
         let model = llm::load_dynamic(

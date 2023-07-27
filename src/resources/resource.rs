@@ -56,18 +56,6 @@ pub struct DataChunk {
 }
 
 impl DataChunk {
-    /// Creates a new `DataChunk` with a `String` id, data, and optional
-    /// metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - A `String` that holds the id of the `DataChunk`.
-    /// * `data` - The data of the `DataChunk`.
-    /// * `metadata` - Optional metadata for the `DataChunk`.
-    ///
-    /// # Returns
-    ///
-    /// A new `DataChunk` instance.
     pub fn new(id: String, data: &str, metadata: Option<&str>) -> Self {
         Self {
             id,
@@ -76,19 +64,6 @@ impl DataChunk {
         }
     }
 
-    /// Creates a new `DataChunk` with a `u64` id converted to a `String`, data,
-    /// and optional metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - A `u64` that holds the id of the `DataChunk`. It gets converted
-    ///   to a `String`.
-    /// * `data` - The data of the `DataChunk`.
-    /// * `metadata` - Optional metadata for the `DataChunk`.
-    ///
-    /// # Returns
-    ///
-    /// A new `DataChunk` instance.
     pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>) -> Self {
         Self::new(id.to_string(), data, metadata)
     }
@@ -108,25 +83,15 @@ pub trait Resource {
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
 
-    /// Convert to json
     // Note we cannot add from_json in the trait due to trait object limitations
     // with &self.
     fn to_json(&self) -> Result<String, ResourceError>;
 
     /// Retrieves a data chunk given its id.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The `String` id of the data chunk.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
     /// Returns a String representing the Key that this Resource
     /// will be/is saved to in the Topic::Resources in the DB.
-    ///
     /// The db key is: `{name}.{resource_id}`
     fn db_key(&self) -> String {
         let name = self.name().replace(" ", "_");
@@ -134,23 +99,7 @@ pub trait Resource {
         format!("{}.{}", name, resource_id)
     }
 
-    /// Regenerates and updates the resource's embedding. The new
-    /// embedding is generated using the provided `EmbeddingGenerator` plus
-    /// the resource's name, description, source, and list of provided keywords.
-    ///
-    /// # Arguments
-    ///
-    /// * `generator` - The `EmbeddingGenerator` to be used for generating the
-    ///   new embedding.
-    /// * `keywords` - A list of Strings that are keywords from the resource
-    ///   content which were externally extracted. Note these keywords are only
-    ///   used for resource embedding generation, and are not saved in the
-    ///   resource.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), ResourceError>` - Returns `Ok(())` if the embedding
-    /// is successfully updated, or an error if the embedding generation fails.
+    /// Regenerates and updates the resource's embedding.
     fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -168,14 +117,6 @@ pub trait Resource {
     /// resource embedding. This string includes the resource's name,
     /// description, source, and the maximum number of keywords which can be
     /// fit.
-    ///
-    /// * `keywords` - A list of Strings that are keywords from the resource
-    ///   content which were externally extracted.
-    ///
-    /// # Returns
-    ///
-    /// * `String` - The formatted metadata string in the format of "Name: N,
-    ///   Description: D, Source: S". If any are None, they are skipped.
     fn resource_embedding_data_formatted(&self, keywords: Vec<String>) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
@@ -203,20 +144,9 @@ pub trait Resource {
     /// Performs a vector similarity search using a query embedding and returns
     /// the most similar data chunks within a specific range.
     ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to initially consider
-    ///   (aka. upper max).
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
-    ///   of the highest score. Any result outside this range is ignored.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `DataChunk`s sorted by similarity
-    /// score in descending order, but only including those within the tolerance
-    /// range
+    ///   of the highest score.
     fn similarity_search_tolerance_ranged(
         &self,
         query: Embedding,
@@ -241,15 +171,6 @@ pub trait Resource {
 
     /// Performs a vector similarity search using a query embedding and returns
     /// the most similar data chunks.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return (top-k)
-    ///
-    /// # Returns
-    ///
-    /// A vector of `RetrievedDataChunk`s sorted by similarity score in descending order
     fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         let num_of_results = num_of_results as usize;
 
@@ -287,23 +208,18 @@ pub trait Resource {
         // Fetch the RetrievedDataChunk matching the most similar embeddings
         let mut chunks: Vec<RetrievedDataChunk> = vec![];
         while let Some(Reverse((similarity, id))) = heap.pop() {
-            println!("{}: {}%", id, similarity);
+            // println!("{}: {}%", id, similarity);
             if let Ok(chunk) = self.get_data_chunk(id) {
-                println!("Pushing chunk: {:?}", chunk);
                 chunks.push(RetrievedDataChunk {
                     chunk: chunk.clone(),
                     score: similarity.into_inner(),
                     resource_id: self.resource_id().to_string(),
                 });
-                println!("pusehd");
             }
         }
 
-        println!("before rev Chunks: {:?}", chunks);
         // Reverse the order of chunks so that the highest score is first
         chunks.reverse();
-
-        println!("Chunks: {:?}", chunks);
 
         chunks
     }

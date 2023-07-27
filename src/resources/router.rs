@@ -16,8 +16,8 @@ use std::str::FromStr;
 pub struct ResourcePointer {
     pub id: String,     // Id of the ResourcePointer in the ResourceRouter (currently DataChunk id)
     pub db_key: String, // Key of the resource in the Topic::Resources in the db
-    pub resource_type: ResourceType, // Type of the resource
-    resource_embedding: Option<Embedding>, // Resource Embedding
+    pub resource_type: ResourceType,
+    resource_embedding: Option<Embedding>,
 }
 
 impl ResourcePointer {
@@ -55,13 +55,9 @@ impl TryFrom<RetrievedDataChunk> for ResourcePointer {
     }
 }
 
-/// A top level struct which indexes all resources inside of a Shinkai node as
-/// resource pointers. These are DataChunks which have a matching embedding that
-/// is the Resource Embedding, and which hold metadata that points to the DB key
-/// of the Resource.
-///
+/// A top level struct which indexes a series of resource pointers.
 /// This struct thus makes it possible to perform vector searches to find
-/// relevant Resources for any vector search made by users or agents.
+/// relevant Resources for users or agents.
 ///
 /// For now we just implement this on top of DocumentResource for speed of
 /// implementation, later on we can come around and design something
@@ -92,16 +88,6 @@ impl ResourceRouter {
 
     /// Performs a vector similarity search using a query embedding and returns
     /// a list of ResourcePointers of the most similar Resources.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return (top-k)
-    ///
-    /// # Returns
-    ///
-    /// A `Result` that contains a vector of ResourcePointers sorted by similarity
-    /// score in descending order, or an error if something goes wrong.
     pub fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
         let chunks = self.routing_resource.similarity_search(query, num_of_results);
         self.ret_data_chunks_to_pointers(&chunks)

@@ -14,7 +14,6 @@ use super::db_errors::ShinkaiDBError;
 
 impl ShinkaiDB {
     /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the global router.
-    /// It is saved in the resources topic as a JSON string using the default key.
     fn save_global_resource_router(&self, router: &ResourceRouter) -> Result<(), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = router.to_json()?;
@@ -75,9 +74,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Fetches the Resource from the DB using the provided key
-    /// in the resources topic, and attempts to parse it into
-    /// the specified ResourceType
+    /// Fetches the Resource from the DB
     pub fn get_resource<K: AsRef<[u8]>>(
         &self,
         key: K,
@@ -96,8 +93,7 @@ impl ShinkaiDB {
         }
     }
 
-    /// Fetches a DocumentResource from the DB using the provided key
-    /// in the resources topic
+    /// Fetches a DocumentResource from the DB
     pub fn get_document<K: AsRef<[u8]>>(&self, key: K) -> Result<DocumentResource, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf(Topic::Resources, key)?;
@@ -107,8 +103,7 @@ impl ShinkaiDB {
         Ok(from_str(json_str)?)
     }
 
-    /// Fetches the Resource Router from the `resource_router` key
-    /// in the resources topic, and attempts to parse it into a ResourceRouter
+    /// Fetches the Global Resource Router from  the DB
     pub fn get_global_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf(Topic::Resources, ResourceRouter::global_router_db_key())?;
@@ -120,25 +115,11 @@ impl ShinkaiDB {
         Ok(router)
     }
 
-    /// Performs a 2-tier vector similarity search across all resources using a query embedding .
-    /// The search first finds the most similar resources based on their resource_embedding
-    /// and takes the num_of_resources amount of resources.
+    /// Performs a 2-tier vector similarity search across all resources using a query embedding.
     ///
     /// From there a similarity search is performed on each resource with the query embedding,
     /// and the results from all resources are then collected, sorted, and the top num_of_results
     /// RetriedDataChunks based on similarity score are returned.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_resources` - The number of most similar resources to perform
-    ///   similarity searches inside of. Increasing this improves search quality, but makes it slower.
-    /// * `num_of_results` - The number of top results to return (top-k)
-    ///
-    /// # Returns
-    ///
-    /// A `vector of `RetrievedDataChunk`s, potentially from multiple resources
-    /// sorted by similarity score in descending order, or error.
     pub fn similarity_search_data(
         &self,
         query: Embedding,
@@ -172,18 +153,6 @@ impl ShinkaiDB {
     ///
     /// Note: This only searches DocumentResources in Topic::Resources, not all resources. This is
     /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_docs` - The number of most similar docs to perform
-    ///   similarity searches inside of. Increasing this improves search quality, but makes it slower.
-    /// * `proximity_window` - The number of DataChunks to fetch below and above
-    ///   the most similar DataChunk.
-    ///
-    /// # Returns
-    ///
-    /// A `vector of `RetrievedDataChunk`s, or error.
     pub fn similarity_search_data_doc_proximity(
         &self,
         query: Embedding,
@@ -203,11 +172,6 @@ impl ShinkaiDB {
 
     /// Performs a vector similarity search using a query embedding and returns the
     /// num_of_resources amount of most similar Resources.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_resources` - The number of most similar resources
     pub fn similarity_search_resources(
         &self,
         query: Embedding,
@@ -226,11 +190,6 @@ impl ShinkaiDB {
 
     /// Performs a vector similarity search using a query embedding and returns the
     /// num_of_docs amount of most similar DocumentResources.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_docs` - The number of most similar docs
     pub fn similarity_search_docs(
         &self,
         query: Embedding,
@@ -247,11 +206,7 @@ impl ShinkaiDB {
         Ok(resources)
     }
 
-    /// If a resource router does not exist in the DB, automatically
-    /// creates a new one and saves it in the DB so it is ready to be
-    /// called and used.
-    ///
-    /// If one exists, nothing happens.
+    /// Creates a global resource router if one does not exist in the DB.
     pub fn init_global_resource_router(&self) -> Result<(), ShinkaiDBError> {
         if let Err(_) = self.get_global_resource_router() {
             let router = ResourceRouter::new();

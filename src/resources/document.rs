@@ -20,65 +20,38 @@ pub struct DocumentResource {
 }
 
 impl Resource for DocumentResource {
-    /// # Returns
-    ///
-    /// The LLM model used to generate embeddings for this resource.
     fn embedding_model_used(&self) -> EmbeddingModelType {
         self.embedding_model_used.clone()
     }
 
-    /// # Returns
-    ///
-    /// The name of the `DocumentResource`.
     fn name(&self) -> &str {
         &self.name
     }
 
-    /// # Returns
-    ///
-    /// The optional description of the `DocumentResource`.
     fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
 
-    /// # Returns
-    ///
-    /// The optional source of the `DocumentResource`.
     fn source(&self) -> Option<&str> {
         self.source.as_deref()
     }
 
-    /// # Returns
-    ///
-    /// The data hash of the `DocumentResource`.
     fn resource_id(&self) -> &str {
         &self.resource_id
     }
 
-    /// # Returns
-    ///
-    /// The resource `Embedding` of the `DocumentResource`.
     fn resource_embedding(&self) -> &Embedding {
         &self.resource_embedding
     }
 
-    /// # Returns
-    ///
-    /// A hardcoded string which represents the type of Resource.
-    ///
-    ///
     fn resource_type(&self) -> ResourceType {
         ResourceType::Document
     }
 
-    /// # Returns
-    ///
-    /// The chunk `Embedding`s of the `DocumentResource`.
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
     }
 
-    /// Convert to json
     fn to_json(&self) -> Result<String, ResourceError> {
         serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
     }
@@ -92,14 +65,6 @@ impl Resource for DocumentResource {
     }
 
     /// Retrieves a data chunk given its id.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The `String` id of the data chunk.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
         let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
         if id > self.chunk_count {
@@ -111,31 +76,8 @@ impl Resource for DocumentResource {
 }
 
 impl DocumentResource {
-    // Constructors
-    /// Creates a new instance of a `DocumentResource`.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - A string slice that holds the name of the document resource.
-    /// * `desc` - An optional string slice that holds the description of the
-    ///   document resource.
-    /// * `source` - An optional string slice that holds the source of the
-    ///   document resource.
-    /// * `resource_id` - A Sha256 hash as a String, which should be generated
-    ///   by hashing the bytes of the original data that the DocumentResource
-    ///   was created from
-    /// * `resource_embedding` - An `Embedding` struct that holds the embedding
-    ///   of the document resource.
-    /// * `chunk_embeddings` - A vector of `Embedding` structs that hold the
-    ///   embeddings of the data chunks.
-    /// * `data_chunks` - A vector of `DataChunk` structs that hold the data
-    ///   chunks.
-    /// * `embedding_model_used` - The model used to generate the embeddings for
-    ///   this resource
-    ///
-    /// # Returns
-    ///
-    /// * `Self` - A new instance of `DocumentResource`.
+    /// * `resource_id` - For DocumentResources this should be a Sha256 hash as a String
+    ///  from the bytes of the original data.
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -159,20 +101,7 @@ impl DocumentResource {
         }
     }
 
-    /// Initializes an empty `DocumentResource` with an empty resource
-    /// embedding.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the `DocumentResource`.
-    /// * `desc` - The optional description of the `DocumentResource`.
-    /// * `source` - The optional source of the `DocumentResource`.
-    /// * `id` - A unique id that the creator of the Doc defines (generally
-    ///   Sha256 hash of the original content)
-    ///
-    /// # Returns
-    ///
-    /// * `Self` - A new instance of `DocumentResource`.
+    /// Initializes an empty `DocumentResource` with empty defaults.
     pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
         DocumentResource::new(
             name,
@@ -189,16 +118,6 @@ impl DocumentResource {
     /// Performs a vector similarity search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The query `Embedding`.
-    /// * `proximity_window` - The number of DataChunks to fetch below and above
-    ///   the most similar DataChunk.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `RetrievedDataChunk`s sorted by their ids, or an error.
     pub fn similarity_search_proximity(
         &self,
         query: Embedding,
@@ -234,16 +153,7 @@ impl DocumentResource {
         Ok(chunks)
     }
 
-    /// Performs a metadata search, returning all DataChunks with the same
-    /// metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `query_metadata` - The metadata string to search for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `DataChunk`s with the same metadata, or an error.
+    /// Returns all DataChunks with the same metadata.
     pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
         let mut matching_chunks = Vec::new();
 
@@ -265,21 +175,7 @@ impl DocumentResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk and associated embedding to the document
-    /// resource.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - A string representing the data to be added in the new data
-    ///   chunk.
-    /// * `metadata` - An optional string representing additional metadata for
-    ///   the data chunk.
-    /// * `embedding` - An embedding related to the data chunk.
-    ///
-    /// The method creates a new data chunk using the provided data and
-    /// metadata, clones the provided embedding and sets its id to match the
-    /// new data chunk, and finally adds the new data chunk and the updated
-    /// embedding to the resource.
+    /// Appends a new data chunk and associated embedding to the document.
     pub fn append_data(&mut self, data: &str, metadata: Option<&str>, embedding: &Embedding) {
         let id = self.chunk_count + 1;
         let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone());
@@ -289,26 +185,8 @@ impl DocumentResource {
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk and associated embedding in the
-    /// resource.
-    ///
-    /// # Arguments
-    ///
+    /// Replaces an existing data chunk and associated embedding.
     /// * `id` - The id of the data chunk to be replaced.
-    /// * `new_data` - A string representing the new data.
-    /// * `new_metadata` - An optional string representing the new metadata.
-    /// * `embedding` - An embedding related to the new data chunk.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<DataChunk, ResourceError>` - If successful, returns the old
-    ///   `DataChunk` that was replaced.
-    ///
-    /// The method checks if the provided id is valid, and if so, it creates a
-    /// new data chunk using the provided new data and metadata, clones the
-    /// provided embedding and sets its id to match the new data chunk,
-    /// replaces the old data chunk and the associated embedding with
-    /// the new ones, and finally returns the old data chunk.
     pub fn replace_data(
         &mut self,
         id: u64,
@@ -332,17 +210,6 @@ impl DocumentResource {
 
     /// Removes and returns the last data chunk and associated embedding from
     /// the resource.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(DataChunk, Embedding), ResourceError>` - If successful,
-    ///   returns a tuple containing the removed data chunk and embedding. If
-    ///   the resource is empty, returns a `ResourceError`.
-    ///
-    /// The method attempts to pop the last `DataChunk` and `Embedding` from
-    /// their respective vectors. If this is successful, it decrements
-    /// `chunk_count` and returns the popped `DataChunk` and `Embedding`. If
-    /// the resource is empty, it returns a `ResourceError`.
     pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
@@ -357,14 +224,7 @@ impl DocumentResource {
     }
 
     /// Deletes a data chunk and associated embedding from the resource.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The id of the data chunk to be deleted.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing the removed data chunk and embedding, or error.
+    /// Returns a tuple containing the removed data chunk and embedding, or error.
     pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
 
@@ -379,7 +239,7 @@ impl DocumentResource {
         Ok((deleted_chunk, deleted_embedding))
     }
 
-    // Internal data chunk deletion
+    /// Internal data chunk deletion
     fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, ResourceError> {
         if id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
@@ -394,14 +254,12 @@ impl DocumentResource {
         Ok(removed_chunk)
     }
 
-    // Internal adding a data chunk
     fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
     }
 
-    /// Convert from json
     pub fn from_json(json: &str) -> Result<Self, ResourceError> {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
     }
@@ -417,20 +275,6 @@ impl DocumentResource {
     /// Of note, this function assumes you already pre-parsed the text,
     /// performed cleanup, ensured that each String is under the 512 token
     /// limit and is ready to be used to create a DataChunk.
-    ///
-    /// # Arguments
-    ///
-    /// * `text_list` - A list of strings with the text.
-    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
-    /// * `name` - The name of the document.
-    /// * `desc` - An optional description of the document.
-    /// * `source` - An optional source of the document.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a ResourceDocument. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
     pub fn parse_text(
         text_list: Vec<String>,
         generator: &dyn EmbeddingGenerator,
@@ -473,22 +317,6 @@ impl DocumentResource {
     /// Parses a PDF from a buffer into a Document Resource, automatically
     /// separating sentences + performing text parsing, as well as
     /// generating embeddings using the supplied embedding generator.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the PDF data.
-    /// * `average_chunk_size` - The size in characters that you want on average
-    ///   for every DataChunk to be.
-    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
-    /// * `name` - The name of the document.
-    /// * `desc` - An optional description of the document.
-    /// * `source` - An optional source of the document.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a ResourceDocument. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
     pub fn parse_pdf(
         buffer: &[u8],
         average_chunk_size: u64,
