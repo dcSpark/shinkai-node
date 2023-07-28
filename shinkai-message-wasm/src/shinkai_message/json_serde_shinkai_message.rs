@@ -3,8 +3,7 @@ use serde::{
     Serialize, Serializer,
 };
 use std::fmt;
-use crate::schemas::shinkai_message::ShinkaiMessage;
-use super::shinkai_message_handler::ShinkaiMessageHandler;
+use super::{shinkai_message_handler::ShinkaiMessageHandler, shinkai_message::ShinkaiMessage};
 
 pub struct JSONSerdeShinkaiMessage(pub ShinkaiMessage);
 

@@ -1,13 +1,13 @@
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_wasm::shinkai_message::shinkai_message::Body;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
     use wasm_bindgen_test::*;
     use serde_json::json;
     use serde_json::to_value;
-    use shinkai_message_wasm::schemas::shinkai_message::Body;
-    use shinkai_message_wasm::schemas::shinkai_message::ExternalMetadata;
-    use shinkai_message_wasm::schemas::shinkai_message::InternalMetadata;
-    use shinkai_message_wasm::schemas::shinkai_message::ShinkaiMessage;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::InternalMetadata;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::ExternalMetadata;
 
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]

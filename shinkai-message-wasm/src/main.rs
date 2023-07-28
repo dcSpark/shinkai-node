@@ -1,9 +1,10 @@
 mod schemas;
 mod shinkai_message;
+mod shinkai_utils;
 
 use std::error::Error;
 
-use crate::schemas::shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage};
+use crate::shinkai_message::shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let internal_metadata = InternalMetadata {

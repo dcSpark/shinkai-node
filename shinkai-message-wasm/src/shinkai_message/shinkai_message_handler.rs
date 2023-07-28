@@ -1,19 +1,14 @@
-// shinkai_message.rs
-
 use std::io::{Error, ErrorKind};
 
 use chrono::Utc;
 use sha2::{Digest, Sha256};
 
-use crate::schemas::shinkai_message::{ShinkaiMessage, Body};
-
-use super::{
-    encryption::{encrypt_body, EncryptionMethod},
-    shinkai_message_extension::ShinkaiMessageWrapper,
-    signatures::sign_message,
-};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use crate::shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message};
+
+use super::{shinkai_message::{ShinkaiMessage, Body}, shinkai_message_extension::ShinkaiMessageWrapper};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -150,13 +145,13 @@ impl ShinkaiMessageHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::schemas::shinkai_message::ShinkaiMessage;
-    use crate::shinkai_message::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
+    use super::*;
     use crate::shinkai_message::shinkai_message_handler::EncryptionStatus;
-    use crate::shinkai_message::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
     use crate::shinkai_message::{
         shinkai_message_builder::ShinkaiMessageBuilder, shinkai_message_handler::ShinkaiMessageHandler,
     };
+    use crate::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+    use crate::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
 
     fn build_message(body_encryption: EncryptionMethod, content_encryption: EncryptionMethod) -> ShinkaiMessage {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);

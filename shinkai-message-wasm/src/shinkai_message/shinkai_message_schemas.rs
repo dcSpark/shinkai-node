@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
 use regex::Regex;
-use super::inbox_name::InboxName;
+
+use crate::schemas::inbox_name::InboxName;
 
 #[derive(Debug)]
 pub enum MessageSchemaType {

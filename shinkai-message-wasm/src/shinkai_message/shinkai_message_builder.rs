@@ -1,16 +1,11 @@
 use wasm_bindgen::prelude::*;
 
-use crate::schemas::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_schemas::{JobScope, JobCreation, JobMessage, MessageSchemaType}, registration_code::RegistrationCode};
-
-#[allow(unused_imports)]
-use super::encryption::{decrypt_body_message, encrypt_body};
-use super::{
-    encryption::{encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
-    shinkai_message_handler::ShinkaiMessageHandler,
-    signatures::{sign_message, signature_public_key_to_string},
-};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_string_content, encrypt_body, encryption_public_key_to_string}, signatures::{sign_message, signature_public_key_to_string}}, schemas::registration_code::RegistrationCode};
+
+use super::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_schemas::{JobScope, JobCreation, MessageSchemaType, JobMessage}};
 
 pub type ProfileName = String;
 
@@ -429,11 +424,9 @@ impl ShinkaiMessageBuilder {
 
 #[cfg(test)]
 mod tests {
+    use crate::shinkai_utils::{signatures::{unsafe_deterministic_signature_keypair, verify_signature}, encryption::{unsafe_deterministic_encryption_keypair, decrypt_body_message, decrypt_content_message}};
+
     use super::*;
-    use crate::shinkai_message::{
-        encryption::{decrypt_body_message, decrypt_content_message, unsafe_deterministic_encryption_keypair},
-        signatures::{unsafe_deterministic_signature_keypair, verify_signature},
-    };
 
     #[test]
     fn test_builder_with_all_fields_no_encryption() {

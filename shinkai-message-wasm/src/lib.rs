@@ -1,9 +1,9 @@
-use schemas::shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage};
-use shinkai_message::{shinkai_message_builder::ShinkaiMessageBuilder, encryption::{EncryptionMethod, unsafe_deterministic_encryption_keypair}, signatures::unsafe_deterministic_signature_keypair};
+use shinkai_message::shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage};
 use wasm_bindgen::prelude::*;
 
 pub mod shinkai_message;
 pub mod schemas;
+pub mod shinkai_utils;
 
 // TODO: this needs to use shinkai message builder or something
 // Expose a function that creates a new ShinkaiMessage
@@ -41,10 +41,3 @@ pub fn create_message() -> Vec<u8> {
 
     buf
 }
-
-// Expose a function that parses a ShinkaiMessage from bytes
-// #[wasm_bindgen]
-// pub fn parse_message(data: &[u8]) -> String {
-    // let shinkai_message: ShinkaiMessage = Message::decode(data).unwrap();
-    // format!("{:?}", shinkai_message)
-// }
