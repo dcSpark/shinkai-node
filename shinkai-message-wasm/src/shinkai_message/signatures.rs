@@ -10,7 +10,7 @@ So, you would indeed need to use a different crate (such as ed25519_dalek) to cr
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
 use sha2::{Digest, Sha256};
 
-use crate::shinkai_message_proto::ShinkaiMessage;
+use crate::schemas::shinkai_message::ShinkaiMessage;
 
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 

@@ -1,30 +1,30 @@
-syntax = "proto3";
-package shinkai_message_proto;
+// syntax = "proto3";
+// package shinkai_message_proto;
 
-message InternalMetadata {
-    string sender_subidentity = 1;
-    string recipient_subidentity = 2;
-    string message_schema_type = 3;
-    string inbox = 4;
-    string encryption = 5;
-    // TODO: add sub_signature
-}
+// message InternalMetadata {
+//     string sender_subidentity = 1;
+//     string recipient_subidentity = 2;
+//     string message_schema_type = 3;
+//     string inbox = 4;
+//     string encryption = 5;
+//     // TODO: add sub_signature
+// }
 
-message ExternalMetadata {
-    string sender = 1;
-    string recipient = 2;
-    string scheduled_time = 3;
-    string signature = 4;
-    string other = 5;
-}
+// message ExternalMetadata {
+//     string sender = 1;
+//     string recipient = 2;
+//     string scheduled_time = 3;
+//     string signature = 4;
+//     string other = 5;
+// }
 
-message Body {
-    string content = 1;
-    InternalMetadata internal_metadata = 2;
-}
+// message Body {
+//     string content = 1;
+//     InternalMetadata internal_metadata = 2;
+// }
 
-message ShinkaiMessage {
-    Body body = 1;
-    ExternalMetadata external_metadata = 2;
-    string encryption = 3;
-}
+// message ShinkaiMessage {
+//     Body body = 1;
+//     ExternalMetadata external_metadata = 2;
+//     string encryption = 3;
+// }

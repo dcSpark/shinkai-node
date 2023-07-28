@@ -2,10 +2,10 @@
 
 use std::io::{Error, ErrorKind};
 
-use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}};
 use chrono::Utc;
-use prost::Message;
 use sha2::{Digest, Sha256};
+
+use crate::schemas::shinkai_message::{ShinkaiMessage, Body};
 
 use super::{
     encryption::{encrypt_body, EncryptionMethod},
@@ -26,14 +26,20 @@ pub enum EncryptionStatus {
 }
 
 impl ShinkaiMessageHandler {
-    pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        message.encode(&mut bytes).unwrap();
-        bytes
+    pub fn encode_body(body: Body) -> Vec<u8> {
+        bincode::serialize(&body).unwrap()
     }
 
-    pub fn decode_message(bytes: Vec<u8>) -> Result<ShinkaiMessage, prost::DecodeError> {
-        ShinkaiMessage::decode(bytes.as_slice())
+    pub fn decode_body(encoded: Vec<u8>) -> Body {
+        bincode::deserialize(&encoded[..]).unwrap()
+    }
+    
+    pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
+        bincode::serialize(&message).unwrap()
+    }
+
+    pub fn decode_message(encoded: Vec<u8>) -> ShinkaiMessage {
+        bincode::deserialize(&encoded[..]).unwrap()
     }
 
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
@@ -54,16 +60,6 @@ impl ShinkaiMessageHandler {
         hasher.update(format!("{:?}", message));
         let result = hasher.finalize();
         format!("{:x}", result)
-    }
-
-    pub fn encode_body(body: Body) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        body.encode(&mut bytes).unwrap();
-        bytes
-    }
-
-    pub fn decode_body(bytes: Vec<u8>) -> Result<Body, prost::DecodeError> {
-        Body::decode(bytes.as_slice())
     }
 
     pub fn encrypt_body_if_needed(
@@ -154,13 +150,13 @@ impl ShinkaiMessageHandler {
 
 #[cfg(test)]
 mod tests {
+    use crate::schemas::shinkai_message::ShinkaiMessage;
     use crate::shinkai_message::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
     use crate::shinkai_message::shinkai_message_handler::EncryptionStatus;
     use crate::shinkai_message::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
     use crate::shinkai_message::{
         shinkai_message_builder::ShinkaiMessageBuilder, shinkai_message_handler::ShinkaiMessageHandler,
     };
-    use crate::shinkai_message_proto::ShinkaiMessage;
 
     fn build_message(body_encryption: EncryptionMethod, content_encryption: EncryptionMethod) -> ShinkaiMessage {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -274,7 +270,7 @@ mod tests {
         let encoded_body = ShinkaiMessageHandler::encode_body(body.clone());
         assert!(encoded_body.len() > 0);
 
-        let decoded_body = ShinkaiMessageHandler::decode_body(encoded_body).unwrap();
+        let decoded_body = ShinkaiMessageHandler::decode_body(encoded_body);
 
         // Assert that the decoded body is the same as the original body
         assert_eq!(decoded_body.content, body.content);
@@ -284,7 +280,7 @@ mod tests {
     fn test_decode_message() {
         let message = build_message(EncryptionMethod::None, EncryptionMethod::None);
         let encoded_message = ShinkaiMessageHandler::encode_message(message.clone());
-        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();
@@ -314,7 +310,7 @@ mod tests {
     fn test_decode_encrypted_message() {
         let message = build_message(EncryptionMethod::None, EncryptionMethod::None);
         let encoded_message = ShinkaiMessageHandler::encode_message(message.clone());
-        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();

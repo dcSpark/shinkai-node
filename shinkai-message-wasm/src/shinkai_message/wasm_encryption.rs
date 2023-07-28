@@ -11,8 +11,9 @@ use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey, StaticSecret};
 
+use crate::schemas::shinkai_message::ShinkaiMessage;
+
 use super::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message_proto::{Body, ShinkaiMessage};
 
 #[wasm_bindgen]
 pub struct WasmEncryptionMethod {
@@ -249,8 +250,7 @@ pub fn decrypt_body_message(
             .map_err(|_| DecryptionError::new("Decryption failure!"))?;
 
         // Convert the decrypted bytes back into a Body
-        let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec())
-            .expect("Failed to decode decrypted body");
+        let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
 
         decrypted_message.body = Some(decrypted_body);
     } else {

@@ -1,15 +1,9 @@
+use schemas::shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage};
 use shinkai_message::{shinkai_message_builder::ShinkaiMessageBuilder, encryption::{EncryptionMethod, unsafe_deterministic_encryption_keypair}, signatures::unsafe_deterministic_signature_keypair};
 use wasm_bindgen::prelude::*;
-use prost::Message;
-use crate::shinkai_message_proto::{ShinkaiMessage, Body, InternalMetadata, ExternalMetadata};
 
 pub mod shinkai_message;
 pub mod schemas;
-
-// Include the generated protobuf code
-pub mod shinkai_message_proto {
-    include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
-}
 
 // TODO: this needs to use shinkai message builder or something
 // Expose a function that creates a new ShinkaiMessage
@@ -43,14 +37,14 @@ pub fn create_message() -> Vec<u8> {
     };
 
     let mut buf = vec![];
-    shinkai_message.encode(&mut buf).unwrap();
+    // shinkai_message.encode(&mut buf).unwrap();
 
     buf
 }
 
 // Expose a function that parses a ShinkaiMessage from bytes
-#[wasm_bindgen]
-pub fn parse_message(data: &[u8]) -> String {
-    let shinkai_message: ShinkaiMessage = Message::decode(data).unwrap();
-    format!("{:?}", shinkai_message)
-}
+// #[wasm_bindgen]
+// pub fn parse_message(data: &[u8]) -> String {
+    // let shinkai_message: ShinkaiMessage = Message::decode(data).unwrap();
+    // format!("{:?}", shinkai_message)
+// }

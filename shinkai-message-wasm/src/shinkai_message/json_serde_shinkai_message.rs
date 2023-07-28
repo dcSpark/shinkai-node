@@ -3,9 +3,8 @@ use serde::{
     Serialize, Serializer,
 };
 use std::fmt;
-
+use crate::schemas::shinkai_message::ShinkaiMessage;
 use super::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message_proto::ShinkaiMessage;
 
 pub struct JSONSerdeShinkaiMessage(pub ShinkaiMessage);
 
@@ -42,7 +41,7 @@ impl<'de> Visitor<'de> for JSONSerdeShinkaiMessageVisitor {
         while let Some(byte) = seq.next_element()? {
             bytes.push(byte);
         }
-        let message = ShinkaiMessageHandler::decode_message(bytes).map_err(de::Error::custom)?;
+        let message = ShinkaiMessageHandler::decode_message(bytes);
         Ok(JSONSerdeShinkaiMessage(message))
     }
 }

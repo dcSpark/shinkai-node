@@ -1,4 +1,6 @@
-use crate::{shinkai_message_proto::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, schemas::{message_schemas::{JobScope, JobCreation, MessageSchemaType, JobMessage}, registration_code::RegistrationCode}};
+use wasm_bindgen::prelude::*;
+
+use crate::schemas::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_schemas::{JobScope, JobCreation, JobMessage, MessageSchemaType}, registration_code::RegistrationCode};
 
 #[allow(unused_imports)]
 use super::encryption::{decrypt_body_message, encrypt_body};

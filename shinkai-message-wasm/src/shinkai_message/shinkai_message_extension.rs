@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{shinkai_message_proto::{self, Body, InternalMetadata, ExternalMetadata}, schemas::message_schemas::{JobMessage, JobCreation, JobPreMessage, MessageSchemaType}};
+use crate::schemas::{shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, MessageSchemaType}, shinkai_message::{ShinkaiMessage, InternalMetadata, Body, ExternalMetadata}};
 
 #[derive(Serialize, Deserialize)]
 pub struct BodyWrapper {
@@ -42,8 +42,8 @@ pub struct InternalMetadataWrapper {
     pub encryption: String,
 }
 
-impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
-    fn from(msg: &shinkai_message_proto::ShinkaiMessage) -> Self {
+impl From<&ShinkaiMessage> for ShinkaiMessageWrapper {
+    fn from(msg: &ShinkaiMessage) -> Self {
         let parsed_content = match msg.body.as_ref().and_then(|b| b.internal_metadata.as_ref()).and_then(|im| MessageSchemaType::from_str(&im.message_schema_type)).unwrap_or(MessageSchemaType::PureText) {
             MessageSchemaType::JobCreationSchema => ParsedContent::JobCreation(serde_json::from_str(&msg.body.as_ref().unwrap().content).unwrap()),
             MessageSchemaType::JobMessageSchema => ParsedContent::JobMessage(serde_json::from_str(&msg.body.as_ref().unwrap().content).unwrap()),
@@ -91,9 +91,9 @@ impl From<&shinkai_message_proto::ShinkaiMessage> for ShinkaiMessageWrapper {
     }
 }
 
-impl From<ShinkaiMessageWrapper> for shinkai_message_proto::ShinkaiMessage {
+impl From<ShinkaiMessageWrapper> for ShinkaiMessage {
     fn from(wrapper: ShinkaiMessageWrapper) -> Self {
-        shinkai_message_proto::ShinkaiMessage {
+        ShinkaiMessage {
             body: Some(Body {
                 content: wrapper.body.content,
                 internal_metadata: Some(InternalMetadata {
