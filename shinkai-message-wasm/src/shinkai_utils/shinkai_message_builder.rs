@@ -5,7 +5,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_string_content, encrypt_body, encryption_public_key_to_string}, signatures::{sign_message, signature_public_key_to_string}}, schemas::registration_code::RegistrationCode, shinkai_message::{shinkai_message::{Body, InternalMetadata, ExternalMetadata, ShinkaiMessage}, shinkai_message_schemas::{MessageSchemaType, JobScope, JobCreation, JobMessage}}};
 
-use super::shinkai_message_handler::ShinkaiMessageHandler;
+use super::{shinkai_message_handler::ShinkaiMessageHandler, encryption::clone_static_secret_key, signatures::clone_signature_secret_key};
 
 pub type ProfileName = String;
 
@@ -63,7 +63,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn message_schema_type(mut self, content: MessageSchemaType) -> Self {
-        // TODO: add validation here of the content: String or maybe even switch it to the new enum
         self.message_schema_type = content.clone();
         self
     }
@@ -170,32 +169,55 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    pub fn build(self) -> Result<ShinkaiMessage, &'static str> {
-        if self.internal_metadata.is_none() {
+    pub fn clone(&self) -> Self {
+        let my_encryption_secret_key_clone = clone_static_secret_key(&self.my_encryption_secret_key);
+        let my_signature_secret_key_clone = clone_signature_secret_key(&self.my_signature_secret_key);
+        let my_encryption_public_key_clone = x25519_dalek::PublicKey::from(&my_encryption_secret_key_clone);
+        let my_signature_public_key_clone = ed25519_dalek::PublicKey::from(&my_signature_secret_key_clone);
+        let receiver_public_key_clone = self.receiver_public_key.clone();
+
+        Self {
+            body: self.body.clone(),
+            message_schema_type: self.message_schema_type.clone(),
+            internal_metadata: self.internal_metadata.clone(),
+            external_metadata: self.external_metadata.clone(),
+            encryption: self.encryption.clone(),
+            my_encryption_secret_key: my_encryption_secret_key_clone,
+            my_encryption_public_key: my_encryption_public_key_clone,
+            my_signature_secret_key: my_signature_secret_key_clone,
+            my_signature_public_key: my_signature_public_key_clone,
+            receiver_public_key: receiver_public_key_clone,
+        }
+    }
+
+    pub fn build(&self) -> Result<ShinkaiMessage, &'static str> {
+        let mut new_self = self.clone();
+
+        if new_self.internal_metadata.is_none() {
             return Err("Internal metadata is required");
         }
 
         let encryption_method_none = EncryptionMethod::None.as_str().to_string();
-        if self.encryption != encryption_method_none
-            && self.internal_metadata.is_some()
-            && self.internal_metadata.as_ref().unwrap().encryption != encryption_method_none
+        if new_self.encryption != encryption_method_none
+            && new_self.internal_metadata.is_some()
+            && new_self.internal_metadata.as_ref().unwrap().encryption != encryption_method_none
         {
             return Err("Encryption should not be set on both body and internal metadata simultaneously");
         }
 
-        if let Some(mut body) = self.body {
+        if let Some(mut body) = new_self.body {
             let body_content = body.content.clone();
-            let internal_metadata_clone = self.internal_metadata.clone();
+            let internal_metadata_clone = new_self.internal_metadata.clone();
             body.internal_metadata = internal_metadata_clone.clone();
 
             // if self.internal_metadata.encryption is not None
-            let new_content = if let Some(internal_metadata) = &self.internal_metadata {
+            let new_content = if let Some(internal_metadata) = &new_self.internal_metadata {
                 if internal_metadata.encryption.as_str() != &encryption_method_none {
                     let encrypted_content = encrypt_string_content(
                         body_content,
                         internal_metadata.message_schema_type.clone().to_str().to_string(),
-                        &self.my_encryption_secret_key,
-                        &self.receiver_public_key,
+                        &new_self.my_encryption_secret_key,
+                        &new_self.receiver_public_key,
                         internal_metadata.encryption.as_str(),
                     )
                     .expect("Failed to encrypt body");
@@ -218,12 +240,12 @@ impl ShinkaiMessageBuilder {
             }
 
             // if self.encryption is not None
-            let new_body = if self.encryption.as_str() != &encryption_method_none {
+            let new_body = if new_self.encryption.as_str() != &encryption_method_none {
                 let encrypted_body = encrypt_body(
                     &ShinkaiMessageHandler::encode_body(body.clone()),
-                    &self.my_encryption_secret_key,
-                    &self.receiver_public_key,
-                    self.encryption.as_str(),
+                    &new_self.my_encryption_secret_key,
+                    &new_self.receiver_public_key,
+                    new_self.encryption.as_str(),
                 )
                 .expect("Failed to encrypt body");
 
@@ -240,20 +262,20 @@ impl ShinkaiMessageBuilder {
                 }
             };
 
-            let mut external_metadata = self.external_metadata.clone().ok_or("Missing external metadata")?;
+            let mut external_metadata = new_self.external_metadata.clone().ok_or("Missing external metadata")?;
 
             let unsigned_msg = ShinkaiMessage {
                 body: Some(new_body.clone()),
-                encryption: self.encryption.clone(),
-                external_metadata: self.external_metadata,
+                encryption: new_self.encryption.clone(),
+                external_metadata: new_self.external_metadata,
             };
-            let signature = sign_message(&self.my_signature_secret_key, unsigned_msg);
+            let signature = sign_message(&new_self.my_signature_secret_key, unsigned_msg);
 
             external_metadata.signature = signature;
 
             let signed_msg = ShinkaiMessage {
                 body: Some(new_body.clone()),
-                encryption: self.encryption.clone(),
+                encryption: new_self.encryption.clone(),
                 external_metadata: Some(external_metadata),
             };
 
