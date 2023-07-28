@@ -33,6 +33,26 @@ fn setup() {
     let _ = fs::remove_dir_all(&path);
 }
 
+fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
+    // Calculate the hash of the message for the key
+    let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
+
+    // Clone the external_metadata first, then unwrap
+    let cloned_external_metadata = message.external_metadata.clone();
+    let ext_metadata = cloned_external_metadata.expect("Failed to clone external metadata");
+    
+    // Get the scheduled time or calculate current time
+    let time_key = match ext_metadata.scheduled_time.is_empty() {
+        true => ShinkaiMessageHandler::generate_time_now(),
+        false => ext_metadata.scheduled_time.clone(),
+    };
+    
+    // Create the composite key by concatenating the time_key and the hash_key, with a separator
+    let composite_key = format!("{}:{}", time_key, hash_key);
+
+    Ok(composite_key)
+}    
+
 fn generate_message_with_text(
     content: String,
     my_encryption_secret_key: EncryptionStaticKey,

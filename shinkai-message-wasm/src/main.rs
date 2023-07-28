@@ -1,8 +1,9 @@
 mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
 }
-
+mod schemas;
 mod shinkai_message;
+
 use std::error::Error;
 use shinkai_message_wasm::shinkai_message_proto::{ShinkaiMessage, Body, InternalMetadata, ExternalMetadata};
 

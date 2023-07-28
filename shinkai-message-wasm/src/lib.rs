@@ -2,34 +2,13 @@ use shinkai_message::{shinkai_message_builder::ShinkaiMessageBuilder, encryption
 use wasm_bindgen::prelude::*;
 use prost::Message;
 use crate::shinkai_message_proto::{ShinkaiMessage, Body, InternalMetadata, ExternalMetadata};
+
 pub mod shinkai_message;
+pub mod schemas;
 
 // Include the generated protobuf code
 pub mod shinkai_message_proto {
     include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
-}
-
-pub fn builder_test() -> Vec<u8> {
-    let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
-
-    let recipient = "@@other_node.shinkai".to_string();
-    let sender = "@@my_node.shinkai".to_string();
-    let scheduled_time = "20230702T20533481345".to_string();    
-
-    let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
-    .body("body content".to_string())
-    .body_encryption(EncryptionMethod::None)
-    .message_schema_type("schema type".to_string())
-    .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
-    .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
-    .build();
-
-    let mut buf = vec![];
-    message_result.unwrap().encode(&mut buf).unwrap();
-
-    buf
 }
 
 // TODO: this needs to use shinkai message builder or something

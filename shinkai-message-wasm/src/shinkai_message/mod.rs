@@ -5,4 +5,6 @@ pub mod shinkai_message_builder;
 pub mod shinkai_message_extension;
 pub mod shinkai_message_handler;
 pub mod utils;
-pub mod message_schemas;
+
+pub mod wasm_encryption;
+pub mod wasm_shinkai_message_builder;

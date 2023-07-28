@@ -1,4 +1,4 @@
-use crate::shinkai_message_proto::{Body, InternalMetadata, ExternalMetadata};
+use crate::{shinkai_message_proto::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, schemas::{message_schemas::{JobScope, JobCreation, MessageSchemaType, JobMessage}, registration_code::RegistrationCode}};
 
 #[allow(unused_imports)]
 use super::encryption::{decrypt_body_message, encrypt_body};
@@ -7,14 +7,11 @@ use super::{
     shinkai_message_handler::ShinkaiMessageHandler,
     signatures::{sign_message, signature_public_key_to_string},
 };
-
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub type ProfileName = String;
 
-#[wasm_bindgen]
 pub struct ShinkaiMessageBuilder {
     body: Option<Body>,
     message_schema_type: String,
@@ -28,26 +25,14 @@ pub struct ShinkaiMessageBuilder {
     receiver_public_key: EncryptionPublicKey,
 }
 
-#[wasm_bindgen]
 impl ShinkaiMessageBuilder {
-    #[wasm_bindgen]
     pub fn new(
-        my_encryption_secret_key: String,
-        my_signature_secret_key: String,
-        receiver_public_key: String,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
     ) -> Self {
-        let my_encryption_secret_key_bytes = bs58::decode(&my_encryption_secret_key);
-        let my_encryption_secret_key = x25519_dalek::StaticSecret::from(my_encryption_secret_key_bytes);
-    
-        let my_signature_secret_key_bytes = bs58::decode(&my_signature_secret_key).unwrap();
-        let my_signature_secret_key = ed25519_dalek::SecretKey::from_bytes(&my_signature_secret_key_bytes).unwrap();
-    
-        let receiver_public_key_bytes = bs58::decode(&receiver_public_key).unwrap();
-        let receiver_public_key = x25519_dalek::PublicKey::from(receiver_public_key_bytes);
-    
         let my_encryption_public_key = x25519_dalek::PublicKey::from(&my_encryption_secret_key);
         let my_signature_public_key = ed25519_dalek::PublicKey::from(&my_signature_secret_key);
-    
         Self {
             body: None,
             message_schema_type: String::new(),
@@ -61,21 +46,17 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
         }
     }
-    
 
-    #[wasm_bindgen]
     pub fn body_encryption(mut self, encryption: EncryptionMethod) -> Self {
         self.encryption = encryption.as_str().to_string();
         self
     }
 
-    #[wasm_bindgen]
     pub fn no_body_encryption(mut self) -> Self {
         self.encryption = EncryptionMethod::None.as_str().to_string();
         self
     }
 
-    #[wasm_bindgen]
     pub fn body(mut self, content: String) -> Self {
         self.body = Some(Body {
             content,
@@ -84,14 +65,12 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn message_schema_type(mut self, content: String) -> Self {
         // TODO: add validation here of the content: String or maybe even switch it to the new enum
         self.message_schema_type = content.clone();
         self
     }
 
-    #[wasm_bindgen]
     pub fn internal_metadata(
         mut self,
         sender_subidentity: String,
@@ -109,7 +88,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn internal_metadata_with_schema(
         mut self,
         sender_subidentity: String,
@@ -128,7 +106,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn empty_encrypted_internal_metadata(mut self) -> Self {
         self.internal_metadata = Some(InternalMetadata {
             sender_subidentity: String::new(),
@@ -140,7 +117,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn empty_non_encrypted_internal_metadata(mut self) -> Self {
         self.internal_metadata = Some(InternalMetadata {
             sender_subidentity: String::new(),
@@ -152,7 +128,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn external_metadata(mut self, recipient: ProfileName, sender: ProfileName) -> Self {
         let signature = "".to_string();
         let other = "".to_string();
@@ -167,7 +142,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn external_metadata_with_other(mut self, recipient: ProfileName, sender: ProfileName, other: String) -> Self {
         let signature = "".to_string();
         let scheduled_time = ShinkaiMessageHandler::generate_time_now();
@@ -181,7 +155,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn external_metadata_with_schedule(
         mut self,
         recipient: ProfileName,
@@ -200,7 +173,6 @@ impl ShinkaiMessageBuilder {
         self
     }
 
-    #[wasm_bindgen]
     pub fn build(self) -> Result<ShinkaiMessage, &'static str> {
         if self.internal_metadata.is_none() {
             return Err("Internal metadata is required");
@@ -294,7 +266,6 @@ impl ShinkaiMessageBuilder {
         }
     }
 
-    #[wasm_bindgen]
     pub fn ack_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
@@ -310,7 +281,6 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
-    #[wasm_bindgen]
     pub fn ping_pong_message(
         message: String,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -330,7 +300,6 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
-    #[wasm_bindgen]
     pub fn job_creation(
         scope: JobScope,
         my_encryption_secret_key: EncryptionStaticKey,

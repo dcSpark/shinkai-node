@@ -2,7 +2,7 @@
 
 use std::io::{Error, ErrorKind};
 
-use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}, db::db_errors::ShinkaiDBError};
+use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}};
 use chrono::Utc;
 use prost::Message;
 use sha2::{Digest, Sha256};
@@ -150,26 +150,6 @@ impl ShinkaiMessageHandler {
             EncryptionStatus::NotCurrentlyEncrypted
         }
     }
-
-    pub fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
-        // Calculate the hash of the message for the key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
-    
-        // Clone the external_metadata first, then unwrap
-        let cloned_external_metadata = message.external_metadata.clone();
-        let ext_metadata = cloned_external_metadata.expect("Failed to clone external metadata");
-        
-        // Get the scheduled time or calculate current time
-        let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiMessageHandler::generate_time_now(),
-            false => ext_metadata.scheduled_time.clone(),
-        };
-        
-        // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:{}", time_key, hash_key);
-    
-        Ok(composite_key)
-    }    
 }
 
 #[cfg(test)]
@@ -357,24 +337,5 @@ mod tests {
         assert_eq!(external_metadata.recipient, recipient);
         assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
-    }
-
-    #[test]
-    fn test_get_message_key_deterministic() {
-        // Build a message
-        let body_encryption = EncryptionMethod::None;
-        let content_encryption = EncryptionMethod::None;
-        let message = build_message(body_encryption, content_encryption);
-
-        // Get the deterministic key
-        let key = ShinkaiMessageHandler::get_message_offset_db_key(&message).unwrap();
-
-        // Calculate the expected key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
-        let scheduled_time = "20230702T20533481345".to_string();  // This is the scheduled time used in the build_message function
-        let expected_key = format!("{}:{}", scheduled_time, hash_key);
-
-        // Check if the key matches the expected key
-        assert_eq!(key, expected_key);
     }
 }

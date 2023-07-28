@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::shinkai_message_proto::{self, Body, InternalMetadata, ExternalMetadata};
-
-use super::message_schemas::{MessageSchemaType, JobMessage, JobPreMessage};
+use crate::{shinkai_message_proto::{self, Body, InternalMetadata, ExternalMetadata}, schemas::message_schemas::{JobMessage, JobCreation, JobPreMessage, MessageSchemaType}};
 
 #[derive(Serialize, Deserialize)]
 pub struct BodyWrapper {
