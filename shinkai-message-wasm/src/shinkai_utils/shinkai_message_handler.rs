@@ -6,9 +6,7 @@ use sha2::{Digest, Sha256};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message};
-
-use super::{shinkai_message::{ShinkaiMessage, Body}, shinkai_message_extension::ShinkaiMessageWrapper};
+use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message}, shinkai_message::{shinkai_message::{ShinkaiMessage, Body}}};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -38,8 +36,7 @@ impl ShinkaiMessageHandler {
     }
 
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
-        let message_wrapper = ShinkaiMessageWrapper::from(&message);
-        let message_json = serde_json::to_string_pretty(&message_wrapper);
+        let message_json = serde_json::to_string_pretty(&message);
         message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
     }
 
@@ -146,11 +143,9 @@ impl ShinkaiMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shinkai_message::shinkai_message_handler::EncryptionStatus;
-    use crate::shinkai_message::{
-        shinkai_message_builder::ShinkaiMessageBuilder, shinkai_message_handler::ShinkaiMessageHandler,
-    };
+    use crate::shinkai_message::shinkai_message_schemas::MessageSchemaType;
     use crate::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+    use crate::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
     use crate::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
 
     fn build_message(body_encryption: EncryptionMethod, content_encryption: EncryptionMethod) -> ShinkaiMessage {
@@ -165,7 +160,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
-            .message_schema_type("MyType".to_string())
+            .message_schema_type(MessageSchemaType::PureText)
             .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
             .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
             .build();
@@ -285,7 +280,7 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, "MyType");
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::PureText);
 
         assert_eq!(decoded_message.encryption, "None");
 
@@ -315,7 +310,7 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, "MyType");
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::PureText);
         assert_eq!(decoded_message.encryption, "None");
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);

@@ -1,17 +1,22 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+use serde_json::Result;
+use regex::Regex;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+use crate::schemas::inbox_name::InboxName;
+
+use super::shinkai_message_schemas::MessageSchemaType;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InternalMetadata {
     pub sender_subidentity: String,
     pub recipient_subidentity: String,
-    pub message_schema_type: String,
+    pub message_schema_type: MessageSchemaType,
     pub inbox: String,
     pub encryption: String,
-    // TODO: add sub_signature
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExternalMetadata {
     pub sender: String,
     pub recipient: String,
@@ -20,13 +25,13 @@ pub struct ExternalMetadata {
     pub other: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Body {
     pub content: String,
     pub internal_metadata: Option<InternalMetadata>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShinkaiMessage {
     pub body: Option<Body>,
     pub external_metadata: Option<ExternalMetadata>,

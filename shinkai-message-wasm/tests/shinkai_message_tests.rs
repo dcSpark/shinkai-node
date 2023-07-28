@@ -15,10 +15,10 @@ mod tests {
         let internal_metadata = InternalMetadata::new(
             String::from("test_sender_subidentity"),
             String::from("test_recipient_subidentity"),
-            String::from("test_type"),
+            String::from("PureText"),
             String::from("test_inbox"),
             String::from("test_encryption")
-        );
+        ).unwrap();
         let body = Body::new(String::from("test_content"), Some(internal_metadata));
         let external_metadata = ExternalMetadata::new(
             String::from("test_sender"),
@@ -38,7 +38,7 @@ mod tests {
                 "internal_metadata": {
                     "sender_subidentity": "test_sender_subidentity",
                     "recipient_subidentity": "test_recipient_subidentity",
-                    "message_schema_type": "test_type",
+                    "message_schema_type": "PureText",
                     "inbox": "test_inbox",
                     "encryption": "test_encryption"
                 }
@@ -57,13 +57,15 @@ mod tests {
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_from_jsvalue() {
+        use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+
         let json_value = json!({
             "body": {
                 "content": "test_content",
                 "internal_metadata": {
                     "sender_subidentity": "test_sender_subidentity",
                     "recipient_subidentity": "test_recipient_subidentity",
-                    "message_schema_type": "test_type",
+                    "message_schema_type": "PureText",
                     "inbox": "test_inbox",
                     "encryption": "test_encryption"
                 }
@@ -89,7 +91,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.unwrap();
         assert_eq!(internal_metadata.sender_subidentity, String::from("test_sender_subidentity"));
         assert_eq!(internal_metadata.recipient_subidentity, String::from("test_recipient_subidentity"));
-        assert_eq!(internal_metadata.message_schema_type, String::from("test_type"));
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::PureText);
         assert_eq!(internal_metadata.inbox, String::from("test_inbox"));
         assert_eq!(internal_metadata.encryption, String::from("test_encryption"));
     

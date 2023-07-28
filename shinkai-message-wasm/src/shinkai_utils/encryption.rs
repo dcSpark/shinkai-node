@@ -12,7 +12,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
+
+use super::shinkai_message_handler::ShinkaiMessageHandler;
 
 pub enum EncryptionMethod {
     DiffieHellmanChaChaPoly1305,

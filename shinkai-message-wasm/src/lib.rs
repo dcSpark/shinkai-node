@@ -1,4 +1,4 @@
-use shinkai_message::shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage};
+use shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType};
 use wasm_bindgen::prelude::*;
 
 pub mod shinkai_message;
@@ -12,7 +12,7 @@ pub fn create_message() -> Vec<u8> {
     let internal_metadata = InternalMetadata {
         sender_subidentity: "sender_subidentity".to_string(),
         recipient_subidentity: "recipient_subidentity".to_string(),
-        message_schema_type: "message_schema_type".to_string(),
+        message_schema_type: MessageSchemaType::PureText,
         inbox: "inbox".to_string(),
         encryption: "encryption".to_string(),
     };

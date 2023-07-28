@@ -1,4 +1,4 @@
-use super::shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage};
+use super::{shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType};
 use serde_json::json;
 use serde_wasm_bindgen::{from_value, to_value};
 use wasm_bindgen::prelude::*;
@@ -10,14 +10,16 @@ impl InternalMetadata {
         message_schema_type: String,
         inbox: String,
         encryption: String,
-    ) -> Self {
-        InternalMetadata {
+    ) -> Option<Self> {
+        let message_schema_type = MessageSchemaType::from_str(&message_schema_type)?;
+
+        Some(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,
             message_schema_type,
             inbox,
             encryption,
-        }
+        })
     }
 
     pub fn to_jsvalue(&self) -> JsValue {
@@ -25,9 +27,14 @@ impl InternalMetadata {
         JsValue::from_str(&s)
     }
 
-    pub fn from_jsvalue(j: &JsValue) -> Self {
+    pub fn from_jsvalue(j: &JsValue) -> Option<Self> {
         let s = j.as_string().unwrap();
-        serde_json::from_str(&s).unwrap()
+        let mut parsed: Self = serde_json::from_str(&s).unwrap();
+
+        let message_schema_type = MessageSchemaType::from_str(&parsed.message_schema_type.to_str())?;
+        parsed.message_schema_type = message_schema_type;
+
+        Some(parsed)
     }
 }
 
@@ -99,19 +106,19 @@ impl ShinkaiMessage {
         ShinkaiMessage {
             body,
             external_metadata,
-            encryption
+            encryption,
         }
     }
 
     pub fn to_jsvalue(&self) -> JsValue {
         let body = match &self.body {
             Some(v) => serde_wasm_bindgen::from_value(v.to_jsvalue()).unwrap(),
-            None => serde_json::Value::Null
+            None => serde_json::Value::Null,
         };
 
         let external_metadata = match &self.external_metadata {
             Some(v) => serde_wasm_bindgen::from_value(v.to_jsvalue()).unwrap(),
-            None => serde_json::Value::Null
+            None => serde_json::Value::Null,
         };
 
         let result = json!({
@@ -132,8 +139,8 @@ impl ShinkaiMessage {
                 let body_value: serde_json::Value = parsed["body"].clone();
                 let body_jsvalue: JsValue = to_value(&body_value).unwrap();
                 Some(Body::from_jsvalue(&body_jsvalue))
-            },
-            true => None
+            }
+            true => None,
         };
 
         let external_metadata = match parsed["external_metadata"].is_null() {
@@ -141,14 +148,14 @@ impl ShinkaiMessage {
                 let external_metadata_value: serde_json::Value = parsed["external_metadata"].clone();
                 let external_metadata_jsvalue: JsValue = to_value(&external_metadata_value).unwrap();
                 Some(ExternalMetadata::from_jsvalue(&external_metadata_jsvalue))
-            },
-            true => None
+            }
+            true => None,
         };
 
         ShinkaiMessage {
             body,
             external_metadata,
-            encryption
+            encryption,
         }
     }
 }

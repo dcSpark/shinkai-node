@@ -4,12 +4,13 @@ use regex::Regex;
 
 use crate::schemas::inbox_name::InboxName;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
     PreMessageSchema,
     PureText,
+    Empty
 }
 
 impl MessageSchemaType {
@@ -19,6 +20,7 @@ impl MessageSchemaType {
             "JobMessageSchema" => Some(Self::JobMessageSchema),
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "TextContent" => Some(Self::PureText),
+            "" => Some(Self::Empty),
             _ => None,
         }
     }
@@ -29,11 +31,19 @@ impl MessageSchemaType {
             Self::JobMessageSchema => "JobMessageSchema",
             Self::PreMessageSchema => "PreMessageSchema",
             Self::PureText => "PureText",
+            Self::Empty => "",
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Empty => true,
+            _ => false,
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobScope {
     pub buckets: Vec<InboxName>,
     pub documents: Vec<String>, // TODO: link to embedding of documents uploaded

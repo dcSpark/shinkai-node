@@ -4,13 +4,13 @@ mod shinkai_utils;
 
 use std::error::Error;
 
-use crate::shinkai_message::shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body};
+use crate::shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body}, shinkai_message_schemas::MessageSchemaType};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let internal_metadata = InternalMetadata {
         sender_subidentity: "sender_subidentity".into(),
         recipient_subidentity: "recipient_subidentity".into(),
-        message_schema_type: "message_schema_type".into(),
+        message_schema_type: MessageSchemaType::PureText,
         inbox: "inbox".into(),
         encryption: "encryption".into(),
     };
