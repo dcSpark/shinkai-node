@@ -1,6 +1,7 @@
 mod schemas;
 mod shinkai_message;
 mod shinkai_utils;
+pub mod shinkai_wasm_wrappers;
 
 use std::error::Error;
 
