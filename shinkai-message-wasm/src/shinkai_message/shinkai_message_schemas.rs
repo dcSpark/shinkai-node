@@ -9,7 +9,7 @@ pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
     PreMessageSchema,
-    PureText,
+    TextContent,
     Empty
 }
 
@@ -19,7 +19,7 @@ impl MessageSchemaType {
             "JobCreationSchema" => Some(Self::JobCreationSchema),
             "JobMessageSchema" => Some(Self::JobMessageSchema),
             "PreMessageSchema" => Some(Self::PreMessageSchema),
-            "TextContent" => Some(Self::PureText),
+            "TextContent" => Some(Self::TextContent),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -30,7 +30,7 @@ impl MessageSchemaType {
             Self::JobCreationSchema => "JobCreationSchema",
             Self::JobMessageSchema => "JobMessageSchema",
             Self::PreMessageSchema => "PreMessageSchema",
-            Self::PureText => "PureText",
+            Self::TextContent => "TextContent",
             Self::Empty => "",
         }
     }

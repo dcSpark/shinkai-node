@@ -4,10 +4,13 @@ use std::error::Error;
 
 use bs58::decode;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
-use chacha20poly1305::ChaCha20Poly1305; // Or use ChaCha20Poly1305Ietf
+use chacha20poly1305::ChaCha20Poly1305; use js_sys::Uint8Array;
+// Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
+use serde::{Serialize, Deserialize};
 use sha2::{Digest, Sha256};
+use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -15,6 +18,8 @@ use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[wasm_bindgen]
 pub enum EncryptionMethod {
     DiffieHellmanChaChaPoly1305,
     None,
@@ -36,6 +41,16 @@ impl EncryptionMethod {
             _ => EncryptionMethod::None,
         }
     }
+}
+
+pub fn encryption_secret_key_to_jsvalue(secret: &StaticSecret) -> JsValue {
+    let bytes = secret.to_bytes().to_vec();
+    JsValue::from(Uint8Array::from(&bytes[..]))
+}
+
+pub fn encryption_public_key_to_jsvalue(public_key: &PublicKey) -> JsValue {
+    let bytes = public_key.as_bytes().to_vec();
+    JsValue::from(Uint8Array::from(&bytes[..]))
 }
 
 pub fn unsafe_deterministic_encryption_keypair(n: u32) -> (StaticSecret, PublicKey) {

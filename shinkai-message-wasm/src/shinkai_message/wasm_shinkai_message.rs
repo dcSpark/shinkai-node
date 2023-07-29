@@ -1,7 +1,25 @@
-use super::{shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType};
-use serde_json::json;
+use crate::shinkai_utils::encryption::EncryptionMethod;
+
+use super::{
+    shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
+    shinkai_message_schemas::MessageSchemaType,
+};
+use anyhow::Result;
 use serde_wasm_bindgen::{from_value, to_value};
+use thiserror::Error;
 use wasm_bindgen::prelude::*;
+
+#[derive(Error, Debug)]
+pub enum ShinkaiMessageWasmError {
+    #[error("Failed to parse MessageSchemaType: {0}")]
+    MessageSchemaTypeParseError(String),
+    #[error("Failed to serialize/deserialize with Serde JSON: {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+    #[error("Failed to serialize/deserialize with Serde WASM: {0}")]
+    SerdeWasmBindgenError(#[from] serde_wasm_bindgen::Error),
+    #[error("JsValue was not a string")]
+    JsValueNotString,
+}
 
 impl InternalMetadata {
     pub fn new(
@@ -12,6 +30,8 @@ impl InternalMetadata {
         encryption: String,
     ) -> Option<Self> {
         let message_schema_type = MessageSchemaType::from_str(&message_schema_type)?;
+        let encryption = EncryptionMethod::from_str(&encryption);
+        println!("message_schema_type: {:?}", message_schema_type);
 
         Some(InternalMetadata {
             sender_subidentity,
@@ -22,24 +42,18 @@ impl InternalMetadata {
         })
     }
 
-    pub fn to_jsvalue(&self) -> JsValue {
-        let s = serde_json::to_string(self).unwrap();
-        JsValue::from_str(&s)
+    pub fn to_jsvalue(&self) -> Result<JsValue, ShinkaiMessageWasmError> {
+        Ok(serde_wasm_bindgen::to_value(&self)?)
     }
 
-    pub fn from_jsvalue(j: &JsValue) -> Option<Self> {
-        let s = j.as_string().unwrap();
-        let mut parsed: Self = serde_json::from_str(&s).unwrap();
-
-        let message_schema_type = MessageSchemaType::from_str(&parsed.message_schema_type.to_str())?;
-        parsed.message_schema_type = message_schema_type;
-
-        Some(parsed)
+    pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
+        Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
 }
 
 impl ExternalMetadata {
     pub fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String) -> Self {
+        log::debug!("sender: {:?}", sender);
         ExternalMetadata {
             sender,
             recipient,
@@ -49,14 +63,13 @@ impl ExternalMetadata {
         }
     }
 
-    pub fn to_jsvalue(&self) -> JsValue {
-        let s = serde_json::to_string(self).unwrap();
-        JsValue::from_str(&s)
+    pub fn to_jsvalue(&self) -> Result<JsValue, ShinkaiMessageWasmError> {
+        Ok(serde_wasm_bindgen::to_value(&self)?)
     }
 
-    pub fn from_jsvalue(j: &JsValue) -> Self {
-        let s = j.as_string().unwrap();
-        serde_json::from_str(&s).unwrap()
+    pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
+        log::debug!("j: {:?}", j);
+        Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
 }
 
@@ -68,41 +81,17 @@ impl Body {
         }
     }
 
-    pub fn to_jsvalue(&self) -> JsValue {
-        let internal_metadata = match &self.internal_metadata {
-            Some(v) => serde_json::to_string(v).unwrap(),
-            None => String::from("null"),
-        };
-
-        let result = json!({
-            "content": self.content,
-            "internal_metadata": internal_metadata
-        });
-
-        to_value(&result).unwrap()
+    pub fn to_jsvalue(&self) -> Result<JsValue, ShinkaiMessageWasmError> {
+        Ok(serde_wasm_bindgen::to_value(&self)?)
     }
 
-    pub fn from_jsvalue(j: &JsValue) -> Self {
-        let parsed: serde_json::Value = from_value(j.clone()).unwrap();
-        let content = parsed["content"].as_str().unwrap().to_string();
-        let internal_metadata_str = parsed["internal_metadata"].as_str().unwrap();
-
-        let internal_metadata = if internal_metadata_str == "null" {
-            None
-        } else {
-            let internal_metadata: InternalMetadata = serde_json::from_str(internal_metadata_str).unwrap();
-            Some(internal_metadata)
-        };
-
-        Body {
-            content,
-            internal_metadata,
-        }
+    pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
+        Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
 }
 
 impl ShinkaiMessage {
-    pub fn new(body: Option<Body>, external_metadata: Option<ExternalMetadata>, encryption: String) -> Self {
+    pub fn new(body: Option<Body>, external_metadata: Option<ExternalMetadata>, encryption: EncryptionMethod) -> Self {
         ShinkaiMessage {
             body,
             external_metadata,
@@ -110,52 +99,16 @@ impl ShinkaiMessage {
         }
     }
 
-    pub fn to_jsvalue(&self) -> JsValue {
-        let body = match &self.body {
-            Some(v) => serde_wasm_bindgen::from_value(v.to_jsvalue()).unwrap(),
-            None => serde_json::Value::Null,
-        };
-
-        let external_metadata = match &self.external_metadata {
-            Some(v) => serde_wasm_bindgen::from_value(v.to_jsvalue()).unwrap(),
-            None => serde_json::Value::Null,
-        };
-
-        let result = json!({
-            "body": body,
-            "external_metadata": external_metadata,
-            "encryption": self.encryption
-        });
-
-        to_value(&result).unwrap()
+    pub fn from_json_str(j: &str) -> Result<Self, ShinkaiMessageWasmError> {
+        let shinkai_message = serde_json::from_str(j).map_err(|e| ShinkaiMessageWasmError::from(e))?; 
+        Ok(shinkai_message)
     }
 
-    pub fn from_jsvalue(j: &JsValue) -> Self {
-        let parsed: serde_json::Value = from_value(j.clone()).unwrap();
-        let encryption = parsed["encryption"].as_str().unwrap().to_string();
+    pub fn to_jsvalue(&self) -> Result<JsValue, JsValue> {
+        Ok(serde_wasm_bindgen::to_value(&self)?)
+    }
 
-        let body = match parsed["body"].is_null() {
-            false => {
-                let body_value: serde_json::Value = parsed["body"].clone();
-                let body_jsvalue: JsValue = to_value(&body_value).unwrap();
-                Some(Body::from_jsvalue(&body_jsvalue))
-            }
-            true => None,
-        };
-
-        let external_metadata = match parsed["external_metadata"].is_null() {
-            false => {
-                let external_metadata_value: serde_json::Value = parsed["external_metadata"].clone();
-                let external_metadata_jsvalue: JsValue = to_value(&external_metadata_value).unwrap();
-                Some(ExternalMetadata::from_jsvalue(&external_metadata_jsvalue))
-            }
-            true => None,
-        };
-
-        ShinkaiMessage {
-            body,
-            external_metadata,
-            encryption,
-        }
+    pub fn from_jsvalue(j: &JsValue) -> Result<ShinkaiMessage, JsValue> {     
+        Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
 }

@@ -8,11 +8,23 @@ So, you would indeed need to use a different crate (such as ed25519_dalek) to cr
  */
 
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
+use js_sys::Uint8Array;
 use sha2::{Digest, Sha256};
+use wasm_bindgen::JsValue;
 
 use crate::shinkai_message::{shinkai_message::ShinkaiMessage};
 
 use super::shinkai_message_handler::ShinkaiMessageHandler;
+
+pub fn signature_secret_key_to_jsvalue(secret_key: &SecretKey) -> JsValue {
+    let bytes = secret_key.as_bytes().to_vec();
+    JsValue::from(Uint8Array::from(&bytes[..]))
+}
+
+pub fn signature_public_key_to_jsvalue(public_key: &PublicKey) -> JsValue {
+    let bytes = public_key.as_bytes().to_vec();
+    JsValue::from(Uint8Array::from(&bytes[..]))
+}
 
 pub fn unsafe_deterministic_signature_keypair(n: u32) -> (SecretKey, PublicKey) {
     let mut hasher = Sha256::new();

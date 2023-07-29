@@ -5,15 +5,15 @@ pub mod shinkai_wasm_wrappers;
 
 use std::error::Error;
 
-use crate::shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body}, shinkai_message_schemas::MessageSchemaType};
+use crate::{shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body}, shinkai_message_schemas::MessageSchemaType}, shinkai_utils::encryption::EncryptionMethod};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let internal_metadata = InternalMetadata {
         sender_subidentity: "sender_subidentity".into(),
         recipient_subidentity: "recipient_subidentity".into(),
-        message_schema_type: MessageSchemaType::PureText,
+        message_schema_type: MessageSchemaType::TextContent,
         inbox: "inbox".into(),
-        encryption: "encryption".into(),
+        encryption: EncryptionMethod::None,
     };
 
     let external_metadata = ExternalMetadata {
@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let shinkai_message = ShinkaiMessage {
         body: Some(body),
         external_metadata: Some(external_metadata),
-        encryption: "encryption".into(),
+        encryption: EncryptionMethod::None,
     };
 
     println!("Shinkai message: {:?}", shinkai_message);

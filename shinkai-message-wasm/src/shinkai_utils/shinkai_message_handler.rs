@@ -65,7 +65,7 @@ impl ShinkaiMessageHandler {
         }
 
         let mut msg_to_encrypt = message.clone();
-        msg_to_encrypt.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str().to_string();
+        msg_to_encrypt.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
 
         let encrypted_body = encrypt_body(
             &ShinkaiMessageHandler::encode_body(msg_to_encrypt.body.unwrap()),
@@ -100,7 +100,7 @@ impl ShinkaiMessageHandler {
     }
 
     pub fn is_body_currently_encrypted(message: &ShinkaiMessage) -> bool {
-        if message.encryption == EncryptionMethod::None.as_str().to_string() {
+        if message.encryption == EncryptionMethod::None {
             return false;
         }
 
@@ -119,7 +119,7 @@ impl ShinkaiMessageHandler {
             if let Some(internal_metadata) = body.internal_metadata {
                 let encryption_method_none = EncryptionMethod::None.as_str().to_string();
 
-                if internal_metadata.encryption != encryption_method_none
+                if internal_metadata.encryption != EncryptionMethod::None
                     && internal_metadata.message_schema_type.is_empty()
                 {
                     return true;
@@ -160,7 +160,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
-            .message_schema_type(MessageSchemaType::PureText)
+            .message_schema_type(MessageSchemaType::TextContent)
             .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
             .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
             .build();
@@ -280,9 +280,9 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::PureText);
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
 
-        assert_eq!(decoded_message.encryption, "None");
+        assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
@@ -310,8 +310,8 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::PureText);
-        assert_eq!(decoded_message.encryption, "None");
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
+        assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();

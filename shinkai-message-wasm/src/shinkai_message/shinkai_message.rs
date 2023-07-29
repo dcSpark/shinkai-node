@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use serde_json::Result;
 use regex::Regex;
 
-use crate::schemas::inbox_name::InboxName;
+use crate::shinkai_utils::encryption::EncryptionMethod;
 
 use super::shinkai_message_schemas::MessageSchemaType;
 
@@ -13,7 +13,7 @@ pub struct InternalMetadata {
     pub recipient_subidentity: String,
     pub message_schema_type: MessageSchemaType,
     pub inbox: String,
-    pub encryption: String,
+    pub encryption: EncryptionMethod,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,5 +35,10 @@ pub struct Body {
 pub struct ShinkaiMessage {
     pub body: Option<Body>,
     pub external_metadata: Option<ExternalMetadata>,
-    pub encryption: String,
+    #[serde(default = "default_encryption_method")]
+    pub encryption: EncryptionMethod,
+}
+
+fn default_encryption_method() -> EncryptionMethod {
+    EncryptionMethod::DiffieHellmanChaChaPoly1305
 }

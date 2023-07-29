@@ -223,8 +223,8 @@ impl ShinkaiMessageBuilderWrapper {
         if let Some(ref builder) = self.inner {
             match builder.build() {
                 Ok(shinkai_message) => {
-                    let js_value = shinkai_message.to_jsvalue();
-                    Ok(ShinkaiMessageWrapper::from_jsvalue(&js_value))
+                    let js_value = shinkai_message.to_jsvalue()?;
+                    Ok(ShinkaiMessageWrapper::from_jsvalue(&js_value)?)
                 }
                 Err(e) => Err(JsValue::from_str(e)),
             }
