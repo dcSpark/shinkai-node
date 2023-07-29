@@ -66,5 +66,16 @@ impl ShinkaiMessageWrapper {
     pub fn from_jsvalue(j: &JsValue) -> Result<ShinkaiMessageWrapper, JsValue> {
         let inner = ShinkaiMessage::from_jsvalue(j)?;
         Ok(ShinkaiMessageWrapper { inner })
-    } 
+    }
+
+    #[wasm_bindgen]
+    pub fn to_json_str(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
+    pub fn from_json_str(s: &str) -> Result<ShinkaiMessageWrapper, JsValue> {
+        let inner: ShinkaiMessage = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(ShinkaiMessageWrapper { inner })
+    }
 }

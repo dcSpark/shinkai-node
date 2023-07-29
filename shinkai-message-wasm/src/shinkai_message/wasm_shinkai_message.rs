@@ -49,6 +49,16 @@ impl InternalMetadata {
     pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
         Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
+
+    pub fn to_json_str(&self) -> Result<String, ShinkaiMessageWasmError> {
+        let json_str = serde_json::to_string(self).map_err(|e| ShinkaiMessageWasmError::from(e))?;
+        Ok(json_str)
+    }
+
+    pub fn from_json_str(j: &str) -> Result<Self, ShinkaiMessageWasmError> {
+        let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiMessageWasmError::from(e))?; 
+        Ok(internal_metadata)
+    }
 }
 
 impl ExternalMetadata {
@@ -71,6 +81,16 @@ impl ExternalMetadata {
         log::debug!("j: {:?}", j);
         Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
+
+    pub fn to_json_str(&self) -> Result<String, ShinkaiMessageWasmError> {
+        let json_str = serde_json::to_string(self).map_err(|e| ShinkaiMessageWasmError::from(e))?;
+        Ok(json_str)
+    }
+
+    pub fn from_json_str(j: &str) -> Result<Self, ShinkaiMessageWasmError> {
+        let external_metadata = serde_json::from_str(j).map_err(|e| ShinkaiMessageWasmError::from(e))?; 
+        Ok(external_metadata)
+    }
 }
 
 impl Body {
@@ -87,6 +107,16 @@ impl Body {
 
     pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
         Ok(serde_wasm_bindgen::from_value(j.clone())?)
+    }
+
+    pub fn to_json_str(&self) -> Result<String, ShinkaiMessageWasmError> {
+        let json_str = serde_json::to_string(self).map_err(|e| ShinkaiMessageWasmError::from(e))?;
+        Ok(json_str)
+    }
+
+    pub fn from_json_str(j: &str) -> Result<Self, ShinkaiMessageWasmError> {
+        let body = serde_json::from_str(j).map_err(|e| ShinkaiMessageWasmError::from(e))?; 
+        Ok(body)
     }
 }
 
@@ -106,6 +136,11 @@ impl ShinkaiMessage {
 
     pub fn to_jsvalue(&self) -> Result<JsValue, JsValue> {
         Ok(serde_wasm_bindgen::to_value(&self)?)
+    }
+
+    pub fn to_json_str(&self) -> Result<String, ShinkaiMessageWasmError> {
+        let json_str = serde_json::to_string(self).map_err(|e| ShinkaiMessageWasmError::from(e))?;
+        Ok(json_str)
     }
 
     pub fn from_jsvalue(j: &JsValue) -> Result<ShinkaiMessage, JsValue> {     

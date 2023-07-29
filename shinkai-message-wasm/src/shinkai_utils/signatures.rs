@@ -11,8 +11,12 @@ use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
 use js_sys::Uint8Array;
 use sha2::{Digest, Sha256};
 use wasm_bindgen::JsValue;
+use wasm_bindgen::prelude::*;
 
-use crate::shinkai_message::{shinkai_message::ShinkaiMessage};
+use crate::{
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_wasm_wrappers::shinkai_message_wrapper::ShinkaiMessageWrapper,
+};
 
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 
@@ -109,8 +113,7 @@ pub fn sign_message(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
     hasher.update(message_bytes);
     let message_hash = hasher.finalize();
     let public_key = PublicKey::from(secret_key);
-    let secret_key_clone =
-        SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
+    let secret_key_clone = SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
 
     let keypair = ed25519_dalek::Keypair {
         public: public_key,

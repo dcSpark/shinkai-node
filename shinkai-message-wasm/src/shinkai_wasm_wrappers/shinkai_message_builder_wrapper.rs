@@ -1,11 +1,15 @@
+use crate::schemas::registration_code::RegistrationCode;
+use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope};
+use crate::shinkai_utils::encryption::encryption_public_key_to_string;
+use crate::shinkai_utils::signatures::signature_public_key_to_string;
+use crate::shinkai_wasm_wrappers::shinkai_message_wrapper::ShinkaiMessageWrapper;
 use crate::{
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
         encryption::EncryptionMethod,
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-    }
+    },
 };
-use crate::shinkai_wasm_wrappers::shinkai_message_wrapper::ShinkaiMessageWrapper;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use js_sys::Uint8Array;
 use wasm_bindgen::prelude::*;
@@ -232,6 +236,243 @@ impl ShinkaiMessageBuilderWrapper {
             Err(JsValue::from_str(
                 "Inner ShinkaiMessageBuilder is None. This should never happen.",
             ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn build_to_jsvalue(&mut self) -> Result<JsValue, JsValue> {
+        if let Some(ref builder) = self.inner {
+            match builder.build() {
+                Ok(shinkai_message) => {
+                    let js_value = shinkai_message.to_jsvalue()?;
+                    Ok(js_value)
+                }
+                Err(e) => Err(JsValue::from_str(e)),
+            }
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn build_to_string(&mut self) -> Result<String, JsValue> {
+        if let Some(ref builder) = self.inner {
+            match builder.build() {
+                Ok(shinkai_message) => {
+                    let json =
+                        serde_json::to_string(&shinkai_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
+                    Ok(json)
+                }
+                Err(e) => Err(JsValue::from_str(e)),
+            }
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn ack_message(
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<JsValue, JsValue> {
+        match ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .body("ACK".to_string())
+            .empty_non_encrypted_internal_metadata()
+            .no_body_encryption()
+            .external_metadata(receiver, sender)
+            .build()
+        {
+            Ok(message) => {
+                serde_wasm_bindgen::to_value(&message).map_err(|_| JsValue::from_str("Failed to serialize to JsValue"))
+            }
+            Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn code_registration(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        code: String,
+        permission_type: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<JsValue, JsValue> {
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+        let registration_code = RegistrationCode {
+            code,
+            profile_name: sender.clone(),
+            identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
+            encryption_pk: other.clone(),
+            permission_type,
+        };
+
+        let body = serde_json::to_string(&registration_code)
+            .map_err(|_| JsValue::from_str("Failed to serialize registration code to JSON"))?;
+
+        println!(
+            "code_registration> receiver_public_key = {:?}",
+            encryption_public_key_to_string(receiver_public_key)
+        );
+        match ShinkaiMessageBuilder::new(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+        )
+        .body(body)
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .internal_metadata(sender, "".to_string(), "".to_string(), EncryptionMethod::None)
+        // we are interacting with the associated node so the receiver and the sender are from the same base node
+        .external_metadata_with_other(receiver.clone(), receiver, other)
+        .build()
+        {
+            Ok(message) => {
+                serde_wasm_bindgen::to_value(&message).map_err(|_| JsValue::from_str("Failed to serialize to JsValue"))
+            }
+            Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn ping_pong_message(&mut self, message: String, sender: String, receiver: String) -> Result<JsValue, JsValue> {
+        if message != "Ping" && message != "Pong" {
+            return Err(JsValue::from_str("Invalid message: must be 'Ping' or 'Pong'"));
+        }
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner
+                .body(message)
+                .empty_non_encrypted_internal_metadata()
+                .no_body_encryption()
+                .external_metadata(receiver, sender);
+            match inner.build() {
+                Ok(message) => {
+                    let serialized_message = serde_json::to_string(&message)
+                        .map_err(|_| JsValue::from_str("Failed to serialize ShinkaiMessage"))?;
+                    Ok(JsValue::from_str(&serialized_message))
+                }
+                Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
+            }
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn job_creation(
+        &mut self,
+        scope: JsValue,
+        node_sender: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> Result<JsValue, JsValue> {
+        let scope: JobScope = serde_wasm_bindgen::from_value(scope)
+            .map_err(|_| JsValue::from_str("Failed to convert scope from JsValue"))?;
+
+        let job_creation = JobCreation { scope };
+        let body = serde_json::to_string(&job_creation)
+            .map_err(|_| JsValue::from_str("Failed to serialize job creation to JSON"))?;
+
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner
+                .body(body)
+                .internal_metadata_with_schema(
+                    "".to_string(),
+                    node_receiver_subidentity.clone(),
+                    "".to_string(),
+                    MessageSchemaType::JobCreationSchema,
+                    EncryptionMethod::None,
+                )
+                .no_body_encryption()
+                .external_metadata(node_receiver, node_sender);
+            match inner.build() {
+                Ok(message) => {
+                    let serialized_message = serde_json::to_string(&message)
+                        .map_err(|_| JsValue::from_str("Failed to serialize ShinkaiMessage"))?;
+                    Ok(JsValue::from_str(&serialized_message))
+                }
+                Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
+            }
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn job_message(
+        &mut self,
+        job_id: String,
+        content: String,
+        node_sender: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
+    ) -> Result<JsValue, JsValue> {
+        let job_message = JobMessage { job_id, content };
+        let body = serde_json::to_string(&job_message)
+            .map_err(|_| JsValue::from_str("Failed to serialize job message to JSON"))?;
+
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner
+                .body(body)
+                .internal_metadata_with_schema(
+                    "".to_string(),
+                    node_receiver_subidentity.clone(),
+                    "".to_string(),
+                    MessageSchemaType::JobMessageSchema,
+                    EncryptionMethod::None,
+                )
+                .no_body_encryption()
+                .external_metadata(node_receiver, node_sender);
+            match inner.build() {
+                Ok(message) => serde_wasm_bindgen::to_value(&message)
+                    .map_err(|_| JsValue::from_str("Failed to serialize to JsValue")),
+                Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
+            }
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn error_message(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+        error_msg: String,
+    ) -> Result<JsValue, JsValue> {
+        // TODO: fix so they convert from bs58
+        let my_encryption_secret_key = StaticSecret::from(parse_key_string(&my_encryption_secret_key));
+        let my_signature_secret_key = SecretKey::from(parse_key_string(&my_signature_secret_key));
+        let receiver_public_key = PublicKey::from(parse_key_string(&receiver_public_key));
+    
+        match ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
+            .body(format!("{{error: \"{}\"}}", error_msg))
+            .empty_encrypted_internal_metadata()
+            .no_body_encryption()
+            .build()
+        {
+            Ok(message) => {
+                serde_wasm_bindgen::to_value(&message).map_err(|_| JsValue::from_str("Failed to serialize to JsValue"))
+            }
+            Err(_) => Err(JsValue::from_str("Failed to build ShinkaiMessage")),
         }
     }
 }
