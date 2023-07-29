@@ -8,6 +8,8 @@ use std::error::Error;
 use crate::{shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body}, shinkai_message_schemas::MessageSchemaType}, shinkai_utils::encryption::EncryptionMethod};
 
 fn main() -> Result<(), Box<dyn Error>> {
+    console_log::init_with_level(log::Level::Debug).expect("error initializing log");
+
     let internal_metadata = InternalMetadata {
         sender_subidentity: "sender_subidentity".into(),
         recipient_subidentity: "recipient_subidentity".into(),

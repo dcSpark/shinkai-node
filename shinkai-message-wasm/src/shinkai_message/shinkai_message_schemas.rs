@@ -65,6 +65,16 @@ impl JobScope {
     pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
         serde_json::from_slice(bytes)
     }
+
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -79,10 +89,34 @@ pub struct JobMessage {
     pub content: String,
 }
 
+impl JobMessage {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct JobToolCall {
     pub tool_id: String,
     pub inputs: std::collections::HashMap<String, String>,
+}
+
+impl JobToolCall {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -97,6 +131,18 @@ pub struct JobPreMessage {
     pub tool_calls: Vec<JobToolCall>,
     pub content: String,
     pub recipient: JobRecipient,
+}
+
+impl JobPreMessage {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
+    }
 }
 
 impl JobRecipient {
@@ -117,5 +163,15 @@ impl JobRecipient {
             }
             _ => Ok(()), // For other variants we do not perform validation, so return Ok
         }
+    }
+
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
     }
 }

@@ -1,9 +1,12 @@
 use crate::schemas::registration_code::RegistrationCode;
 use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope};
 use crate::shinkai_utils::encryption::{
-    encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key, encryption_secret_key_to_string,
+    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
+    string_to_encryption_static_key,
 };
-use crate::shinkai_utils::signatures::{signature_public_key_to_string, string_to_signature_secret_key, signature_secret_key_to_string};
+use crate::shinkai_utils::signatures::{
+    signature_public_key_to_string, signature_secret_key_to_string, string_to_signature_secret_key,
+};
 use crate::shinkai_wasm_wrappers::shinkai_message_wrapper::ShinkaiMessageWrapper;
 use crate::{
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
@@ -14,6 +17,7 @@ use crate::{
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use js_sys::Uint8Array;
+use serde::{Serialize, Deserialize};
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -307,10 +311,10 @@ impl ShinkaiMessageBuilderWrapper {
         let my_subidentity_encryption_sk = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
         let my_subidentity_signature_sk = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
         let receiver_public_key = string_to_encryption_public_key(&receiver_public_key)?;
-    
+
         let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
-    
+
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
@@ -319,25 +323,27 @@ impl ShinkaiMessageBuilderWrapper {
             encryption_pk: other.clone(),
             permission_type,
         };
-    
-        let body = serde_json::to_string(&registration_code)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    
+
+        let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
         let my_subidentity_encryption_sk_str = encryption_secret_key_to_string(my_subidentity_encryption_sk);
         let my_subidentity_signature_sk_str = signature_secret_key_to_string(my_subidentity_signature_sk);
         let receiver_public_key_str = encryption_public_key_to_string(receiver_public_key);
-    
-        let mut builder = ShinkaiMessageBuilderWrapper::new(my_subidentity_encryption_sk_str, my_subidentity_signature_sk_str, receiver_public_key_str)?;
+
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_subidentity_encryption_sk_str,
+            my_subidentity_signature_sk_str,
+            receiver_public_key_str,
+        )?;
         let body_encryption = JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str());
-        let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str()); 
+        let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
         let _ = builder.body(body);
         let _ = builder.body_encryption(body_encryption);
         let _ = builder.internal_metadata(sender, "".to_string(), "".to_string(), internal_encryption);
         let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
-    
+
         builder.build_to_string()
     }
-       
 
     #[wasm_bindgen]
     pub fn ping_pong_message(
@@ -373,48 +379,59 @@ impl ShinkaiMessageBuilderWrapper {
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
-        let scope: JobScope = serde_wasm_bindgen::from_value(scope)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    
+        let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
         let job_creation = JobCreation { scope };
-        let body = serde_json::to_string(&job_creation)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    
-        let mut builder = ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
-    
+        let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let mut builder =
+            ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
+
         let _ = builder.body(body);
-        let _ = builder.internal_metadata_with_schema("".to_string(), receiver_subidentity.clone(), "".to_string(), JsValue::from_str("JobCreationSchema"), JsValue::from_str("None"));
+        let _ = builder.internal_metadata_with_schema(
+            "".to_string(),
+            receiver_subidentity.clone(),
+            "".to_string(),
+            JsValue::from_str("JobCreationSchema"),
+            JsValue::from_str("None"),
+        );
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);
-        
+
         builder.build_to_string()
     }
-    
+
     #[wasm_bindgen]
     pub fn job_message(
+        job_id: String,
+        content: String,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        job_id: String,
-        content: String,
         sender: ProfileName,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let job_message = JobMessage { job_id, content };
-        let body = serde_json::to_string(&job_message)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    
-        let mut builder = ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
-    
+
+        let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        let mut builder =
+            ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
+
         let _ = builder.body(body);
-        let _ = builder.internal_metadata_with_schema("".to_string(), receiver_subidentity.clone(), "".to_string(), JsValue::from_str("JobMessageSchema"), JsValue::from_str("None"));
+        let _ = builder.internal_metadata_with_schema(
+            "".to_string(),
+            receiver_subidentity.clone(),
+            "".to_string(),
+            JsValue::from_str("JobMessageSchema"),
+            JsValue::from_str("None"),
+        );
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);
-        
+
         builder.build_to_string()
     }
-    
 
     #[wasm_bindgen]
     pub fn terminate_message(
