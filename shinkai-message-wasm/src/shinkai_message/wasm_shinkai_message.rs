@@ -31,7 +31,6 @@ impl InternalMetadata {
     ) -> Option<Self> {
         let message_schema_type = MessageSchemaType::from_str(&message_schema_type)?;
         let encryption = EncryptionMethod::from_str(&encryption);
-        println!("message_schema_type: {:?}", message_schema_type);
 
         Some(InternalMetadata {
             sender_subidentity,
@@ -63,7 +62,6 @@ impl InternalMetadata {
 
 impl ExternalMetadata {
     pub fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String) -> Self {
-        log::debug!("sender: {:?}", sender);
         ExternalMetadata {
             sender,
             recipient,
@@ -78,7 +76,6 @@ impl ExternalMetadata {
     }
 
     pub fn from_jsvalue(j: &JsValue) -> Result<Self, ShinkaiMessageWasmError> {
-        log::debug!("j: {:?}", j);
         Ok(serde_wasm_bindgen::from_value(j.clone())?)
     }
 

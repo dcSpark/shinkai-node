@@ -6,11 +6,12 @@ mod tests {
     use serde_wasm_bindgen::from_value;
     use shinkai_message_wasm::shinkai_message::shinkai_message::{Body, ExternalMetadata, ShinkaiMessage};
     use shinkai_message_wasm::shinkai_utils::encryption::{
-        encryption_public_key_to_jsvalue, encryption_secret_key_to_jsvalue, unsafe_deterministic_encryption_keypair,
-        EncryptionMethod,
+        encryption_public_key_to_jsvalue, encryption_public_key_to_string, encryption_secret_key_to_jsvalue,
+        encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
     };
     use shinkai_message_wasm::shinkai_utils::signatures::{
-        signature_secret_key_to_jsvalue, unsafe_deterministic_signature_keypair, verify_signature,
+        signature_secret_key_to_jsvalue, signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
+        verify_signature,
     };
     use shinkai_message_wasm::{ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper};
     use wasm_bindgen::prelude::*;
@@ -27,12 +28,16 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let my_encryption_sk_js = encryption_secret_key_to_jsvalue(&my_encryption_sk);
-        let my_identity_sk_js = signature_secret_key_to_jsvalue(&my_identity_sk);
-        let node2_encryption_pk_js = encryption_public_key_to_jsvalue(&node2_encryption_pk);
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk);
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let node2_encryption_pk_string = encryption_public_key_to_string(node2_encryption_pk);
 
-        let mut builder =
-            ShinkaiMessageBuilderWrapper::new(my_encryption_sk_js, my_identity_sk_js, node2_encryption_pk_js).unwrap();
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            node2_encryption_pk_string,
+        )
+        .unwrap();
 
         let _ = builder.body("body content".into());
         let _ = builder.body_encryption("None".into());
@@ -72,7 +77,7 @@ mod tests {
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_jsvalue_builder_with_all_fields_no_encryption() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -83,12 +88,16 @@ mod tests {
         let sender = "@@my_node.shinkai".to_string();
         let scheduled_time = "20230702T20533481345".to_string();
 
-        let my_encryption_sk_js = encryption_secret_key_to_jsvalue(&my_encryption_sk);
-        let my_identity_sk_js = signature_secret_key_to_jsvalue(&my_identity_sk);
-        let node2_encryption_pk_js = encryption_public_key_to_jsvalue(&node2_encryption_pk);
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk);
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let node2_encryption_pk_string = encryption_public_key_to_string(node2_encryption_pk);
 
-        let mut builder =
-            ShinkaiMessageBuilderWrapper::new(my_encryption_sk_js, my_identity_sk_js, node2_encryption_pk_js).unwrap();
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            node2_encryption_pk_string,
+        )
+        .unwrap();
 
         let _ = builder.body("body content".into());
         let _ = builder.body_encryption("None".into());
@@ -103,11 +112,11 @@ mod tests {
         let message_result = builder.build_to_jsvalue();
         assert!(message_result.is_ok());
 
-        let message_jsvalue = message_result.unwrap();
-        let message: ShinkaiMessageWrapper = ShinkaiMessageWrapper::from_jsvalue(&message_jsvalue).unwrap();
+        let message_string = message_result.unwrap();
+        let message: ShinkaiMessageWrapper = ShinkaiMessageWrapper::from_jsvalue(&message_string).unwrap();
 
-        let body_jsvalue = message.body().unwrap();
-        let body: Body = Body::from_jsvalue(&body_jsvalue).unwrap();
+        let body_string = message.body().unwrap();
+        let body: Body = Body::from_jsvalue(&body_string).unwrap();
         let internal_metadata = body.internal_metadata.unwrap();
         let encryption = EncryptionMethod::from_str(&message.encryption().as_str().to_string());
 
@@ -117,16 +126,17 @@ mod tests {
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
 
-        let external_metadata_jsvalue = message.external_metadata().unwrap();
-        let external_metadata: ExternalMetadata = ExternalMetadata::from_jsvalue(&external_metadata_jsvalue).unwrap();
+        let external_metadata_string = message.external_metadata().unwrap();
+        let external_metadata: ExternalMetadata = ExternalMetadata::from_jsvalue(&external_metadata_string).unwrap();
 
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.scheduled_time, scheduled_time);
         assert_eq!(external_metadata.recipient, recipient);
 
         // Convert ShinkaiMessage back to JSON
-        let message_clone_jsvalue = message.to_jsvalue().unwrap();
-        let message_clone: ShinkaiMessageWrapper = ShinkaiMessageWrapper::from_jsvalue(&message_clone_jsvalue).unwrap();
+        let message_clone_string = message.to_json_str().unwrap();
+        let message_clone: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_clone_string).unwrap();
+        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
     }
 
     // More tests, similar to the one above, go here.

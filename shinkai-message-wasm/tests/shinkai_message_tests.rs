@@ -41,7 +41,6 @@ mod tests {
 
         // Unwrap the result.
         let js_value = js_value_result.unwrap();
-        log::debug!("first test>> js_value: {:?}", js_value);
         let js_value_serde: serde_json::Value = serde_wasm_bindgen::from_value(js_value).unwrap();
 
         assert_eq!(
