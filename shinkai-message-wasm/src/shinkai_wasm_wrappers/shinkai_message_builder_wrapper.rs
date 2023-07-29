@@ -347,12 +347,12 @@ impl ShinkaiMessageBuilderWrapper {
 
     #[wasm_bindgen]
     pub fn ping_pong_message(
+        message: String,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
         receiver: ProfileName,
-        message: String,
     ) -> Result<String, JsValue> {
         if message != "Ping" && message != "Pong" {
             return Err(JsValue::from_str("Invalid message: must be 'Ping' or 'Pong'"));
@@ -464,7 +464,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body(format!("{{error: \"{}\"}}", error_msg));
+        let _ = builder.body(format!("{{error: \"{}\"}}", error_msg))?;
         let _ = builder.empty_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);

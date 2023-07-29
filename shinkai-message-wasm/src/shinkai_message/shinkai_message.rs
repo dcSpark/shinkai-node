@@ -35,10 +35,10 @@ pub struct Body {
 pub struct ShinkaiMessage {
     pub body: Option<Body>,
     pub external_metadata: Option<ExternalMetadata>,
-    #[serde(default = "default_encryption_method")]
+    // #[serde(default = "default_encryption_method")]
     pub encryption: EncryptionMethod,
 }
 
-fn default_encryption_method() -> EncryptionMethod {
-    EncryptionMethod::DiffieHellmanChaChaPoly1305
-}
+// fn default_encryption_method() -> EncryptionMethod {
+//     EncryptionMethod::DiffieHellmanChaChaPoly1305
+// }

@@ -47,13 +47,11 @@ impl ShinkaiMessageWrapper {
 
     #[wasm_bindgen(method, getter)]
     pub fn encryption(&self) -> String {
-        log::debug!("encryption: {:?}", self);
         self.inner.encryption.as_str().to_owned()
     }
 
     #[wasm_bindgen(method, setter)]
     pub fn set_encryption(&mut self, encryption: String) {
-        log::debug!("set encryption: {:?}", encryption);
         self.inner.encryption = EncryptionMethod::from_str(&encryption);
     }
 
