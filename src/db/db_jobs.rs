@@ -1,15 +1,12 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::identity_manager::{StandardIdentity, IdentityType};
 use crate::managers::job_manager::{Job, JobLike};
-use crate::schemas::inbox_name::InboxName;
-use crate::schemas::message_schemas::JobScope;
-use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
-use crate::shinkai_message::{encryption::string_to_encryption_public_key, signatures::string_to_signature_public_key};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
+use shinkai_message_wasm::schemas::inbox_name::InboxName;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobScope;
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 enum JobInfo {

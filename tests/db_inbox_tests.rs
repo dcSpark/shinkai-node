@@ -1,4 +1,12 @@
 use async_channel::{bounded, Receiver, Sender};
+use prost::Message;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key};
+use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::{InboxNameManager, IdentityManager};
@@ -6,18 +14,6 @@ use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
 use shinkai_node::schemas::inbox_permission::InboxPermission;
-use shinkai_node::shinkai_message::encryption::{
-    decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
-};
-use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_node::shinkai_message::signatures::{
-    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
-};
-use shinkai_node::shinkai_message::utils::hash_string;
-use shinkai_node::shinkai_message_proto::ShinkaiMessage;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -64,7 +60,7 @@ fn generate_message_with_text(
     let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .body(content.to_string())
         .body_encryption(EncryptionMethod::None)
-        .message_schema_type("MyType".to_string())
+        .message_schema_type(MessageSchemaType::TextContent)
         .internal_metadata(
             "".to_string(),
             recipient_subidentity_name.clone().to_string(),
@@ -182,7 +178,7 @@ fn db_inbox() {
         "Hello World 2".to_string()
     );
 
-    let offset = ShinkaiMessageHandler::get_message_offset_db_key(&last_unread_messages_inbox[1].clone()).unwrap();
+    let offset = get_message_offset_db_key(&last_unread_messages_inbox[1].clone()).unwrap();
     let last_unread_messages_inbox_page2 = shinkai_db
         .get_last_unread_messages_from_inbox(inbox_name.clone().to_string(), 3, Some(offset))
         .unwrap();

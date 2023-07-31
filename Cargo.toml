@@ -44,6 +44,8 @@ llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 ordered-float = "3.7.0"
 keyphrases = "0.3.2"
 byteorder = "1.4.3"
+shinkai_message_wasm = { path = "./shinkai-message-wasm" }
+bincode = "1.3.3"
 
 [dependencies.rocksdb]
 version = "0.21.0"

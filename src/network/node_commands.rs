@@ -4,20 +4,12 @@ use crate::{
     managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode, StandardIdentity},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::inbox_permission::InboxPermission,
-    shinkai_message::{
-        encryption::{
-            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
-        },
-        shinkai_message_handler::{self, ShinkaiMessageHandler},
-        signatures::{clone_signature_secret_key, string_to_signature_public_key},
-    },
-    shinkai_message_proto::ShinkaiMessage,
 };
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{encryption::{string_to_encryption_public_key, decrypt_body_message, clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string}, shinkai_message_handler::ShinkaiMessageHandler, signatures::{clone_signature_secret_key, string_to_signature_public_key}}};
 use std::str::FromStr;
 use std::{
     cell::RefCell,

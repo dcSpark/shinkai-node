@@ -1,17 +1,6 @@
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
-use crate::shinkai_message::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, hash_encryption_public_key,
-    string_to_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
-};
-use crate::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
-use crate::shinkai_message::signatures::{
-    clone_signature_secret_key, ephemeral_signature_keypair, hash_signature_public_key, string_to_signature_secret_key,
-    unsafe_deterministic_signature_keypair,
-};
-use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_secret_key_to_string};
 use crate::utils::args::parse_args;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
@@ -20,9 +9,12 @@ use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{info, warn};
 use network::Node;
-use shinkai_message::encryption::ephemeral_encryption_keys;
+use shinkai_message_wasm::ShinkaiMessageWrapper;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_utils::encryption::{encryption_secret_key_to_string, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_wasm::shinkai_utils::signatures::{hash_signature_public_key, signature_secret_key_to_string, clone_signature_secret_key, signature_public_key_to_string};
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
-use shinkai_node::shinkai_message::encryption::string_to_encryption_static_key;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -35,12 +27,7 @@ mod managers;
 mod network;
 mod resources;
 mod schemas;
-mod shinkai_message;
 mod utils;
-
-mod shinkai_message_proto {
-    include!(concat!(env!("OUT_DIR"), "/shinkai_message_proto.rs"));
-}
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
@@ -116,16 +103,15 @@ fn main() {
             )
             .expect("Failed to create message with code registration");
 
+        let message_2 = message.clone().body.unwrap(); 
+
             println!(
                 "Message's signature: {}",
                 message.clone().external_metadata.unwrap().signature
             );
 
-            // Parse the message to JSON and print to stdout
-            let message_wrapper = ShinkaiMessageWrapper::from(&message);
-
             // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message_wrapper);
+            let message_json = serde_json::to_string_pretty(&message);
 
             match message_json {
                 Ok(json) => println!("{}", json),
@@ -141,7 +127,7 @@ fn main() {
             )
             .body(body_content.to_string())
             .body_encryption(EncryptionMethod::None)
-            .message_schema_type("schema type".to_string())
+            .message_schema_type(MessageSchemaType::Empty)
             .internal_metadata(
                 sender_subidentity.to_string(),
                 receiver_subidentity.to_string(),
@@ -156,11 +142,8 @@ fn main() {
                 message.clone().unwrap().external_metadata.unwrap().signature
             );
 
-            // Parse the message to JSON and print to stdout
-            let message_wrapper = ShinkaiMessageWrapper::from(&message.unwrap());
-
             // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message_wrapper);
+            let message_json = serde_json::to_string_pretty(&message);
 
             match message_json {
                 Ok(json) => println!("{}", json),

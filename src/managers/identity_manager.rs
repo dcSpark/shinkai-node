@@ -1,11 +1,11 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::shinkai_message::encryption::{self, encryption_public_key_to_string, encryption_public_key_to_string_ref};
-use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
-use crate::shinkai_message_proto::ShinkaiMessage;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
+use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use std::sync::Arc;
 use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;

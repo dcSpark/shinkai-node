@@ -1,12 +1,10 @@
 use super::agent_serialization::SerializedAgent;
 use super::providers::openai::OpenAI;
 use super::providers::sleep_api::SleepAPI;
-use crate::{
-    managers::providers::Provider,
-    schemas::message_schemas::{JobPreMessage, JobRecipient},
-};
+use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};

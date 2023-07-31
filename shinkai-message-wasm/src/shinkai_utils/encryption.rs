@@ -15,7 +15,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
-
 use super::shinkai_message_handler::ShinkaiMessageHandler;
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]

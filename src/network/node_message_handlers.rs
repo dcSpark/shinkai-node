@@ -2,20 +2,11 @@ use crate::{
     db::ShinkaiDB,
     managers::{IdentityManager, identity_manager},
     network::Node,
-    shinkai_message::{
-        encryption::{
-            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
-        },
-        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
-        shinkai_message_handler::{EncryptionStatus, ShinkaiMessageHandler},
-        signatures::{clone_signature_secret_key, signature_public_key_to_string, verify_signature},
-    },
-    shinkai_message_proto::ShinkaiMessage,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::debug;
 use regex::Regex;
+use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{shinkai_message_handler::{ShinkaiMessageHandler, EncryptionStatus}, signatures::{signature_public_key_to_string, verify_signature, clone_signature_secret_key}, encryption::{clone_static_secret_key, encryption_public_key_to_string, decrypt_body_message}, shinkai_message_builder::{ShinkaiMessageBuilder, ProfileName}}};
 use std::sync::Arc;
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
@@ -122,7 +113,7 @@ pub async fn handle_based_on_message_content_and_encryption(
 
 // All the new helper functions here:
 pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result<ShinkaiMessage> {
-    ShinkaiMessageHandler::decode_message(bytes.to_vec()).map_err(|_| {
+    ShinkaiMessageHandler::decode_message_result(bytes.to_vec()).map_err(|_| {
         println!("{} > Failed to decode message.", receiver_address);
         io::Error::new(io::ErrorKind::Other, "Failed to decode message")
     })

@@ -1,11 +1,6 @@
 use rocksdb::IteratorMode;
 use rocksdb::{Error, Options};
 
-use crate::{
-    shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage,
-};
-
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {

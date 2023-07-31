@@ -1,6 +1,11 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_utils::encryption::{clone_static_secret_key, decrypt_body_message, encryption_secret_key_to_string, encryption_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -19,14 +24,6 @@ use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::message_schemas::{JobPreMessage, JobToolCall};
-use crate::shinkai_message::encryption::{
-    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    string_to_encryption_public_key,
-};
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
-use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;

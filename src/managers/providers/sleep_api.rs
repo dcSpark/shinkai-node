@@ -1,9 +1,10 @@
-use crate::{managers::agent::AgentError, schemas::message_schemas::{JobPreMessage, JobRecipient}};
+use crate::{managers::agent::AgentError};
 
 use super::Provider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient};
 use tokio::time::Duration;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

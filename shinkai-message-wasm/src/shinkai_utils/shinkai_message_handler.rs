@@ -35,6 +35,22 @@ impl ShinkaiMessageHandler {
         bincode::deserialize(&encoded[..]).unwrap()
     }
 
+    pub fn encode_body_result(body: Body) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(&body)
+    }
+    
+    pub fn decode_body_result(encoded: Vec<u8>) -> Result<Body, bincode::Error> {
+        bincode::deserialize(&encoded[..])
+    }
+    
+    pub fn encode_message_result(message: ShinkaiMessage) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(&message)
+    }
+    
+    pub fn decode_message_result(encoded: Vec<u8>) -> Result<ShinkaiMessage, bincode::Error> {
+        bincode::deserialize(&encoded[..])
+    }
+    
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
         let message_json = serde_json::to_string_pretty(&message);
         message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
