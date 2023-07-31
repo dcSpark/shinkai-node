@@ -1,7 +1,6 @@
 use shinkai_node::{
     db::{db_errors::ShinkaiDBError, ShinkaiDB},
     managers::{agent::AgentAPIModel, agent_serialization::SerializedAgent, providers::openai::OpenAI},
-    shinkai_message::utils::hash_string,
 };
 use std::fs;
 use std::path::Path;
@@ -13,6 +12,8 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_wasm::shinkai_utils::utils::hash_string;
+
     use super::*;
 
     #[test]

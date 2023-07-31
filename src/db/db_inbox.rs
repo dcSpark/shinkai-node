@@ -2,10 +2,10 @@ use core::fmt;
 use std::str::FromStr;
 
 use rocksdb::{Error, Options, WriteBatch};
+use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
 
 use crate::{
-    shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage, managers::{inbox_name_manager::InboxNameManager, identity_manager::{StandardIdentity, IdentityType}}, schemas::inbox_permission::InboxPermission,
+    managers::{inbox_name_manager::InboxNameManager, identity_manager::{StandardIdentity, IdentityType}}, schemas::inbox_permission::InboxPermission,
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -162,7 +162,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessageHandler::decode_message(bytes.to_vec())?;
+                            let message = ShinkaiMessageHandler::decode_message_result(bytes.to_vec())?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),
@@ -267,7 +267,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessageHandler::decode_message(bytes.to_vec())?;
+                            let message = ShinkaiMessageHandler::decode_message_result(bytes.to_vec())?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),

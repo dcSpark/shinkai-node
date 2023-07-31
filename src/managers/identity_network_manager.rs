@@ -1,13 +1,9 @@
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use lazy_static::lazy_static;
+use shinkai_message_wasm::shinkai_utils::{signatures::{signature_public_key_to_string, string_to_signature_public_key}, encryption::string_to_encryption_public_key};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-use crate::shinkai_message::{
-    encryption::string_to_encryption_public_key,
-    signatures::{signature_public_key_to_string, string_to_signature_public_key},
-};
 
 #[derive(Debug)]
 pub struct NetworkIdentity {

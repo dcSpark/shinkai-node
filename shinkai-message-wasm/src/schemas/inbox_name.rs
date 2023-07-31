@@ -1,5 +1,23 @@
+use std::fmt;
+
 use serde::{Serialize, Deserialize};
-use crate::db::db_errors::ShinkaiDBError;
+
+#[derive(Debug)]
+pub enum InboxNameError {
+    InvalidFormat,
+    InvalidSenderRecipientFormat,
+}
+
+impl fmt::Display for InboxNameError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            InboxNameError::InvalidFormat => write!(f, "Invalid inbox name format"),
+            InboxNameError::InvalidSenderRecipientFormat => write!(f, "Invalid sender/recipient format"),
+        }
+    }
+}
+
+impl std::error::Error for InboxNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InboxName {
@@ -7,26 +25,26 @@ pub struct InboxName {
 }
 
 impl InboxName {
-    pub fn new(s: String) -> Result<Self, ShinkaiDBError> {
+    pub fn new(s: String) -> Result<Self, InboxNameError> {
         Self::from_str(&s)
     }
 
-    fn from_str(s: &str) -> Result<Self, ShinkaiDBError> {
+    fn from_str(s: &str) -> Result<Self, InboxNameError> {
         let parts: Vec<&str> = s.split("::").collect();
         if parts.len() != 4 {
-            return Err(ShinkaiDBError::InvalidInboxName);
+            return Err(InboxNameError::InvalidFormat);
         }
 
         let is_e2e = match parts[3].parse::<bool>() {
             Ok(b) => b,
-            Err(_) => return Err(ShinkaiDBError::InvalidInboxName),
+            Err(_) => return Err(InboxNameError::InvalidFormat),
         };
 
         let sender_parts: Vec<&str> = parts[1].split("|").collect();
         let recipient_parts: Vec<&str> = parts[2].split("|").collect();
 
         if sender_parts.len() != 2 || recipient_parts.len() != 2 {
-            return Err(ShinkaiDBError::InvalidInboxName);
+            return Err(InboxNameError::InvalidFormat);
         }
 
         Ok(InboxName { value: s.to_string() })

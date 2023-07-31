@@ -1,19 +1,12 @@
-// shinkai_message.rs
-
 use std::io::{Error, ErrorKind};
 
-use crate::{shinkai_message_proto::{Body, ExternalMetadata, ShinkaiMessage}, db::db_errors::ShinkaiDBError};
 use chrono::Utc;
-use prost::Message;
 use sha2::{Digest, Sha256};
 
-use super::{
-    encryption::{encrypt_body, EncryptionMethod},
-    shinkai_message_extension::ShinkaiMessageWrapper,
-    signatures::sign_message,
-};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message}, shinkai_message::{shinkai_message::{ShinkaiMessage, Body}}};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -26,19 +19,40 @@ pub enum EncryptionStatus {
 }
 
 impl ShinkaiMessageHandler {
+    pub fn encode_body(body: Body) -> Vec<u8> {
+        bincode::serialize(&body).unwrap()
+    }
+
+    pub fn decode_body(encoded: Vec<u8>) -> Body {
+        bincode::deserialize(&encoded[..]).unwrap()
+    }
+    
     pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        message.encode(&mut bytes).unwrap();
-        bytes
+        bincode::serialize(&message).unwrap()
     }
 
-    pub fn decode_message(bytes: Vec<u8>) -> Result<ShinkaiMessage, prost::DecodeError> {
-        ShinkaiMessage::decode(bytes.as_slice())
+    pub fn decode_message(encoded: Vec<u8>) -> ShinkaiMessage {
+        bincode::deserialize(&encoded[..]).unwrap()
     }
 
+    pub fn encode_body_result(body: Body) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(&body)
+    }
+    
+    pub fn decode_body_result(encoded: Vec<u8>) -> Result<Body, bincode::Error> {
+        bincode::deserialize(&encoded[..])
+    }
+    
+    pub fn encode_message_result(message: ShinkaiMessage) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(&message)
+    }
+    
+    pub fn decode_message_result(encoded: Vec<u8>) -> Result<ShinkaiMessage, bincode::Error> {
+        bincode::deserialize(&encoded[..])
+    }
+    
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
-        let message_wrapper = ShinkaiMessageWrapper::from(&message);
-        let message_json = serde_json::to_string_pretty(&message_wrapper);
+        let message_json = serde_json::to_string_pretty(&message);
         message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
     }
 
@@ -56,16 +70,6 @@ impl ShinkaiMessageHandler {
         format!("{:x}", result)
     }
 
-    pub fn encode_body(body: Body) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        body.encode(&mut bytes).unwrap();
-        bytes
-    }
-
-    pub fn decode_body(bytes: Vec<u8>) -> Result<Body, prost::DecodeError> {
-        Body::decode(bytes.as_slice())
-    }
-
     pub fn encrypt_body_if_needed(
         message: ShinkaiMessage,
         my_encryption_secret_key: EncryptionStaticKey,
@@ -77,7 +81,7 @@ impl ShinkaiMessageHandler {
         }
 
         let mut msg_to_encrypt = message.clone();
-        msg_to_encrypt.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str().to_string();
+        msg_to_encrypt.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
 
         let encrypted_body = encrypt_body(
             &ShinkaiMessageHandler::encode_body(msg_to_encrypt.body.unwrap()),
@@ -112,7 +116,7 @@ impl ShinkaiMessageHandler {
     }
 
     pub fn is_body_currently_encrypted(message: &ShinkaiMessage) -> bool {
-        if message.encryption == EncryptionMethod::None.as_str().to_string() {
+        if message.encryption == EncryptionMethod::None {
             return false;
         }
 
@@ -131,7 +135,7 @@ impl ShinkaiMessageHandler {
             if let Some(internal_metadata) = body.internal_metadata {
                 let encryption_method_none = EncryptionMethod::None.as_str().to_string();
 
-                if internal_metadata.encryption != encryption_method_none
+                if internal_metadata.encryption != EncryptionMethod::None
                     && internal_metadata.message_schema_type.is_empty()
                 {
                     return true;
@@ -150,37 +154,15 @@ impl ShinkaiMessageHandler {
             EncryptionStatus::NotCurrentlyEncrypted
         }
     }
-
-    pub fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
-        // Calculate the hash of the message for the key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
-    
-        // Clone the external_metadata first, then unwrap
-        let cloned_external_metadata = message.external_metadata.clone();
-        let ext_metadata = cloned_external_metadata.expect("Failed to clone external metadata");
-        
-        // Get the scheduled time or calculate current time
-        let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiMessageHandler::generate_time_now(),
-            false => ext_metadata.scheduled_time.clone(),
-        };
-        
-        // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:{}", time_key, hash_key);
-    
-        Ok(composite_key)
-    }    
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::shinkai_message::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
-    use crate::shinkai_message::shinkai_message_handler::EncryptionStatus;
-    use crate::shinkai_message::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
-    use crate::shinkai_message::{
-        shinkai_message_builder::ShinkaiMessageBuilder, shinkai_message_handler::ShinkaiMessageHandler,
-    };
-    use crate::shinkai_message_proto::ShinkaiMessage;
+    use super::*;
+    use crate::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+    use crate::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+    use crate::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+    use crate::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, verify_signature};
 
     fn build_message(body_encryption: EncryptionMethod, content_encryption: EncryptionMethod) -> ShinkaiMessage {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -194,7 +176,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
-            .message_schema_type("MyType".to_string())
+            .message_schema_type(MessageSchemaType::TextContent)
             .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
             .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
             .build();
@@ -294,7 +276,7 @@ mod tests {
         let encoded_body = ShinkaiMessageHandler::encode_body(body.clone());
         assert!(encoded_body.len() > 0);
 
-        let decoded_body = ShinkaiMessageHandler::decode_body(encoded_body).unwrap();
+        let decoded_body = ShinkaiMessageHandler::decode_body(encoded_body);
 
         // Assert that the decoded body is the same as the original body
         assert_eq!(decoded_body.content, body.content);
@@ -304,7 +286,7 @@ mod tests {
     fn test_decode_message() {
         let message = build_message(EncryptionMethod::None, EncryptionMethod::None);
         let encoded_message = ShinkaiMessageHandler::encode_message(message.clone());
-        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();
@@ -314,9 +296,9 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, "MyType");
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
 
-        assert_eq!(decoded_message.encryption, "None");
+        assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
@@ -334,7 +316,7 @@ mod tests {
     fn test_decode_encrypted_message() {
         let message = build_message(EncryptionMethod::None, EncryptionMethod::None);
         let encoded_message = ShinkaiMessageHandler::encode_message(message.clone());
-        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message).unwrap();
+        let decoded_message = ShinkaiMessageHandler::decode_message(encoded_message);
 
         // Assert that the decoded message is the same as the original message
         let body = decoded_message.body.as_ref().unwrap();
@@ -344,8 +326,8 @@ mod tests {
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
         assert_eq!(internal_metadata.inbox, "");
-        assert_eq!(internal_metadata.message_schema_type, "MyType");
-        assert_eq!(decoded_message.encryption, "None");
+        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
+        assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
@@ -357,24 +339,5 @@ mod tests {
         assert_eq!(external_metadata.recipient, recipient);
         assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
-    }
-
-    #[test]
-    fn test_get_message_key_deterministic() {
-        // Build a message
-        let body_encryption = EncryptionMethod::None;
-        let content_encryption = EncryptionMethod::None;
-        let message = build_message(body_encryption, content_encryption);
-
-        // Get the deterministic key
-        let key = ShinkaiMessageHandler::get_message_offset_db_key(&message).unwrap();
-
-        // Calculate the expected key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
-        let scheduled_time = "20230702T20533481345".to_string();  // This is the scheduled time used in the build_message function
-        let expected_key = format!("{}:{}", scheduled_time, hash_key);
-
-        // Check if the key matches the expected key
-        assert_eq!(key, expected_key);
     }
 }

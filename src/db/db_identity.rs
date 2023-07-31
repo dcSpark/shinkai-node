@@ -1,13 +1,12 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::agent_serialization::SerializedAgent;
 use crate::managers::identity_manager::{StandardIdentity, IdentityType};
-use crate::shinkai_message::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
-use crate::shinkai_message::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
-use crate::shinkai_message::{encryption::string_to_encryption_public_key, signatures::string_to_signature_public_key};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
+use shinkai_message_wasm::shinkai_utils::encryption::{string_to_encryption_public_key, encryption_public_key_to_string, encryption_public_key_to_string_ref};
+use shinkai_message_wasm::shinkai_utils::signatures::{string_to_signature_public_key, signature_public_key_to_string, signature_public_key_to_string_ref};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(PartialEq)]

@@ -9,8 +9,6 @@ use std::env;
 use std::process::Command;
 
 fn main() {
-    prost_build::compile_protos(&["protos/shinkai_message_proto.proto"], &["protos"]).unwrap();
-
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let status = Command::new("sh")

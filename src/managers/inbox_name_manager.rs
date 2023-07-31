@@ -1,7 +1,6 @@
-use crate::{
-    db::db_errors::ShinkaiDBError, shinkai_message::shinkai_message_handler::ShinkaiMessageHandler,
-    shinkai_message_proto::ShinkaiMessage,
-};
+use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
+
+use crate::db::db_errors::ShinkaiDBError;
 
 pub struct InboxNameManager {
     inbox_name: String,
@@ -147,8 +146,9 @@ impl InboxNameManager {
 
 #[cfg(test)]
 mod tests {
+    use shinkai_message_wasm::{shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType}, shinkai_utils::encryption::EncryptionMethod};
+
     use super::*;
-    use crate::shinkai_message_proto::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage};
 
     // Test creation of InboxNameManager instance from an inbox name
     #[test]
@@ -217,9 +217,9 @@ mod tests {
                 internal_metadata: Some(InternalMetadata {
                     sender_subidentity: "".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "".into(),
-                    encryption: "None".into(),
+                    encryption: EncryptionMethod::None,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {
@@ -230,7 +230,7 @@ mod tests {
                     .into(),
                 other: "".into(),
             }),
-            encryption: "None".into(),
+            encryption: EncryptionMethod::None,
         };
 
         let manager = InboxNameManager::from_message(&mock_message).unwrap();
@@ -249,9 +249,9 @@ mod tests {
                 internal_metadata: Some(InternalMetadata {
                     sender_subidentity: "subidentity2".into(),
                     recipient_subidentity: "subidentity".into(),
-                    message_schema_type: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "".into(),
-                    encryption: "None".into(),
+                    encryption: EncryptionMethod::None,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {
@@ -262,7 +262,7 @@ mod tests {
                     .into(),
                 other: "".into(),
             }),
-            encryption: "None".into(),
+            encryption: EncryptionMethod::None,
         };
 
         let inbox_name = InboxNameManager::get_inbox_name_from_message(&mock_message).unwrap();
@@ -281,9 +281,9 @@ mod tests {
                 internal_metadata: Some(InternalMetadata {
                     sender_subidentity: "".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "".into(),
-                    encryption: "None".into(),
+                    encryption: EncryptionMethod::None,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {
@@ -294,7 +294,7 @@ mod tests {
                     .into(),
                 other: "".into(),
             }),
-            encryption: "None".into(),
+            encryption: EncryptionMethod::None,
         };
 
         let inbox_name = InboxNameManager::get_inbox_name_from_message(&mock_message).unwrap();
@@ -310,9 +310,9 @@ mod tests {
                 internal_metadata: Some(InternalMetadata {
                     sender_subidentity: "subidentity2".into(),
                     recipient_subidentity: "subidentity".into(),
-                    message_schema_type: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "".into(),
-                    encryption: "None".into(),
+                    encryption: EncryptionMethod::None,
                 }),
             }),
             external_metadata: Some(ExternalMetadata {
@@ -323,7 +323,7 @@ mod tests {
                     .into(),
                 other: "".into(),
             }),
-            encryption: "None".into(),
+            encryption: EncryptionMethod::None,
         };
 
         let inbox_name = InboxNameManager::get_inbox_name_from_message(&mock_message).unwrap();

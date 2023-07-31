@@ -1,5 +1,5 @@
-use crate::{shinkai_message::shinkai_message_handler::ShinkaiMessageHandler, shinkai_message_proto::ShinkaiMessage};
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
+use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
 
 use super::db_errors::ShinkaiDBError;
 
@@ -246,7 +246,7 @@ impl ShinkaiDB {
             }
 
             // Decode the message
-            let message = ShinkaiMessageHandler::decode_message(value.to_vec()).map_err(ShinkaiDBError::from)?;
+            let message = ShinkaiMessageHandler::decode_message_result(value.to_vec()).map_err(ShinkaiDBError::from)?;
             messages.push(message);
         }
 
@@ -270,7 +270,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessageHandler::decode_message(bytes.to_vec())?;
+                            let message = ShinkaiMessageHandler::decode_message_result(bytes.to_vec())?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),
