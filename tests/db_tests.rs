@@ -132,11 +132,11 @@ fn test_insert_message_to_all() {
     // not guaranteed
     assert_eq!(
         last_messages_all[1].clone().body.unwrap().content,
-        "Hello All".to_string()
+        "Hello All 2".to_string()
     );
     assert_eq!(
         last_messages_all[2].clone().body.unwrap().content,
-        "Hello All 2".to_string()
+        "Hello All".to_string()
     );
     assert_eq!(
         last_messages_all[3].clone().body.unwrap().content,

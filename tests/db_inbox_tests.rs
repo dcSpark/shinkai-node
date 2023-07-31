@@ -5,14 +5,16 @@ use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchem
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key};
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+};
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::managers::{InboxNameManager, IdentityManager};
-use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
+use shinkai_node::managers::identity_manager::{IdentityType, StandardIdentity};
+use shinkai_node::managers::{IdentityManager, InboxNameManager};
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Node};
+use shinkai_node::network::Node;
 use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -36,18 +38,18 @@ fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, Shinkai
     // Clone the external_metadata first, then unwrap
     let cloned_external_metadata = message.external_metadata.clone();
     let ext_metadata = cloned_external_metadata.expect("Failed to clone external metadata");
-    
+
     // Get the scheduled time or calculate current time
     let time_key = match ext_metadata.scheduled_time.is_empty() {
         true => ShinkaiMessageHandler::generate_time_now(),
         false => ext_metadata.scheduled_time.clone(),
     };
-    
+
     // Create the composite key by concatenating the time_key and the hash_key, with a separator
     let composite_key = format!("{}:{}", time_key, hash_key);
 
     Ok(composite_key)
-}    
+}
 
 fn generate_message_with_text(
     content: String,
@@ -56,6 +58,7 @@ fn generate_message_with_text(
     receiver_public_key: EncryptionPublicKey,
     recipient_subidentity_name: String,
     origin_destination_identity_name: String,
+    timestamp: String,
 ) -> ShinkaiMessage {
     let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .body(content.to_string())
@@ -70,7 +73,7 @@ fn generate_message_with_text(
         .external_metadata_with_schedule(
             origin_destination_identity_name.clone().to_string(),
             origin_destination_identity_name.clone().to_string(),
-            "20230702T20533481345".to_string(),
+            timestamp,
         )
         .build()
         .unwrap();
@@ -98,6 +101,7 @@ fn db_inbox() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
+        "20230702T20533481345".to_string()
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
@@ -141,6 +145,7 @@ fn db_inbox() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
+        "20230702T20533481346".to_string()
     );
     let message3 = generate_message_with_text(
         "Hello World 3".to_string(),
@@ -149,6 +154,7 @@ fn db_inbox() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
+        "20230702T20533481347".to_string()
     );
     match shinkai_db.insert_inbox_message(&message2.clone()) {
         Ok(_) => println!("message2 inserted successfully"),
@@ -200,7 +206,8 @@ fn db_inbox() {
 
     // Test permissions
     let subidentity_name = "device1";
-    let full_subidentity_name =  IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
+    let full_subidentity_name =
+        IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone().to_string(),
         None,
@@ -253,8 +260,9 @@ fn test_permission_errors() {
     // Assuming the shinkai_db is created and node1_subencryption_pk, node1_subidentity_pk are defined
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let subidentity_name = "device1";
-    let full_subidentity_name =  IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
-    
+    let full_subidentity_name =
+        IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
+
     let device1_subidentity = StandardIdentity::new(
         full_subidentity_name.clone().to_string(),
         None,
