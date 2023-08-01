@@ -1,19 +1,14 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, encryption_public_key_to_string, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key, signature_secret_key_to_string, signature_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::managers::IdentityManager;
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
+use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
-use shinkai_node::shinkai_message::encryption::{
-    encryption_public_key_to_string, hash_encryption_public_key,
-    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string, decrypt_body_message, encrypt_body,
-};
-use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_node::shinkai_message::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string,
-    unsafe_deterministic_signature_keypair, sign_message, signature_secret_key_to_string,
-};
-use shinkai_node::shinkai_message::utils::hash_string;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -177,8 +172,8 @@ fn subidentity_registration() {
                 );
 
                 let (res_all_subidentities_sender, res_all_subidentities_receiver): (
-                    async_channel::Sender<Vec<Identity>>,
-                    async_channel::Receiver<Vec<Identity>>,
+                    async_channel::Sender<Vec<StandardIdentity>>,
+                    async_channel::Receiver<Vec<StandardIdentity>>,
                 ) = async_channel::bounded(1);
                 node2_commands_sender
                     .send(NodeCommand::GetAllSubidentities {
@@ -221,7 +216,7 @@ fn subidentity_registration() {
                 )
                 .body(message_content.clone())
                 .no_body_encryption()
-                .message_schema_type("schema type".to_string())
+                .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
                     node2_subidentity_name.to_string().clone(),
                     "".to_string(),
@@ -315,7 +310,7 @@ fn subidentity_registration() {
 
                 let message_to_check_content_unencrypted = decrypt_content_message(
                     message_to_check.clone().body.unwrap().content,
-                    &message_to_check.clone().encryption,
+                    &message_to_check.clone().encryption.as_str(),
                     &node1_encryption_sk_clone.clone(),
                     &node2_subencryption_pk,
                 ).unwrap();
@@ -385,8 +380,8 @@ fn subidentity_registration() {
                 );
 
                 let (res1_all_subidentities_sender, res1_all_subidentities_receiver): (
-                    async_channel::Sender<Vec<Identity>>,
-                    async_channel::Receiver<Vec<Identity>>,
+                    async_channel::Sender<Vec<StandardIdentity>>,
+                    async_channel::Receiver<Vec<StandardIdentity>>,
                 ) = async_channel::bounded(1);
                 node1_commands_sender
                     .send(NodeCommand::GetAllSubidentities {
@@ -408,7 +403,7 @@ fn subidentity_registration() {
                 )
                 .body(message_content.clone())
                 .no_body_encryption()
-                .message_schema_type("some schema type".to_string())
+                .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
                     node1_subidentity_name.to_string().clone(),
                     node2_subidentity_name.to_string().clone(),
@@ -500,7 +495,7 @@ fn subidentity_registration() {
 
                 let message_to_check_content_unencrypted = decrypt_content_message(
                     message_to_check.clone().body.unwrap().content,
-                    &message_to_check.clone().encryption,
+                    &message_to_check.clone().encryption.as_str(),
                     &node2_subencryption_sk_clone.clone(),
                     &node1_subencryption_pk,
                 ).unwrap();

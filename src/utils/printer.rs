@@ -1,4 +1,4 @@
-use crate::shinkai_message::{signatures::{unsafe_deterministic_signature_keypair, signature_secret_key_to_string, signature_public_key_to_string}, encryption::{unsafe_deterministic_encryption_keypair, encryption_secret_key_to_string, encryption_public_key_to_string}};
+use shinkai_message_wasm::shinkai_utils::{signatures::{unsafe_deterministic_signature_keypair, signature_secret_key_to_string, signature_public_key_to_string}, encryption::{unsafe_deterministic_encryption_keypair, encryption_secret_key_to_string, encryption_public_key_to_string}};
 
 
 fn print_generated_keys() {

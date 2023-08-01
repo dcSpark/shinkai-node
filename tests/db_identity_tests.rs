@@ -1,23 +1,14 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, encryption_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, signature_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::Topic;
 use async_std::task;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
+use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::shinkai_message::encryption::{
-    decrypt_body_message, decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    hash_encryption_public_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
-};
-use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_node::shinkai_message::signatures::{
-    clone_signature_secret_key, sign_message, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
-};
-use shinkai_node::shinkai_message::utils::hash_string;
-use shinkai_node::shinkai_message_proto::ShinkaiMessage;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -67,7 +58,7 @@ fn test_new_load_all_sub_identities() {
         let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
-        let identity = Identity::new(
+        let identity = StandardIdentity::new(
             subidentity_name.clone(),
             None,
             encryption_pk.clone(),
@@ -92,7 +83,7 @@ fn test_new_load_all_sub_identities() {
         let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(i);
         let subidentity_name = format!("subidentity_{}", i);
 
-        let identity = Identity::new(
+        let identity = StandardIdentity::new(
             subidentity_name.clone(),
             None,
             encryption_pk.clone(),
@@ -142,7 +133,7 @@ fn test_new_insert_sub_identity() {
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-    let identity = Identity::new(
+    let identity = StandardIdentity::new(
         subidentity_name.to_string(),
         None,
         encryption_pk.clone(),
@@ -182,7 +173,7 @@ fn test_remove_subidentity() {
     let (subidentity_sk, subidentity_pk) = unsafe_deterministic_signature_keypair(1);
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-    let identity = Identity::new(
+    let identity = StandardIdentity::new(
         subidentity_name.to_string(),
         None,
         encryption_pk.clone(),

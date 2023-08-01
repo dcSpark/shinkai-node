@@ -1,6 +1,11 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_utils::encryption::{clone_static_secret_key, decrypt_body_message, encryption_secret_key_to_string, encryption_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -9,24 +14,16 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, mpsc};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self, Identity};
-use crate::managers::{IdentityManager, job_manager};
-use crate::managers::job_manager::JobManager;
+use crate::managers::identity_manager::{self, StandardIdentity};
+use crate::managers::job_manager::{JobManager};
+use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::job_schemas::{JobScope, JobToolCall};
-use crate::shinkai_message::encryption::{
-    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    string_to_encryption_public_key,
-};
-use crate::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::signatures::{clone_signature_secret_key, signature_public_key_to_string};
-use crate::shinkai_message_proto::ShinkaiMessage;
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -83,7 +80,7 @@ pub enum NodeCommand {
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
         name: String,
-        res: Sender<Identity>,
+        res: Sender<StandardIdentity>,
     },
     // Command to make the node connect to a new node, given the node's address and profile name.
     Connect {
@@ -97,7 +94,7 @@ pub enum NodeCommand {
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
     GetAllSubidentities {
-        res: Sender<Vec<Identity>>,
+        res: Sender<Vec<StandardIdentity>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
@@ -135,12 +132,11 @@ pub enum NodeCommand {
     },
     CreateNewJob {
         shinkai_message: ShinkaiMessage,
-        scope: Option<JobScope>,
         res: Sender<(String, String)>,
     },
     JobMessage {
+        job_id: String,
         shinkai_message: ShinkaiMessage,
-        content: String,
         res: Sender<(String, String)>,
     },
     JobPreMessage {
@@ -148,7 +144,7 @@ pub enum NodeCommand {
         content: String,
         recipient: String,
         res: Sender<(String, String)>,
-    }
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -219,7 +215,10 @@ impl Node {
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
-        let job_manager = Arc::new(Mutex::new(JobManager::new(db_arc.clone()).await));
+        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+        let job_manager = Arc::new(Mutex::new(
+            JobManager::new(db_arc.clone(), identity_manager.clone()).await,
+        ));
 
         Node {
             node_profile_name,
@@ -231,7 +230,7 @@ impl Node {
             listen_address,
             ping_interval_secs,
             commands,
-            identity_manager: Arc::new(Mutex::new(subidentity_manager)),
+            identity_manager,
             db: db_arc,
             job_manager,
         }
@@ -284,8 +283,8 @@ impl Node {
                             Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, scope, res }) => self.create_new_job(shinkai_message, scope, res).await,
-                            // Some(NodeCommand::JobMessage { job_id, content, res }) => self.job_message(job_id, content, res).await?,
+                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             _ => break,
                         }

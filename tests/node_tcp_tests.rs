@@ -1,17 +1,10 @@
 use async_channel::{bounded, Receiver, Sender};
+use shinkai_message_wasm::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
-use shinkai_node::shinkai_message::encryption::{
-    encryption_public_key_to_string, hash_encryption_public_key,
-    unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string, decrypt_body_message,
-};
-use shinkai_node::shinkai_message::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::shinkai_message::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_node::shinkai_message::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string,
-    unsafe_deterministic_signature_keypair, sign_message, signature_secret_key_to_string,
-};
-use shinkai_node::shinkai_message::utils::hash_string;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;

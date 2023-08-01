@@ -1,6 +1,7 @@
 use crate::resources::resource_errors::ResourceError;
 use core::fmt;
 use std::{io, str::Utf8Error};
+use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
 
 #[derive(Debug)]
 pub enum ShinkaiDBError {
@@ -32,6 +33,8 @@ pub enum ShinkaiDBError {
     ResourceError(ResourceError),
     FailedFetchingCF,
     FailedFetchingValue,
+    BincodeError(bincode::Error),
+    InboxNameError(InboxNameError),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -77,6 +80,8 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::FailedFetchingCF => write!(f, "Failed fetching Column Family"),
             ShinkaiDBError::FailedFetchingValue => write!(f, "Failed fetching value. Likely invalid CF or key."),
             ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
+            ShinkaiDBError::BincodeError(e) => write!(f, "Bincode error: {}", e),
+            ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
         }
     }
 }
@@ -120,6 +125,11 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::JsonSerializationError(_), ShinkaiDBError::JsonSerializationError(_)) => true,
             (ShinkaiDBError::DataConversionError, ShinkaiDBError::DataConversionError) => true,
             (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
+            (ShinkaiDBError::FailedFetchingCF, ShinkaiDBError::FailedFetchingCF) => true,
+            (ShinkaiDBError::FailedFetchingValue, ShinkaiDBError::FailedFetchingValue) => true,
+            (ShinkaiDBError::ResourceError(_), ShinkaiDBError::ResourceError(_)) => true,
+            (ShinkaiDBError::BincodeError(_), ShinkaiDBError::BincodeError(_)) => true,
+            (ShinkaiDBError::InboxNameError(_), ShinkaiDBError::InboxNameError(_)) => true,
             _ => false,
         }
     }
@@ -164,5 +174,17 @@ impl From<serde_json::Error> for ShinkaiDBError {
 impl From<Utf8Error> for ShinkaiDBError {
     fn from(_: Utf8Error) -> Self {
         ShinkaiDBError::Utf8ConversionError
+    }
+}
+
+impl From<bincode::Error> for ShinkaiDBError {
+    fn from(error: bincode::Error) -> Self {
+        ShinkaiDBError::BincodeError(error)
+    }
+}
+
+impl From<InboxNameError> for ShinkaiDBError {
+    fn from(error: InboxNameError) -> Self {
+        ShinkaiDBError::InboxNameError(error)
     }
 }

@@ -1,12 +1,11 @@
-use crate::shinkai_message::encryption::{encryption_public_key_to_string, decrypt_body_message};
-use crate::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
-use crate::shinkai_message::shinkai_message_extension::ShinkaiMessageWrapper;
-use crate::shinkai_message::signatures::signature_public_key_to_string;
-use crate::shinkai_message_proto::ShinkaiMessage;
-
 use super::node::NodeCommand;
 use async_channel::Sender;
 use serde_json::json;
+use shinkai_message_wasm::ShinkaiMessageWrapper;
+use shinkai_message_wasm::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_utils::encryption::encryption_public_key_to_string;
+use shinkai_message_wasm::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use warp::Filter;
@@ -69,13 +68,12 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         warp::post()
             .and(warp::path("v1"))
             .and(warp::path("send"))
-            .and(warp::body::json::<ShinkaiMessageWrapper>())
-            .and_then(move |message: ShinkaiMessageWrapper| {
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
-                    let msg = ShinkaiMessage::from(message); // Convert wrapper back to ShinkaiMessage
                     node_commands_sender
-                        .send(NodeCommand::SendOnionizedMessage { msg })
+                        .send(NodeCommand::SendOnionizedMessage { msg: message })
                         .await
                         .unwrap();
                     let resp = warp::reply::json(&"Message sent successfully");
@@ -239,16 +237,14 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "use_registration_code")
             .and(warp::post())
-            .and(warp::body::json::<ShinkaiMessageWrapper>())
-            .and_then(move |message_wrapper: ShinkaiMessageWrapper| {
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
                 let node_commands_sender = node_commands_sender.clone();
                 async move {
-                    let msg = ShinkaiMessage::from(message_wrapper);
-
                     let (res_sender, res_receiver) = async_channel::bounded(1);
                     node_commands_sender
                         .send(NodeCommand::UseRegistrationCode {
-                            msg,
+                            msg: message,
                             res: res_sender,
                         })
                         .await
@@ -273,6 +269,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
 
     println!("Server successfully started at: {}", &address);
 }
+
 
 async fn handle_ping_all(
     node_commands_sender: Sender<NodeCommand>,
