@@ -3,6 +3,7 @@ use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
 use pdf_extract;
 use regex::Regex;
+use sha2::{Digest, Sha256};
 use std::{io::Cursor, vec};
 
 pub struct FileParser {}
@@ -114,6 +115,14 @@ impl FileParser {
         let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
 
         grouped_text_list
+    }
+
+    /// Generates a Sha256 hash of the input data.
+    pub fn generate_data_hash(buffer: &[u8]) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(format!("{:?}", buffer));
+        let result = hasher.finalize();
+        format!("{:x}", result)
     }
 
     /// Extracts the most important keywords from a given text,

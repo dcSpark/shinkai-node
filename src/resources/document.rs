@@ -8,10 +8,11 @@ use serde_json;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
-    pub name: String,
-    pub description: Option<String>,
-    pub source: Option<String>,
-    pub resource_embedding: Embedding,
+    name: String,
+    description: Option<String>,
+    source: Option<String>,
+    resource_id: String,
+    resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
@@ -19,49 +20,38 @@ pub struct DocumentResource {
 }
 
 impl Resource for DocumentResource {
-    /// # Returns
-    ///
-    /// The LLM model used to generate embeddings for this resource.
     fn embedding_model_used(&self) -> EmbeddingModelType {
         self.embedding_model_used.clone()
     }
 
-    /// # Returns
-    ///
-    /// The name of the `DocumentResource`.
     fn name(&self) -> &str {
         &self.name
     }
 
-    /// # Returns
-    ///
-    /// The optional description of the `DocumentResource`.
     fn description(&self) -> Option<&str> {
         self.description.as_deref()
     }
 
-    /// # Returns
-    ///
-    /// The optional source of the `DocumentResource`.
     fn source(&self) -> Option<&str> {
         self.source.as_deref()
     }
 
-    /// # Returns
-    ///
-    /// The resource `Embedding` of the `DocumentResource`.
+    fn resource_id(&self) -> &str {
+        &self.resource_id
+    }
+
     fn resource_embedding(&self) -> &Embedding {
         &self.resource_embedding
     }
 
-    /// # Returns
-    ///
-    /// The chunk `Embedding`s of the `DocumentResource`.
+    fn resource_type(&self) -> ResourceType {
+        ResourceType::Document
+    }
+
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
     }
 
-    /// Convert to json
     fn to_json(&self) -> Result<String, ResourceError> {
         serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
     }
@@ -75,51 +65,24 @@ impl Resource for DocumentResource {
     }
 
     /// Retrieves a data chunk given its id.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The `String` id of the data chunk.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
         let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
-        if id > self.chunk_count {
+        if id == 0 || id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
         }
-        let index = (id - 1) as usize;
+        let index = id.checked_sub(1).ok_or(ResourceError::InvalidChunkId)? as usize;
         Ok(&self.data_chunks[index])
     }
 }
 
 impl DocumentResource {
-    // Constructors
-    /// Creates a new instance of a `DocumentResource`.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - A string slice that holds the name of the document resource.
-    /// * `desc` - An optional string slice that holds the description of the
-    ///   document resource.
-    /// * `source` - An optional string slice that holds the source of the
-    ///   document resource.
-    /// * `resource_embedding` - An `Embedding` struct that holds the embedding
-    ///   of the document resource.
-    /// * `chunk_embeddings` - A vector of `Embedding` structs that hold the
-    ///   embeddings of the data chunks.
-    /// * `data_chunks` - A vector of `DataChunk` structs that hold the data
-    ///   chunks.
-    /// * `embedding_model_used` - The model used to generate the embeddings for
-    ///   this resource
-    ///
-    /// # Returns
-    ///
-    /// * `Self` - A new instance of `DocumentResource`.
+    /// * `resource_id` - For DocumentResources this should be a Sha256 hash as a String
+    ///  from the bytes of the original data.
     pub fn new(
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        resource_id: &str,
         resource_embedding: Embedding,
         chunk_embeddings: Vec<Embedding>,
         data_chunks: Vec<DataChunk>,
@@ -129,6 +92,7 @@ impl DocumentResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source.map(String::from),
+            resource_id: String::from(resource_id),
             resource_embedding,
             chunk_embeddings,
             chunk_count: data_chunks.len() as u64,
@@ -137,23 +101,13 @@ impl DocumentResource {
         }
     }
 
-    /// Initializes an empty `DocumentResource` with an empty resource
-    /// embedding.
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - The name of the `DocumentResource`.
-    /// * `desc` - The optional description of the `DocumentResource`.
-    /// * `source` - The optional source of the `DocumentResource`.
-    ///
-    /// # Returns
-    ///
-    /// * `Self` - A new instance of `DocumentResource`.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>) -> Self {
+    /// Initializes an empty `DocumentResource` with empty defaults.
+    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
         DocumentResource::new(
             name,
             desc,
             source,
+            resource_id,
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
@@ -164,62 +118,61 @@ impl DocumentResource {
     /// Performs a vector similarity search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - The query `Embedding`.
-    /// * `proximity_window` - The number of DataChunks to fetch below and above
-    ///   the most similar DataChunk.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `DataChunk`s sorted by their ids, or an error.
     pub fn similarity_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
-    ) -> Result<Vec<DataChunk>, ResourceError> {
+    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
         let search_results = self.similarity_search(query, 1);
-
-        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?; // If there's no first element, return an InvalidChunkId error
-
-        let mut chunks: Vec<DataChunk> = Vec::new();
+        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?;
         let most_similar_id = most_similar_chunk
+            .chunk
             .id
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
 
-        let start_id = if most_similar_id > proximity_window {
+        // Get Start/End ids
+        let start_id = if most_similar_id >= proximity_window {
             most_similar_id - proximity_window
         } else {
             1
         };
+        let end_id = if let Some(end_boundary) = self.chunk_count.checked_sub(1) {
+            if let Some(potential_end_id) = most_similar_id.checked_add(proximity_window) {
+                potential_end_id.min(end_boundary)
+            } else {
+                end_boundary // Or any appropriate default
+            }
+        } else {
+            1
+        };
 
-        let end_id = most_similar_id + proximity_window;
-        for id in start_id..=end_id {
-            let chunk = self.get_data_chunk(id.to_string())?;
-            chunks.push(chunk.clone());
+        // Acquire surrounding chunks
+        let mut chunks = Vec::new();
+        for id in start_id..=(end_id + 1) {
+            if let Ok(chunk) = self.get_data_chunk(id.to_string()) {
+                chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: 0.00,
+                    resource_pointer: self.get_resource_pointer(),
+                });
+            }
         }
 
         Ok(chunks)
     }
 
-    /// Performs a metadata search, returning all DataChunks with the same
-    /// metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `query_metadata` - The metadata string to search for.
-    ///
-    /// # Returns
-    ///
-    /// A vector of `DataChunk`s with the same metadata, or an error.
-    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<DataChunk>, ResourceError> {
-        let mut matching_chunks: Vec<DataChunk> = Vec::new();
+    /// Returns all DataChunks with the same metadata.
+    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+        let mut matching_chunks = Vec::new();
 
         for chunk in &self.data_chunks {
             match &chunk.metadata {
-                Some(metadata) if metadata == &query_metadata => matching_chunks.push(chunk.clone()),
+                Some(metadata) if metadata == &query_metadata => matching_chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: 0.00,
+                    resource_pointer: self.get_resource_pointer(),
+                }),
                 _ => (),
             }
         }
@@ -231,21 +184,7 @@ impl DocumentResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk and associated embedding to the document
-    /// resource.
-    ///
-    /// # Arguments
-    ///
-    /// * `data` - A string representing the data to be added in the new data
-    ///   chunk.
-    /// * `metadata` - An optional string representing additional metadata for
-    ///   the data chunk.
-    /// * `embedding` - An embedding related to the data chunk.
-    ///
-    /// The method creates a new data chunk using the provided data and
-    /// metadata, clones the provided embedding and sets its id to match the
-    /// new data chunk, and finally adds the new data chunk and the updated
-    /// embedding to the resource.
+    /// Appends a new data chunk and associated embedding to the document.
     pub fn append_data(&mut self, data: &str, metadata: Option<&str>, embedding: &Embedding) {
         let id = self.chunk_count + 1;
         let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone());
@@ -255,26 +194,8 @@ impl DocumentResource {
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk and associated embedding in the
-    /// resource.
-    ///
-    /// # Arguments
-    ///
+    /// Replaces an existing data chunk and associated embedding.
     /// * `id` - The id of the data chunk to be replaced.
-    /// * `new_data` - A string representing the new data.
-    /// * `new_metadata` - An optional string representing the new metadata.
-    /// * `embedding` - An embedding related to the new data chunk.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<DataChunk, ResourceError>` - If successful, returns the old
-    ///   `DataChunk` that was replaced.
-    ///
-    /// The method checks if the provided id is valid, and if so, it creates a
-    /// new data chunk using the provided new data and metadata, clones the
-    /// provided embedding and sets its id to match the new data chunk,
-    /// replaces the old data chunk and the associated embedding with
-    /// the new ones, and finally returns the old data chunk.
     pub fn replace_data(
         &mut self,
         id: u64,
@@ -298,17 +219,6 @@ impl DocumentResource {
 
     /// Removes and returns the last data chunk and associated embedding from
     /// the resource.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(DataChunk, Embedding), ResourceError>` - If successful,
-    ///   returns a tuple containing the removed data chunk and embedding. If
-    ///   the resource is empty, returns a `ResourceError`.
-    ///
-    /// The method attempts to pop the last `DataChunk` and `Embedding` from
-    /// their respective vectors. If this is successful, it decrements
-    /// `chunk_count` and returns the popped `DataChunk` and `Embedding`. If
-    /// the resource is empty, it returns a `ResourceError`.
     pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
@@ -323,14 +233,7 @@ impl DocumentResource {
     }
 
     /// Deletes a data chunk and associated embedding from the resource.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The id of the data chunk to be deleted.
-    ///
-    /// # Returns
-    ///
-    /// A tuple containing the removed data chunk and embedding, or error.
+    /// Returns a tuple containing the removed data chunk and embedding, or error.
     pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
 
@@ -345,7 +248,7 @@ impl DocumentResource {
         Ok((deleted_chunk, deleted_embedding))
     }
 
-    // Internal data chunk deletion
+    /// Internal data chunk deletion
     fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, ResourceError> {
         if id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
@@ -360,16 +263,18 @@ impl DocumentResource {
         Ok(removed_chunk)
     }
 
-    // Internal adding a data chunk
     fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
     }
 
-    /// Convert from json
     pub fn from_json(json: &str) -> Result<Self, ResourceError> {
         serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
+    }
+
+    pub fn set_resource_id(&mut self, resource_id: String) {
+        self.resource_id = resource_id;
     }
 
     /// Parses a list of strings filled with text into a Document Resource,
@@ -379,29 +284,16 @@ impl DocumentResource {
     /// Of note, this function assumes you already pre-parsed the text,
     /// performed cleanup, ensured that each String is under the 512 token
     /// limit and is ready to be used to create a DataChunk.
-    ///
-    /// # Arguments
-    ///
-    /// * `text_list` - A list of strings with the text.
-    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
-    /// * `name` - The name of the document.
-    /// * `desc` - An optional description of the document.
-    /// * `source` - An optional source of the document.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a ResourceDocument. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
     pub fn parse_text(
         text_list: Vec<String>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        resource_id: &str,
     ) -> Result<DocumentResource, ResourceError> {
         // Create doc resource and initial setup
-        let mut doc = DocumentResource::new_empty(name, desc, source);
+        let mut doc = DocumentResource::new_empty(name, desc, source, resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Parse the pdf into grouped text blocks
@@ -409,18 +301,18 @@ impl DocumentResource {
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
-        println!("Generated resource embedding");
+        // println!("Generated resource embedding");
 
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
         let total_num_embeddings = text_list.len();
         let mut i = 0;
         for text in &text_list {
-            let embedding = generator.generate_embedding_default(text)?;
+            let embedding = generator.generate_embedding(text)?;
             embeddings.push(embedding);
 
             i += 1;
-            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
 
         // Add the text + embeddings into the doc
@@ -434,22 +326,6 @@ impl DocumentResource {
     /// Parses a PDF from a buffer into a Document Resource, automatically
     /// separating sentences + performing text parsing, as well as
     /// generating embeddings using the supplied embedding generator.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the PDF data.
-    /// * `average_chunk_size` - The size in characters that you want on average
-    ///   for every DataChunk to be.
-    /// * `generator` - Any struct that implements `EmbeddingGenerator` trait.
-    /// * `name` - The name of the document.
-    /// * `desc` - An optional description of the document.
-    /// * `source` - An optional source of the document.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a ResourceDocument. If
-    /// an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
     pub fn parse_pdf(
         buffer: &[u8],
         average_chunk_size: u64,
@@ -458,8 +334,10 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
     ) -> Result<DocumentResource, ResourceError> {
+        // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
-        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source)
+        let resource_id = FileParser::generate_data_hash(buffer);
+        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source, &resource_id)
     }
 }
 
@@ -476,16 +354,18 @@ mod tests {
             "3 Animal Facts",
             Some("A bunch of facts about animals and wildlife"),
             Some("animalwildlife.com"),
+            "animal_resource",
         );
+
         doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
         // Prepare embeddings + data, then add it to the doc
         let fact1 = "Dogs are creatures with 4 legs that bark.";
-        let fact1_embeddings = generator.generate_embedding_default(fact1).unwrap();
+        let fact1_embeddings = generator.generate_embedding(fact1).unwrap();
         let fact2 = "Camels are slow animals with large humps.";
-        let fact2_embeddings = generator.generate_embedding_default(fact2).unwrap();
+        let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
-        let fact3_embeddings = generator.generate_embedding_default(fact3).unwrap();
+        let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
         doc.append_data(fact1, None, &fact1_embeddings);
         doc.append_data(fact2, None, &fact2_embeddings);
         doc.append_data(fact3, None, &fact3_embeddings);
@@ -497,19 +377,19 @@ mod tests {
 
         // Testing similarity search works
         let query_string = "What animal barks?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
-        assert_eq!(fact1, res[0].data);
+        assert_eq!(fact1, res[0].chunk.data);
 
         let query_string2 = "What animal is slow?";
-        let query_embedding2 = generator.generate_embedding_default(query_string2).unwrap();
+        let query_embedding2 = generator.generate_embedding(query_string2).unwrap();
         let res2 = doc.similarity_search(query_embedding2, 3);
-        assert_eq!(fact2, res2[0].data);
+        assert_eq!(fact2, res2[0].chunk.data);
 
         let query_string3 = "What animal swims in the ocean?";
-        let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
+        let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
         let res3 = doc.similarity_search(query_embedding3, 2);
-        assert_eq!(fact3, res3[0].data);
+        assert_eq!(fact3, res3[0].chunk.data);
     }
 
     #[test]
@@ -517,11 +397,13 @@ mod tests {
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
-        // Read the pdf from file into a buffer, then parse it into a DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
+        // Read the pdf from file into a buffer
         let buffer = std::fs::read("files/shinkai_manifesto.pdf")
             .map_err(|_| ResourceError::FailedPDFParsing)
             .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial manifesto of the Shinkai Network.";
         let doc = DocumentResource::parse_pdf(
             &buffer,
             100,
@@ -539,27 +421,27 @@ mod tests {
 
         // Testing similarity search works
         let query_string = "Who is building Shinkai?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
-            res[0].data
+            res[0].chunk.data
         );
 
         let query_string = "What about up-front costs?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].data
+            res[0].chunk.data
         );
 
         let query_string = "Does this relate to crypto?";
-        let query_embedding = generator.generate_embedding_default(query_string).unwrap();
+        let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.similarity_search(query_embedding, 1);
         assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
-            res[0].data
+            res[0].chunk.data
         );
     }
 }

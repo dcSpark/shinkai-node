@@ -6,7 +6,48 @@ use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
-use std::fmt::format;
+use std::str::FromStr;
+
+use super::router::ResourcePointer;
+
+/// Enum used for all Resources to specify their type
+/// when dealing with Trait objects.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ResourceType {
+    Document,
+    KeyValue,
+}
+
+impl ResourceType {
+    pub fn to_str(&self) -> &str {
+        match self {
+            ResourceType::Document => "Document",
+            ResourceType::KeyValue => "KeyValue",
+        }
+    }
+}
+
+impl FromStr for ResourceType {
+    type Err = ResourceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Document" => Ok(ResourceType::Document),
+            "KeyValue" => Ok(ResourceType::KeyValue),
+            _ => Err(ResourceError::InvalidResourceType),
+        }
+    }
+}
+
+/// A data chunk that was retrieved from a vector similarity search.
+/// Includes extra data like the resource_id of the resource it was from
+/// and the similarity search score.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RetrievedDataChunk {
+    pub chunk: DataChunk,
+    pub score: f32,
+    pub resource_pointer: ResourcePointer,
+}
 
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -17,18 +58,6 @@ pub struct DataChunk {
 }
 
 impl DataChunk {
-    /// Creates a new `DataChunk` with a `String` id, data, and optional
-    /// metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - A `String` that holds the id of the `DataChunk`.
-    /// * `data` - The data of the `DataChunk`.
-    /// * `metadata` - Optional metadata for the `DataChunk`.
-    ///
-    /// # Returns
-    ///
-    /// A new `DataChunk` instance.
     pub fn new(id: String, data: &str, metadata: Option<&str>) -> Self {
         Self {
             id,
@@ -37,19 +66,6 @@ impl DataChunk {
         }
     }
 
-    /// Creates a new `DataChunk` with a `u64` id converted to a `String`, data,
-    /// and optional metadata.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - A `u64` that holds the id of the `DataChunk`. It gets converted
-    ///   to a `String`.
-    /// * `data` - The data of the `DataChunk`.
-    /// * `metadata` - Optional metadata for the `DataChunk`.
-    ///
-    /// # Returns
-    ///
-    /// A new `DataChunk` instance.
     pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>) -> Self {
         Self::new(id.to_string(), data, metadata)
     }
@@ -61,45 +77,31 @@ pub trait Resource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> Option<&str>;
-    fn embedding_model_used(&self) -> EmbeddingModelType;
+    fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
+    fn resource_type(&self) -> ResourceType;
+    fn embedding_model_used(&self) -> EmbeddingModelType;
     fn chunk_embeddings(&self) -> &Vec<Embedding>;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
 
-    /// Convert to json
     // Note we cannot add from_json in the trait due to trait object limitations
     // with &self.
     fn to_json(&self) -> Result<String, ResourceError>;
 
     /// Retrieves a data chunk given its id.
-    ///
-    /// # Arguments
-    ///
-    /// * `id` - The `String` id of the data chunk.
-    ///
-    /// # Returns
-    ///
-    /// A reference to the `DataChunk` if found, or an error.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
 
-    /// Regenerates and updates the resource's embedding. The new
-    /// embedding is generated using the provided `EmbeddingGenerator` plus
-    /// the resource's name, description, source, and list of provided keywords.
-    ///
-    /// # Arguments
-    ///
-    /// * `generator` - The `EmbeddingGenerator` to be used for generating the
-    ///   new embedding.
-    /// * `keywords` - A list of Strings that are keywords from the resource
-    ///   content which were externally extracted. Note these keywords are only
-    ///   used for resource embedding generation, and are not saved in the
-    ///   resource.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<(), ResourceError>` - Returns `Ok(())` if the embedding
-    /// is successfully updated, or an error if the embedding generation fails.
+    /// Returns a String representing the Key that this Resource
+    /// will be/is saved to in the Topic::Resources in the DB.
+    /// The db key is: `{name}.{resource_id}`
+    fn db_key(&self) -> String {
+        let name = self.name().replace(" ", "_");
+        let resource_id = self.resource_id().replace(" ", "_");
+        format!("{}.{}", name, resource_id)
+    }
+
+    /// Regenerates and updates the resource's embedding.
     fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -107,7 +109,7 @@ pub trait Resource {
     ) -> Result<(), ResourceError> {
         let formatted = self.resource_embedding_data_formatted(keywords);
         let new_embedding = generator
-            .generate_embedding(&formatted, "RE")
+            .generate_embedding_with_id(&formatted, "RE")
             .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
         self.set_resource_embedding(new_embedding);
         Ok(())
@@ -117,14 +119,6 @@ pub trait Resource {
     /// resource embedding. This string includes the resource's name,
     /// description, source, and the maximum number of keywords which can be
     /// fit.
-    ///
-    /// * `keywords` - A list of Strings that are keywords from the resource
-    ///   content which were externally extracted.
-    ///
-    /// # Returns
-    ///
-    /// * `String` - The formatted metadata string in the format of "Name: N,
-    ///   Description: D, Source: S". If any are None, they are skipped.
     fn resource_embedding_data_formatted(&self, keywords: Vec<String>) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
@@ -150,76 +144,49 @@ pub trait Resource {
     }
 
     /// Performs a vector similarity search using a query embedding and returns
-    /// the most similar data chunks.
+    /// the most similar data chunks within a specific range.
     ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return (top-k)
-    ///
-    /// # Returns
-    ///
-    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
-    /// score in descending order, or an error if something goes wrong.
-    fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<DataChunk> {
-        let results = self._similarity_search(query, num_of_results);
-        results.into_iter().map(|(chunk, _)| chunk).collect()
+    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
+    ///   determines the range of acceptable similarity scores as a percentage
+    ///   of the highest score.
+    fn similarity_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedDataChunk> {
+        // Get top 100 results
+        let results = self.similarity_search(query.clone(), 100);
+
+        // Calculate the top similarity score
+        let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
+
+        // Now use the new function to find the range of acceptable similarity scores
+        self.similarity_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
     }
 
     /// Performs a vector similarity search using a query embedding and returns
-    /// the most similar data chunks within a specific range.
+    /// the most similar data chunks within a specific range of the top similarity score.
     ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to initially consider
-    ///   (aka. upper max).
-    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
-    ///   determines the range of acceptable similarity scores as a percentage
-    ///   of the highest score. Any result outside this range is ignored.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` that contains a vector of `DataChunk`s sorted by similarity
-    /// score in descending order, but only including those within the tolerance
-    /// range, or an error if something goes wrong.
-    fn similarity_search_tolerance_ranged(
+    /// * `top_similarity_score` - A float that represents the top similarity score.
+    fn similarity_search_tolerance_ranged_score(
         &self,
         query: Embedding,
-        num_of_results: u64,
         tolerance_range: f32,
-    ) -> Vec<DataChunk> {
+        top_similarity_score: f32,
+    ) -> Vec<RetrievedDataChunk> {
         // Clamp the tolerance_range to be between 0 and 1
         let tolerance_range = tolerance_range.max(0.0).min(1.0);
 
-        let mut results = self._similarity_search(query, num_of_results);
+        let mut results = self.similarity_search(query, 100);
 
         // Calculate the range of acceptable similarity scores
-        if let Some((_, highest_similarity)) = results.first() {
-            let lower_bound = highest_similarity * (1.0 - tolerance_range);
+        let lower_bound = top_similarity_score * (1.0 - tolerance_range);
 
-            // Filter the results to only include those within the tolerance range
-            results.retain(|&(_, similarity)| similarity >= lower_bound);
-        }
+        // Filter the results to only include those within the range of the top similarity score
+        results.retain(|ret_chunk| ret_chunk.score >= lower_bound && ret_chunk.score <= top_similarity_score);
 
-        results.into_iter().map(|(chunk, _)| chunk).collect()
+        results
     }
 
-    /// A helper function to perform a similarity search. This function is not
-    /// meant to be used directly, but rather to provide shared
-    /// functionality for the public similarity search methods.
-    ///
-    /// # Arguments
-    ///
-    /// * `query` - An embedding that is the basis for the similarity search.
-    /// * `num_of_results` - The number of top results to return.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` that contains a vector of tuples. Each tuple consists of a
-    /// `DataChunk` and its similarity score. The vector is sorted by similarity
-    /// score in descending order.
-    fn _similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<(DataChunk, f32)> {
+    /// Performs a vector similarity search using a query embedding and returns
+    /// the most similar data chunks.
+    fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         let num_of_results = num_of_results as usize;
 
         // Calculate the similarity scores for all chunk embeddings and skip any that
@@ -239,8 +206,7 @@ pub trait Resource {
         // Use a binary heap to more efficiently order the scores to get most similar
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
-            // println!("Current to be added to heap: (Id: {}, Score: {})", score.1,
-            // score.0);
+            // println!("Current to be added to heap: (Id: {}, Score: {})", score.1, score.0);
             if heap.len() < num_of_results {
                 heap.push(Reverse(score));
             } else if let Some(least_similar_score) = heap.peek() {
@@ -254,12 +220,16 @@ pub trait Resource {
             }
         }
 
-        // Fetch the DataChunks matching the most similar embeddings
-        let mut chunks: Vec<(DataChunk, f32)> = Vec::new();
+        // Fetch the RetrievedDataChunk matching the most similar embeddings
+        let mut chunks: Vec<RetrievedDataChunk> = vec![];
         while let Some(Reverse((similarity, id))) = heap.pop() {
             // println!("{}: {}%", id, similarity);
             if let Ok(chunk) = self.get_data_chunk(id) {
-                chunks.push((chunk.clone(), similarity.into_inner()));
+                chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score: similarity.into_inner(),
+                    resource_pointer: self.get_resource_pointer(),
+                });
             }
         }
 
@@ -267,5 +237,15 @@ pub trait Resource {
         chunks.reverse();
 
         chunks
+    }
+
+    /// Generates a pointer out of the resource. Of note this is required to get around
+    /// the fact that this is a trait object.
+    fn get_resource_pointer(&self) -> ResourcePointer {
+        let db_key = self.db_key();
+        let resource_type = self.resource_type();
+        let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
+        let embedding = self.resource_embedding().clone();
+        ResourcePointer::new(id, &db_key, resource_type, Some(embedding))
     }
 }
