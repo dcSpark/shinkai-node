@@ -46,8 +46,8 @@ impl BertCPPProcess {
 impl Drop for BertCPPProcess {
     fn drop(&mut self) {
         match self.child.kill() {
-            Ok(_) => println!("Successfully killed the local-ai server process."),
-            Err(e) => println!("Failed to kill the local-ai server process: {}", e),
+            Ok(_) => println!("Successfully killed the bert-cpp server process."),
+            Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
         }
     }
 }
