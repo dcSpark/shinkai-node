@@ -168,6 +168,39 @@ impl ShinkaiDB {
         Ok(retrieved_chunks)
     }
 
+    /// Performs a 2-tier vector similarity search across all resources using a query embedding,
+    /// returning retrieved data chunks that are within a tolerance range of similarity.
+    ///
+    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
+    ///   determines the range of acceptable similarity scores as a percentage
+    ///   of the highest score.
+    pub fn similarity_search_data_tolerance_ranged(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        tolerance_range: f32,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let retrieved_chunks = self.similarity_search_data(query.clone(), num_of_resources, 1)?;
+        let top_chunk = &retrieved_chunks
+            .get(0)
+            .ok_or(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))?;
+
+        println!("Top score: {}", top_chunk.score);
+
+        // Fetch the chunks that fit in the tolerance range
+        let resources = self.similarity_search_resources(query.clone(), num_of_resources)?;
+        let mut final_chunks = Vec::new();
+        for resource in resources {
+            println!("in resource");
+            let results =
+                resource.similarity_search_tolerance_ranged_score(query.clone(), tolerance_range, top_chunk.score);
+            println!("{:?}", results);
+            final_chunks.extend(results);
+        }
+
+        Ok(final_chunks)
+    }
+
     /// Performs a 2-tier vector similarity search using a query embedding across all DocumentResources
     /// and fetches the most similar data chunk + proximity_window number of chunks around it.
     ///
@@ -392,11 +425,23 @@ mod tests {
         assert_eq!(fact2, &ret_data_chunk2.chunk.data);
         assert_eq!(fact3, &ret_data_chunk3.chunk.data);
 
-        // for ret_data in ret_data_chunks {
-        //     println!(
-        //         "Origin: {}\nData: {}\nScore: {}\n\n",
-        //         ret_data.resource_pointer.db_key, ret_data.chunk.data, ret_data.score
-        //     )
-        // }
+        // Animal tolerance range vector search
+        let query = generator.generate_embedding("Animals that peform actions").unwrap();
+        let ret_data_chunks = shinkai_db
+            .similarity_search_data_tolerance_ranged(query, 10, 0.4)
+            .unwrap();
+
+        let ret_data_chunk = ret_data_chunks.get(0).unwrap();
+        let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
+
+        assert_eq!(fact1, &ret_data_chunk.chunk.data);
+        assert_eq!(fact2, &ret_data_chunk2.chunk.data);
+
+        // for ret_data in &ret_data_chunks {
+        //         println!(
+        //             "Origin: {}\nData: {}\nScore: {}\n\n",
+        //             ret_data.resource_pointer.db_key, ret_data.chunk.data, ret_data.score
+        //         )
+        //     }
     }
 }
