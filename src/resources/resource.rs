@@ -149,24 +149,37 @@ pub trait Resource {
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
     ///   of the highest score.
-    fn similarity_search_tolerance_ranged(
+    fn similarity_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedDataChunk> {
+        // Get top 100 results
+        let results = self.similarity_search(query.clone(), 100);
+
+        // Calculate the top similarity score
+        let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
+
+        // Now use the new function to find the range of acceptable similarity scores
+        self.similarity_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
+    }
+
+    /// Performs a vector similarity search using a query embedding and returns
+    /// the most similar data chunks within a specific range of the top similarity score.
+    ///
+    /// * `top_similarity_score` - A float that represents the top similarity score.
+    fn similarity_search_tolerance_ranged_score(
         &self,
         query: Embedding,
-        num_of_results: u64,
         tolerance_range: f32,
+        top_similarity_score: f32,
     ) -> Vec<RetrievedDataChunk> {
         // Clamp the tolerance_range to be between 0 and 1
         let tolerance_range = tolerance_range.max(0.0).min(1.0);
 
-        let mut results = self.similarity_search(query, num_of_results);
+        let mut results = self.similarity_search(query, 100);
 
         // Calculate the range of acceptable similarity scores
-        if let Some(ret_chunk) = results.first() {
-            let lower_bound = ret_chunk.score * (1.0 - tolerance_range);
+        let lower_bound = top_similarity_score * (1.0 - tolerance_range);
 
-            // Filter the results to only include those within the tolerance range
-            results.retain(|ret_chunk| ret_chunk.score >= lower_bound);
-        }
+        // Filter the results to only include those within the range of the top similarity score
+        results.retain(|ret_chunk| ret_chunk.score >= lower_bound && ret_chunk.score <= top_similarity_score);
 
         results
     }
