@@ -35,15 +35,13 @@ const App: React.FC = () => {
     <IonApp>
       <IonReactRouter>
         <IonRouterOutlet>
-          {!setupComplete && <Route path="/" component={Connect} exact={true} />}
-          {setupComplete && (
-            <>
-              <Route exact path="/home" component={Home} />
-              <Route path="/chat/:id" component={Chat} />
-              <Route path="/settings" component={Settings} />
-              <Redirect exact from="/" to="/home" />
-            </>
-          )}
+          <Route path="/connect" component={Connect} />
+          <Route exact path="/home" component={Home} />
+          <Route path="/chatlist" component={ChatList} />
+          <Route path="/chat/:id" component={Chat} />
+          <Route path="/settings" component={Settings} />
+          {!setupComplete && <Redirect exact from="/" to="/connect" />}
+          <Redirect exact from="/" to="/home" />
         </IonRouterOutlet>
       </IonReactRouter>
     </IonApp>

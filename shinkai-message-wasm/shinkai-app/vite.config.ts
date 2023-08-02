@@ -1,16 +1,14 @@
-import legacy from '@vitejs/plugin-legacy'
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
+import legacy from "@vitejs/plugin-legacy";
+import wasm from "vite-plugin-wasm";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    legacy()
-  ],
+  plugins: [react(), legacy(), wasm()],
   test: {
     globals: true,
-    environment: 'jsdom',
-    setupFiles: './src/setupTests.ts',
-  }
-})
+    environment: "jsdom",
+    setupFiles: "./src/setupTests.ts",
+  },
+});
