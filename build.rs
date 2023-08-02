@@ -9,6 +9,13 @@ use std::env;
 use std::process::Command;
 
 fn main() {
+    println!("Running build.rs-shinkai script!");
+    if let Some(_) = std::env::var_os("CARGO_BUILD_RERUN_IF_CHANGED") {
+        println!("cargo:rerun-if-changed=build.rs");
+        // Add additional files or directories you want to monitor for changes
+        // For example:
+        // println!("cargo:rerun-if-changed=src/");
+    }
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
     prepare_bert_cpp();
 

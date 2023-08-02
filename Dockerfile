@@ -15,7 +15,7 @@ COPY . .
 
 # Build the dependencies (cached)
 RUN cargo clean 
-RUN cargo build -vv
+RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build -vv
 RUN cargo test
 
 # Build your application
