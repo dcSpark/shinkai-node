@@ -14,7 +14,8 @@ COPY . .
 #COPY scripts ./scripts
 
 # Build the dependencies (cached)
-RUN cargo build
+RUN cargo clean 
+RUN cargo build -vv
 RUN cargo test
 
 # Build your application
