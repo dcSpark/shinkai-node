@@ -88,6 +88,7 @@ const Connect: React.FC = () => {
           <IonInput
             value={code}
             onIonChange={(e) => setCode(e.detail.value!)}
+            label="Code"
             aria-label="Code"
           />
         </IonItem>
@@ -95,6 +96,7 @@ const Connect: React.FC = () => {
           <IonInput
             value={profileName}
             onIonChange={(e) => setProfileName(e.detail.value!)}
+            label="Profile Name"
             aria-label="Profile Name"
           />
         </IonItem>
@@ -102,6 +104,7 @@ const Connect: React.FC = () => {
           <IonInput
             value={identityPk}
             onIonChange={(e) => setIdentityPk(e.detail.value!)}
+            label="Identity Public Key"
             aria-label="Identity Public Key"
           />
         </IonItem>
@@ -109,6 +112,7 @@ const Connect: React.FC = () => {
           <IonInput
             value={encryptionPk}
             onIonChange={(e) => setEncryptionPk(e.detail.value!)}
+            label="Encryption Public Key"
             aria-label="Encryption Public Key"
           />
         </IonItem>
