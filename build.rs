@@ -10,13 +10,7 @@ use std::process::Command;
 
 fn main() {
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
-    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let status = Command::new("sh")
-        .current_dir(&manifest_dir)
-        .arg("scripts/compile_bert_cpp.sh")
-        .status()
-        .unwrap();
-    set_execute_permission("bert-cpp-server").expect("Failed to set execute permission");
+    prepare_bert_cpp();
 
     // Local Embedding Generator model
     let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
@@ -27,6 +21,39 @@ fn main() {
     let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
     let model_filename = "models/all-MiniLM-L12-v2.bin";
     download_file(model_url, model_filename, model_filename);
+}
+
+fn prepare_bert_cpp() {
+    // Try to get the "CARGO_MANIFEST_DIR" environment variable
+    match env::var("CARGO_MANIFEST_DIR") {
+        Ok(manifest_dir) => {
+            // If successful, create the server file path
+            let server_file_path = format!("{}/bert-cpp-server", manifest_dir);
+
+            // Check if the "bert-cpp-server" file exists
+            if !Path::new(&server_file_path).exists() {
+                // If the file does not exist, try to run the command
+                match Command::new("sh")
+                    .current_dir(&manifest_dir)
+                    .arg("scripts/compile_bert_cpp.sh")
+                    .status()
+                {
+                    Ok(_) => {
+                        // If successful, try to set the execute permission
+                        if let Err(e) = set_execute_permission("bert-cpp-server") {
+                            println!("Failed to set execute permission: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        println!("Failed to run command: {}", e);
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            println!("Failed to read environment variable: {}", e);
+        }
+    }
 }
 
 fn set_execute_permission(path: &str) -> std::io::Result<()> {
