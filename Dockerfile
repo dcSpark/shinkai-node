@@ -16,7 +16,7 @@ COPY . .
 # Build the dependencies (cached)
 RUN cargo clean 
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build -vv
-RUN cargo test
+RUN cargo test -- --test-threads=1
 
 # Build your application
 #RUN cargo build --release --locked
