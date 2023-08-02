@@ -1,6 +1,6 @@
 // src/features/chat/chatSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { RootState } from '../../stores/main';
+import { RootState } from '../../store/main';
 
 interface ChatState {
   messages: any[]; // Replace any with the type of your messages

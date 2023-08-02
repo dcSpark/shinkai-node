@@ -1,9 +1,6 @@
 import { EncryptionMethod, ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper as ShinkaiMessageWrapperWASM } from '../../pkg/shinkai_message_wasm.js';
-import { Body, InternalMetadata, ExternalMetadata } from '../../models/ShinkaiMessage';
-import { mapEncryptionMethod } from '../../utils/wasm_types_conversion.js';
-// import * as wasm from './pkg/shinkai_message_wasm.js';
-
-
+import { Body, ExternalMetadata } from '../../models/ShinkaiMessage';
+import { mapEncryptionMethod } from '../../utils/wasm_helpers.js';
 
 export class ShinkaiMessageWrapper {
   private wasmWrapper: ShinkaiMessageWrapperWASM;

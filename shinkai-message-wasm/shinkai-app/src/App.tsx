@@ -5,6 +5,10 @@ import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import ChatList from "./pages/ChatList";
 import Settings from "./pages/Settings";
+import Connect from "./pages/Connect";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
+import { store, persistor } from "./store";
 
 /* Core CSS required for Ionic components to work properly */
 import "@ionic/react/css/core.css";
@@ -24,27 +28,34 @@ import "@ionic/react/css/display.css";
 
 /* Theme variables */
 import "./theme/variables.css";
-import Connect from "./pages/Connect";
 
 setupIonicReact();
 
 const App: React.FC = () => {
-  const setupComplete = localStorage.getItem('setupComplete') === 'true';
+  const setupComplete = false; // localStorage.getItem("setupComplete") === "true";
+  console.log(`Setup complete: ${setupComplete}`);
 
   return (
-    <IonApp>
-      <IonReactRouter>
-        <IonRouterOutlet>
-          <Route path="/connect" component={Connect} />
-          <Route exact path="/home" component={Home} />
-          <Route path="/chatlist" component={ChatList} />
-          <Route path="/chat/:id" component={Chat} />
-          <Route path="/settings" component={Settings} />
-          {!setupComplete && <Redirect exact from="/" to="/connect" />}
-          <Redirect exact from="/" to="/home" />
-        </IonRouterOutlet>
-      </IonReactRouter>
-    </IonApp>
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <IonApp>
+          <IonReactRouter>
+            <IonRouterOutlet>
+              <Route path="/connect" component={Connect} />
+              <Route exact path="/home" component={Home} />
+              <Route path="/chatlist" component={ChatList} />
+              <Route path="/chat/:id" component={Chat} />
+              <Route path="/settings" component={Settings} />
+              {!setupComplete ? (
+                <Redirect exact from="/" to="/connect" />
+              ) : (
+                <Redirect exact from="/" to="/home" />
+              )}
+            </IonRouterOutlet>
+          </IonReactRouter>
+        </IonApp>
+      </PersistGate>
+    </Provider>
   );
 };
 
