@@ -5,7 +5,7 @@ use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
 
 use crate::{
-    managers::{inbox_name_manager::InboxNameManager, identity_manager::{StandardIdentity, IdentityType}}, schemas::inbox_permission::InboxPermission,
+    managers::{inbox_name_manager::InboxNameManager}, schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, IdentityType}},
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};

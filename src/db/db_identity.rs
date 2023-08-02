@@ -1,6 +1,6 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::agent_serialization::SerializedAgent;
-use crate::managers::identity_manager::{StandardIdentity, IdentityType};
+use crate::schemas::identity::{StandardIdentity, IdentityType};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, Options};

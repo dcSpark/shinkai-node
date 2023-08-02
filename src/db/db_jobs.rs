@@ -1,5 +1,4 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::identity_manager::{StandardIdentity, IdentityType};
 use crate::managers::job_manager::{Job, JobLike};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;

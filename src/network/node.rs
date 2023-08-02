@@ -18,12 +18,13 @@ use tokio::sync::{Mutex, mpsc};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self, StandardIdentity};
+use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::{JobManager};
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
+use crate::schemas::identity::StandardIdentity;
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;

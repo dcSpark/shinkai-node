@@ -11,10 +11,10 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::managers::identity_manager::{IdentityType, StandardIdentity};
 use shinkai_node::managers::{IdentityManager, InboxNameManager};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
+use shinkai_node::schemas::identity::{StandardIdentity, IdentityType};
 use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};

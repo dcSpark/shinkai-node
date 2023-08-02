@@ -1,9 +1,9 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode, StandardIdentity},
+    managers::identity_manager::{self, IdentityManager },
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::inbox_permission::InboxPermission,
+    schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, Identity, RegistrationCode, IdentityType}},
 };
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};

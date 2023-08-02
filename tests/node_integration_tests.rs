@@ -6,9 +6,9 @@ use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessage
 use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key, signature_secret_key_to_string, signature_public_key_to_string};
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::managers::IdentityManager;
-use shinkai_node::managers::identity_manager::{StandardIdentity, IdentityType};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::{Node};
+use shinkai_node::schemas::identity::{StandardIdentity, IdentityType};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;

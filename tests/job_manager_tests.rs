@@ -1,5 +1,4 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::managers::IdentityManager;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
