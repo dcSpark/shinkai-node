@@ -191,7 +191,8 @@ impl DocumentResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk, associated embeddings, and matching DataTags to the document.
+    /// Appends a new data chunk and associated embeddings to the document
+    /// and updates the data tags index.
     pub fn append_data(
         &mut self,
         data: &str,
@@ -211,7 +212,8 @@ impl DocumentResource {
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk, associated embedding, and DataTags.
+    /// Replaces an existing data chunk & associated embedding
+    /// and updates the data tags index.
     /// * `id` - The id of the data chunk to be replaced.
     pub fn replace_data(
         &mut self,
@@ -219,7 +221,7 @@ impl DocumentResource {
         new_data: &str,
         new_metadata: Option<&str>,
         embedding: &Embedding,
-        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
     ) -> Result<DataChunk, ResourceError> {
         // Id + index
         if id > self.chunk_count {
@@ -230,32 +232,32 @@ impl DocumentResource {
         // First generate new data tags based on new data
         let new_data_tags = DataTag::validate_tag_list(&new_data, parsing_tags);
 
-        // Next fetch old chunk, and create the new chunk
-        let old_chunk = self.get_data_chunk(id.to_string())?;
+        // Next create the new chunk, and replace the old chunk in the data_chunks list
         let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_data_tags);
+        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk.clone());
 
         // Then deletion of old chunk from index and addition of new chunk
         self.data_tag_index.remove_chunk(&old_chunk);
         self.data_tag_index.add_chunk(&new_chunk);
 
-        // Embedding Replace
+        // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.chunk_embeddings[index] = embedding;
 
-        // Data Chunk Replace
-        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk);
         Ok(old_chunk)
     }
 
-    /// Removes and returns the last data chunk and associated embedding from
-    /// the resource.
+    /// Pops and returns the last data chunk and associated embedding
+    /// and updates the data tags index.
     pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
 
         match (popped_chunk, popped_embedding) {
             (Some(chunk), Some(embedding)) => {
+                // Remove chunk from data tag index
+                self.data_tag_index.remove_chunk(&chunk);
                 self.chunk_count -= 1;
                 Ok((chunk, embedding))
             }
@@ -263,10 +265,11 @@ impl DocumentResource {
         }
     }
 
-    /// Deletes a data chunk and associated embedding from the resource.
-    /// Returns a tuple containing the removed data chunk and embedding, or error.
+    /// Deletes a data chunk and associated embedding from the resource
+    /// and updates the data tags index.
     pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
+        self.data_tag_index.remove_chunk(&deleted_chunk);
 
         let index = (id - 1) as usize;
         let deleted_embedding = self.chunk_embeddings.remove(index);
@@ -322,6 +325,7 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
         resource_id: &str,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentResource, ResourceError> {
         // Create doc resource and initial setup
         let mut doc = DocumentResource::new_empty(name, desc, source, resource_id);
@@ -348,7 +352,7 @@ impl DocumentResource {
 
         // Add the text + embeddings into the doc
         for (i, text) in text_list.iter().enumerate() {
-            doc.append_data(text, None, &embeddings[i]);
+            doc.append_data(text, None, &embeddings[i], parsing_tags);
         }
 
         Ok(doc)
@@ -364,11 +368,20 @@ impl DocumentResource {
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentResource, ResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
         let resource_id = FileParser::generate_data_hash(buffer);
-        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source, &resource_id)
+        DocumentResource::parse_text(
+            grouped_text_list,
+            generator,
+            name,
+            desc,
+            source,
+            &resource_id,
+            parsing_tags,
+        )
     }
 }
 
@@ -397,9 +410,9 @@ mod tests {
         let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
         let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
-        doc.append_data(fact1, None, &fact1_embeddings);
-        doc.append_data(fact2, None, &fact2_embeddings);
-        doc.append_data(fact3, None, &fact3_embeddings);
+        doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
+        doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
+        doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
 
         // Testing JSON serialization/deserialization
         let json = doc.to_json().unwrap();
@@ -442,6 +455,7 @@ mod tests {
             "Shinkai Manifesto",
             Some(desc),
             Some("http://shinkai.com"),
+            &vec![],
         )
         .unwrap();
 

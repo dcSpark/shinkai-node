@@ -130,7 +130,8 @@ impl ResourceRouter {
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
                 // append the new data.
-                self.routing_resource.append_data(&data, Some(&metadata), &embedding);
+                self.routing_resource
+                    .append_data(&data, Some(&metadata), &embedding, &vec![]);
             }
         }
 
@@ -166,7 +167,7 @@ impl ResourceRouter {
             .map_err(|_| ResourceError::InvalidChunkId)?;
 
         self.routing_resource
-            .replace_data(old_pointer_id, &data, Some(&metadata), &embedding)?;
+            .replace_data(old_pointer_id, &data, Some(&metadata), &embedding, &vec![])?;
         Ok(())
     }
 
