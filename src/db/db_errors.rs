@@ -35,6 +35,10 @@ pub enum ShinkaiDBError {
     FailedFetchingValue,
     BincodeError(bincode::Error),
     InboxNameError(InboxNameError),
+    ProfileNotFound,
+    DeviceIdentityAlreadyExists,
+    ProfileNameNotProvided,
+    InvalidPermissionsType
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -82,6 +86,10 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
             ShinkaiDBError::BincodeError(e) => write!(f, "Bincode error: {}", e),
             ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
+            ShinkaiDBError::ProfileNotFound => write!(f, "Profile not found"),
+            ShinkaiDBError::DeviceIdentityAlreadyExists => write!(f, "Device identity already exists"),
+            ShinkaiDBError::ProfileNameNotProvided => write!(f, "Profile name not provided"),
+            ShinkaiDBError::InvalidPermissionsType => write!(f, "Invalid permissions type"),
         }
     }
 }
@@ -130,6 +138,8 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::ResourceError(_), ShinkaiDBError::ResourceError(_)) => true,
             (ShinkaiDBError::BincodeError(_), ShinkaiDBError::BincodeError(_)) => true,
             (ShinkaiDBError::InboxNameError(_), ShinkaiDBError::InboxNameError(_)) => true,
+            (ShinkaiDBError::ProfileNotFound, ShinkaiDBError::ProfileNotFound) => true,
+            (ShinkaiDBError::DeviceIdentityAlreadyExists, ShinkaiDBError::DeviceIdentityAlreadyExists) => true,
             _ => false,
         }
     }

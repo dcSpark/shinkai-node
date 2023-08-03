@@ -1,11 +1,14 @@
+use crate::schemas::identity::IdentityPermissions;
+
 use super::node::NodeCommand;
 use async_channel::Sender;
+use reqwest::StatusCode;
+use serde::{Serialize, Deserialize};
 use serde_json::json;
 use shinkai_message_wasm::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_wasm::shinkai_utils::signatures::signature_public_key_to_string;
-use shinkai_message_wasm::ShinkaiMessageWrapper;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use warp::Filter;
@@ -33,12 +36,27 @@ struct ConnectBody {
     profile_name: String,
 }
 
-#[derive(serde::Deserialize)]
-struct UseRegistrationCodeBody {
-    code: String,
-    profile_name: String,
-    identity_pk: String,
-    encryption_pk: String,
+#[derive(Serialize)]
+struct APIErrorMessage {
+    code: u16,
+    message: String,
+    user_recovery: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RegistrationRequestBody {
+    permissions: IdentityPermissions,
+    profile_name: Option<String>,
+}
+
+impl APIErrorMessage {
+    fn new(code: StatusCode, message: &str, user_recovery: &str) -> Self {
+        Self {
+            code: code.as_u16(),
+            message: message.to_string(),
+            user_recovery: user_recovery.to_string(),
+        }
+    }
 }
 
 pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
@@ -124,7 +142,10 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_registration_code")
             .and(warp::post())
-            .and_then(move || create_registration_code_handler(node_commands_sender.clone()))
+            .and(warp::body::json())
+            .and_then(move |body: RegistrationRequestBody| {
+                create_registration_code_handler(node_commands_sender.clone(), body.permissions, body.profile_name)
+            })
     };
 
     // POST v1/use_registration_code
@@ -161,6 +182,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(create_registration_code)
         .or(use_registration_code)
         .or(get_all_subidentities)
+        .recover(handle_rejection)
         .with(log)
         .with(cors);
 
@@ -277,11 +299,17 @@ async fn get_last_messages_handler(
 
 async fn create_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
+    permissions: IdentityPermissions,
+    profile_name: Option<String>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::CreateRegistrationCode { res: res_sender })
+        .send(NodeCommand::CreateRegistrationCode {
+            permissions,
+            profile_name,
+            res: res_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?; // Send the command to Node
     let code = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
@@ -317,4 +345,37 @@ async fn get_all_subidentities_handler(
         .map_err(|_| warp::reject::reject())?;
     let subidentities = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
     Ok(warp::reply::json(&subidentities))
+}
+
+async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
+    if err.is_not_found() {
+        let json = warp::reply::json(&APIErrorMessage::new(
+            StatusCode::NOT_FOUND,
+            "Not Found",
+            "Please check your URL.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND))
+    } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
+        let json = warp::reply::json(&APIErrorMessage::new(
+            StatusCode::BAD_REQUEST,
+            "Invalid Body",
+            "Please check your JSON body.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST))
+    } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
+        let json = warp::reply::json(&APIErrorMessage::new(
+            StatusCode::METHOD_NOT_ALLOWED,
+            "Method Not Allowed",
+            "Please check your request method.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::METHOD_NOT_ALLOWED))
+    } else {
+        // Unexpected error, we don't want to expose anything to the user.
+        let json = warp::reply::json(&APIErrorMessage::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Internal Server Error",
+            "An unexpected error occurred. Please try again.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::INTERNAL_SERVER_ERROR))
+    }
 }

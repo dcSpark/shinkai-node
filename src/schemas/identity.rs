@@ -41,6 +41,38 @@ impl IdentityType {
         }
         .to_owned()
     }
+
+    pub fn to_standard(&self) -> Option<StandardIdentityType> {
+        match self {
+            Self::Global => Some(StandardIdentityType::Global),
+            Self::Profile => Some(StandardIdentityType::Profile),
+            _ => None,  // Agent and Device types don't have a StandardIdentityType equivalent
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Serialize, Deserialize)]
+pub enum StandardIdentityType {
+    Global,
+    Profile,
+}
+
+impl StandardIdentityType {
+    pub fn to_enum(s: &str) -> Option<Self> {
+        match s {
+            "global" => Some(StandardIdentityType::Global),
+            "profile" => Some(StandardIdentityType::Profile),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            StandardIdentityType::Global => "global",
+            StandardIdentityType::Profile => "profile",
+        }
+        .to_owned()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -49,27 +81,94 @@ pub struct RegistrationCode {
     pub profile_name: String,
     pub identity_pk: String,
     pub encryption_pk: String,
-    pub permission_type: String,
+    pub identity_type: IdentityType,
+    pub permission_type: IdentityPermissions,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum IdentityPermissions {
+    Admin, // can create and delete other profiles
+    Standard, // can add / remove devices
+    None, // none of the above
 }
 
 #[derive(Debug, Clone)]
 pub enum Identity {
+    // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),
+    // IdentityType::Agent
     Agent(SerializedAgent),
+    // IdentityType::Device
+    Device(DeviceIdentity),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardIdentity {
-    pub full_identity_name: String,
+    pub full_identity_name: String, // @@Alice.shinkai/profileName
     pub addr: Option<SocketAddr>,
     pub node_encryption_public_key: EncryptionPublicKey,
     pub node_signature_public_key: SignaturePublicKey,
-    pub subidentity_encryption_public_key: Option<EncryptionPublicKey>,
-    pub subidentity_signature_public_key: Option<SignaturePublicKey>,
-    pub permission_type: IdentityType,
+    pub profile_encryption_public_key: Option<EncryptionPublicKey>,
+    pub profile_signature_public_key: Option<SignaturePublicKey>,
+    pub identity_type: StandardIdentityType,
+    pub permission_type: IdentityPermissions,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeviceIdentity {
+    // This would include the profile name e.g. @@Alice.shinkai/profileName/myPhone
+    pub full_identity_name: String,
+    pub node_encryption_public_key: EncryptionPublicKey,
+    pub node_signature_public_key: SignaturePublicKey,
+    pub profile_encryption_public_key: Option<EncryptionPublicKey>,
+    pub profile_signature_public_key: Option<SignaturePublicKey>,
+    pub device_signature_public_key: Option<SignaturePublicKey>,
+    pub permission_type: IdentityPermissions,
+}
 
+impl DeviceIdentity {
+    pub fn to_standard_identity(&self) -> StandardIdentity {
+        let full_identity_name = self.full_identity_name.split("/").next().unwrap().to_string();
+        StandardIdentity {
+            full_identity_name,
+            addr: None,
+            node_encryption_public_key: self.node_encryption_public_key.clone(),
+            node_signature_public_key: self.node_signature_public_key.clone(),
+            profile_encryption_public_key: self.profile_encryption_public_key.clone(),
+            profile_signature_public_key: self.profile_signature_public_key.clone(),
+            identity_type: StandardIdentityType::Profile,
+            permission_type: self.permission_type.clone(),
+        }
+    }
+}
+
+impl IdentityPermissions {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        let s = std::str::from_utf8(slice).unwrap();
+        match s {
+            "admin" => Self::Admin,
+            "standard" => Self::Standard,
+            _ => Self::None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Admin => b"admin",
+            Self::Standard => b"standard",
+            Self::None => b"none",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "Admin" => Some(Self::Admin),
+            "Standard" => Some(Self::Standard),
+            "None" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
 
 impl Serialize for StandardIdentity {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -81,8 +180,9 @@ impl Serialize for StandardIdentity {
         s.serialize_field("addr", &self.addr)?;
         s.serialize_field("node_encryption_public_key", &encryption_public_key_to_string_ref(&self.node_encryption_public_key))?;
         s.serialize_field("node_signature_public_key", &signature_public_key_to_string_ref(&self.node_signature_public_key))?;
-        s.serialize_field("subidentity_encryption_public_key", &self.subidentity_encryption_public_key.map(encryption_public_key_to_string))?;
-        s.serialize_field("subidentity_signature_public_key", &self.subidentity_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field("profile_encryption_public_key", &self.profile_encryption_public_key.map(encryption_public_key_to_string))?;
+        s.serialize_field("profile_signature_public_key", &self.profile_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field("identity_type", &self.identity_type)?;
         s.serialize_field("permission_type", &self.permission_type)?;
         s.end()
     }
@@ -96,16 +196,17 @@ impl StandardIdentity {
         node_signature_public_key: SignaturePublicKey,
         subidentity_encryption_public_key: Option<EncryptionPublicKey>,
         subidentity_signature_public_key: Option<SignaturePublicKey>,
-        identity_type: IdentityType,
+        identity_type: StandardIdentityType,
+        permission_type: IdentityPermissions,
     ) -> Self {
         // If Identity is of type Global or Agent, clear the subidentity keys
-        let subidentity_encryption_public_key = if matches!(identity_type, IdentityType::Global | IdentityType::Agent) {
+        let subidentity_encryption_public_key = if matches!(identity_type, StandardIdentityType::Global) {
             None
         } else {
             subidentity_encryption_public_key
         };
 
-        let subidentity_signature_public_key = if matches!(identity_type, IdentityType::Global | IdentityType::Agent) {
+        let subidentity_signature_public_key = if matches!(identity_type, StandardIdentityType::Global) {
             None
         } else {
             subidentity_signature_public_key
@@ -116,9 +217,10 @@ impl StandardIdentity {
             addr,
             node_encryption_public_key,
             node_signature_public_key,
-            subidentity_encryption_public_key,
-            subidentity_signature_public_key,
-            permission_type: identity_type,
+            profile_encryption_public_key: subidentity_encryption_public_key,
+            profile_signature_public_key: subidentity_signature_public_key,
+            identity_type,
+            permission_type,
         }
     }
 
@@ -129,7 +231,7 @@ impl StandardIdentity {
             .unwrap_or(&self.full_identity_name)
     }
 
-    pub fn subidentity_name(&self) -> Option<&str> {
+    pub fn profile_name(&self) -> Option<&str> {
         let parts: Vec<&str> = self.full_identity_name.split('/').collect();
         if parts.len() > 1 {
             Some(parts[1])
@@ -144,24 +246,75 @@ impl fmt::Display for StandardIdentity {
         let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
         let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
 
-        let subidentity_encryption_public_key = self
-            .subidentity_encryption_public_key
+        let profile_encryption_public_key = self
+            .profile_encryption_public_key
             .as_ref()
             .map(encryption_public_key_to_string_ref)
             .unwrap_or_else(|| "None".to_string());
-        let subidentity_signature_public_key = self
-            .subidentity_signature_public_key
+        let profile_signature_public_key = self
+            .profile_signature_public_key
             .as_ref()
             .map(signature_public_key_to_string_ref)
             .unwrap_or_else(|| "None".to_string());
 
-        write!(f, "NewIdentity {{ full_identity_name: {}, addr: {:?}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, subidentity_encryption_public_key: {}, subidentity_signature_public_key: {}, permission_type: {:?} }}",
+        write!(f, "NewIdentity {{ full_identity_name: {}, addr: {:?}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {}, profile_signature_public_key: {}, identity_type: {:?}, permission_type: {:?} }}",
             self.full_identity_name,
             self.addr,
             node_encryption_public_key,
             node_signature_public_key,
-            subidentity_encryption_public_key,
-            subidentity_signature_public_key,
+            profile_encryption_public_key,
+            profile_signature_public_key,
+            self.identity_type,
+            self.permission_type
+        )
+    }
+}
+
+impl Serialize for DeviceIdentity {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut s = serializer.serialize_struct("DeviceIdentity", 6)?;
+        s.serialize_field("full_identity_name", &self.full_identity_name)?;
+        s.serialize_field("node_encryption_public_key", &encryption_public_key_to_string_ref(&self.node_encryption_public_key))?;
+        s.serialize_field("node_signature_public_key", &signature_public_key_to_string_ref(&self.node_signature_public_key))?;
+        s.serialize_field("profile_encryption_public_key", &self.profile_encryption_public_key.map(encryption_public_key_to_string))?;
+        s.serialize_field("profile_signature_public_key", &self.profile_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field("device_signature_public_key", &self.device_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field("permission_type", &self.permission_type)?;
+        s.end()
+    }
+}
+
+impl fmt::Display for DeviceIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
+        let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
+
+        let profile_encryption_public_key = self
+            .profile_encryption_public_key
+            .as_ref()
+            .map(encryption_public_key_to_string_ref)
+            .unwrap_or_else(|| "None".to_string());
+        let profile_signature_public_key = self
+            .profile_signature_public_key
+            .as_ref()
+            .map(signature_public_key_to_string_ref)
+            .unwrap_or_else(|| "None".to_string());
+        let device_signature_public_key = self
+            .device_signature_public_key
+            .as_ref()
+            .map(signature_public_key_to_string_ref)
+            .unwrap_or_else(|| "None".to_string());
+
+        write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {}, profile_signature_public_key: {}, device_signature_public_key: {}, permission_type: {:?} }}",
+            self.full_identity_name,
+            node_encryption_public_key,
+            node_signature_public_key,
+            profile_encryption_public_key,
+            profile_signature_public_key,
+            device_signature_public_key,
             self.permission_type
         )
     }

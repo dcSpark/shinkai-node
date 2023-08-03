@@ -8,12 +8,14 @@ pub enum Topic {
     Peers,
     ProfilesIdentityKey,
     ProfilesEncryptionKey,
+    Devices,
     ScheduledMessage,
     AllMessages,
     AllMessagesTimeKeyed,
     OneTimeRegistrationCodes,
     // Links a specific Profile with its device type (global, device, agent)
     ProfilesIdentityType,
+    ProfilesPermission,
     ExternalNodeIdentityKey,
     ExternalNodeEncryptionKey,
     AllJobsTimeKeyed,
@@ -28,11 +30,13 @@ impl Topic {
             Self::Peers => "peers",
             Self::ProfilesIdentityKey => "profiles_identity_key",
             Self::ProfilesEncryptionKey => "profiles_encryption_key",
+            Self::Devices => "devices",
             Self::ScheduledMessage => "scheduled_message",
             Self::AllMessages => "all_messages",
             Self::AllMessagesTimeKeyed => "all_messages_time_keyed",
             Self::OneTimeRegistrationCodes => "one_time_registration_codes",
-            Self::ProfilesIdentityType => "profiles_permission_type",
+            Self::ProfilesIdentityType => "profiles_identity_type",
+            Self::ProfilesPermission => "profiles_permission",
             Self::ExternalNodeIdentityKey => "external_node_identity_key",
             Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
             Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
@@ -54,11 +58,13 @@ impl ShinkaiDB {
             Topic::Peers.as_str(),
             Topic::ProfilesEncryptionKey.as_str(),
             Topic::ProfilesIdentityKey.as_str(),
+            Topic::Devices.as_str(),
             Topic::ScheduledMessage.as_str(),
             Topic::AllMessages.as_str(),
             Topic::AllMessagesTimeKeyed.as_str(),
             Topic::OneTimeRegistrationCodes.as_str(),
             Topic::ProfilesIdentityType.as_str(),
+            Topic::ProfilesPermission.as_str(),
             Topic::ExternalNodeIdentityKey.as_str(),
             Topic::ExternalNodeEncryptionKey.as_str(),
             Topic::AllJobsTimeKeyed.as_str(),
@@ -90,10 +96,6 @@ impl ShinkaiDB {
     }
 
     /// Fetches the ColumnFamily handle.
-    ///
-    /// This is a method that which wraps the RocksDB cf_handle function, and
-    /// converts the output option into a ShinkaiDBError Result to make it
-    /// composable with the rest of the errors.
     pub fn get_cf_handle(&self, topic: Topic) -> Result<&ColumnFamily, ShinkaiDBError> {
         Ok(self
             .db
@@ -102,10 +104,6 @@ impl ShinkaiDB {
     }
 
     /// Fetches the value of a KV pair and returns it as a Vector of bytes.
-    ///
-    /// This is a method which wraps the RocksDB get_cf function, making it
-    /// simpler to call using just the Topic and the key, and removes the option
-    /// to make it more composable.
     pub fn get_cf<K: AsRef<[u8]>>(&self, topic: Topic, key: K) -> Result<Vec<u8>, ShinkaiDBError> {
         let colfam = self.get_cf_handle(topic)?;
         let bytes = self

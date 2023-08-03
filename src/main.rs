@@ -9,11 +9,16 @@ use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{info, warn};
 use network::Node;
-use shinkai_message_wasm::ShinkaiMessageWrapper;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-use shinkai_message_wasm::shinkai_utils::encryption::{encryption_secret_key_to_string, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod};
+use shinkai_message_wasm::shinkai_utils::encryption::{
+    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::signatures::{hash_signature_public_key, signature_secret_key_to_string, clone_signature_secret_key, signature_public_key_to_string};
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
+    signature_secret_key_to_string,
+};
+use shinkai_message_wasm::ShinkaiMessageWrapper;
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use std::env;
 use std::net::{IpAddr, SocketAddr};
@@ -102,8 +107,6 @@ fn main() {
                 recipient.to_string(),
             )
             .expect("Failed to create message with code registration");
-
-        let message_2 = message.clone().body.unwrap(); 
 
             println!(
                 "Message's signature: {}",

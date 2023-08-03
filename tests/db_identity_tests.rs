@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use reqwest::Identity;
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, encryption_public_key_to_string};
 use shinkai_message_wasm::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, signature_public_key_to_string};
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
@@ -8,7 +9,7 @@ use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{StandardIdentity, IdentityType};
+use shinkai_node::schemas::identity::{StandardIdentity, IdentityType, IdentityPermissions, StandardIdentityType};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -40,6 +41,99 @@ async fn create_local_node_profile(
     }
 }
 
+// #[test]
+// fn test_use_registration_code() {
+//     setup();
+//     let node_profile_name = "@@node1.shinkai";
+//     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+//     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+//     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+//     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+//     let permissions = IdentityPermissions::Admin;
+//     let new_code = shinkai_db.generate_registration_new_code(permissions).unwrap();
+
+//     let identity_public_key = "identity_public_key";
+//     let encryption_public_key = "encryption_public_key";
+//     let profile_name = "profile_name";
+//     let identity_type = "identity_type";
+    
+//     let result = db.use_registration_code(
+//         &new_code, 
+//         identity_public_key, 
+//         encryption_public_key, 
+//         profile_name, 
+//         identity_type
+//     );
+
+//     assert!(result.is_ok());
+// }
+
+// new test code
+
+#[test]
+fn test_generate_and_use_registration_code_for_specific_profile() {
+    setup();
+    let node_profile_name = "@@node1.shinkai";
+    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+    let profile_name = "profile_1";
+    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+    // Test generate_registration_code_for_specific_profile
+    let registration_code = shinkai_db.generate_registration_new_code(IdentityPermissions::Admin, Some(profile_name.to_string())).unwrap();
+
+    // Test use_registration_code
+    shinkai_db.use_registration_code(
+        &registration_code,
+        None,
+        &signature_public_key_to_string(profile_identity_pk),
+        &encryption_public_key_to_string(profile_encryption_pk),
+        IdentityType::Profile,
+
+    ).unwrap();
+
+    // check in db
+    let permission_in_db = shinkai_db.get_profile_permission(profile_name).unwrap().unwrap();
+    assert_eq!(permission_in_db, IdentityPermissions::Admin);
+}
+
+#[test]
+fn test_generate_and_use_registration_code_for_device() {
+    setup();
+    let node_profile_name = "@@node1.shinkai";
+    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+    let device_name = "device_1";
+    let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+
+    // Test generate_registration_code_for_device
+    let registration_code = shinkai_db.generate_registration_new_code(IdentityPermissions::Standard, None).unwrap();
+
+    // Test use_registration_code
+    shinkai_db.use_registration_code(
+        &registration_code,
+        Some(device_name),
+        &signature_public_key_to_string(device_identity_pk),
+        &encryption_public_key_to_string(device_encryption_pk),
+        IdentityType::Device
+    ).unwrap();
+
+    // check in db
+    let permission_in_db = shinkai_db.get_profile_permission(device_name).unwrap().unwrap();
+    assert_eq!(permission_in_db, IdentityPermissions::Standard);
+}
+
+// end test new code
+
 #[test]
 fn test_new_load_all_sub_identities() {
     setup();
@@ -65,7 +159,9 @@ fn test_new_load_all_sub_identities() {
             identity_pk.clone(),
             Some(subencryption_pk),
             Some(subidentity_pk),
-            IdentityType::Device,
+            // TODO: review this. Too tired to think
+            StandardIdentityType::Profile,
+            IdentityPermissions::Standard,
         );
 
         shinkai_db.insert_sub_identity(identity).unwrap();
@@ -90,7 +186,9 @@ fn test_new_load_all_sub_identities() {
             identity_pk.clone(),
             Some(subencryption_pk),
             Some(subidentity_pk),
-            IdentityType::Device,
+            // todo: review this
+            StandardIdentityType::Profile,
+            IdentityPermissions::Standard,
         );
 
         assert_eq!(identities[(i - 1) as usize], identity);
@@ -140,7 +238,9 @@ fn test_new_insert_sub_identity() {
         identity_pk.clone(),
         Some(subencryption_pk.clone()),
         Some(subidentity_pk.clone()),
-        IdentityType::Device,
+        // todo: review this
+        StandardIdentityType::Profile,
+        IdentityPermissions::Standard,
     );
 
     // Test new_insert_sub_identity
@@ -157,7 +257,7 @@ fn test_new_insert_sub_identity() {
 
     assert_eq!(identity_in_db, signature_public_key_to_string(subidentity_pk).as_bytes());
     assert_eq!(encryption_in_db, encryption_public_key_to_string(subencryption_pk).as_bytes());
-    assert_eq!(permission_in_db, identity.permission_type.to_string().as_bytes());
+    assert_eq!(permission_in_db, identity.identity_type.to_string().as_bytes());
 }
 
 #[test]
@@ -180,7 +280,9 @@ fn test_remove_subidentity() {
         identity_pk.clone(),
         Some(subencryption_pk.clone()),
         Some(subidentity_pk.clone()),
-        IdentityType::Device,
+        // todo: review this
+        StandardIdentityType::Profile,
+        IdentityPermissions::Standard,
     );
 
     // insert identity

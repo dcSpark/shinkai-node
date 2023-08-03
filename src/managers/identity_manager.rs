@@ -1,6 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::schemas::identity::{Identity, StandardIdentity, IdentityType};
+use crate::schemas::identity::{Identity, StandardIdentity, IdentityType, StandardIdentityType, DeviceIdentity, IdentityPermissions};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -84,8 +84,9 @@ impl IdentityManager {
             identity.addr.clone(),
             identity.node_encryption_public_key.clone(),
             identity.node_signature_public_key.clone(),
-            identity.subidentity_encryption_public_key.clone(),
-            identity.subidentity_signature_public_key.clone(),
+            identity.profile_encryption_public_key.clone(),
+            identity.profile_signature_public_key.clone(),
+            identity.identity_type.clone(),
             identity.permission_type.clone(),
         );
         db.insert_sub_identity(normalized_identity.clone())?;
@@ -135,6 +136,13 @@ impl IdentityManager {
                                 None
                             }
                         },
+                        Identity::Device(device) => {
+                            if device.full_identity_name == full_identity_name {
+                                Some(Identity::Device(device.clone()))
+                            } else {
+                                None
+                            }
+                        },
                     }
                 })
                 .next()
@@ -169,7 +177,8 @@ impl IdentityManager {
                     identity_network_manager.signature_public_key,
                     None,
                     None,
-                    IdentityType::Global,
+                    StandardIdentityType::Global,
+                    IdentityPermissions::None,
                 ))),
                 Err(_) => None, // return None if the identity is not found in the network manager
             }
@@ -191,7 +200,9 @@ impl IdentityManager {
             .iter()
             .find(|identity| {
                 match identity {
-                    Identity::Standard(identity) => identity.subidentity_signature_public_key.as_ref() == Some(key),
+                    Identity::Standard(identity) => identity.profile_signature_public_key.as_ref() == Some(key),
+                    // TODO: fix this
+                    Identity::Device(device) => device.profile_signature_public_key.as_ref() == Some(key),
                     Identity::Agent(_) => false, // Return false if the identity is an Agent
                 }
             })
@@ -203,6 +214,7 @@ impl IdentityManager {
             .find(|identity| {
                 match identity {
                     Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                    Identity::Device(device) => device.full_identity_name == full_profile_name,
                     Identity::Agent(agent) => agent.name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
                 }
             })
@@ -233,7 +245,8 @@ impl IdentityManager {
                 identity_network_manager.signature_public_key,
                 None,
                 None,
-                IdentityType::Global,
+                StandardIdentityType::Global,
+                IdentityPermissions::None,
             )),
             Err(_) => None, // return None if the identity is not found in the network manager
         }
@@ -287,6 +300,11 @@ impl IdentityManager {
         match identity {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone()),
             Identity::Agent(agent) => Some(agent.name.clone()),
+            Identity::Device(device) => Some(device.full_identity_name.clone()),
         }
+    }
+
+    pub fn get_profile_name_from_device(device: &DeviceIdentity) -> Option<String> {
+        device.to_standard_identity().profile_name().map(|s| s.to_string())
     }
 }

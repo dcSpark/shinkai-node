@@ -1,30 +1,32 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
-use shinkai_message_wasm::shinkai_utils::encryption::{clone_static_secret_key, decrypt_body_message, encryption_secret_key_to_string, encryption_public_key_to_string};
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_utils::encryption::{
+    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
-use crate::managers::job_manager::{JobManager};
+use crate::managers::job_manager::JobManager;
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::identity::StandardIdentity;
+use crate::schemas::identity::{IdentityPermissions, StandardIdentity};
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -71,6 +73,8 @@ pub enum NodeCommand {
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code. The sender will receive the code.
     CreateRegistrationCode {
+        permissions: IdentityPermissions,
+        profile_name: Option<String>,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
@@ -275,9 +279,9 @@ impl Node {
                             Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_onionized_message(msg).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::CreateRegistrationCode { res }) => self.create_and_send_registration_code(res).await?,
+                            Some(NodeCommand::CreateRegistrationCode { permissions, profile_name, res }) => self.create_and_send_registration_code(permissions, profile_name, res).await?,
                             Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_subidentities(res).await?,
+                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                             Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
                             Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
                             Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,

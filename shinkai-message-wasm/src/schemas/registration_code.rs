@@ -6,5 +6,5 @@ pub struct RegistrationCode {
     pub profile_name: String,
     pub identity_pk: String,
     pub encryption_pk: String,
-    pub permission_type: String,
+    pub identity_type: String,
 }

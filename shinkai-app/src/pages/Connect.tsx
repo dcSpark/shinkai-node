@@ -68,9 +68,10 @@ const Connect: React.FC = () => {
   };
 
   const finishSetup = async () => {
-    await dispatch(
-      submitRegistrationCode(code, profileName, identityPk, encryptionPk)
-    );
+    // TODO: finish this
+  //   await dispatch(
+  //     submitRegistrationCode(code, profileName, identityPk, encryptionPk)
+  //   );
     localStorage.setItem("setupComplete", "true");
     history.push("/home");
   };

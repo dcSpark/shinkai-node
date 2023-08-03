@@ -3,7 +3,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager },
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, Identity, RegistrationCode, IdentityType}},
+    schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, Identity, RegistrationCode, IdentityType, IdentityPermissions}},
 };
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
@@ -108,7 +108,10 @@ impl Node {
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
-            Identity::Standard(std_identity) => std_identity.subidentity_signature_public_key.clone(),
+            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
+            // TODO: fix this code to handle device identity verification correctly
+            // currently it's assuming only one signature per profile but it's as many as devices
+            Identity::Device(std_device) => std_device.profile_signature_public_key.clone(),
             Identity::Agent(_) => {
                 eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
                 return Ok(());
@@ -271,10 +274,12 @@ impl Node {
 
     pub async fn create_and_send_registration_code(
         &self,
+        permissions: IdentityPermissions,
+        profile_name: Option<String>,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+        let code = db.generate_registration_new_code(permissions, profile_name).unwrap_or_else(|_| "".to_string());
         let _ = res.send(code).await.map_err(|_| ());
         Ok(())
     }
@@ -321,6 +326,12 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(_) => {
+                // This case shouldn't happen because we are filtering out device identities
+                res.send(format!("Device identities cannot have inbox permissions"))
+                    .await;
+                return;
+            }
             Identity::Agent(_) => {
                 res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
@@ -367,6 +378,7 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(std_device) => std_device.clone().to_standard_identity(),
             Identity::Agent(_) => {
                 res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
@@ -413,6 +425,7 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(std_device) => std_device.clone().to_standard_identity(),
             Identity::Agent(_) => {
                 res.send(false).await;
                 return;
@@ -522,13 +535,15 @@ impl Node {
         let profile_name = registration_code.profile_name;
         let identity_pk = registration_code.identity_pk;
         let encryption_pk = registration_code.encryption_pk;
+        let identity_type = registration_code.identity_type;
+        let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
 
-        println!("permission_type: {}", permission_type);
+        println!("identity_type: {:?}", identity_type);
 
         let db = self.db.lock().await;
         let result = db
-            .use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk, &permission_type)
+            .use_registration_code(&code, Some(&profile_name), &identity_pk, &encryption_pk, identity_type)
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
         std::mem::drop(db);
@@ -536,21 +551,22 @@ impl Node {
         // TODO: add code if you are the first one some special stuff happens.
         // definition of a shared symmetric encryption key
         // probably we need to sign a message with the pk from the first user
+        // TODO: this could had been adding a device for an existent profile
         match result {
             Ok(success) => {
                 let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
                 let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
-                let permission_type = IdentityType::to_enum(&permission_type).unwrap();
                 let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                 let subidentity = StandardIdentity {
                     full_identity_name: full_identity_name,
                     addr: None,
-                    subidentity_signature_public_key: Some(signature_pk_obj),
-                    subidentity_encryption_public_key: Some(encryption_pk_obj),
+                    profile_signature_public_key: Some(signature_pk_obj),
+                    profile_encryption_public_key: Some(encryption_pk_obj),
                     node_encryption_public_key: self.encryption_public_key.clone(),
                     node_signature_public_key: self.identity_public_key.clone(),
-                    permission_type: permission_type,
+                    identity_type: standard_identity_type,
+                    permission_type
                 };
                 let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_subidentity(subidentity).await {
@@ -570,7 +586,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_all_subidentities(
+    pub async fn get_all_profiles(
         &self,
         res: Sender<Vec<StandardIdentity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
