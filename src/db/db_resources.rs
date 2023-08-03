@@ -313,6 +313,7 @@ mod tests {
             "Shinkai Manifesto",
             Some(desc),
             Some("http://shinkai.com"),
+            &vec![],
         )
         .unwrap();
 
@@ -357,9 +358,9 @@ mod tests {
         let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
         let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
-        doc.append_data(fact1, None, &fact1_embeddings);
-        doc.append_data(fact2, None, &fact2_embeddings);
-        doc.append_data(fact3, None, &fact3_embeddings);
+        doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
+        doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
+        doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
 
         // Read the pdf from file into a buffer
         let buffer = std::fs::read("files/shinkai_manifesto.pdf")
@@ -375,6 +376,7 @@ mod tests {
             "Shinkai Manifesto",
             Some(desc),
             Some("http://shinkai.com"),
+            &vec![],
         )
         .unwrap();
 
