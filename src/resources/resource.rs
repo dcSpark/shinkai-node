@@ -41,7 +41,7 @@ impl FromStr for ResourceType {
     }
 }
 
-/// A data chunk that was retrieved from a vector vector search.
+/// A data chunk that was retrieved from a vector search.
 /// Includes extra data like the resource_id of the resource it was from
 /// and the vector search score.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -159,7 +159,7 @@ pub trait Resource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
     }
 
-    /// Performs a vector vector search using a query embedding and returns
+    /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks within a specific range.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
@@ -176,7 +176,7 @@ pub trait Resource {
         self.vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
     }
 
-    /// Performs a vector vector search using a query embedding and returns
+    /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks within a specific range of the top similarity score.
     ///
     /// * `top_similarity_score` - A float that represents the top similarity score.
@@ -200,7 +200,7 @@ pub trait Resource {
         results
     }
 
-    /// Performs a vector vector search using a query embedding and returns
+    /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         self.vector_search_specified_resource_poiner(query, num_of_results, self.get_resource_pointer())
@@ -265,14 +265,14 @@ pub trait Resource {
         chunks
     }
 
-    /// Performs a syntactic vector vector search using a query embedding and a list of data tag names
+    /// Performs a syntactic vector search using a query embedding and a list of data tag names
     /// and returns the most similar data chunks.
     fn syntactic_vector_search(
         &self,
         query: Embedding,
         num_of_results: u64,
         data_tag_names: Vec<String>,
-    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+    ) -> Vec<RetrievedDataChunk> {
         // Create a temporal Document resource to perform vector search on matching tagged data chunks
         let mut temp_doc = DocumentResource::new_empty("", None, None, "");
 
@@ -281,9 +281,11 @@ pub trait Resource {
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
                 if !ids.is_empty() {
                     for id in ids {
-                        let data_chunk = self.get_data_chunk(id.to_string())?;
-                        let embedding = self.get_chunk_embedding(&id)?;
-                        temp_doc.append_data_chunk_and_embedding(data_chunk, &embedding);
+                        if let Ok(data_chunk) = self.get_data_chunk(id.to_string()) {
+                            if let Ok(embedding) = self.get_chunk_embedding(&id) {
+                                temp_doc.append_data_chunk_and_embedding(data_chunk, &embedding);
+                            }
+                        }
                     }
                 }
             }
@@ -292,7 +294,7 @@ pub trait Resource {
         let results =
             temp_doc.vector_search_specified_resource_poiner(query, num_of_results, self.get_resource_pointer());
 
-        Ok(results)
+        results
     }
 
     /// Generates a pointer out of the resource. Of note this is required to get around

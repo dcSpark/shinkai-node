@@ -122,7 +122,7 @@ impl DocumentResource {
         )
     }
 
-    /// Performs a vector vector search using a query embedding, and then
+    /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
     pub fn vector_search_proximity(

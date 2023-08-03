@@ -135,7 +135,7 @@ impl ShinkaiDB {
         Ok(router)
     }
 
-    /// Performs a 2-tier vector vector search across all resources using a query embedding.
+    /// Performs a 2-tier vector search across all resources using a query embedding.
     ///
     /// From there a vector search is performed on each resource with the query embedding,
     /// and the results from all resources are then collected, sorted, and the top num_of_results
@@ -168,7 +168,7 @@ impl ShinkaiDB {
         Ok(retrieved_chunks)
     }
 
-    /// Performs a 2-tier vector vector search across all resources using a query embedding,
+    /// Performs a 2-tier vector search across all resources using a query embedding,
     /// returning retrieved data chunks that are within a tolerance range of similarity.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
@@ -201,7 +201,7 @@ impl ShinkaiDB {
         Ok(final_chunks)
     }
 
-    /// Performs a 2-tier vector vector search using a query embedding across all DocumentResources
+    /// Performs a 2-tier vector search using a query embedding across all DocumentResources
     /// and fetches the most similar data chunk + proximity_window number of chunks around it.
     ///
     /// Note: This only searches DocumentResources in Topic::Resources, not all resources. This is
@@ -238,7 +238,26 @@ impl ShinkaiDB {
         Err(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))
     }
 
-    /// Performs a vector vector search using a query embedding and returns the
+    /// Performs a syntactic vector search using a query embedding and list of data tag names.
+    /// Returns num_of_resources amount of most similar Resources.
+    pub fn syntactic_vector_search_resources(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        data_tag_names: Vec<String>,
+    ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
+        let router = self.get_global_resource_router()?;
+        let resource_pointers = router.vector_search(query, num_of_resources);
+
+        let mut resources = vec![];
+        for res_pointer in resource_pointers {
+            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type))?);
+        }
+
+        Ok(resources)
+    }
+
+    /// Performs a vector search using a query embedding and returns the
     /// num_of_resources amount of most similar Resources.
     pub fn vector_search_resources(
         &self,
@@ -256,7 +275,7 @@ impl ShinkaiDB {
         Ok(resources)
     }
 
-    /// Performs a vector vector search using a query embedding and returns the
+    /// Performs a vector search using a query embedding and returns the
     /// num_of_docs amount of most similar DocumentResources.
     pub fn vector_search_docs(
         &self,

@@ -48,22 +48,6 @@ impl From<Box<dyn Resource>> for ResourcePointer {
     }
 }
 
-impl TryFrom<RetrievedDataChunk> for ResourcePointer {
-    type Error = ResourceError;
-
-    /// Of note, the resource_embedding and data_tags are always empty converting
-    /// from a RetreievedDataChunk (as needed data is not available from the Resource to
-    /// properly construct these).
-    fn try_from(ret_data: RetrievedDataChunk) -> Result<Self, Self::Error> {
-        let resource_type =
-            ResourceType::from_str(&ret_data.chunk.data).map_err(|_| ResourceError::InvalidResourceType)?;
-        let db_key = ret_data.chunk.metadata.unwrap_or_default();
-        let id = ret_data.chunk.id;
-
-        Ok(ResourcePointer::new(&id, &db_key, resource_type, None, vec![]))
-    }
-}
-
 /// A top level struct which indexes a series of resource pointers.
 /// This struct thus makes it possible to perform vector searches to find
 /// relevant Resources for users or agents.
@@ -95,7 +79,21 @@ impl ResourceRouter {
         "global_resource_router".to_string()
     }
 
-    /// Performs a vector vector search using a query embedding and returns
+    /// Performs a syntactic vector search using a query embedding and list of data tag names.
+    /// Returns a list of ResourcePointers of the most similar Resources.
+    pub fn syntactic_vector_search(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: Vec<String>,
+    ) -> Vec<ResourcePointer> {
+        let chunks = self
+            .routing_resource
+            .syntactic_vector_search(query, num_of_results, data_tag_names);
+        self.ret_data_chunks_to_pointers(&chunks)
+    }
+
+    /// Performs a vector search using a query embedding and returns
     /// a list of ResourcePointers of the most similar Resources.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
         let chunks = self.routing_resource.vector_search(query, num_of_results);
@@ -103,14 +101,28 @@ impl ResourceRouter {
     }
 
     /// Takes a list of RetrievedDataChunks and outputs a list of ResourcePointers
+    /// that point to the real resource (not the resource router).
     ///
     /// Of note, if a chunk holds an invalid ResourceType string then the chunk
     /// is ignored.
-    fn ret_data_chunks_to_pointers(&self, chunks: &Vec<RetrievedDataChunk>) -> Vec<ResourcePointer> {
+    fn ret_data_chunks_to_pointers(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<ResourcePointer> {
         let mut resource_pointers = vec![];
-        for chunk in chunks {
+        for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-            if let Ok(resource_pointer) = ResourcePointer::try_from(chunk.clone()) {
+
+            if let Ok(resource_type) =
+                ResourceType::from_str(&ret_chunk.chunk.data).map_err(|_| ResourceError::InvalidResourceType)
+            {
+                let db_key = &ret_chunk.chunk.metadata.clone().unwrap_or_default();
+                let id = &ret_chunk.chunk.id;
+                let embedding = self.routing_resource.get_chunk_embedding(id).ok();
+                let resource_pointer = ResourcePointer::new(
+                    &id,
+                    &db_key,
+                    resource_type,
+                    embedding,
+                    ret_chunk.chunk.data_tags.clone(),
+                );
                 resource_pointers.push(resource_pointer);
             }
         }
