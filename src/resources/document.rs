@@ -1,3 +1,4 @@
+use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
@@ -17,9 +18,14 @@ pub struct DocumentResource {
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
     data_chunks: Vec<DataChunk>,
+    data_tag_index: DataTagIndex,
 }
 
 impl Resource for DocumentResource {
+    fn data_tag_index(&self) -> &DataTagIndex {
+        &self.data_tag_index
+    }
+
     fn embedding_model_used(&self) -> EmbeddingModelType {
         self.embedding_model_used.clone()
     }
@@ -98,6 +104,7 @@ impl DocumentResource {
             chunk_count: data_chunks.len() as u64,
             data_chunks: data_chunks,
             embedding_model_used,
+            data_tag_index: DataTagIndex::new(),
         }
     }
 
@@ -184,17 +191,27 @@ impl DocumentResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk and associated embedding to the document.
-    pub fn append_data(&mut self, data: &str, metadata: Option<&str>, embedding: &Embedding) {
+    /// Appends a new data chunk, associated embeddings, and matching DataTags to the document.
+    pub fn append_data(
+        &mut self,
+        data: &str,
+        metadata: Option<&str>,
+        embedding: &Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
+    ) {
         let id = self.chunk_count + 1;
-        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone());
+        let data_tags = DataTag::validate_tag_list(data, parsing_tags);
+        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), &data_tags);
+        self.data_tag_index.add_chunk(&data_chunk);
+
+        // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        self.add_data_chunk(data_chunk);
+        self.append_data_chunk(data_chunk);
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk and associated embedding.
+    /// Replaces an existing data chunk, associated embedding, and DataTags.
     /// * `id` - The id of the data chunk to be replaced.
     pub fn replace_data(
         &mut self,
@@ -202,18 +219,32 @@ impl DocumentResource {
         new_data: &str,
         new_metadata: Option<&str>,
         embedding: &Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) -> Result<DataChunk, ResourceError> {
+        // Id + index
         if id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
+
+        // First generate new data tags based on new data
+        let new_data_tags = DataTag::validate_tag_list(&new_data, parsing_tags);
+
+        // Next fetch old chunk, and create the new chunk
+        let old_chunk = self.get_data_chunk(id.to_string())?;
+        let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_data_tags);
+
+        // Then deletion of old chunk from index and addition of new chunk
+        self.data_tag_index.remove_chunk(&old_chunk);
+        self.data_tag_index.add_chunk(&new_chunk);
+
+        // Embedding Replace
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        let old_chunk = std::mem::replace(
-            &mut self.data_chunks[index],
-            DataChunk::new_with_integer_id(id, &new_data, new_metadata),
-        );
         self.chunk_embeddings[index] = embedding;
+
+        // Data Chunk Replace
+        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk);
         Ok(old_chunk)
     }
 
@@ -263,7 +294,7 @@ impl DocumentResource {
         Ok(removed_chunk)
     }
 
-    fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
+    fn append_data_chunk(&mut self, mut data_chunk: DataChunk) {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);

@@ -1,4 +1,5 @@
 use crate::db::ShinkaiDB;
+use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::model_type::*;
@@ -55,19 +56,21 @@ pub struct DataChunk {
     pub id: String,
     pub data: String,
     pub metadata: Option<String>,
+    pub data_tags: Vec<DataTag>,
 }
 
 impl DataChunk {
-    pub fn new(id: String, data: &str, metadata: Option<&str>) -> Self {
+    pub fn new(id: String, data: &str, metadata: Option<&str>, data_tags: &Vec<DataTag>) -> Self {
         Self {
             id,
             data: data.to_string(),
             metadata: metadata.map(|s| s.to_string()),
+            data_tags: data_tags.clone(),
         }
     }
 
-    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>) -> Self {
-        Self::new(id.to_string(), data, metadata)
+    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>, data_tags: &Vec<DataTag>) -> Self {
+        Self::new(id.to_string(), data, metadata, data_tags)
     }
 }
 
@@ -79,11 +82,12 @@ pub trait Resource {
     fn source(&self) -> Option<&str>;
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
+    fn set_resource_embedding(&mut self, embedding: Embedding);
     fn resource_type(&self) -> ResourceType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
-    fn chunk_embeddings(&self) -> &Vec<Embedding>;
-    fn set_resource_embedding(&mut self, embedding: Embedding);
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
+    fn chunk_embeddings(&self) -> &Vec<Embedding>;
+    fn data_tag_index(&self) -> &DataTagIndex;
 
     // Note we cannot add from_json in the trait due to trait object limitations
     // with &self.
