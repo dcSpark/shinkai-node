@@ -109,15 +109,7 @@ impl Embedding {
     ///
     /// Of note, the sorting implementation is slow, so do not use this
     /// for large lists of embeddings. For large lists, we recommend adding
-    /// them into a resource and using similarity_search().
-    ///
-    /// # Parameters
-    /// - `embeddings`: A vector of `Embedding` objects representing the
-    ///   embeddings to be scored.
-    ///
-    /// # Returns
-    /// A sorted vector of `ScoredEmbedding` objects, sorted in descending order
-    /// by the cosine similarity score.
+    /// them into a resource and using vector_search().
     pub fn score_similarities(&self, embeddings: Vec<Embedding>) -> Vec<ScoredEmbedding> {
         // Calculate the cosine similarity between the query and each embedding, and
         // sort by similarity

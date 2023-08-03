@@ -95,10 +95,10 @@ impl ResourceRouter {
         "global_resource_router".to_string()
     }
 
-    /// Performs a vector similarity search using a query embedding and returns
+    /// Performs a vector vector search using a query embedding and returns
     /// a list of ResourcePointers of the most similar Resources.
-    pub fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
-        let chunks = self.routing_resource.similarity_search(query, num_of_results);
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
+        let chunks = self.routing_resource.vector_search(query, num_of_results);
         self.ret_data_chunks_to_pointers(&chunks)
     }
 

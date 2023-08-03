@@ -107,8 +107,8 @@ impl DataTagIndex {
         }
     }
 
-    /// Get chunk ids associated with a DataTag
-    fn get_chunk_ids(&self, tag: &DataTag) -> Option<&Vec<String>> {
-        self.index.get(&tag.name)
+    /// Get chunk ids associated with a data tag name
+    pub fn get_chunk_ids(&self, data_tag_name: &str) -> Option<&Vec<String>> {
+        self.index.get(data_tag_name)
     }
 }
