@@ -250,6 +250,16 @@ pub trait Resource {
         let resource_type = self.resource_type();
         let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
         let embedding = self.resource_embedding().clone();
-        ResourcePointer::new(id, &db_key, resource_type, Some(embedding))
+
+        // Creating list of data tags (only name is correct, which is fine for pointers/router)
+        // to add to the pointer. Unwrap is fine because guaranteed to succeed with no regex string.
+        let names = self.data_tag_index().data_tag_names();
+        let tags = names
+            .iter()
+            .cloned()
+            .map(|name| DataTag::new(&name, "", "").unwrap())
+            .collect::<Vec<_>>();
+
+        ResourcePointer::new(id, &db_key, resource_type, Some(embedding), tags)
     }
 }

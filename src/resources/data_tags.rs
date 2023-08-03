@@ -15,7 +15,9 @@ pub struct DataTag {
 impl DataTag {
     /// Validates the provided regex string and creates a new DataTag
     pub fn new(name: &str, description: &str, regex_str: &str) -> Result<Self, Box<dyn Error>> {
-        Regex::new(&regex_str)?; // Attempt to compile regex, will error if invalid
+        if regex_str.len() > 0 {
+            Regex::new(&regex_str)?; // Attempt to compile regex, will error if invalid
+        }
         Ok(Self {
             name: name.to_string(),
             description: description.to_string(),
@@ -51,6 +53,11 @@ impl DataTagIndex {
     /// Initialzies an empty DataTagIndex
     pub fn new() -> Self {
         Self { index: HashMap::new() }
+    }
+
+    /// Returns list of names of all data tags part of the index
+    pub fn data_tag_names(&self) -> Vec<String> {
+        self.index.keys().cloned().collect()
     }
 
     /// Adds reference to the data chunk (id) to all tags in the index that are

@@ -7,6 +7,8 @@ use std::convert::From;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
+use super::data_tags::DataTag;
+
 /// Type which holds reference data about a resource in the DB.
 ///
 /// This hides away the implementation details of the current underlying DocumentResource
@@ -17,17 +19,25 @@ pub struct ResourcePointer {
     pub id: String,     // Id of the ResourcePointer in the ResourceRouter (currently DataChunk id)
     pub db_key: String, // Key of the resource in the Topic::Resources in the db
     pub resource_type: ResourceType,
+    data_tags: Vec<DataTag>,
     resource_embedding: Option<Embedding>,
 }
 
 impl ResourcePointer {
     /// Create a new ResourcePointer
-    pub fn new(id: &str, db_key: &str, resource_type: ResourceType, resource_embedding: Option<Embedding>) -> Self {
+    pub fn new(
+        id: &str,
+        db_key: &str,
+        resource_type: ResourceType,
+        resource_embedding: Option<Embedding>,
+        data_tags: Vec<DataTag>,
+    ) -> Self {
         Self {
             id: id.to_string(),
             db_key: db_key.to_string(),
             resource_type,
             resource_embedding: resource_embedding.clone(),
+            data_tags: data_tags,
         }
     }
 }
@@ -41,13 +51,16 @@ impl From<Box<dyn Resource>> for ResourcePointer {
 impl TryFrom<RetrievedDataChunk> for ResourcePointer {
     type Error = ResourceError;
 
+    /// Of note, the resource_embedding and data_tags are always empty converting
+    /// from a RetreievedDataChunk (as needed data is not available from the Resource to
+    /// properly construct these).
     fn try_from(ret_data: RetrievedDataChunk) -> Result<Self, Self::Error> {
         let resource_type =
             ResourceType::from_str(&ret_data.chunk.data).map_err(|_| ResourceError::InvalidResourceType)?;
         let db_key = ret_data.chunk.metadata.unwrap_or_default();
         let id = ret_data.chunk.id;
 
-        Ok(ResourcePointer::new(&id, &db_key, resource_type, None))
+        Ok(ResourcePointer::new(&id, &db_key, resource_type, None, vec![]))
     }
 }
 
@@ -131,7 +144,7 @@ impl ResourceRouter {
                 // If no resource pointer with matching db_key is found,
                 // append the new data.
                 self.routing_resource
-                    .append_data(&data, Some(&metadata), &embedding, &vec![]);
+                    .append_data(&data, Some(&metadata), &embedding, &resource_pointer.data_tags);
             }
         }
 
