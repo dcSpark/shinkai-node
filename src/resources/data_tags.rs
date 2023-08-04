@@ -63,12 +63,12 @@ impl DataTagIndex {
     /// Adds reference to the data chunk (id) to all tags in the index that are
     /// annotated on the chunk in chunk.data_tags
     pub fn add_chunk(&mut self, chunk: &DataChunk) {
-        self.add_chunk_id_multi_tags(&chunk.id, &chunk.data_tags);
+        self.add_chunk_id_multi_tags(&chunk.id, &chunk.data_tag_names);
     }
 
     /// Removes all references to the data chunk in the index
     pub fn remove_chunk(&mut self, chunk: &DataChunk) {
-        self.remove_chunk_id_multi_tags(&chunk.id, &chunk.data_tags);
+        self.remove_chunk_id_multi_tags(&chunk.id, &chunk.data_tag_names);
     }
 
     /// Deletes all references in the index associated with old_chunk,
@@ -79,30 +79,30 @@ impl DataTagIndex {
     }
 
     /// Add a chunk id under several DataTags in the index
-    fn add_chunk_id_multi_tags(&mut self, id: &str, tags: &Vec<DataTag>) {
-        for tag in tags {
-            self.add_chunk_id(id, tag)
+    fn add_chunk_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
+        for name in tag_names {
+            self.add_chunk_id(id, name)
         }
     }
 
     /// Removes a chunk id under several DataTags in the index
-    fn remove_chunk_id_multi_tags(&mut self, id: &str, tags: &Vec<DataTag>) {
-        for tag in tags {
-            self.remove_chunk_id(id, tag)
+    fn remove_chunk_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
+        for name in tag_names {
+            self.remove_chunk_id(id, name)
         }
     }
 
     /// Add a chunk id under a DataTag in the index
-    fn add_chunk_id(&mut self, id: &str, tag: &DataTag) {
-        let entry = self.index.entry(tag.name.clone()).or_insert_with(Vec::new);
+    fn add_chunk_id(&mut self, id: &str, tag_name: &str) {
+        let entry = self.index.entry(tag_name.to_string()).or_insert_with(Vec::new);
         if !entry.contains(&id.to_string()) {
             entry.push(id.to_string());
         }
     }
 
     /// Remove a chunk id associated with a DataTag in the index
-    fn remove_chunk_id(&mut self, id: &str, tag: &DataTag) {
-        if let Some(ids) = self.index.get_mut(&tag.name) {
+    fn remove_chunk_id(&mut self, id: &str, tag_name: &str) {
+        if let Some(ids) = self.index.get_mut(tag_name) {
             ids.retain(|x| x != id);
         }
     }

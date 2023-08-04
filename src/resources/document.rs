@@ -200,10 +200,22 @@ impl DocumentResource {
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
+        let validated_data_tags = DataTag::validate_tag_list(data, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        self._append_data_without_tag_validation(data, metadata, embedding, &data_tag_names)
+    }
+
+    /// Appends a new data chunk and associated embeddings to the document
+    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    pub fn _append_data_without_tag_validation(
+        &mut self,
+        data: &str,
+        metadata: Option<&str>,
+        embedding: &Embedding,
+        tag_names: &Vec<String>,
+    ) {
         let id = self.chunk_count + 1;
-        let data_tags = DataTag::validate_tag_list(data, parsing_tags);
-        println!("Parse Data: {}\nParsed data_tags: {:?}", data, data_tags);
-        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), &data_tags);
+        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), tag_names);
         self.data_tag_index.add_chunk(&data_chunk);
 
         // Embedding details
@@ -213,8 +225,7 @@ impl DocumentResource {
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk & associated embedding
-    /// and updates the data tags index.
+    /// Replaces an existing data chunk & associated embedding and updates the data tags index.
     /// * `id` - The id of the data chunk to be replaced.
     pub fn replace_data(
         &mut self,
@@ -224,17 +235,30 @@ impl DocumentResource {
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
     ) -> Result<DataChunk, ResourceError> {
+        // Validate which tags will be saved with the new data
+        let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        self._replace_data_without_tag_validation(id, new_data, new_metadata, embedding, &data_tag_names)
+    }
+
+    /// Replaces an existing data chunk & associated embedding and updates the data tags index
+    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    pub fn _replace_data_without_tag_validation(
+        &mut self,
+        id: u64,
+        new_data: &str,
+        new_metadata: Option<&str>,
+        embedding: &Embedding,
+        new_tag_names: &Vec<String>,
+    ) -> Result<DataChunk, ResourceError> {
         // Id + index
         if id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
 
-        // First generate new data tags based on new data
-        let new_data_tags = DataTag::validate_tag_list(&new_data, parsing_tags);
-
         // Next create the new chunk, and replace the old chunk in the data_chunks list
-        let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_data_tags);
+        let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_tag_names);
         let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk.clone());
 
         // Then deletion of old chunk from index and addition of new chunk

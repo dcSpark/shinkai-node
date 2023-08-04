@@ -57,21 +57,21 @@ pub struct DataChunk {
     pub id: String,
     pub data: String,
     pub metadata: Option<String>,
-    pub data_tags: Vec<DataTag>,
+    pub data_tag_names: Vec<String>, // `DataTag` type is excessively heavy when we convert to JSON, thus we just use the names here
 }
 
 impl DataChunk {
-    pub fn new(id: String, data: &str, metadata: Option<&str>, data_tags: &Vec<DataTag>) -> Self {
+    pub fn new(id: String, data: &str, metadata: Option<&str>, data_tag_names: &Vec<String>) -> Self {
         Self {
             id,
             data: data.to_string(),
             metadata: metadata.map(|s| s.to_string()),
-            data_tags: data_tags.clone(),
+            data_tag_names: data_tag_names.clone(),
         }
     }
 
-    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>, data_tags: &Vec<DataTag>) -> Self {
-        Self::new(id.to_string(), data, metadata, data_tags)
+    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>, data_tag_names: &Vec<String>) -> Self {
+        Self::new(id.to_string(), data, metadata, data_tag_names)
     }
 }
 
@@ -323,15 +323,9 @@ pub trait Resource {
         let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
         let embedding = self.resource_embedding().clone();
 
-        // Creating list of data tags (only name is correct, which is fine for pointers/router)
-        // to add to the pointer. Unwrap is fine because guaranteed to succeed with no regex string.
-        let names = self.data_tag_index().data_tag_names();
-        let tags = names
-            .iter()
-            .cloned()
-            .map(|name| DataTag::new(&name, "", "").unwrap())
-            .collect::<Vec<_>>();
+        // Fetch list of data tag names from the index
+        let tag_names = self.data_tag_index().data_tag_names();
 
-        ResourcePointer::new(id, &db_key, resource_type, Some(embedding), tags)
+        ResourcePointer::new(id, &db_key, resource_type, Some(embedding), tag_names)
     }
 }

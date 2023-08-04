@@ -19,7 +19,7 @@ pub struct ResourcePointer {
     pub id: String,     // Id of the ResourcePointer in the ResourceRouter (currently DataChunk id)
     pub db_key: String, // Key of the resource in the Topic::Resources in the db
     pub resource_type: ResourceType,
-    data_tags: Vec<DataTag>,
+    data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
 }
 
@@ -30,14 +30,14 @@ impl ResourcePointer {
         db_key: &str,
         resource_type: ResourceType,
         resource_embedding: Option<Embedding>,
-        data_tags: Vec<DataTag>,
+        data_tag_names: Vec<String>,
     ) -> Self {
         Self {
             id: id.to_string(),
             db_key: db_key.to_string(),
             resource_type,
             resource_embedding: resource_embedding.clone(),
-            data_tags: data_tags,
+            data_tag_names: data_tag_names,
         }
     }
 }
@@ -121,7 +121,7 @@ impl ResourceRouter {
                     &db_key,
                     resource_type,
                     embedding,
-                    ret_chunk.chunk.data_tags.clone(),
+                    ret_chunk.chunk.data_tag_names.clone(),
                 );
                 resource_pointers.push(resource_pointer);
             }
@@ -154,9 +154,15 @@ impl ResourceRouter {
             }
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
-                // append the new data.
-                self.routing_resource
-                    .append_data(&data, Some(&metadata), &embedding, &resource_pointer.data_tags);
+                // append the new data. We skip tag validation because the tags
+                // have already been previously validated when adding into the
+                // original resource.
+                self.routing_resource._append_data_without_tag_validation(
+                    &data,
+                    Some(&metadata),
+                    &embedding,
+                    &resource_pointer.data_tag_names,
+                );
             }
         }
 
@@ -191,8 +197,13 @@ impl ResourceRouter {
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
 
-        self.routing_resource
-            .replace_data(old_pointer_id, &data, Some(&metadata), &embedding, &vec![])?;
+        self.routing_resource._replace_data_without_tag_validation(
+            old_pointer_id,
+            &data,
+            Some(&metadata),
+            &embedding,
+            &resource_pointer.data_tag_names,
+        )?;
         Ok(())
     }
 
