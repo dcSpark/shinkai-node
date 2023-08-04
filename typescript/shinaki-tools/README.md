@@ -53,13 +53,14 @@ Example:
   `@isRequired` : Field is required  
   `@description(string)` : Annotate field description    
  
-  `@isChar(string?)` Field is Char (TS interpretation as string). Allows optional description.  
-  `@isJSON` : Field is JSON (TS interpretation as string). Allow optional description.  
-  `@isBoolean()` : Field is Boolean. Allow optional description.  
-  `@isFloat()` : Field is Float (TS interpretation as number). Allow optional description.  
-  `@isInteger()`: Field is Integer (TS interpretation as number). Allow optional description.  
-  `@isString()` : Field is String. Allow optional description.  
-  `@isArray`: Mark type as Array.  
+  `@isChar(string?)` : Field is Char (TS interpretation as string). Allows optional description.  
+  `@isJSON(string?)` : Field is JSON (TS interpretation as string). Allows optional description.  
+  `@isBoolean(string?)` : Field is Boolean. Allows optional description.  
+  `@isFloat(string?)` : Field is Float (TS interpretation as number). Allows optional description.  
+  `@isInteger(string?)`: Field is Integer (TS interpretation as number). Allows optional description.  
+  `@isString(string?)` : Field is String. Allows optional description.  
+  `@isEnum(string[], string?)` : Field is ENUM. First field for valid values. Allows optional description.
+  `@isArray` : Mark type as Array.  
   
 NOTE: string, number, boolean types can be infered. e.g., 
 ```
