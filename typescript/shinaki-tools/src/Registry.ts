@@ -1,4 +1,6 @@
-import {isEven} from './packages/is-even';
+/* Internal Classes */
+export {DecoratorsTools} from './shinkai/Decortors';
 
-// Export all tools
-export {isEven};
+/* Tools */
+export {isEven} from './packages/is-even';
+export {HTTP} from './packages/http';

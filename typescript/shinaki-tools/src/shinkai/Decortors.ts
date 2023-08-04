@@ -1,8 +1,7 @@
 import 'reflect-metadata';
 
-import {writeFileSync} from 'fs';
-import {normalize, join} from 'path';
 import {ToolKit} from '../setup';
+
 enum DATA_TYPES {
   BOOLEAN = 'BOOL',
   INTEGER = 'INT',
@@ -13,10 +12,10 @@ enum DATA_TYPES {
   JSON = 'JSON',
 }
 
-class DecoratorsTools {
+export class DecoratorsTools {
   static tools: Record<string, {name: string; description: string}> = {};
   static toolsInOut: Record<string, [string?, string?]> = {};
-
+  static classMap: Record<string, any> = {};
   static ebnf: Record<
     string,
     {
@@ -67,47 +66,43 @@ Use @description('') to add a description.`
     setTimeout(() => {
       DecoratorsTools.validate();
       if (process.env.EMIT_TOOLS) {
-        const toolData: any[] = Object.keys(DecoratorsTools.tools).map(
-          toolName => {
-            const extract = (contextName: string | undefined) => {
-              if (!contextName) throw new Error('No context name provided');
-              return Object.keys(DecoratorsTools.ebnf)
-                .filter(
-                  field => DecoratorsTools.ebnf[field].context === contextName
-                )
-                .map(field => {
-                  const f = DecoratorsTools.ebnf[field];
-                  return {
-                    name: field,
-                    type: f.type,
-                    description: f.description,
-                    isOptional: f.isOptional || false,
-                    wrapperType: f.wrapperType || 'none',
-                  };
-                });
-            };
-
-            return {
-              name: toolName,
-              description: DecoratorsTools.tools[toolName].description,
-              input: extract(DecoratorsTools.toolsInOut[toolName][0]),
-              output: extract(DecoratorsTools.toolsInOut[toolName][1]),
-            };
-          }
-        );
-        const data = JSON.stringify(
-          {
-            'toolkit-name': ToolKit._name,
-            author: ToolKit._author,
-            version: ToolKit._version,
-            tools: toolData,
-          },
-          null,
-          2
-        );
-        console.log(data);
+        const config = DecoratorsTools.generateConfig();
+        console.log(JSON.stringify(config, null, 2));
       }
     });
+  }
+
+  static generateConfig() {
+    const toolData: any[] = Object.keys(DecoratorsTools.tools).map(toolName => {
+      const extract = (contextName: string | undefined) => {
+        if (!contextName) throw new Error('No context name provided');
+        return Object.keys(DecoratorsTools.ebnf)
+          .filter(field => DecoratorsTools.ebnf[field].context === contextName)
+          .map(field => {
+            const f = DecoratorsTools.ebnf[field];
+            return {
+              name: field,
+              type: f.type,
+              description: f.description,
+              isOptional: f.isOptional || false,
+              wrapperType: f.wrapperType || 'none',
+            };
+          });
+      };
+
+      return {
+        name: toolName,
+        description: DecoratorsTools.tools[toolName].description,
+        input: extract(DecoratorsTools.toolsInOut[toolName][0]),
+        output: extract(DecoratorsTools.toolsInOut[toolName][1]),
+      };
+    });
+    return {
+      'toolkit-name': ToolKit._name,
+      author: ToolKit._author,
+      version: ToolKit._version,
+      tools: toolData,
+    };
   }
 
   static registerField(key: string, contextName: string) {
@@ -171,6 +166,10 @@ Use @description('') to add a description.`
     DecoratorsTools.tools[toolName].description = description;
   }
 
+  static registerClass(className: string, classRef: any) {
+    DecoratorsTools.classMap[className] = classRef;
+  }
+
   static registerToolInput(inputOutputName: string, toolName: string) {
     if (DecoratorsTools.toolsInOut[toolName]?.[0]) {
       throw new Error(`Duplicated input name: "${toolName}"`);
@@ -209,6 +208,7 @@ export function input(className: string) {
   return function (classDef: any) {
     const key = classDef.name;
     DecoratorsTools.registerToolInput(key, className);
+    DecoratorsTools.registerClass(className, classDef);
   };
 }
 
@@ -299,7 +299,7 @@ export function isChar(enumValues: string[], description?: string) {
   };
 }
 
-export function isJSON(enumValues: string[], description?: string) {
+export function isJSON(description?: string) {
   return (context: any, propertyKey: any) => {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
@@ -307,7 +307,6 @@ export function isJSON(enumValues: string[], description?: string) {
       contextName,
       DATA_TYPES.JSON
     );
-    DecoratorsTools.registerFieldEnumData(propertyKey, enumValues);
     if (description) {
       DecoratorsTools.registerFieldDescription(
         propertyKey,

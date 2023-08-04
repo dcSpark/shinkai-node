@@ -12,11 +12,13 @@ class isEvenInput extends BaseInput {
   @isInteger('Integer number to check if is even.')
   number!: number;
 }
+
 @output('isEven')
 class isEvenOutput extends BaseOutput {
   @isBoolean('Result of the check. True if the number is even.')
   isEven!: boolean;
 }
+
 @isTool
 export class isEven extends BaseTool<isEvenInput, isEvenOutput> {
   description = 'Check if a number is even';
