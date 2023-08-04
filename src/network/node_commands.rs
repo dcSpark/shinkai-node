@@ -1,15 +1,28 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, IdentityManager },
+    db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
+    managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, Identity, RegistrationCode, IdentityType, IdentityPermissions}},
+    schemas::{
+        identity::{Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
+        inbox_permission::InboxPermission,
+    },
 };
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
-use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{encryption::{string_to_encryption_public_key, decrypt_body_message, clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string}, shinkai_message_handler::ShinkaiMessageHandler, signatures::{clone_signature_secret_key, string_to_signature_public_key}}};
+use shinkai_message_wasm::{
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::{
+        encryption::{
+            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
+        },
+        shinkai_message_handler::ShinkaiMessageHandler,
+        signatures::{clone_signature_secret_key, string_to_signature_public_key},
+    },
+};
 use std::str::FromStr;
 use std::{
     cell::RefCell,
@@ -279,7 +292,14 @@ impl Node {
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code = db.generate_registration_new_code(permissions, profile_name).unwrap_or_else(|_| "".to_string());
+        let code_type = match &profile_name {
+            Some(name) if !name.is_empty() => RegistrationCodeType::Device(name.clone()),
+            _ => RegistrationCodeType::Profile,
+        };
+
+        let code = db
+            .generate_registration_new_code(permissions, code_type)
+            .unwrap_or_else(|_| "".to_string());
         let _ = res.send(code).await.map_err(|_| ());
         Ok(())
     }
@@ -543,7 +563,13 @@ impl Node {
 
         let db = self.db.lock().await;
         let result = db
-            .use_registration_code(&code, Some(&profile_name), &identity_pk, &encryption_pk, identity_type)
+            .use_registration_code(
+                &code,
+                self.node_profile_name.clone().as_str(),
+                profile_name.as_str(),
+                &identity_pk,
+                &encryption_pk,
+            )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
         std::mem::drop(db);
@@ -566,7 +592,7 @@ impl Node {
                     node_encryption_public_key: self.encryption_public_key.clone(),
                     node_signature_public_key: self.identity_public_key.clone(),
                     identity_type: standard_identity_type,
-                    permission_type
+                    permission_type,
                 };
                 let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_subidentity(subidentity).await {

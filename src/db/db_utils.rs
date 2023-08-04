@@ -7,33 +7,16 @@ impl ShinkaiDB {
     #[cfg(debug_assertions)]
     pub fn print_all_from_cf(&self, cf_name: &str) -> Result<(), ShinkaiDBError> {
         println!("printing all for {}", cf_name);
-        // Fetch column family handle
-        let cf = self.db.cf_handle(cf_name).ok_or(ShinkaiDBError::InboxNotFound)?;
-
-        // Create an iterator for the column family
+        let cf = self.db.cf_handle(cf_name).ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name.to_string()))?;
         let iter = self.db.iterator_cf(cf, IteratorMode::Start);
-
-        // A boolean flag to check if the bucket is empty
         let mut is_empty = true;
-
-        // Iterate over all entries in the column family
         for item in iter {
-            match item {
-                Ok((key, value)) => {
-                    // Convert Vec<u8> to String
-                    let key_str = std::str::from_utf8(&key).unwrap_or("Invalid UTF-8 sequence");
-                    let value_str = std::str::from_utf8(&value).unwrap_or("Invalid UTF-8 sequence");
-
-                    println!("print_all_from_cf > Key: {}, Value: {}", key_str, value_str);
-
-                    // If we have at least one item, the bucket is not empty
-                    is_empty = false;
-                }
-                Err(e) => println!("Error reading from column family: {}", e),
-            }
+            let (key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let key_str = std::str::from_utf8(&key)?.to_string();
+            let value_str = std::str::from_utf8(&value)?.to_string();
+            println!("print_all_from_cf > Key: {}, Value: {}", key_str, value_str);
+            is_empty = false;
         }
-
-        // If the bucket is empty, print a message
         if is_empty {
             println!("print_all_from_cf {}: empty bucket", cf_name);
         }

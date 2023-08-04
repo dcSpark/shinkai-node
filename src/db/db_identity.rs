@@ -1,10 +1,8 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::agent_serialization::SerializedAgent;
 use crate::schemas::identity::{
     DeviceIdentity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use rand::RngCore;
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
 use shinkai_message_wasm::shinkai_utils::encryption::{
@@ -15,151 +13,7 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-#[derive(PartialEq)]
-pub enum RegistrationCodeStatus {
-    Unused,
-    Used,
-}
-
-impl RegistrationCodeStatus {
-    pub fn from_slice(slice: &[u8]) -> Self {
-        match slice {
-            b"unused" => Self::Unused,
-            _ => Self::Used,
-        }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Unused => b"unused",
-            Self::Used => b"used",
-        }
-    }
-}
-
-#[derive(PartialEq)]
-pub struct RegistrationCodeInfo {
-    pub status: RegistrationCodeStatus,
-    pub permission: IdentityPermissions,
-    pub profile_name: Option<String>,
-}
-
-impl RegistrationCodeInfo {
-    pub fn from_slice(slice: &[u8]) -> Self {
-        let s = std::str::from_utf8(slice).unwrap();
-        let parts: Vec<&str> = s.split(':').collect();
-        let status = match parts.get(0) {
-            Some(&"unused") => RegistrationCodeStatus::Unused,
-            _ => RegistrationCodeStatus::Used,
-        };
-        let permission = match parts.get(1) {
-            Some(&"admin") => IdentityPermissions::Admin,
-            Some(&"standard") => IdentityPermissions::Standard,
-            _ => IdentityPermissions::None,
-        };
-        let profile_name = parts.get(2).map(|&s| s.to_string());
-        Self {
-            status,
-            permission,
-            profile_name,
-        }
-    }
-
-    pub fn as_bytes(&self) -> Vec<u8> {
-        format!(
-            "{}:{}:{}",
-            match self.status {
-                RegistrationCodeStatus::Unused => "unused",
-                RegistrationCodeStatus::Used => "used",
-            },
-            match self.permission {
-                IdentityPermissions::Admin => "admin",
-                IdentityPermissions::Standard => "standard",
-                IdentityPermissions::None => "none",
-            },
-            self.profile_name.as_deref().unwrap_or("")
-        )
-        .into_bytes()
-    }
-}
-
 impl ShinkaiDB {
-    pub fn generate_registration_new_code(
-        &self,
-        permissions: IdentityPermissions,
-        profile_name: Option<String>,
-    ) -> Result<String, Error> {
-        let mut rng = rand::thread_rng();
-        let mut random_bytes = [0u8; 64];
-        rng.fill_bytes(&mut random_bytes);
-        let new_code = bs58::encode(random_bytes).into_string();
-
-        let cf = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
-
-        let code_info = RegistrationCodeInfo {
-            status: RegistrationCodeStatus::Unused,
-            permission: permissions,
-            profile_name,
-        };
-
-        self.db.put_cf(cf, &new_code, &code_info.as_bytes())?;
-
-        Ok(new_code)
-    }
-
-    pub fn use_registration_code(
-        &self,
-        registration_code: &str,
-        profile_name: Option<&str>,
-        identity_public_key: &str,
-        encryption_public_key: &str,
-        identity_type: IdentityType,
-    ) -> Result<(), ShinkaiDBError> {
-        // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
-        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
-        let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, registration_code)? {
-            Some(value) => RegistrationCodeInfo::from_slice(&value),
-            None => return Err(ShinkaiDBError::CodeNonExistent),
-        };
-
-        if code_info.status != RegistrationCodeStatus::Unused {
-            return Err(ShinkaiDBError::CodeAlreadyUsed);
-        }
-
-        let profile_name = profile_name
-            .map(|s| s.to_string())
-            .or(code_info.profile_name.clone())
-            .ok_or(ShinkaiDBError::ProfileNameNotProvided)?;
-
-        // Check that the profile name doesn't exist in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesPermission
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
-
-        if self.db.get_cf(cf_identity, &profile_name)?.is_some()
-            || self.db.get_cf(cf_encryption, &profile_name)?.is_some()
-            || self.db.get_cf(cf_permission, &profile_name)?.is_some()
-        {
-            return Err(ShinkaiDBError::ProfileNameAlreadyExists);
-        }
-
-        // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
-
-        // Mark the registration code as used
-        batch.put_cf(cf_codes, registration_code, RegistrationCodeStatus::Used.as_bytes());
-
-        // Write to ProfilesIdentityKey, ProfilesEncryptionKey, ProfilesPermission and ProfilesIdentityType
-        batch.put_cf(cf_identity, &profile_name, identity_public_key.as_bytes());
-        batch.put_cf(cf_encryption, &profile_name, encryption_public_key.as_bytes());
-        batch.put_cf(cf_permission, &profile_name, code_info.permission.as_bytes());
-
-        // Write the batch
-        self.db.write(batch)?;
-
-        Ok(())
-    }
-
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
@@ -167,7 +21,7 @@ impl ShinkaiDB {
         // Get the associated profile name for the identity public key
         let profile_name = match self.db.get_cf(cf_identity, identity_public_key)? {
             Some(name_bytes) => Ok(String::from_utf8_lossy(&name_bytes).to_string()),
-            None => Err(ShinkaiDBError::ProfileNameNonExistent),
+            None => Err(ShinkaiDBError::ProfileNameNonExistent(identity_public_key.to_string())),
         }?;
 
         // Get the associated encryption public key for the profile name
@@ -185,52 +39,70 @@ impl ShinkaiDB {
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
         let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
         let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap(); // Added this line
-    
+
         // Handle node related information
         let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
         let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
-    
+
         let node_encryption_public_key = match self.db.get_cf(cf_node_encryption, &my_node_identity_name)? {
             Some(value) => {
                 let key_string = String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
                 string_to_encryption_public_key(&key_string).map_err(|_| ShinkaiDBError::PublicKeyParseError)?
             }
-            None => return Err(ShinkaiDBError::ProfileNameNonExistent),
+            None => {
+                return Err(ShinkaiDBError::ProfileNameNonExistent(
+                    my_node_identity_name.to_string(),
+                ))
+            }
         };
-    
+
         let node_signature_public_key = match self.db.get_cf(cf_node_identity, &my_node_identity_name)? {
             Some(value) => {
                 let key_string = String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
                 string_to_signature_public_key(&key_string).map_err(|_| ShinkaiDBError::PublicKeyParseError)?
             }
-            None => return Err(ShinkaiDBError::ProfileNameNonExistent),
+            None => {
+                return Err(ShinkaiDBError::ProfileNameNonExistent(
+                    my_node_identity_name.to_string(),
+                ))
+            }
         };
-    
+
         let mut result = Vec::new();
         let iter = self.db.iterator_cf(cf_identity, rocksdb::IteratorMode::Start);
-    
+
         for item in iter {
             match item {
                 Ok((key, value)) => {
                     let full_identity_name = String::from_utf8(key.to_vec()).unwrap();
-                    let subidentity_signature_public_key = string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap()).map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
-    
+                    let subidentity_signature_public_key =
+                        string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())
+                            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
                     match self.db.get_cf(cf_encryption, &full_identity_name)? {
                         Some(value) => {
-                            let key_string = String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
-                            let subidentity_encryption_public_key = string_to_encryption_public_key(&key_string).map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
-    
+                            let key_string =
+                                String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+                            let subidentity_encryption_public_key = string_to_encryption_public_key(&key_string)
+                                .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
                             match self.db.get_cf(cf_type, &full_identity_name)? {
                                 Some(value) => {
                                     let identity_type_str = String::from_utf8(value.to_vec()).unwrap();
-                                    let identity_type = StandardIdentityType::to_enum(&identity_type_str).ok_or(ShinkaiDBError::InvalidIdentityType)?;
-    
-                                    match self.db.get_cf(cf_permission, &full_identity_name)? { // Updated this line
+                                    let identity_type = StandardIdentityType::to_enum(&identity_type_str).ok_or(
+                                        ShinkaiDBError::InvalidIdentityType(format!(
+                                            "Invalid identity type for: {}",
+                                            identity_type_str
+                                        )),
+                                    )?;
+
+                                    match self.db.get_cf(cf_permission, &full_identity_name)? {
+                                        // Updated this line
                                         Some(value) => {
                                             let permissions_str = String::from_utf8(value.to_vec()).unwrap();
-                                            let permissions = IdentityPermissions::from_str(&permissions_str).ok_or(ShinkaiDBError::InvalidPermissionsType)?;
+                                            let permissions = IdentityPermissions::from_str(&permissions_str)
+                                                .ok_or(ShinkaiDBError::InvalidPermissionsType)?;
 
-    
                                             let identity = StandardIdentity::new(
                                                 full_identity_name,
                                                 None,
@@ -243,58 +115,36 @@ impl ShinkaiDB {
                                             );
                                             result.push(identity);
                                         }
-                                        None => return Err(ShinkaiDBError::ProfileNameNonExistent),
+                                        None => return Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name)),
                                     }
                                 }
-                                None => return Err(ShinkaiDBError::ProfileNameNonExistent),
+                                None => return Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name)),
                             }
                         }
-                        None => return Err(ShinkaiDBError::ProfileNameNonExistent),
+                        None => return Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name)),
                     }
                 }
                 Err(e) => return Err(e.into()),
             }
         }
-    
+
         Ok(result)
     }
-    
-    pub fn update_local_node_keys(
-        &self,
-        my_node_identity_name: String,
-        encryption_pk: EncryptionPublicKey,
-        signature_pk: SignaturePublicKey,
-    ) -> Result<(), ShinkaiDBError> {
-        let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
-        let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
 
-        let mut batch = rocksdb::WriteBatch::default();
-
-        // Convert public keys to bs58 encoded strings
-        let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
-        let signature_pk_string = signature_public_key_to_string(signature_pk);
-
-        batch.put_cf(
-            cf_node_encryption,
-            &my_node_identity_name,
-            encryption_pk_string.as_bytes(),
-        );
-        batch.put_cf(cf_node_identity, &my_node_identity_name, signature_pk_string.as_bytes());
-
-        self.db.write(batch)?;
-
-        Ok(())
-    }
-
-    pub fn insert_sub_identity(&self, identity: StandardIdentity) -> Result<(), ShinkaiDBError> {
+    pub fn insert_profile(&self, identity: StandardIdentity) -> Result<(), ShinkaiDBError> {
+        println!("identity.full_identity_name: {}", identity.full_identity_name);
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        let cf_identity_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        let cf_permission_type = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
 
         // Check that the full identity name doesn't exist in the columns
         if self.db.get_cf(cf_identity, &identity.full_identity_name)?.is_some()
             || self.db.get_cf(cf_encryption, &identity.full_identity_name)?.is_some()
-            || self.db.get_cf(cf_permission, &identity.full_identity_name)?.is_some()
+            || self
+                .db
+                .get_cf(cf_identity_type, &identity.full_identity_name)?
+                .is_some()
         {
             return Err(ShinkaiDBError::ProfileNameAlreadyExists);
         }
@@ -326,15 +176,16 @@ impl ShinkaiDB {
             sub_encryption_public_key.as_bytes(),
         );
         batch.put_cf(
-            cf_permission,
+            cf_identity_type,
             &identity.full_identity_name,
             identity.identity_type.to_string().as_bytes(),
         );
 
-        // TODO: if identity is agent type then also add
-        // - Permissions specifying which toolkits/which storage buckets the agent has access to
-        // TODO:
-        // - Permissions which sub identity has the ability to message the agent
+        batch.put_cf(
+            cf_permission_type,
+            &identity.full_identity_name,
+            identity.permission_type.to_string().as_bytes(),
+        );
 
         // Write the batch
         self.db.write(batch)?;
@@ -342,15 +193,26 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_profile_permission(&self, profile_name: &str) -> Result<Option<IdentityPermissions>, ShinkaiDBError> {
+    pub fn get_profile_permission(&self, profile_name: &str) -> Result<IdentityPermissions, ShinkaiDBError> {
         let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
         match self.db.get_cf(cf_permission, profile_name)? {
-            Some(value) => Ok(Some(IdentityPermissions::from_slice(&value))),
-            None => Ok(None),
+            Some(value) => {
+                let permission_str = std::str::from_utf8(&value).map_err(|_| {
+                    ShinkaiDBError::InvalidPermissionType(format!("Invalid permission type: {:?}", value))
+                })?;
+                IdentityPermissions::from_str(permission_str).ok_or(ShinkaiDBError::InvalidPermissionType(format!(
+                    "Invalid permission type: {:?}",
+                    value
+                )))
+            }
+            None => Err(ShinkaiDBError::PermissionNotFound(format!(
+                "No permission found for profile: {}",
+                profile_name
+            ))),
         }
     }
 
-    pub fn link_device_to_profile(&self, device: DeviceIdentity) -> Result<(), ShinkaiDBError> {
+    pub fn add_device_to_profile(&self, device: DeviceIdentity) -> Result<(), ShinkaiDBError> {
         // Get the profile name from the device identity name
         let profile_name = device.full_identity_name.split("/").nth(1).unwrap();
 
@@ -391,7 +253,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn remove_subidentity(&self, name: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_profile(&self, name: &str) -> Result<(), ShinkaiDBError> {
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
         let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
@@ -401,7 +263,7 @@ impl ShinkaiDB {
             || self.db.get_cf(cf_encryption, name)?.is_none()
             || self.db.get_cf(cf_permission, name)?.is_none()
         {
-            return Err(ShinkaiDBError::ProfileNameNonExistent);
+            return Err(ShinkaiDBError::ProfileNameNonExistent(name.to_string()));
         }
 
         // Start write batch for atomic operation
@@ -416,5 +278,76 @@ impl ShinkaiDB {
         self.db.write(batch)?;
 
         Ok(())
+    }
+
+    pub fn get_profile(&self, node_name: &str, profile_name: &str) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
+        let full_identity_name = format!("{}/{}", node_name, profile_name);
+        let cf_identity = self
+            .db
+            .cf_handle(Topic::ProfilesIdentityKey.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("ProfilesIdentityKey".to_string()))?;
+        let cf_encryption =
+            self.db
+                .cf_handle(Topic::ProfilesEncryptionKey.as_str())
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
+                    "ProfilesEncryptionKey".to_string(),
+                ))?;
+        let cf_type = self
+            .db
+            .cf_handle(Topic::ProfilesIdentityType.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("ProfilesIdentityType".to_string()))?;
+        let cf_permission = self
+            .db
+            .cf_handle(Topic::ProfilesPermission.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("ProfilesPermission".to_string()))?;
+
+        let identity_public_key_bytes = match self.db.get_cf(cf_identity, profile_name)? {
+            Some(bytes) => bytes,
+            None => return Ok(None),
+        };
+
+        let encryption_public_key_bytes = self
+            .db
+            .get_cf(cf_encryption, profile_name)?
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
+        let identity_type_bytes = self
+            .db
+            .get_cf(cf_type, profile_name)?
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
+        let permission_type_bytes = self
+            .db
+            .get_cf(cf_permission, profile_name)?
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
+
+        let identity_public_key_str =
+            String::from_utf8(identity_public_key_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+        let encryption_public_key_str =
+            String::from_utf8(encryption_public_key_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+        let identity_type_str =
+            String::from_utf8(identity_type_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+        let permission_type_str =
+            String::from_utf8(permission_type_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+
+        let identity_public_key = string_to_signature_public_key(&identity_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+        let encryption_public_key = string_to_encryption_public_key(&encryption_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+        let identity_type = StandardIdentityType::to_enum(&identity_type_str)
+            .ok_or(ShinkaiDBError::InvalidIdentityType(identity_type_str.clone()))?;
+        let permission_type =
+            IdentityPermissions::from_str(&permission_type_str).ok_or(ShinkaiDBError::InvalidPermissionsType)?;
+
+        let (node_encryption_public_key, node_signature_public_key) = self.get_local_node_keys(profile_name)?;
+
+        Ok(Some(StandardIdentity {
+            full_identity_name: profile_name.to_string(),
+            addr: None,
+            node_encryption_public_key,
+            node_signature_public_key,
+            profile_encryption_public_key: Some(encryption_public_key),
+            profile_signature_public_key: Some(identity_public_key),
+            identity_type,
+            permission_type,
+        }))
     }
 }

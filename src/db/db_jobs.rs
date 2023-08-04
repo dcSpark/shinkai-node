@@ -150,96 +150,60 @@ impl ShinkaiDB {
         Ok(Box::new(job))
     }
 
-    // Use get_job or get_job_like instead
     fn get_job_data(
         &self,
         job_id: &str,
         fetch_step_history: bool,
     ) -> Result<(JobScope, bool, String, String, InboxName, Option<Vec<String>>), ShinkaiDBError> {
-        // Initialize the column family names
         let cf_job_id_name = format!("jobtopic_{}", job_id);
         let cf_job_id_scope_name = format!("{}_scope", job_id);
         let cf_job_id_step_history_name = format!("{}_step_history", job_id);
-
-        // Get the column family handles
+    
         let cf_job_id_scope = self
             .db
             .cf_handle(&cf_job_id_scope_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_scope_name))?;
         let cf_job_id = self
             .db
             .cf_handle(&cf_job_id_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
-
-        // Get the scope
-        let scope_value = self.db.get_cf(cf_job_id_scope, job_id)?;
-        let scope = match scope_value {
-            Some(scope_bytes) => JobScope::from_bytes(&scope_bytes)?,
-            None => return Err(ShinkaiDBError::DataNotFound),
-        };
-
-        // Get the job is_finished status
-        let is_finished_value = self.db.get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?;
-        let is_finished = match is_finished_value {
-            Some(bytes) => std::str::from_utf8(&bytes)?.to_string() == "true",
-            None => return Err(ShinkaiDBError::DataNotFound),
-        };
-
-        // Get the datetime_created and parent_agent_id from step history
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
+    
+        let scope_value = self.db.get_cf(cf_job_id_scope, job_id)?.ok_or(ShinkaiDBError::DataNotFound)?;
+        let scope = JobScope::from_bytes(&scope_value)?;
+    
+        let is_finished_value = self.db.get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+        let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
+    
         let cf_job_id_step_history = self
             .db
             .cf_handle(&cf_job_id_step_history_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
-
-        let datetime_created_value = self
-            .db
-            .get_cf(cf_job_id, JobInfo::DatetimeCreated.to_str().as_bytes())?;
-        let datetime_created = match datetime_created_value {
-            Some(bytes) => std::str::from_utf8(&bytes)?.to_string(),
-            None => return Err(ShinkaiDBError::DataNotFound),
-        };
-
-        let parent_agent_id_value = self.db.get_cf(cf_job_id, JobInfo::ParentAgentId.to_str().as_bytes())?;
-        let parent_agent_id = match parent_agent_id_value {
-            Some(bytes) => std::str::from_utf8(&bytes)?.to_string(),
-            None => return Err(ShinkaiDBError::DataNotFound),
-        };
-
-        // Get the conversation_inbox and step_history
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
+    
+        let datetime_created_value = self.db.get_cf(cf_job_id, JobInfo::DatetimeCreated.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+        let datetime_created = std::str::from_utf8(&datetime_created_value)?.to_string();
+    
+        let parent_agent_id_value = self.db.get_cf(cf_job_id, JobInfo::ParentAgentId.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+        let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
+    
         let mut conversation_inbox: Option<InboxName> = None;
         let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
-
-        // Get the conversation_inbox
+    
         let conversation_inbox_value = self.db.get_cf(
             cf_job_id,
             JobInfo::ConversationInboxName.to_str().as_bytes(),
-        )?;
-        match conversation_inbox_value {
-            Some(value) => {
-                let inbox_name =
-                    String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::DataConversionError)?;
-                conversation_inbox = Some(InboxName::new(inbox_name)?);
-            }
-            None => {
-                return Err(ShinkaiDBError::InboxNotFound)
-            }
-        }
-
-        // Get the step_history
+        )?.ok_or(ShinkaiDBError::DataNotFound)?;
+        let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
+        conversation_inbox = Some(InboxName::new(inbox_name)?);
+    
         if let Some(ref mut step_history) = step_history {
             let iter = self.db.iterator_cf(cf_job_id_step_history, IteratorMode::Start);
             for item in iter {
-                match item {
-                    Ok((_key, value)) => {
-                        let step = String::from_utf8(value.to_vec())
-                            .map_err(|_| ShinkaiDBError::DataConversionError)?;
-                        step_history.push(step);
-                    }
-                    Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-                }
+                let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+                let step = std::str::from_utf8(&value)?.to_string();
+                step_history.push(step);
             }
         }
-
+    
         Ok((
             scope,
             is_finished,
@@ -249,24 +213,20 @@ impl ShinkaiDB {
             step_history,
         ))
     }
-
+    
     pub fn get_all_jobs(&self) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_handle = self
             .db
             .cf_handle(Topic::AllJobsTimeKeyed.as_str())
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("AllJobsTimeKeyed".to_string()))?;
+    
         let mut jobs = Vec::new();
         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
         for item in iter {
-            match item {
-                Ok((_key, value)) => {
-                    let job_id =
-                        String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::DataConversionError)?;
-                    let job = self.get_job_like(&job_id)?;
-                    jobs.push(job);
-                }
-                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-            }
+            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let job_id = std::str::from_utf8(&value)?.to_string();
+            let job = self.get_job_like(&job_id)?;
+            jobs.push(job);
         }
         Ok(jobs)
     }
@@ -276,22 +236,15 @@ impl ShinkaiDB {
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name))?;
         let mut jobs = Vec::new();
         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
         for item in iter {
-            match item {
-                Ok((_, value)) => {
-                    let job_id =
-                        String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::DataConversionError)?;
-                    let job = self.get_job_like(&job_id)?;
-                    jobs.push(job);
-                }
-                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
-            }
+            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let job_id = std::str::from_utf8(&value)?.to_string();
+            let job = self.get_job_like(&job_id)?;
+            jobs.push(job);
         }
-        // // Sorting in reverse to get the jobs from most recent to oldest
-        // jobs.sort_unstable_by(|a, b| b.datetime_created.cmp(&a.datetime_created));
         Ok(jobs)
     }
 
@@ -300,7 +253,7 @@ impl ShinkaiDB {
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
         let mut batch = WriteBatch::default();
         batch.put_cf(cf_handle, JobInfo::IsFinished.to_str().as_bytes(), b"true");
         self.db.write(batch)?;
@@ -312,7 +265,7 @@ impl ShinkaiDB {
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent)?;
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
         let current_time = ShinkaiMessageHandler::generate_time_now();
         self.db.put_cf(cf_handle, current_time.as_bytes(), step.as_bytes())?;
         Ok(())

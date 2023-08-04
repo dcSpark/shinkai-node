@@ -102,8 +102,8 @@ mod tests {
             Some(vec!["new_toolkit".to_string()]),
         );
         assert!(
-            matches!(result, Err(ShinkaiDBError::SomeError)),
-            "Expected SomeError error"
+            matches!(result, Err(ShinkaiDBError::ColumnFamilyNotFound(_))),
+            "Expected ColumnFamilyNotFound error"
         );
     }
 

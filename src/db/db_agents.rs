@@ -99,14 +99,20 @@ impl ShinkaiDB {
         let cf_name_toolkits_access = format!("agent_{}_toolkits_accessible", agent_id);
 
         // Get the column families. They should have been created when the agent was added.
-        let cf_profiles_access = self
-            .db
-            .cf_handle(&cf_name_profiles_access)
-            .ok_or(ShinkaiDBError::SomeError)?;
-        let cf_toolkits_access = self
-            .db
-            .cf_handle(&cf_name_toolkits_access)
-            .ok_or(ShinkaiDBError::SomeError)?;
+        let cf_profiles_access =
+            self.db
+                .cf_handle(&cf_name_profiles_access)
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                    "Column family not found for: {}",
+                    cf_name_profiles_access
+                )))?;
+        let cf_toolkits_access =
+            self.db
+                .cf_handle(&cf_name_toolkits_access)
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                    "Column family not found for: {}",
+                    cf_name_toolkits_access
+                )))?;
 
         // Start write batch for atomic operation
         let mut batch = rocksdb::WriteBatch::default();
@@ -134,35 +140,53 @@ impl ShinkaiDB {
     pub fn get_agent(&self, agent_id: &str) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
         // Get cf handle for Agents topic
         let cf_agents = self.db.cf_handle(Topic::Agents.as_str()).unwrap();
-    
+
         // Fetch the agent's bytes by their id from the Agents topic
         let agent_bytes = self.db.get_cf(cf_agents, agent_id.as_bytes())?;
-    
+
         // If the agent was found, deserialize the bytes into an agent object and return it
         match agent_bytes {
             Some(bytes) => {
                 let agent: SerializedAgent = from_slice(&bytes)?;
                 Ok(Some(agent))
-            },
-            None => Ok(None),  // If the agent wasn't found, return None
+            }
+            None => Ok(None), // If the agent wasn't found, return None
         }
     }
 
-     pub fn get_agent_profiles_with_access(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_agent_profiles_with_access(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
-        let cf = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::SomeError)?;
+        let cf = self
+            .db
+            .cf_handle(&cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                "Column family not found for: {}",
+                cf_name
+            )))?;
         self.get_column_family_data(cf)
     }
 
     pub fn get_agent_toolkits_accessible(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
-        let cf = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::SomeError)?;
+        let cf = self
+            .db
+            .cf_handle(&cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                "Column family not found for: {}",
+                cf_name
+            )))?;
         self.get_column_family_data(cf)
     }
 
     pub fn remove_profile_from_agent_access(&mut self, agent_id: &str, profile: &str) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
-        let cf = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::SomeError)?;
+        let cf = self
+            .db
+            .cf_handle(&cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                "Column family not found for: {}",
+                cf_name
+            )))?;
 
         self.db.delete_cf(cf, profile.as_bytes())?;
         Ok(())
@@ -170,7 +194,13 @@ impl ShinkaiDB {
 
     pub fn remove_toolkit_from_agent_access(&mut self, agent_id: &str, toolkit: &str) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
-        let cf = self.db.cf_handle(&cf_name).ok_or(ShinkaiDBError::SomeError)?;
+        let cf = self
+            .db
+            .cf_handle(&cf_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(format!(
+                "Column family not found for: {}",
+                cf_name
+            )))?;
 
         self.db.delete_cf(cf, toolkit.as_bytes())?;
         Ok(())
@@ -183,13 +213,18 @@ impl ShinkaiDB {
         for item in iter {
             match item {
                 Ok((key, _)) => {
-                    let key_str = String::from_utf8(key.to_vec()).map_err(|_| ShinkaiDBError::SomeError)?;
+                    let key_str = String::from_utf8(key.to_vec())
+                        .map_err(|_| ShinkaiDBError::DataConversionError("UTF-8 conversion error".to_string()))?;
                     data.push(key_str);
                 }
-                Err(_) => return Err(ShinkaiDBError::SomeError),
+                Err(_) => {
+                    return Err(ShinkaiDBError::DataConversionError(
+                        "Error iterating over column family".to_string(),
+                    ))
+                }
             }
         }
 
         Ok(data)
-    } 
+    }
 }

@@ -1,13 +1,19 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use crate::schemas::identity::{Identity, StandardIdentity, IdentityType, StandardIdentityType, DeviceIdentity, IdentityPermissions};
+use crate::schemas::identity::{
+    DeviceIdentity, Identity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde::ser::{Serializer, SerializeStruct};
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
-use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
+use shinkai_message_wasm::shinkai_utils::encryption::{
+    encryption_public_key_to_string, encryption_public_key_to_string_ref,
+};
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    signature_public_key_to_string, signature_public_key_to_string_ref,
+};
 use std::sync::Arc;
 use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;
@@ -89,8 +95,9 @@ impl IdentityManager {
             identity.identity_type.clone(),
             identity.permission_type.clone(),
         );
-        db.insert_sub_identity(normalized_identity.clone())?;
-        self.local_identities.push(Identity::Standard(normalized_identity.clone()));
+        db.insert_profile(normalized_identity.clone())?;
+        self.local_identities
+            .push(Identity::Standard(normalized_identity.clone()));
         Ok(())
     }
 
@@ -103,10 +110,7 @@ impl IdentityManager {
         Ok(profile_names)
     }
 
-    pub async fn add_agent_subidentity(
-        &mut self,
-        agent: SerializedAgent,
-    ) -> anyhow::Result<()> {
+    pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
         let mut db = self.db.lock().await;
         db.add_agent(agent.clone())?;
         self.local_identities.push(Identity::Agent(agent.clone()));
@@ -115,34 +119,32 @@ impl IdentityManager {
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-    
+
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
             self.local_identities
                 .iter()
-                .filter_map(|identity| {
-                    match identity {
-                        Identity::Standard(standard_identity) => {
-                            if standard_identity.full_identity_name == full_identity_name {
-                                Some(Identity::Standard(standard_identity.clone()))
-                            } else {
-                                None
-                            }
-                        },
-                        Identity::Agent(agent) => {
-                            if agent.id == full_identity_name {
-                                Some(Identity::Agent(agent.clone()))
-                            } else {
-                                None
-                            }
-                        },
-                        Identity::Device(device) => {
-                            if device.full_identity_name == full_identity_name {
-                                Some(Identity::Device(device.clone()))
-                            } else {
-                                None
-                            }
-                        },
+                .filter_map(|identity| match identity {
+                    Identity::Standard(standard_identity) => {
+                        if standard_identity.full_identity_name == full_identity_name {
+                            Some(Identity::Standard(standard_identity.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Identity::Agent(agent) => {
+                        if agent.id == full_identity_name {
+                            Some(Identity::Agent(agent.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Identity::Device(device) => {
+                        if device.full_identity_name == full_identity_name {
+                            Some(Identity::Device(device.clone()))
+                        } else {
+                            None
+                        }
                     }
                 })
                 .next()
@@ -159,7 +161,7 @@ impl IdentityManager {
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
         // Extract node name from the full identity name
         let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
-    
+
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_name {
             self.search_local_identity(full_identity_name).await
@@ -184,7 +186,6 @@ impl IdentityManager {
             }
         }
     }
-    
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
         self.local_identities.clone()
@@ -196,28 +197,24 @@ impl IdentityManager {
     }
 
     pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
-        self.local_identities
-            .iter()
-            .find(|identity| {
-                match identity {
-                    Identity::Standard(identity) => identity.profile_signature_public_key.as_ref() == Some(key),
-                    // TODO: fix this
-                    Identity::Device(device) => device.profile_signature_public_key.as_ref() == Some(key),
-                    Identity::Agent(_) => false, // Return false if the identity is an Agent
-                }
-            })
+        self.local_identities.iter().find(|identity| {
+            match identity {
+                Identity::Standard(identity) => identity.profile_signature_public_key.as_ref() == Some(key),
+                // TODO: fix this
+                Identity::Device(device) => device.profile_signature_public_key.as_ref() == Some(key),
+                Identity::Agent(_) => false, // Return false if the identity is an Agent
+            }
+        })
     }
-    
+
     pub fn find_by_profile_name(&self, full_profile_name: &str) -> Option<&Identity> {
-        self.local_identities
-            .iter()
-            .find(|identity| {
-                match identity {
-                    Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
-                    Identity::Device(device) => device.full_identity_name == full_profile_name,
-                    Identity::Agent(agent) => agent.name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
-                }
-            })
+        self.local_identities.iter().find(|identity| {
+            match identity {
+                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                Identity::Device(device) => device.full_identity_name == full_profile_name,
+                Identity::Agent(agent) => agent.name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+            }
+        })
     }
 
     pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
@@ -277,11 +274,15 @@ impl IdentityManager {
         let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
         re.is_match(s)
     }
-    
 
     pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
-        let name = format!("{}/{}", node_name, subidentity_name);
-        IdentityManager::is_valid_node_identity_name_and_no_subidentities(name.clone().as_str());
+        let node_name = if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) {
+            node_name
+        } else {
+            format!("@@{}.shinkai", node_name)
+        };
+
+        let name = format!("{}/{}", node_name.to_lowercase(), subidentity_name.to_lowercase());
         name
     }
 

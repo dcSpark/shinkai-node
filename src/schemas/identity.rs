@@ -5,6 +5,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde::ser::{Serializer, SerializeStruct};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
@@ -104,7 +105,7 @@ pub enum Identity {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StandardIdentity {
-    pub full_identity_name: String, // @@Alice.shinkai/profileName
+    pub full_identity_name: ShinkaiName,
     pub addr: Option<SocketAddr>,
     pub node_encryption_public_key: EncryptionPublicKey,
     pub node_signature_public_key: SignaturePublicKey,
@@ -117,7 +118,7 @@ pub struct StandardIdentity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DeviceIdentity {
     // This would include the profile name e.g. @@Alice.shinkai/profileName/myPhone
-    pub full_identity_name: String,
+    pub full_identity_name: ShinkaiName,
     pub node_encryption_public_key: EncryptionPublicKey,
     pub node_signature_public_key: SignaturePublicKey,
     pub profile_encryption_public_key: Option<EncryptionPublicKey>,
@@ -127,9 +128,10 @@ pub struct DeviceIdentity {
 }
 
 impl DeviceIdentity {
-    pub fn to_standard_identity(&self) -> StandardIdentity {
-        let full_identity_name = self.full_identity_name.split("/").next().unwrap().to_string();
-        StandardIdentity {
+    pub fn to_standard_identity(&self) -> Option<StandardIdentity> {
+        let full_identity_name = self.full_identity_name.extract_profile().ok()?;
+        
+        Some(StandardIdentity {
             full_identity_name,
             addr: None,
             node_encryption_public_key: self.node_encryption_public_key.clone(),
@@ -138,7 +140,7 @@ impl DeviceIdentity {
             profile_signature_public_key: self.profile_signature_public_key.clone(),
             identity_type: StandardIdentityType::Profile,
             permission_type: self.permission_type.clone(),
-        }
+        })
     }
 }
 
@@ -190,7 +192,7 @@ impl Serialize for StandardIdentity {
 
 impl StandardIdentity {
     pub fn new(
-        full_identity_name: String,
+        full_identity_name: ShinkaiName,
         addr: Option<SocketAddr>,
         node_encryption_public_key: EncryptionPublicKey,
         node_signature_public_key: SignaturePublicKey,
@@ -221,22 +223,6 @@ impl StandardIdentity {
             profile_signature_public_key: subidentity_signature_public_key,
             identity_type,
             permission_type,
-        }
-    }
-
-    pub fn node_identity_name(&self) -> &str {
-        self.full_identity_name
-            .split('/')
-            .next()
-            .unwrap_or(&self.full_identity_name)
-    }
-
-    pub fn profile_name(&self) -> Option<&str> {
-        let parts: Vec<&str> = self.full_identity_name.split('/').collect();
-        if parts.len() > 1 {
-            Some(parts[1])
-        } else {
-            None
         }
     }
 }
@@ -317,5 +303,15 @@ impl fmt::Display for DeviceIdentity {
             device_signature_public_key,
             self.permission_type
         )
+    }
+}
+
+impl fmt::Display for IdentityPermissions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Admin => write!(f, "Admin"),
+            Self::Standard => write!(f, "Standard"),
+            Self::None => write!(f, "None"),
+        }
     }
 }

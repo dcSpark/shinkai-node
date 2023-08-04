@@ -9,9 +9,9 @@ pub enum ShinkaiDBError {
     DecodeError(prost::DecodeError),
     IOError(io::Error),
     PermissionDenied(String),
-    InvalidIdentityType,
+    InvalidIdentityType(String),
     Utf8ConversionError,
-    PermissionNotFound,
+    PermissionNotFound(String),
     MissingExternalMetadata,
     MissingBody,
     MissingInternalMetadata,
@@ -19,16 +19,16 @@ pub enum ShinkaiDBError {
     CodeAlreadyUsed,
     CodeNonExistent,
     ProfileNameAlreadyExists,
-    SomeError,
-    ProfileNameNonExistent,
+    SomeError(String),
+    ProfileNameNonExistent(String),
     EncryptionKeyNonExistent,
     PublicKeyParseError,
-    InboxNotFound,
-    IdentityNotFound,
+    InboxNotFound(String),
+    IdentityNotFound(String),
     InvalidData,
     InvalidInboxName,
     JsonSerializationError(serde_json::Error),
-    DataConversionError,
+    DataConversionError(String),
     DataNotFound,
     ResourceError(ResourceError),
     FailedFetchingCF,
@@ -38,7 +38,12 @@ pub enum ShinkaiDBError {
     ProfileNotFound,
     DeviceIdentityAlreadyExists,
     ProfileNameNotProvided,
-    InvalidPermissionsType
+    InvalidPermissionsType,
+    MissingValue(String),
+    ColumnFamilyNotFound(String),
+    InvalidInboxPermission(String),
+    InvalidPermissionType(String),
+    InvalidProfileName,
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -54,15 +59,15 @@ impl fmt::Display for ShinkaiDBError {
             }
             ShinkaiDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
             ShinkaiDBError::MessageNotFound => write!(f, "Message not found"),
-            ShinkaiDBError::SomeError => write!(f, "Some mysterious error..."),
-            ShinkaiDBError::ProfileNameNonExistent => {
-                write!(f, "Profile name does not exist")
+            ShinkaiDBError::SomeError(e) => write!(f, "Some error: {}", e),
+            ShinkaiDBError::ProfileNameNonExistent(e) => {
+                write!(f, "Profile name does not exist: {}", e)
             }
             ShinkaiDBError::EncryptionKeyNonExistent => {
                 write!(f, "Encryption key does not exist")
             }
             ShinkaiDBError::PublicKeyParseError => write!(f, "Error parsing public key"),
-            ShinkaiDBError::InboxNotFound => write!(f, "Inbox not found"),
+            ShinkaiDBError::InboxNotFound(e) => write!(f, "Inbox not found: {}", e),
             ShinkaiDBError::IOError(e) => write!(f, "IO Error: {}", e),
             ShinkaiDBError::MissingExternalMetadata => {
                 write!(f, "Missing external metadata")
@@ -71,15 +76,14 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::MissingInternalMetadata => {
                 write!(f, "Missing internal metadata")
             }
-            ShinkaiDBError::IdentityNotFound => write!(f, "Identity not found"),
+            ShinkaiDBError::IdentityNotFound(e) => write!(f, "Identity not found: {}", e),
             ShinkaiDBError::InvalidData => write!(f, "Invalid data"),
             ShinkaiDBError::PermissionDenied(e) => write!(f, "Permission denied: {}", e),
-            ShinkaiDBError::PermissionNotFound => write!(f, "Permission not found"),
-            ShinkaiDBError::InvalidIdentityType => write!(f, "Invalid permission type"),
+            ShinkaiDBError::PermissionNotFound(e) => write!(f, "Permission not found: {}", e),
+            ShinkaiDBError::InvalidIdentityType(e) => write!(f, "Invalid identity type: {}", e),
             ShinkaiDBError::InvalidInboxName => write!(f, "Invalid inbox name"),
             ShinkaiDBError::Utf8ConversionError => write!(f, "UTF8 conversion error"),
             ShinkaiDBError::JsonSerializationError(e) => write!(f, "Json Serialization Error: {}", e),
-            ShinkaiDBError::DataConversionError => write!(f, "Data conversion error"),
             ShinkaiDBError::DataNotFound => write!(f, "Data not found"),
             ShinkaiDBError::FailedFetchingCF => write!(f, "Failed fetching Column Family"),
             ShinkaiDBError::FailedFetchingValue => write!(f, "Failed fetching value. Likely invalid CF or key."),
@@ -90,6 +94,12 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::DeviceIdentityAlreadyExists => write!(f, "Device identity already exists"),
             ShinkaiDBError::ProfileNameNotProvided => write!(f, "Profile name not provided"),
             ShinkaiDBError::InvalidPermissionsType => write!(f, "Invalid permissions type"),
+            ShinkaiDBError::MissingValue(e) => write!(f, "Missing value: {}", e),
+            ShinkaiDBError::ColumnFamilyNotFound(e) => write!(f, "Column family not found: {}", e),
+            ShinkaiDBError::DataConversionError(e) => write!(f, "Data conversion error: {}", e),
+            ShinkaiDBError::InvalidInboxPermission(e) => write!(f, "Invalid inbox permission: {}", e),
+            ShinkaiDBError::InvalidPermissionType(e) => write!(f, "Invalid permission type: {}", e),
+            ShinkaiDBError::InvalidProfileName => write!(f, "Invalid profile name"),
         }
     }
 }
@@ -108,30 +118,23 @@ impl std::error::Error for ShinkaiDBError {
 impl PartialEq for ShinkaiDBError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ShinkaiDBError::InboxNotFound, ShinkaiDBError::InboxNotFound) => true,
             (ShinkaiDBError::MessageNotFound, ShinkaiDBError::MessageNotFound) => true,
             (ShinkaiDBError::CodeAlreadyUsed, ShinkaiDBError::CodeAlreadyUsed) => true,
             (ShinkaiDBError::CodeNonExistent, ShinkaiDBError::CodeNonExistent) => true,
             (ShinkaiDBError::ProfileNameAlreadyExists, ShinkaiDBError::ProfileNameAlreadyExists) => true,
-            (ShinkaiDBError::ProfileNameNonExistent, ShinkaiDBError::ProfileNameNonExistent) => true,
             (ShinkaiDBError::EncryptionKeyNonExistent, ShinkaiDBError::EncryptionKeyNonExistent) => true,
             (ShinkaiDBError::PublicKeyParseError, ShinkaiDBError::PublicKeyParseError) => true,
-            (ShinkaiDBError::IdentityNotFound, ShinkaiDBError::IdentityNotFound) => true,
             (ShinkaiDBError::MissingExternalMetadata, ShinkaiDBError::MissingExternalMetadata) => true,
             (ShinkaiDBError::MissingBody, ShinkaiDBError::MissingBody) => true,
             (ShinkaiDBError::MissingInternalMetadata, ShinkaiDBError::MissingInternalMetadata) => true,
             (ShinkaiDBError::IOError(_), ShinkaiDBError::IOError(_)) => true,
             (ShinkaiDBError::DecodeError(_), ShinkaiDBError::DecodeError(_)) => true,
             (ShinkaiDBError::RocksDBError(_), ShinkaiDBError::RocksDBError(_)) => true,
-            (ShinkaiDBError::SomeError, ShinkaiDBError::SomeError) => true,
-            (ShinkaiDBError::InvalidData, ShinkaiDBError::InvalidData) => true,
             (ShinkaiDBError::PermissionDenied(_), ShinkaiDBError::PermissionDenied(_)) => true,
-            (ShinkaiDBError::PermissionNotFound, ShinkaiDBError::PermissionNotFound) => true,
-            (ShinkaiDBError::InvalidIdentityType, ShinkaiDBError::InvalidIdentityType) => true,
+            (ShinkaiDBError::PermissionNotFound(_), ShinkaiDBError::PermissionNotFound(_)) => true,
             (ShinkaiDBError::InvalidInboxName, ShinkaiDBError::InvalidInboxName) => true,
             (ShinkaiDBError::Utf8ConversionError, ShinkaiDBError::Utf8ConversionError) => true,
             (ShinkaiDBError::JsonSerializationError(_), ShinkaiDBError::JsonSerializationError(_)) => true,
-            (ShinkaiDBError::DataConversionError, ShinkaiDBError::DataConversionError) => true,
             (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
             (ShinkaiDBError::FailedFetchingCF, ShinkaiDBError::FailedFetchingCF) => true,
             (ShinkaiDBError::FailedFetchingValue, ShinkaiDBError::FailedFetchingValue) => true,

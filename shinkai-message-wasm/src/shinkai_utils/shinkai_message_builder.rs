@@ -4,7 +4,6 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::registration_code::RegistrationCode,
     shinkai_message::{
         shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
         shinkai_message_schemas::{JobCreation, JobMessage, JobScope, MessageSchemaType},
@@ -12,7 +11,7 @@ use crate::{
     shinkai_utils::{
         encryption::{encrypt_body, encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
         signatures::{sign_message, signature_public_key_to_string},
-    },
+    }, schemas::registration_code::RegistrationCode,
 };
 
 use super::{
