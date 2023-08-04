@@ -203,16 +203,27 @@ pub trait Resource {
     /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
-        self.vector_search_specified_resource_poiner(query, num_of_results, self.get_resource_pointer())
+        // Fetch the ordered scores from the abstracted function
+        let scores = self._vector_search_score_results(query, num_of_results);
+
+        // Fetch the RetrievedDataChunk matching the most similar embeddings
+        let mut chunks: Vec<RetrievedDataChunk> = vec![];
+        for (score, id) in scores {
+            if let Ok(chunk) = self.get_data_chunk(id) {
+                chunks.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score,
+                    resource_pointer: self.get_resource_pointer(),
+                });
+            }
+        }
+
+        chunks
     }
 
-    /// Note: Requires specifying the Resource Pointer to be used/appended to all DataChunks
-    fn vector_search_specified_resource_poiner(
-        &self,
-        query: Embedding,
-        num_of_results: u64,
-        specified_resource_pointer: ResourcePointer,
-    ) -> Vec<RetrievedDataChunk> {
+    /// Performs a vector search on the embeddings, and returns the properly ordered
+    /// score results as a list of tuples (score, id).
+    fn _vector_search_score_results(&self, query: Embedding, num_of_results: u64) -> Vec<(f32, String)> {
         let num_of_results = num_of_results as usize;
 
         // Calculate the similarity scores for all chunk embeddings and skip any that
@@ -232,13 +243,9 @@ pub trait Resource {
         // Use a binary heap to more efficiently order the scores to get most similar
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
-            // println!("Current to be added to heap: (Id: {}, Score: {})", score.1, score.0);
             if heap.len() < num_of_results {
                 heap.push(Reverse(score));
             } else if let Some(least_similar_score) = heap.peek() {
-                // Access the tuple via `.0` and then the second element of the tuple via `.1`
-                // Since the heap is a min-heap, we want to replace the least value only if
-                // the new score is larger than the least score.
                 if least_similar_score.0 .0 < score.0 {
                     heap.pop();
                     heap.push(Reverse(score));
@@ -246,23 +253,17 @@ pub trait Resource {
             }
         }
 
-        // Fetch the RetrievedDataChunk matching the most similar embeddings
-        let mut chunks: Vec<RetrievedDataChunk> = vec![];
+        // Create a Vec to hold the reversed results
+        let mut results: Vec<(f32, String)> = Vec::new();
+
         while let Some(Reverse((similarity, id))) = heap.pop() {
-            // println!("{}: {}%", id, similarity);
-            if let Ok(chunk) = self.get_data_chunk(id) {
-                chunks.push(RetrievedDataChunk {
-                    chunk: chunk.clone(),
-                    score: similarity.into_inner(),
-                    resource_pointer: specified_resource_pointer.clone(),
-                });
-            }
+            results.push((similarity.into_inner(), id));
         }
 
-        // Reverse the order of chunks so that the highest score is first
-        chunks.reverse();
+        // Reverse the order of the scores so that the highest score is first
+        results.reverse();
 
-        chunks
+        results
     }
 
     /// Performs a syntactic vector search using a query embedding and a list of data tag names
@@ -278,21 +279,36 @@ pub trait Resource {
 
         // Fetch all data chunks with matching data tags and add them into temp doc
         for name in data_tag_names {
+            println!("\nData tag name: {}", name);
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
+                println!("Matching data tag chunk ids: {:?}", ids);
                 if !ids.is_empty() {
                     for id in ids {
                         if let Ok(data_chunk) = self.get_data_chunk(id.to_string()) {
                             if let Ok(embedding) = self.get_chunk_embedding(&id) {
-                                temp_doc.append_data_chunk_and_embedding(data_chunk, &embedding);
+                                println!("Appending data chunk/embedding");
+                                temp_doc._manual_append_data_chunk_and_embedding(data_chunk, &embedding);
                             }
                         }
                     }
                 }
             }
         }
-        // Perform a vector search on the matching tagged data chunks, keeping their resource pointer correct
-        let results =
-            temp_doc.vector_search_specified_resource_poiner(query, num_of_results, self.get_resource_pointer());
+        // Acquires similarity score of the embeddings within the temp doc
+        let scores = temp_doc._vector_search_score_results(query, num_of_results);
+        // Manually fetches the correct data chunks in the temp doc via iterative fetching
+        let mut results: Vec<RetrievedDataChunk> = vec![];
+        for (score, id) in scores {
+            if let Ok(chunk) = temp_doc._get_data_chunk_iterative(id) {
+                results.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score,
+                    resource_pointer: self.get_resource_pointer(),
+                });
+            }
+        }
+
+        println!("Syntactic vector search results: {:?}", results);
 
         results
     }
