@@ -271,7 +271,7 @@ pub trait Resource {
         &self,
         query: Embedding,
         num_of_results: u64,
-        data_tag_names: Vec<String>,
+        data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedDataChunk> {
         // Create a temporal Document resource to perform vector search on matching tagged data chunks
         let mut temp_doc = DocumentResource::new_empty("", None, None, "");

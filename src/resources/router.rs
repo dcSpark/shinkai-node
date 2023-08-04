@@ -85,7 +85,7 @@ impl ResourceRouter {
         &self,
         query: Embedding,
         num_of_results: u64,
-        data_tag_names: Vec<String>,
+        data_tag_names: &Vec<String>,
     ) -> Vec<ResourcePointer> {
         let chunks = self
             .routing_resource

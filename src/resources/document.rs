@@ -449,7 +449,7 @@ mod tests {
         let generator = RemoteEmbeddingGenerator::new_default();
 
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+        let buffer = std::fs::read("files/shinkai_intro.pdf")
             .map_err(|_| ResourceError::FailedPDFParsing)
             .unwrap();
 

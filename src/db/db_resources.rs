@@ -135,6 +135,39 @@ impl ShinkaiDB {
         Ok(router)
     }
 
+    /// Performs a 2-tier syntactic vector search across all resources.
+    /// Only resources with matching data tags will be considered at all,
+    /// and likewise only data chunks with matching data tags inside of said
+    /// resources will be scored and potentially returned.
+    pub fn syntactic_vector_search_data(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names)?;
+
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results = resource.syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort retrieved_chunks in descending order of score.
+        // TODO: In the future use a binary heap like in the resource
+        // vector_search(). Not as important here due to less chunks.
+        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Only return the top num_of_results
+        let num_of_results = num_of_results as usize;
+        if retrieved_chunks.len() > num_of_results {
+            retrieved_chunks.truncate(num_of_results);
+        }
+
+        Ok(retrieved_chunks)
+    }
+
     /// Performs a 2-tier vector search across all resources using a query embedding.
     ///
     /// From there a vector search is performed on each resource with the query embedding,
@@ -244,10 +277,10 @@ impl ShinkaiDB {
         &self,
         query: Embedding,
         num_of_resources: u64,
-        data_tag_names: Vec<String>,
+        data_tag_names: &Vec<String>,
     ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
         let router = self.get_global_resource_router()?;
-        let resource_pointers = router.vector_search(query, num_of_resources);
+        let resource_pointers = router.syntactic_vector_search(query, num_of_resources, data_tag_names);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
@@ -312,14 +345,9 @@ mod tests {
         let _ = fs::remove_dir_all(&path);
     }
 
-    #[test]
-    fn test_pdf_resource_save_to_db() {
-        setup();
-        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
-        let generator = RemoteEmbeddingGenerator::new_default();
-
+    fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator) -> DocumentResource {
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+        let buffer = std::fs::read("files/shinkai_intro.pdf")
             .map_err(|_| ResourceError::FailedPDFParsing)
             .unwrap();
 
@@ -328,13 +356,25 @@ mod tests {
         let doc = DocumentResource::parse_pdf(
             &buffer,
             100,
-            &generator,
+            generator,
             "Shinkai Manifesto",
             Some(desc),
             Some("http://shinkai.com"),
             &vec![],
         )
         .unwrap();
+
+        doc
+    }
+
+    #[test]
+    fn test_pdf_resource_save_to_db() {
+        setup();
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Read the pdf from file into a buffer
+        let doc = get_shinkai_intro_doc(&generator);
 
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
@@ -382,22 +422,7 @@ mod tests {
         doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
 
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
-            .map_err(|_| ResourceError::FailedPDFParsing)
-            .unwrap();
-
-        // Generate DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
-        let doc2 = DocumentResource::parse_pdf(
-            &buffer,
-            100,
-            &generator,
-            "Shinkai Manifesto",
-            Some(desc),
-            Some("http://shinkai.com"),
-            &vec![],
-        )
-        .unwrap();
+        let doc2 = get_shinkai_intro_doc(&generator);
 
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
@@ -463,4 +488,28 @@ mod tests {
         //         )
         //     }
     }
+
+    // #[test]
+    // fn test_syntactic_vector_search() {
+    //     setup();
+    //     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+    //     let generator = RemoteEmbeddingGenerator::new_default();
+
+    //     let doc = get_shinkai_intro_doc(&generator);
+
+    //     // Init Database
+    //     let db_path = format!("db_tests/{}", "embeddings");
+    //     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    //     shinkai_db.init_global_resource_router().unwrap();
+
+    //     // Save resources to DB
+    //     let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
+    //     shinkai_db.save_resources(vec![resource1]).unwrap();
+
+    //     // Animal resource vector search
+    //     let query = generator.generate_embedding("Animals").unwrap();
+    //     let fetched_resources = shinkai_db.vector_search_resources(query, 100).unwrap();
+    //     let fetched_doc = fetched_resources.get(0).unwrap();
+    //     assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
+    // }
 }
