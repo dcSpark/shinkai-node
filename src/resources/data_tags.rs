@@ -7,9 +7,9 @@ use super::resource::DataChunk;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DataTag {
-    name: String,
-    description: String,
-    regex_str: String,
+    pub name: String,
+    pub description: String,
+    pub regex_str: String,
 }
 
 impl DataTag {

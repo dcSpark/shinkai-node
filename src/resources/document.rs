@@ -70,7 +70,7 @@ impl Resource for DocumentResource {
         self.resource_embedding = embedding;
     }
 
-    /// Retrieves a data chunk given its id.
+    /// Efficiently retrieves a data chunk given its id by fetching it via index.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
         let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
         if id == 0 || id > self.chunk_count {
@@ -205,7 +205,6 @@ impl DocumentResource {
         println!("Parse Data: {}\nParsed data_tags: {:?}", data, data_tags);
         let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), &data_tags);
         self.data_tag_index.add_chunk(&data_chunk);
-        println!("Index: {:?}", self.data_tag_index);
 
         // Embedding details
         let mut embedding = embedding.clone();
@@ -284,10 +283,10 @@ impl DocumentResource {
         Ok((deleted_chunk, deleted_embedding))
     }
 
-    /// Adds a data chunk and embedding into the document resource
-    /// with no updates to the data tag index.
-    pub fn append_data_chunk_and_embedding(&mut self, data_chunk: &DataChunk, embedding: &Embedding) {
-        self.append_data_chunk(data_chunk.clone());
+    /// Manually adds a data chunk and embedding into the document resource with no id updating,
+    /// nor updates to the data tag index.
+    pub fn _manual_append_data_chunk_and_embedding(&mut self, data_chunk: &DataChunk, embedding: &Embedding) {
+        self.data_chunks.push(data_chunk.clone());
         self.chunk_embeddings.push(embedding.clone());
     }
 
@@ -318,6 +317,19 @@ impl DocumentResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+    }
+
+    /// Inefficiently retrieves a data chunk given its id by iterating through all
+    /// data chunks. This should not be used with real Resources, and is only included for
+    /// special circumstances when dealing with temporary resources, as are used in the
+    /// syntactic vector search implementation (at time of writing).
+    pub fn _get_data_chunk_iterative(&self, id: String) -> Result<&DataChunk, ResourceError> {
+        for data_chunk in &self.data_chunks {
+            if data_chunk.id == id {
+                return Ok(data_chunk);
+            }
+        }
+        Err(ResourceError::NoChunkFound)
     }
 
     /// Parses a list of strings filled with text into a Document Resource,

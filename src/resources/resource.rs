@@ -274,6 +274,8 @@ pub trait Resource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedDataChunk> {
+        // TODO: Replace this with a temporal KV Resource or otherwise which is more suited for
+        //       arbitrary non-ordered IDs.
         // Create a temporal Document resource to perform vector search on matching tagged data chunks
         let mut temp_doc = DocumentResource::new_empty("", None, None, "");
 
