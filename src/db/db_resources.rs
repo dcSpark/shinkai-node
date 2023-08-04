@@ -135,28 +135,29 @@ impl ShinkaiDB {
         Ok(router)
     }
 
-    /// Performs a 2-tier vector similarity search across all resources using a query embedding.
-    ///
-    /// From there a similarity search is performed on each resource with the query embedding,
-    /// and the results from all resources are then collected, sorted, and the top num_of_results
-    /// RetriedDataChunks based on similarity score are returned.
-    pub fn similarity_search_data(
+    /// Performs a 2-tier syntactic vector search across all resources.
+    /// Only resources with matching data tags will be considered at all,
+    /// and likewise only data chunks with matching data tags inside of said
+    /// resources will be scored and potentially returned.
+    pub fn syntactic_vector_search_data(
         &self,
         query: Embedding,
         num_of_resources: u64,
         num_of_results: u64,
+        data_tag_names: &Vec<String>,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.similarity_search_resources(query.clone(), num_of_resources)?;
+        let resources = self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names)?;
 
         let mut retrieved_chunks = Vec::new();
         for resource in resources {
-            let results = resource.similarity_search(query.clone(), num_of_results);
+            println!("Resource: {}", resource.name());
+            let results = resource.syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
             retrieved_chunks.extend(results);
         }
 
         // Sort retrieved_chunks in descending order of score.
         // TODO: In the future use a binary heap like in the resource
-        // similarity_search(). Not as important here due to less chunks.
+        // vector_search(). Not as important here due to less chunks.
         retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
         // Only return the top num_of_results
@@ -168,61 +169,90 @@ impl ShinkaiDB {
         Ok(retrieved_chunks)
     }
 
-    /// Performs a 2-tier vector similarity search across all resources using a query embedding,
+    /// Performs a 2-tier vector search across all resources using a query embedding.
+    ///
+    /// From there a vector search is performed on each resource with the query embedding,
+    /// and the results from all resources are then collected, sorted, and the top num_of_results
+    /// RetriedDataChunks based on similarity score are returned.
+    pub fn vector_search_data(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        num_of_results: u64,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.vector_search_resources(query.clone(), num_of_resources)?;
+
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results = resource.vector_search(query.clone(), num_of_results);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort retrieved_chunks in descending order of score.
+        // TODO: In the future use a binary heap like in the resource
+        // vector_search(). Not as important here due to less chunks.
+        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Only return the top num_of_results
+        let num_of_results = num_of_results as usize;
+        if retrieved_chunks.len() > num_of_results {
+            retrieved_chunks.truncate(num_of_results);
+        }
+
+        Ok(retrieved_chunks)
+    }
+
+    /// Performs a 2-tier vector search across all resources using a query embedding,
     /// returning retrieved data chunks that are within a tolerance range of similarity.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
     ///   of the highest score.
-    pub fn similarity_search_data_tolerance_ranged(
+    pub fn vector_search_data_tolerance_ranged(
         &self,
         query: Embedding,
         num_of_resources: u64,
         tolerance_range: f32,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let retrieved_chunks = self.similarity_search_data(query.clone(), num_of_resources, 1)?;
+        let retrieved_chunks = self.vector_search_data(query.clone(), num_of_resources, 1)?;
         let top_chunk = &retrieved_chunks
             .get(0)
             .ok_or(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))?;
 
-        println!("Top score: {}", top_chunk.score);
-
         // Fetch the chunks that fit in the tolerance range
-        let resources = self.similarity_search_resources(query.clone(), num_of_resources)?;
+        let resources = self.vector_search_resources(query.clone(), num_of_resources)?;
         let mut final_chunks = Vec::new();
         for resource in resources {
-            println!("in resource");
             let results =
-                resource.similarity_search_tolerance_ranged_score(query.clone(), tolerance_range, top_chunk.score);
-            println!("{:?}", results);
+                resource.vector_search_tolerance_ranged_score(query.clone(), tolerance_range, top_chunk.score);
             final_chunks.extend(results);
         }
 
         Ok(final_chunks)
     }
 
-    /// Performs a 2-tier vector similarity search using a query embedding across all DocumentResources
+    /// Performs a 2-tier vector search using a query embedding across all DocumentResources
     /// and fetches the most similar data chunk + proximity_window number of chunks around it.
     ///
     /// Note: This only searches DocumentResources in Topic::Resources, not all resources. This is
     /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
-    pub fn similarity_search_data_doc_proximity(
+    pub fn vector_search_data_doc_proximity(
         &self,
         query: Embedding,
         num_of_docs: u64,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let docs = self.similarity_search_docs(query.clone(), num_of_docs)?;
+        let docs = self.vector_search_docs(query.clone(), num_of_docs)?;
 
         let mut retrieved_chunks = Vec::new();
         for doc in &docs {
-            let results = doc.similarity_search(query.clone(), 1);
+            let results = doc.vector_search(query.clone(), 1);
             retrieved_chunks.extend(results);
         }
 
         // Sort retrieved_chunks in descending order of score.
         // TODO: In the future use a binary heap like in the resource
-        // similarity_search(). Not as important here due to less chunks.
+        // vector_search(). Not as important here due to less chunks.
         retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
         let top_chunk = retrieved_chunks
@@ -231,22 +261,23 @@ impl ShinkaiDB {
 
         for doc in &docs {
             if doc.db_key() == top_chunk.resource_pointer.db_key {
-                return Ok(doc.similarity_search_proximity(query, proximity_window)?);
+                return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
 
         Err(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))
     }
 
-    /// Performs a vector similarity search using a query embedding and returns the
-    /// num_of_resources amount of most similar Resources.
-    pub fn similarity_search_resources(
+    /// Performs a syntactic vector search using a query embedding and list of data tag names.
+    /// Returns num_of_resources amount of most similar Resources.
+    pub fn syntactic_vector_search_resources(
         &self,
         query: Embedding,
         num_of_resources: u64,
+        data_tag_names: &Vec<String>,
     ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
         let router = self.get_global_resource_router()?;
-        let resource_pointers = router.similarity_search(query, num_of_resources);
+        let resource_pointers = router.syntactic_vector_search(query, num_of_resources, data_tag_names);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
@@ -256,15 +287,33 @@ impl ShinkaiDB {
         Ok(resources)
     }
 
-    /// Performs a vector similarity search using a query embedding and returns the
+    /// Performs a vector search using a query embedding and returns the
+    /// num_of_resources amount of most similar Resources.
+    pub fn vector_search_resources(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+    ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
+        let router = self.get_global_resource_router()?;
+        let resource_pointers = router.vector_search(query, num_of_resources);
+
+        let mut resources = vec![];
+        for res_pointer in resource_pointers {
+            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type))?);
+        }
+
+        Ok(resources)
+    }
+
+    /// Performs a vector search using a query embedding and returns the
     /// num_of_docs amount of most similar DocumentResources.
-    pub fn similarity_search_docs(
+    pub fn vector_search_docs(
         &self,
         query: Embedding,
         num_of_docs: u64,
     ) -> Result<Vec<DocumentResource>, ShinkaiDBError> {
         let router = self.get_global_resource_router()?;
-        let resource_pointers = router.similarity_search(query, num_of_docs);
+        let resource_pointers = router.vector_search(query, num_of_docs);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
@@ -286,11 +335,33 @@ impl ShinkaiDB {
 
 mod tests {
     use super::*;
-    use crate::resources::bert_cpp::BertCPPProcess;
+    use crate::resources::{bert_cpp::BertCPPProcess, data_tags::DataTag};
 
     fn setup() {
         let path = Path::new("db_tests/");
         let _ = fs::remove_dir_all(&path);
+    }
+
+    fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentResource {
+        // Read the pdf from file into a buffer
+        let buffer = std::fs::read("files/shinkai_intro.pdf")
+            .map_err(|_| ResourceError::FailedPDFParsing)
+            .unwrap();
+
+        // Generate DocumentResource
+        let desc = "An initial introduction to the Shinkai Network.";
+        let doc = DocumentResource::parse_pdf(
+            &buffer,
+            100,
+            generator,
+            "Shinkai Introduction",
+            Some(desc),
+            Some("http://shinkai.com"),
+            data_tags,
+        )
+        .unwrap();
+
+        doc
     }
 
     #[test]
@@ -300,21 +371,7 @@ mod tests {
         let generator = RemoteEmbeddingGenerator::new_default();
 
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
-            .map_err(|_| ResourceError::FailedPDFParsing)
-            .unwrap();
-
-        // Generate DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
-        let doc = DocumentResource::parse_pdf(
-            &buffer,
-            100,
-            &generator,
-            "Shinkai Manifesto",
-            Some(desc),
-            Some("http://shinkai.com"),
-        )
-        .unwrap();
+        let doc = get_shinkai_intro_doc(&generator, &vec![]);
 
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
@@ -330,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn test_multi_resource_similarity_search() {
+    fn test_multi_resource_vector_search() {
         setup();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -357,26 +414,12 @@ mod tests {
         let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
         let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
-        doc.append_data(fact1, None, &fact1_embeddings);
-        doc.append_data(fact2, None, &fact2_embeddings);
-        doc.append_data(fact3, None, &fact3_embeddings);
+        doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
+        doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
+        doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
 
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
-            .map_err(|_| ResourceError::FailedPDFParsing)
-            .unwrap();
-
-        // Generate DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
-        let doc2 = DocumentResource::parse_pdf(
-            &buffer,
-            100,
-            &generator,
-            "Shinkai Manifesto",
-            Some(desc),
-            Some("http://shinkai.com"),
-        )
-        .unwrap();
+        let doc2 = get_shinkai_intro_doc(&generator, &vec![]);
 
         // Init Database
         let db_path = format!("db_tests/{}", "embeddings");
@@ -390,25 +433,25 @@ mod tests {
 
         // Animal resource vector search
         let query = generator.generate_embedding("Animals").unwrap();
-        let fetched_resources = shinkai_db.similarity_search_resources(query, 100).unwrap();
+        let fetched_resources = shinkai_db.vector_search_resources(query, 100).unwrap();
         let fetched_doc = fetched_resources.get(0).unwrap();
         assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
 
-        // Shinkai manifesto resource vector search
+        // Shinkai introduction resource vector search
         let query = generator.generate_embedding("Shinkai").unwrap();
-        let fetched_resources = shinkai_db.similarity_search_resources(query, 1).unwrap();
+        let fetched_resources = shinkai_db.vector_search_resources(query, 1).unwrap();
         let fetched_doc = fetched_resources.get(0).unwrap();
         assert_eq!(&doc2.resource_id(), &fetched_doc.resource_id());
 
         // Camel DataChunk vector search
         let query = generator.generate_embedding("Camels").unwrap();
-        let ret_data_chunks = shinkai_db.similarity_search_data(query, 10, 10).unwrap();
+        let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10).unwrap();
         let ret_data_chunk = ret_data_chunks.get(0).unwrap();
         assert_eq!(fact2, &ret_data_chunk.chunk.data);
 
         // Camel DataChunk vector search
         let query = generator.generate_embedding("Does this relate to crypto?").unwrap();
-        let ret_data_chunks = shinkai_db.similarity_search_data(query, 10, 10).unwrap();
+        let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10).unwrap();
         let ret_data_chunk = ret_data_chunks.get(0).unwrap();
         assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
@@ -417,7 +460,7 @@ mod tests {
 
         // Camel DataChunk proximity vector search
         let query = generator.generate_embedding("Camel").unwrap();
-        let ret_data_chunks = shinkai_db.similarity_search_data_doc_proximity(query, 10, 2).unwrap();
+        let ret_data_chunks = shinkai_db.vector_search_data_doc_proximity(query, 10, 2).unwrap();
         let ret_data_chunk = ret_data_chunks.get(0).unwrap();
         let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
         let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
@@ -427,9 +470,7 @@ mod tests {
 
         // Animal tolerance range vector search
         let query = generator.generate_embedding("Animals that peform actions").unwrap();
-        let ret_data_chunks = shinkai_db
-            .similarity_search_data_tolerance_ranged(query, 10, 0.4)
-            .unwrap();
+        let ret_data_chunks = shinkai_db.vector_search_data_tolerance_ranged(query, 10, 0.4).unwrap();
 
         let ret_data_chunk = ret_data_chunks.get(0).unwrap();
         let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
@@ -443,5 +484,70 @@ mod tests {
         //             ret_data.resource_pointer.db_key, ret_data.chunk.data, ret_data.score
         //         )
         //     }
+    }
+
+    #[test]
+    fn test_syntactic_vector_search() {
+        setup();
+        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let generator = RemoteEmbeddingGenerator::new_default();
+
+        // Manually create a few test tags
+        let regex1 = r#"\b[€$¥£][0-9]{1,3}(,[0-9]{3})*(\.[0-9]{2})?\b|\b€[0-9]{1,3}(\.[0-9]{3})*,(0-9{2})?\b"#;
+        let price_tag = DataTag::new("Price", "A price in a major currency", regex1).unwrap();
+
+        let regex2 = r#"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"#;
+        let email_tag = DataTag::new("Email", "An email address", regex2).unwrap();
+
+        let regex3 = r#"(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])|(0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d|(0[1-9]|[12][0-9]|3[01])[- /.](0[1-9]|1[012])[- /.](19|20)\d\d"#;
+        let date_tag = DataTag::new(
+            "Date",
+            "Captures dates in three common formats - YYYY-MM-DD, MM/DD/YYYY, and DD/MM/YYYY.",
+            regex3,
+        )
+        .unwrap();
+
+        let regex4 = r#"[0-9]+x"#;
+        let multiplier_tag =
+            DataTag::new("Multiplier", "Strings like `100x` which denote a multiplier.", regex4).unwrap();
+
+        let data_tags = vec![
+            price_tag.clone(),
+            email_tag.clone(),
+            date_tag.clone(),
+            multiplier_tag.clone(),
+        ];
+
+        // Gen docs with data tags
+        let doc = get_shinkai_intro_doc(&generator, &data_tags);
+
+        // Init Database
+        let db_path = format!("db_tests/{}", "embeddings");
+        let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+        shinkai_db.init_global_resource_router().unwrap();
+
+        // Save resources to DB
+        let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
+        shinkai_db.save_resources(vec![resource1]).unwrap();
+
+        println!("Doc data tag index: {:?}", doc.data_tag_index());
+
+        // Email syntactic vector search
+        let query = generator.generate_embedding("Fetch me emails.").unwrap();
+        let fetched_data = shinkai_db
+            .syntactic_vector_search_data(query, 1, 10, &vec![email_tag.name.clone()])
+            .unwrap();
+        let fetched_chunk = fetched_data.get(0).unwrap();
+        assert_eq!("1", &fetched_chunk.chunk.id);
+        assert!(fetched_data.len() == 1);
+
+        // Multiplier syntactic vector search
+        let query = generator.generate_embedding("Fetch me multipliers.").unwrap();
+        let fetched_data = shinkai_db
+            .syntactic_vector_search_data(query, 1, 10, &vec![multiplier_tag.name.clone()])
+            .unwrap();
+        let fetched_chunk = fetched_data.get(0).unwrap();
+        assert_eq!("15", &fetched_chunk.chunk.id);
+        assert!(fetched_data.len() == 1);
     }
 }

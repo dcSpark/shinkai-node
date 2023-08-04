@@ -7,6 +7,8 @@ use std::convert::From;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
+use super::data_tags::DataTag;
+
 /// Type which holds reference data about a resource in the DB.
 ///
 /// This hides away the implementation details of the current underlying DocumentResource
@@ -17,17 +19,25 @@ pub struct ResourcePointer {
     pub id: String,     // Id of the ResourcePointer in the ResourceRouter (currently DataChunk id)
     pub db_key: String, // Key of the resource in the Topic::Resources in the db
     pub resource_type: ResourceType,
+    data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
 }
 
 impl ResourcePointer {
     /// Create a new ResourcePointer
-    pub fn new(id: &str, db_key: &str, resource_type: ResourceType, resource_embedding: Option<Embedding>) -> Self {
+    pub fn new(
+        id: &str,
+        db_key: &str,
+        resource_type: ResourceType,
+        resource_embedding: Option<Embedding>,
+        data_tag_names: Vec<String>,
+    ) -> Self {
         Self {
             id: id.to_string(),
             db_key: db_key.to_string(),
             resource_type,
             resource_embedding: resource_embedding.clone(),
+            data_tag_names: data_tag_names,
         }
     }
 }
@@ -35,19 +45,6 @@ impl ResourcePointer {
 impl From<Box<dyn Resource>> for ResourcePointer {
     fn from(resource: Box<dyn Resource>) -> Self {
         resource.get_resource_pointer()
-    }
-}
-
-impl TryFrom<RetrievedDataChunk> for ResourcePointer {
-    type Error = ResourceError;
-
-    fn try_from(ret_data: RetrievedDataChunk) -> Result<Self, Self::Error> {
-        let resource_type =
-            ResourceType::from_str(&ret_data.chunk.data).map_err(|_| ResourceError::InvalidResourceType)?;
-        let db_key = ret_data.chunk.metadata.unwrap_or_default();
-        let id = ret_data.chunk.id;
-
-        Ok(ResourcePointer::new(&id, &db_key, resource_type, None))
     }
 }
 
@@ -82,22 +79,50 @@ impl ResourceRouter {
         "global_resource_router".to_string()
     }
 
-    /// Performs a vector similarity search using a query embedding and returns
+    /// Performs a syntactic vector search using a query embedding and list of data tag names.
+    /// Returns a list of ResourcePointers of the most similar Resources.
+    pub fn syntactic_vector_search(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+    ) -> Vec<ResourcePointer> {
+        let chunks = self
+            .routing_resource
+            .syntactic_vector_search(query, num_of_results, data_tag_names);
+        self.ret_data_chunks_to_pointers(&chunks)
+    }
+
+    /// Performs a vector search using a query embedding and returns
     /// a list of ResourcePointers of the most similar Resources.
-    pub fn similarity_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
-        let chunks = self.routing_resource.similarity_search(query, num_of_results);
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ResourcePointer> {
+        let chunks = self.routing_resource.vector_search(query, num_of_results);
         self.ret_data_chunks_to_pointers(&chunks)
     }
 
     /// Takes a list of RetrievedDataChunks and outputs a list of ResourcePointers
+    /// that point to the real resource (not the resource router).
     ///
     /// Of note, if a chunk holds an invalid ResourceType string then the chunk
     /// is ignored.
-    fn ret_data_chunks_to_pointers(&self, chunks: &Vec<RetrievedDataChunk>) -> Vec<ResourcePointer> {
+    fn ret_data_chunks_to_pointers(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<ResourcePointer> {
         let mut resource_pointers = vec![];
-        for chunk in chunks {
+        for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-            if let Ok(resource_pointer) = ResourcePointer::try_from(chunk.clone()) {
+
+            if let Ok(resource_type) =
+                ResourceType::from_str(&ret_chunk.chunk.data).map_err(|_| ResourceError::InvalidResourceType)
+            {
+                let db_key = &ret_chunk.chunk.metadata.clone().unwrap_or_default();
+                let id = &ret_chunk.chunk.id;
+                let embedding = self.routing_resource.get_chunk_embedding(id).ok();
+                let resource_pointer = ResourcePointer::new(
+                    &id,
+                    &db_key,
+                    resource_type,
+                    embedding,
+                    ret_chunk.chunk.data_tag_names.clone(),
+                );
                 resource_pointers.push(resource_pointer);
             }
         }
@@ -129,8 +154,15 @@ impl ResourceRouter {
             }
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
-                // append the new data.
-                self.routing_resource.append_data(&data, Some(&metadata), &embedding);
+                // append the new data. We skip tag validation because the tags
+                // have already been previously validated when adding into the
+                // original resource.
+                self.routing_resource._append_data_without_tag_validation(
+                    &data,
+                    Some(&metadata),
+                    &embedding,
+                    &resource_pointer.data_tag_names,
+                );
             }
         }
 
@@ -165,8 +197,13 @@ impl ResourceRouter {
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
 
-        self.routing_resource
-            .replace_data(old_pointer_id, &data, Some(&metadata), &embedding)?;
+        self.routing_resource._replace_data_without_tag_validation(
+            old_pointer_id,
+            &data,
+            Some(&metadata),
+            &embedding,
+            &resource_pointer.data_tag_names,
+        )?;
         Ok(())
     }
 

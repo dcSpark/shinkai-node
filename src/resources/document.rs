@@ -1,3 +1,4 @@
+use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
@@ -17,9 +18,14 @@ pub struct DocumentResource {
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
     data_chunks: Vec<DataChunk>,
+    data_tag_index: DataTagIndex,
 }
 
 impl Resource for DocumentResource {
+    fn data_tag_index(&self) -> &DataTagIndex {
+        &self.data_tag_index
+    }
+
     fn embedding_model_used(&self) -> EmbeddingModelType {
         self.embedding_model_used.clone()
     }
@@ -64,7 +70,7 @@ impl Resource for DocumentResource {
         self.resource_embedding = embedding;
     }
 
-    /// Retrieves a data chunk given its id.
+    /// Efficiently retrieves a data chunk given its id by fetching it via index.
     fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
         let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
         if id == 0 || id > self.chunk_count {
@@ -98,6 +104,7 @@ impl DocumentResource {
             chunk_count: data_chunks.len() as u64,
             data_chunks: data_chunks,
             embedding_model_used,
+            data_tag_index: DataTagIndex::new(),
         }
     }
 
@@ -115,15 +122,15 @@ impl DocumentResource {
         )
     }
 
-    /// Performs a vector similarity search using a query embedding, and then
+    /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
-    pub fn similarity_search_proximity(
+    pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
-        let search_results = self.similarity_search(query, 1);
+        let search_results = self.vector_search(query, 1);
         let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk
@@ -184,17 +191,41 @@ impl DocumentResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk and associated embedding to the document.
-    pub fn append_data(&mut self, data: &str, metadata: Option<&str>, embedding: &Embedding) {
+    /// Appends a new data chunk and associated embeddings to the document
+    /// and updates the data tags index.
+    pub fn append_data(
+        &mut self,
+        data: &str,
+        metadata: Option<&str>,
+        embedding: &Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
+    ) {
+        let validated_data_tags = DataTag::validate_tag_list(data, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        self._append_data_without_tag_validation(data, metadata, embedding, &data_tag_names)
+    }
+
+    /// Appends a new data chunk and associated embeddings to the document
+    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    pub fn _append_data_without_tag_validation(
+        &mut self,
+        data: &str,
+        metadata: Option<&str>,
+        embedding: &Embedding,
+        tag_names: &Vec<String>,
+    ) {
         let id = self.chunk_count + 1;
-        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone());
+        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), tag_names);
+        self.data_tag_index.add_chunk(&data_chunk);
+
+        // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        self.add_data_chunk(data_chunk);
+        self.append_data_chunk(data_chunk);
         self.chunk_embeddings.push(embedding);
     }
 
-    /// Replaces an existing data chunk and associated embedding.
+    /// Replaces an existing data chunk & associated embedding and updates the data tags index.
     /// * `id` - The id of the data chunk to be replaced.
     pub fn replace_data(
         &mut self,
@@ -202,29 +233,56 @@ impl DocumentResource {
         new_data: &str,
         new_metadata: Option<&str>,
         embedding: &Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
     ) -> Result<DataChunk, ResourceError> {
+        // Validate which tags will be saved with the new data
+        let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        self._replace_data_without_tag_validation(id, new_data, new_metadata, embedding, &data_tag_names)
+    }
+
+    /// Replaces an existing data chunk & associated embedding and updates the data tags index
+    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    pub fn _replace_data_without_tag_validation(
+        &mut self,
+        id: u64,
+        new_data: &str,
+        new_metadata: Option<&str>,
+        embedding: &Embedding,
+        new_tag_names: &Vec<String>,
+    ) -> Result<DataChunk, ResourceError> {
+        // Id + index
         if id > self.chunk_count {
             return Err(ResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
+
+        // Next create the new chunk, and replace the old chunk in the data_chunks list
+        let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_tag_names);
+        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk.clone());
+
+        // Then deletion of old chunk from index and addition of new chunk
+        self.data_tag_index.remove_chunk(&old_chunk);
+        self.data_tag_index.add_chunk(&new_chunk);
+
+        // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        let old_chunk = std::mem::replace(
-            &mut self.data_chunks[index],
-            DataChunk::new_with_integer_id(id, &new_data, new_metadata),
-        );
         self.chunk_embeddings[index] = embedding;
+
         Ok(old_chunk)
     }
 
-    /// Removes and returns the last data chunk and associated embedding from
-    /// the resource.
+    /// Pops and returns the last data chunk and associated embedding
+    /// and updates the data tags index.
     pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
 
         match (popped_chunk, popped_embedding) {
             (Some(chunk), Some(embedding)) => {
+                // Remove chunk from data tag index
+                self.data_tag_index.remove_chunk(&chunk);
                 self.chunk_count -= 1;
                 Ok((chunk, embedding))
             }
@@ -232,10 +290,11 @@ impl DocumentResource {
         }
     }
 
-    /// Deletes a data chunk and associated embedding from the resource.
-    /// Returns a tuple containing the removed data chunk and embedding, or error.
+    /// Deletes a data chunk and associated embedding from the resource
+    /// and updates the data tags index.
     pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
+        self.data_tag_index.remove_chunk(&deleted_chunk);
 
         let index = (id - 1) as usize;
         let deleted_embedding = self.chunk_embeddings.remove(index);
@@ -246,6 +305,13 @@ impl DocumentResource {
         }
 
         Ok((deleted_chunk, deleted_embedding))
+    }
+
+    /// Manually adds a data chunk and embedding into the document resource with no id updating,
+    /// nor updates to the data tag index.
+    pub fn _manual_append_data_chunk_and_embedding(&mut self, data_chunk: &DataChunk, embedding: &Embedding) {
+        self.data_chunks.push(data_chunk.clone());
+        self.chunk_embeddings.push(embedding.clone());
     }
 
     /// Internal data chunk deletion
@@ -263,7 +329,7 @@ impl DocumentResource {
         Ok(removed_chunk)
     }
 
-    fn add_data_chunk(&mut self, mut data_chunk: DataChunk) {
+    fn append_data_chunk(&mut self, mut data_chunk: DataChunk) {
         self.chunk_count += 1;
         data_chunk.id = self.chunk_count.to_string();
         self.data_chunks.push(data_chunk);
@@ -275,6 +341,19 @@ impl DocumentResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+    }
+
+    /// Inefficiently retrieves a data chunk given its id by iterating through all
+    /// data chunks. This should not be used with real Resources, and is only included for
+    /// special circumstances when dealing with temporary resources, as are used in the
+    /// syntactic vector search implementation (at time of writing).
+    pub fn _get_data_chunk_iterative(&self, id: String) -> Result<&DataChunk, ResourceError> {
+        for data_chunk in &self.data_chunks {
+            if data_chunk.id == id {
+                return Ok(data_chunk);
+            }
+        }
+        Err(ResourceError::NoChunkFound)
     }
 
     /// Parses a list of strings filled with text into a Document Resource,
@@ -291,6 +370,7 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
         resource_id: &str,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentResource, ResourceError> {
         // Create doc resource and initial setup
         let mut doc = DocumentResource::new_empty(name, desc, source, resource_id);
@@ -317,7 +397,7 @@ impl DocumentResource {
 
         // Add the text + embeddings into the doc
         for (i, text) in text_list.iter().enumerate() {
-            doc.append_data(text, None, &embeddings[i]);
+            doc.append_data(text, None, &embeddings[i], parsing_tags);
         }
 
         Ok(doc)
@@ -333,11 +413,20 @@ impl DocumentResource {
         name: &str,
         desc: Option<&str>,
         source: Option<&str>,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentResource, ResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
         let resource_id = FileParser::generate_data_hash(buffer);
-        DocumentResource::parse_text(grouped_text_list, generator, name, desc, source, &resource_id)
+        DocumentResource::parse_text(
+            grouped_text_list,
+            generator,
+            name,
+            desc,
+            source,
+            &resource_id,
+            parsing_tags,
+        )
     }
 }
 
@@ -366,29 +455,29 @@ mod tests {
         let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
         let fact3 = "Seals swim in the ocean.";
         let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
-        doc.append_data(fact1, None, &fact1_embeddings);
-        doc.append_data(fact2, None, &fact2_embeddings);
-        doc.append_data(fact3, None, &fact3_embeddings);
+        doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
+        doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
+        doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
 
         // Testing JSON serialization/deserialization
         let json = doc.to_json().unwrap();
         let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
         assert_eq!(doc, deserialized_doc);
 
-        // Testing similarity search works
+        // Testing vector search works
         let query_string = "What animal barks?";
         let query_embedding = generator.generate_embedding(query_string).unwrap();
-        let res = doc.similarity_search(query_embedding, 1);
+        let res = doc.vector_search(query_embedding, 1);
         assert_eq!(fact1, res[0].chunk.data);
 
         let query_string2 = "What animal is slow?";
         let query_embedding2 = generator.generate_embedding(query_string2).unwrap();
-        let res2 = doc.similarity_search(query_embedding2, 3);
+        let res2 = doc.vector_search(query_embedding2, 3);
         assert_eq!(fact2, res2[0].chunk.data);
 
         let query_string3 = "What animal swims in the ocean?";
         let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
-        let res3 = doc.similarity_search(query_embedding3, 2);
+        let res3 = doc.vector_search(query_embedding3, 2);
         assert_eq!(fact3, res3[0].chunk.data);
     }
 
@@ -398,7 +487,7 @@ mod tests {
         let generator = RemoteEmbeddingGenerator::new_default();
 
         // Read the pdf from file into a buffer
-        let buffer = std::fs::read("files/shinkai_manifesto.pdf")
+        let buffer = std::fs::read("files/shinkai_intro.pdf")
             .map_err(|_| ResourceError::FailedPDFParsing)
             .unwrap();
 
@@ -411,6 +500,7 @@ mod tests {
             "Shinkai Manifesto",
             Some(desc),
             Some("http://shinkai.com"),
+            &vec![],
         )
         .unwrap();
 
@@ -419,18 +509,18 @@ mod tests {
         let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
         assert_eq!(doc, deserialized_doc);
 
-        // Testing similarity search works
+        // Testing vector search works
         let query_string = "Who is building Shinkai?";
         let query_embedding = generator.generate_embedding(query_string).unwrap();
-        let res = doc.similarity_search(query_embedding, 1);
+        let res = doc.vector_search(query_embedding, 1);
         assert_eq!(
-            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
+            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com July 21, 2023 1 Introduction With LLMs proving themselves to be very capable in performing many of the core computing tasks we manually/programmatically perform every day, we are entering into a new world where an AI coordinated computing paradigm is inevitable.",
             res[0].chunk.data
         );
 
         let query_string = "What about up-front costs?";
         let query_embedding = generator.generate_embedding(query_string).unwrap();
-        let res = doc.similarity_search(query_embedding, 1);
+        let res = doc.vector_search(query_embedding, 1);
         assert_eq!(
             "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
             res[0].chunk.data
@@ -438,7 +528,7 @@ mod tests {
 
         let query_string = "Does this relate to crypto?";
         let query_embedding = generator.generate_embedding(query_string).unwrap();
-        let res = doc.similarity_search(query_embedding, 1);
+        let res = doc.vector_search(query_embedding, 1);
         assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
             res[0].chunk.data
