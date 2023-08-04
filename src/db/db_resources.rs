@@ -349,12 +349,12 @@ mod tests {
             .unwrap();
 
         // Generate DocumentResource
-        let desc = "An initial manifesto of the Shinkai Network.";
+        let desc = "An initial introduction to the Shinkai Network.";
         let doc = DocumentResource::parse_pdf(
             &buffer,
             100,
             generator,
-            "Shinkai Manifesto",
+            "Shinkai Introduction",
             Some(desc),
             Some("http://shinkai.com"),
             data_tags,
@@ -437,7 +437,7 @@ mod tests {
         let fetched_doc = fetched_resources.get(0).unwrap();
         assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
 
-        // Shinkai manifesto resource vector search
+        // Shinkai introduction resource vector search
         let query = generator.generate_embedding("Shinkai").unwrap();
         let fetched_resources = shinkai_db.vector_search_resources(query, 1).unwrap();
         let fetched_doc = fetched_resources.get(0).unwrap();
@@ -518,7 +518,7 @@ mod tests {
             multiplier_tag.clone(),
         ];
 
-        // Gen doc with data tags
+        // Gen docs with data tags
         let doc = get_shinkai_intro_doc(&generator, &data_tags);
 
         // Init Database
