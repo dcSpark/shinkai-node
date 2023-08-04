@@ -202,8 +202,10 @@ impl DocumentResource {
     ) {
         let id = self.chunk_count + 1;
         let data_tags = DataTag::validate_tag_list(data, parsing_tags);
+        println!("Parse Data: {}\nParsed data_tags: {:?}", data, data_tags);
         let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), &data_tags);
         self.data_tag_index.add_chunk(&data_chunk);
+        println!("Index: {:?}", self.data_tag_index);
 
         // Embedding details
         let mut embedding = embedding.clone();
@@ -476,7 +478,7 @@ mod tests {
         let query_embedding = generator.generate_embedding(query_string).unwrap();
         let res = doc.vector_search(query_embedding, 1);
         assert_eq!(
-            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai. com Nicolas Arqueros nico@shinkai.",
+            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com July 21, 2023 1 Introduction With LLMs proving themselves to be very capable in performing many of the core computing tasks we manually/programmatically perform every day, we are entering into a new world where an AI coordinated computing paradigm is inevitable.",
             res[0].chunk.data
         );
 

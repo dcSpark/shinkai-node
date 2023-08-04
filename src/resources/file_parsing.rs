@@ -161,20 +161,6 @@ impl FileParser {
     /// characters with a single space. 4. Replaces sequences of periods
     /// followed by whitespace and a digit with a single period and a space.
     /// 5. Removes whitespace before punctuation.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - A string slice that holds the text to be cleaned.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<String, ResourceError>` - The cleaned text, or an error if one
-    ///   occurred during the cleaning process.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if a regular expression fails to
-    /// compile.
     fn clean_text(text: &str) -> Result<String, ResourceError> {
         let text = text.replace("\n", " ");
         let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#)?;
@@ -198,31 +184,33 @@ impl FileParser {
     /// A sentence is defined as a sequence of characters that ends with a
     /// period, question mark, or exclamation point. However, a period is
     /// not treated as the end of a sentence if it is preceded by a digit or if
-    /// it is part of the abbreviations "i.e" or "e.g". Sentences that are
+    /// it is part of the abbreviations "i.e" or "e.g" or is an email. Sentences that are
     /// less than 10 characters long are not included.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - A string slice that holds the text to be split into
-    ///   sentences.
-    ///
-    /// # Returns
-    ///
-    /// * `<Vec<String>` - A vector of sentences
     fn split_into_sentences(text: &str) -> Vec<String> {
         let mut sentences = Vec::new();
         let mut start = 0;
         let mut prev_char_is_digit = false;
         let mut prev_chars = String::new();
+        let mut in_email = false;
 
         for (i, char) in text.char_indices() {
             prev_chars.push(char);
             if prev_chars.len() > 4 {
                 prev_chars.remove(0);
             }
-            if (char == '.' && !prev_char_is_digit && !prev_chars.ends_with("i.e") && !prev_chars.ends_with("e.g"))
-                || char == '?'
-                || char == '!'
+            if char == '@' {
+                in_email = true;
+            }
+            if in_email && char.is_whitespace() {
+                in_email = false;
+            }
+            if !in_email
+                && ((char == '.'
+                    && !prev_char_is_digit
+                    && !prev_chars.ends_with("i.e")
+                    && !prev_chars.ends_with("e.g"))
+                    || char == '?'
+                    || char == '!')
             {
                 let mut sentence = text[start..i + 1].trim().to_string();
                 while sentence.starts_with(',')
