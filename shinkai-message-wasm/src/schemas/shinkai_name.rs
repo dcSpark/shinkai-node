@@ -7,11 +7,20 @@ use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShinkaiName(String);
 
-// Name Examples
-// @@alice.shinkai
-// @@alice.shinkai/profileName
-// @@alice.shinkai/profileName/myChatGPTAgent
-// @@alice.shinkai/profileName/myPhone
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ShinkaiSubidentityType {
+    Agent,
+    Device,
+}
+
+impl fmt::Display for ShinkaiSubidentityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ShinkaiSubidentityType::Agent => write!(f, "agent"),
+            ShinkaiSubidentityType::Device => write!(f, "device"),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum ShinkaiNameError {
@@ -20,38 +29,67 @@ pub enum ShinkaiNameError {
     InvalidNameFormat(String),
 }
 
+// Valid Examples
+// @@alice.shinkai
+// @@alice.shinkai/profileName
+// @@alice.shinkai/profileName/agent/myChatGPTAgent
+// @@alice.shinkai/profileName/device/myPhone
+
+// Not valid examples
+// @@alice.shinkai/profileName/myPhone
+// @@al!ce.shinkai
+// @@alice.shinkai//
+// @@node1.shinkai/profile_1.shinkai
+
 impl ShinkaiName {
-    pub fn new(mut raw_name: String) -> Result<Self, &'static str> {
-        // Prepend with "@@" if it doesn't already start with "@@"
-        if !raw_name.starts_with("@@") {
-            raw_name = format!("@@{}", raw_name);
-        }
-
-        // Append with ".shinkai" if it doesn't already end with ".shinkai"
-        if !raw_name.ends_with(".shinkai") {
-            raw_name = format!("{}.shinkai", raw_name);
-        }
-
-        // Check if the base name is alphanumeric or contains underscores
-        let base_name_parts: Vec<&str> = raw_name.split('.').collect();
-        let base_name = base_name_parts.get(0).unwrap().trim_start_matches("@@");
-        let re = Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
-        if !re.is_match(base_name) {
-            return Err("Base name should be alphanumeric and can include underscores.");
-        }
-
-        // Split by '/' and check if it has one to three parts: node, profile, and optional device
+    pub fn new(raw_name: String) -> Result<Self, &'static str> {
+        println!("raw_name: {}", raw_name);
+        let raw_name = Self::correct_node_name(raw_name);
+        println!("raw_name_corrected: {}", raw_name);
+    
         let parts: Vec<&str> = raw_name.split('/').collect();
-        if !(parts.len() >= 1 && parts.len() <= 3) {
-            return Err("Name should have one to three parts: node, profile, and optional device.");
+        println!("parts: {:?}", parts);
+    
+        if !(parts.len() >= 1 && parts.len() <= 4) {
+            return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
         }
-
-        // Check if the node part starts with '@@' and ends with '.shinkai'
+    
         if !parts[0].starts_with("@@") || !parts[0].ends_with(".shinkai") {
             return Err("Node part of the name should start with '@@' and end with '.shinkai'.");
         }
 
-        // If all checks passed, create a new ShinkaiName instance
+        if !Regex::new(r"^@@[a-zA-Z0-9\-\.]+\.shinkai$").unwrap().is_match(parts[0]) {
+            return Err("Node part of the name contains invalid characters.");
+        }
+    
+        let re = Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
+    
+        for (index, part) in parts.iter().enumerate() {
+            if index == 0 {
+                if part.contains("/") {
+                    return Err("Root node name cannot contain '/'.");
+                }
+                continue;
+            }
+            
+            if index == 2 && !(part == &ShinkaiSubidentityType::Agent.to_string() || part == &ShinkaiSubidentityType::Device.to_string()) {
+                return Err("The third part should either be 'agent' or 'device'.");
+            }
+    
+            if index == 3 && !re.is_match(part) {
+                return Err("The fourth part (name after 'agent' or 'device') should be alphanumeric or underscore.");
+            }
+            
+            if index != 0 && index != 2 && (!re.is_match(part) || part.contains(".shinkai")) {
+                println!("part: {}", part);
+                return Err("Name parts should be alphanumeric or underscore and not contain '.shinkai'.");
+            }
+        }
+    
+        if parts.len() == 3 && (parts[2] == &ShinkaiSubidentityType::Agent.to_string() || parts[2] == &ShinkaiSubidentityType::Device.to_string()) {
+            return Err("If type is 'agent' or 'device', a fourth part is expected.");
+        }
+    
         Ok(Self(raw_name.to_lowercase()))
     }
 
@@ -70,37 +108,35 @@ impl ShinkaiName {
 
     pub fn from_node_and_profile(node_name: String, profile_name: String) -> Result<Self, &'static str> {
         // Validate and format the node_name
-        let node_name = if Self::is_valid_node_identity_name_and_no_subidentities(&node_name) {
-            node_name
-        } else {
-            format!("@@{}.shinkai", node_name)
-        };
+        let node_name = Self::correct_node_name(node_name);
 
         // Construct the full_identity_name
         let full_identity_name = format!("{}/{}", node_name.to_lowercase(), profile_name.to_lowercase());
+
+        println!("full_identity_name: {}", full_identity_name);
 
         // Create a new ShinkaiName
         Self::new(full_identity_name)
     }
 
-    pub fn from_node_and_profile_and_device(
+    pub fn from_node_and_profile_and_type_and_name(
         node_name: String,
         profile_name: String,
-        device_name: String,
+        shinkai_type: ShinkaiSubidentityType,
+        name: String,
     ) -> Result<Self, &'static str> {
         // Validate and format the node_name
-        let node_name = if Self::is_valid_node_identity_name_and_no_subidentities(&node_name) {
-            node_name
-        } else {
-            format!("@@{}.shinkai", node_name)
-        };
+        let node_name = Self::correct_node_name(node_name);
+
+        let shinkai_type_str = shinkai_type.to_string();
 
         // Construct the full_identity_name
         let full_identity_name = format!(
-            "{}/{}/{}",
+            "{}/{}/{}/{}",
             node_name.to_lowercase(),
             profile_name.to_lowercase(),
-            device_name.to_lowercase()
+            shinkai_type_str,
+            name.to_lowercase()
         );
 
         // Create a new ShinkaiName
@@ -179,8 +215,8 @@ impl ShinkaiName {
     }
 
     pub fn has_device(&self) -> bool {
-        // Check if it contains two '/' (indicating it has a device)
-        self.0.matches('/').count() == 2
+        let parts: Vec<&str> = self.0.split('/').collect();
+        parts.contains(&"device")
     }
 
     pub fn has_no_subidentities(&self) -> bool {
@@ -231,9 +267,36 @@ impl ShinkaiName {
         let parts: Vec<&str> = self.0.split('/').collect();
         // parts[0] now contains the node name with '@@' and '.shinkai'
         let node_name = parts[0].to_string();
-    
+
         // create a new ShinkaiName instance from the extracted node_name
         Self::new(node_name).unwrap()
+    }
+}
+
+impl ShinkaiName {
+    fn correct_node_name(raw_name: String) -> String {
+        let mut parts: Vec<&str> = raw_name.splitn(2, '/').collect();
+        
+        let mut node_name = parts[0].to_string();
+        
+        // Prepend with "@@" if the node doesn't already start with "@@"
+        if !node_name.starts_with("@@") {
+            node_name = format!("@@{}", node_name);
+        }
+
+        // Append with ".shinkai" if the node doesn't already end with ".shinkai"
+        if !node_name.ends_with(".shinkai") {
+            node_name = format!("{}.shinkai", node_name);
+        }
+
+        // Reconstruct the name
+        let corrected_name = if parts.len() > 1 {
+            format!("{}/{}", node_name, parts[1])
+        } else {
+            node_name
+        };
+
+        corrected_name
     }
 }
 

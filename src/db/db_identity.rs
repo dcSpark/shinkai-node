@@ -12,6 +12,7 @@ use shinkai_message_wasm::shinkai_utils::encryption::{
 use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
 };
+use warp::path::full;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl ShinkaiDB {
@@ -297,8 +298,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_profile(&self, node_name: &str, profile_name: &str) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
-        let full_identity_name = format!("{}/{}", node_name, profile_name);
+    pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
+        let profile_name = full_identity_name
+            .get_profile_name()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
+
         let cf_identity = self
             .db
             .cf_handle(Topic::ProfilesIdentityKey.as_str())
@@ -318,22 +322,22 @@ impl ShinkaiDB {
             .cf_handle(Topic::ProfilesPermission.as_str())
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound("ProfilesPermission".to_string()))?;
 
-        let identity_public_key_bytes = match self.db.get_cf(cf_identity, profile_name)? {
+        let identity_public_key_bytes = match self.db.get_cf(cf_identity, profile_name.clone())? {
             Some(bytes) => bytes,
             None => return Ok(None),
         };
 
         let encryption_public_key_bytes = self
             .db
-            .get_cf(cf_encryption, profile_name)?
+            .get_cf(cf_encryption, profile_name.clone())?
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
         let identity_type_bytes = self
             .db
-            .get_cf(cf_type, profile_name)?
+            .get_cf(cf_type, profile_name.clone())?
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
         let permission_type_bytes = self
             .db
-            .get_cf(cf_permission, profile_name)?
+            .get_cf(cf_permission, profile_name.clone())?
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
 
         let identity_public_key_str =
@@ -354,18 +358,7 @@ impl ShinkaiDB {
         let permission_type =
             IdentityPermissions::from_str(&permission_type_str).ok_or(ShinkaiDBError::InvalidPermissionsType)?;
 
-        let (node_encryption_public_key, node_signature_public_key) = self.get_local_node_keys(profile_name)?;
-
-        let full_identity_name =
-        match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_string()) {
-            Ok(name) => name,
-            Err(_) => {
-                return Err(ShinkaiDBError::InvalidIdentityName(format!(
-                    "{}/{}",
-                    node_name, profile_name
-                )))
-            }
-        };
+        let (node_encryption_public_key, node_signature_public_key) = self.get_local_node_keys(&profile_name)?;
 
         Ok(Some(StandardIdentity {
             full_identity_name,

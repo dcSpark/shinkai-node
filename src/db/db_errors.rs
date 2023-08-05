@@ -43,7 +43,7 @@ pub enum ShinkaiDBError {
     ColumnFamilyNotFound(String),
     InvalidInboxPermission(String),
     InvalidPermissionType(String),
-    InvalidProfileName,
+    InvalidProfileName(String),
     InvalidIdentityName(String),
 }
 
@@ -100,7 +100,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::DataConversionError(e) => write!(f, "Data conversion error: {}", e),
             ShinkaiDBError::InvalidInboxPermission(e) => write!(f, "Invalid inbox permission: {}", e),
             ShinkaiDBError::InvalidPermissionType(e) => write!(f, "Invalid permission type: {}", e),
-            ShinkaiDBError::InvalidProfileName => write!(f, "Invalid profile name"),
+            ShinkaiDBError::InvalidProfileName(e) => write!(f, "Invalid profile name: {}", e),
             ShinkaiDBError::InvalidIdentityName(e) => write!(f, "Invalid identity name: {}", e),
         }
     }
