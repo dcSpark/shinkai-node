@@ -5,6 +5,7 @@ use crate::schemas::identity::{
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -102,6 +103,15 @@ impl ShinkaiDB {
                                             let permissions_str = String::from_utf8(value.to_vec()).unwrap();
                                             let permissions = IdentityPermissions::from_str(&permissions_str)
                                                 .ok_or(ShinkaiDBError::InvalidPermissionsType)?;
+                                            let full_identity_name = match ShinkaiName::new(full_identity_name.clone())
+                                            {
+                                                Ok(name) => name,
+                                                Err(_) => {
+                                                    return Err(ShinkaiDBError::InvalidIdentityName(
+                                                        full_identity_name.clone(),
+                                                    ))
+                                                }
+                                            };
 
                                             let identity = StandardIdentity::new(
                                                 full_identity_name,
@@ -214,7 +224,14 @@ impl ShinkaiDB {
 
     pub fn add_device_to_profile(&self, device: DeviceIdentity) -> Result<(), ShinkaiDBError> {
         // Get the profile name from the device identity name
-        let profile_name = device.full_identity_name.split("/").nth(1).unwrap();
+        let profile_name = match device.full_identity_name.get_profile_name() {
+            Some(name) => name,
+            None => {
+                return Err(ShinkaiDBError::InvalidIdentityName(
+                    device.full_identity_name.to_string(),
+                ))
+            }
+        };
 
         // First, make sure that the profile the device is to be linked with exists
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
@@ -339,8 +356,19 @@ impl ShinkaiDB {
 
         let (node_encryption_public_key, node_signature_public_key) = self.get_local_node_keys(profile_name)?;
 
+        let full_identity_name =
+        match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_string()) {
+            Ok(name) => name,
+            Err(_) => {
+                return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                    "{}/{}",
+                    node_name, profile_name
+                )))
+            }
+        };
+
         Ok(Some(StandardIdentity {
-            full_identity_name: profile_name.to_string(),
+            full_identity_name,
             addr: None,
             node_encryption_public_key,
             node_signature_public_key,

@@ -18,7 +18,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use mockito::Server;
-    use shinkai_message_wasm::{shinkai_utils::{utils::hash_string, signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, encryption::unsafe_deterministic_encryption_keypair, shinkai_message_builder::ShinkaiMessageBuilder}, shinkai_message::shinkai_message_schemas::JobScope, schemas::inbox_name::InboxName};
+    use shinkai_message_wasm::{shinkai_utils::{utils::hash_string, signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, encryption::unsafe_deterministic_encryption_keypair, shinkai_message_builder::ShinkaiMessageBuilder}, shinkai_message::shinkai_message_schemas::JobScope, schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName}};
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
@@ -96,7 +96,7 @@ mod tests {
 
         let agent = SerializedAgent {
             id: "test_agent_id".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "test_name".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),

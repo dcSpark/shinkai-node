@@ -315,3 +315,13 @@ impl fmt::Display for IdentityPermissions {
         }
     }
 }
+
+impl Identity {
+    pub fn get_full_identity_name(&self) -> String {
+        match self {
+            Identity::Standard(std_identity) => std_identity.full_identity_name.clone().to_string(),
+            Identity::Agent(agent) => agent.full_identity_name.clone().to_string(),
+            Identity::Device(device) => device.full_identity_name.clone().to_string(),
+        }
+    }
+}

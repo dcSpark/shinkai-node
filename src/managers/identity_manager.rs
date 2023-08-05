@@ -4,10 +4,7 @@ use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use regex::Regex;
-use serde::ser::{SerializeStruct, Serializer};
-use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref,
 };
@@ -15,7 +12,6 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
 use std::sync::Arc;
-use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -38,15 +34,15 @@ impl IdentityManager {
                 "Local node name cannot be empty",
             )));
         }
-        match IdentityManager::is_valid_node_identity_name_and_no_subidentities(&local_node_name.clone()) == false {
-            true => {
+        match ShinkaiName::from_node_name(local_node_name.to_string()) {
+            Ok(name) => name,
+            Err(_) => {
                 return Err(Box::new(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     "Local node name is not valid",
                 )))
             }
-            false => (),
-        }
+        };
 
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
@@ -85,29 +81,10 @@ impl IdentityManager {
 
     pub async fn add_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
         let db = self.db.lock().await;
-        let normalized_identity = StandardIdentity::new(
-            IdentityManager::extract_subidentity(&identity.full_identity_name.clone()),
-            identity.addr.clone(),
-            identity.node_encryption_public_key.clone(),
-            identity.node_signature_public_key.clone(),
-            identity.profile_encryption_public_key.clone(),
-            identity.profile_signature_public_key.clone(),
-            identity.identity_type.clone(),
-            identity.permission_type.clone(),
-        );
-        db.insert_profile(normalized_identity.clone())?;
+        db.insert_profile(identity.clone())?;
         self.local_identities
-            .push(Identity::Standard(normalized_identity.clone()));
+            .push(Identity::Standard(identity.clone()));
         Ok(())
-    }
-
-    pub fn identities_to_profile_names(identities: Vec<StandardIdentity>) -> anyhow::Result<Vec<String>> {
-        let profile_names = identities
-            .into_iter()
-            .map(|identity| identity.full_identity_name)
-            .collect();
-
-        Ok(profile_names)
     }
 
     pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
@@ -126,7 +103,7 @@ impl IdentityManager {
                 .iter()
                 .filter_map(|identity| match identity {
                     Identity::Standard(standard_identity) => {
-                        if standard_identity.full_identity_name == full_identity_name {
+                        if standard_identity.full_identity_name.to_string() == full_identity_name {
                             Some(Identity::Standard(standard_identity.clone()))
                         } else {
                             None
@@ -140,7 +117,7 @@ impl IdentityManager {
                         }
                     }
                     Identity::Device(device) => {
-                        if device.full_identity_name == full_identity_name {
+                        if device.full_identity_name.to_string() == full_identity_name {
                             Some(Identity::Device(device.clone()))
                         } else {
                             None
@@ -159,11 +136,11 @@ impl IdentityManager {
     }
 
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        // Extract node name from the full identity name
-        let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
+        let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
+        let node_name = identity_name.extract_node();
 
         // If the node name matches local node, search in self.identities
-        if self.local_node_name == node_name {
+        if self.local_node_name == node_name.get_node_name() {
             self.search_local_identity(full_identity_name).await
         } else {
             // If not, query the identity network manager
@@ -173,7 +150,7 @@ impl IdentityManager {
                 .await
             {
                 Ok(identity_network_manager) => Some(Identity::Standard(StandardIdentity::new(
-                    node_name.to_string(),
+                    node_name,
                     Some(identity_network_manager.addr),
                     identity_network_manager.encryption_public_key,
                     identity_network_manager.signature_public_key,
@@ -210,33 +187,37 @@ impl IdentityManager {
     pub fn find_by_profile_name(&self, full_profile_name: &str) -> Option<&Identity> {
         self.local_identities.iter().find(|identity| {
             match identity {
-                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
-                Identity::Device(device) => device.full_identity_name == full_profile_name,
-                Identity::Agent(agent) => agent.name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+                Identity::Standard(identity) => identity.full_identity_name.to_string() == full_profile_name,
+                Identity::Device(device) => device.full_identity_name.to_string() == full_profile_name,
+                Identity::Agent(agent) => agent.full_identity_name.to_string() == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
             }
         })
     }
 
     pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
-        let node_name = IdentityManager::extract_node_name(full_profile_name);
-
         println!(
             "external_profile_to_global_identity > full_profile_name: {}",
             full_profile_name
         );
-        println!("external_profile_to_global_identity > node_name: {}", node_name);
-        // validate the profile name
-        if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) == false {
-            println!("external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false");
-            return None;
-        }
+
+        let full_identity_name = match ShinkaiName::new(full_profile_name.to_string().clone()) {
+            Ok(name) => name,
+            Err(_) => {
+                println!(
+                    "external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false"
+                );
+                return None;
+            }
+        };
+        let node_name = full_identity_name.get_node_name().to_string();
+
         let external_im = self.external_identity_manager.lock().await;
         match external_im
             .external_identity_to_profile_data(node_name.to_string())
             .await
         {
             Ok(identity_network_manager) => Some(StandardIdentity::new(
-                node_name.to_string(),
+                full_identity_name.extract_node(),
                 Some(identity_network_manager.addr),
                 identity_network_manager.encryption_public_key,
                 identity_network_manager.signature_public_key,
@@ -251,61 +232,61 @@ impl IdentityManager {
 }
 
 impl IdentityManager {
-    pub fn extract_subidentity(s: &str) -> String {
-        let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
-        re.captures(s)
-            .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .unwrap_or_else(|| s.to_string())
-    }
+    // pub fn extract_subidentity(s: &str) -> String {
+    //     let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
+    //     re.captures(s)
+    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+    //         .unwrap_or_else(|| s.to_string())
+    // }
 
-    pub fn extract_node_name(s: &str) -> String {
-        let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
-        re.captures(s)
-            .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .unwrap_or_else(|| s.to_string())
-    }
+    // pub fn extract_node_name(s: &str) -> String {
+    //     let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
+    //     re.captures(s)
+    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+    //         .unwrap_or_else(|| s.to_string())
+    // }
 
-    pub fn is_valid_node_identity_name_and_no_subidentities(s: &str) -> bool {
-        let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
-        re.is_match(s)
-    }
+    // pub fn is_valid_node_identity_name_and_no_subidentities(s: &str) -> bool {
+    //     let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
+    //     re.is_match(s)
+    // }
 
-    pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
-        let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
-        re.is_match(s)
-    }
+    // pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
+    //     let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
+    //     re.is_match(s)
+    // }
 
-    pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
-        let node_name = if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) {
-            node_name
-        } else {
-            format!("@@{}.shinkai", node_name)
-        };
+    // pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
+    //     let node_name = if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) {
+    //         node_name
+    //     } else {
+    //         format!("@@{}.shinkai", node_name)
+    //     };
 
-        let name = format!("{}/{}", node_name.to_lowercase(), subidentity_name.to_lowercase());
-        name
-    }
+    //     let name = format!("{}/{}", node_name.to_lowercase(), subidentity_name.to_lowercase());
+    //     name
+    // }
 
     // TODO: add a new that creates an Identity instance from a message
-    pub fn extract_sender_node_global_name(message: &ShinkaiMessage) -> String {
-        let sender_profile_name = message.external_metadata.clone().unwrap().sender;
-        IdentityManager::extract_node_name(&sender_profile_name)
-    }
+    // pub fn extract_sender_node_global_name(message: &ShinkaiMessage) -> String {
+    //     let sender_profile_name = message.external_metadata.clone().unwrap().sender;
+    //     ShinkaiName::new(sender_profile_name).unwrap().node_name().to_string()
+    // }
 
-    pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
-        let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
-        IdentityManager::extract_node_name(&sender_profile_name)
-    }
+    // pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
+    //     let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
+    //     IdentityManager::extract_node_name(&sender_profile_name)
+    // }
 
     pub fn get_full_identity_name(identity: &Identity) -> Option<String> {
         match identity {
-            Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone()),
-            Identity::Agent(agent) => Some(agent.name.clone()),
-            Identity::Device(device) => Some(device.full_identity_name.clone()),
+            Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
+            Identity::Agent(agent) => Some(agent.full_identity_name.clone().to_string()),
+            Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
         }
     }
 
-    pub fn get_profile_name_from_device(device: &DeviceIdentity) -> Option<String> {
-        device.to_standard_identity().profile_name().map(|s| s.to_string())
-    }
+    // pub fn get_profile_name_from_device(device: &DeviceIdentity) -> Option<String> {
+    //     device.to_standard_identity().profile_name().map(|s| s.to_string())
+    // }
 }

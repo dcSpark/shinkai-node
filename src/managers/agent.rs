@@ -4,7 +4,7 @@ use super::providers::sleep_api::SleepAPI;
 use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient};
+use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::shinkai_name::ShinkaiName};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, Mutex};
 #[derive(Debug, Clone)]
 pub struct Agent {
     pub id: String,
-    pub name: String, // user-specified name (sub-identity)
+    pub full_identity_name: ShinkaiName,
     pub job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
     pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     pub client: Client,
@@ -34,7 +34,8 @@ pub enum AgentAPIModel {
 impl Agent {
     pub fn new(
         id: String,
-        name: String,
+        // name: String,
+        full_identity_name: ShinkaiName,
         job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
         perform_locally: bool,
         external_url: Option<String>,
@@ -49,7 +50,7 @@ impl Agent {
         let agent_receiver = Arc::new(Mutex::new(agent_receiver)); // wrap the receiver
         Self {
             id,
-            name,
+            full_identity_name,
             job_manager_sender,
             agent_receiver,
             client,
@@ -126,7 +127,7 @@ impl Agent {
     pub fn from_serialized_agent(serialized_agent: SerializedAgent, sender: mpsc::Sender<Vec<JobPreMessage>>) -> Self {
         Self::new(
             serialized_agent.id,
-            serialized_agent.name,
+            serialized_agent.full_identity_name,
             sender,
             serialized_agent.perform_locally,
             serialized_agent.external_url,
@@ -183,7 +184,7 @@ mod tests {
         let sleep_api = SleepAPI {};
         let agent = Agent::new(
             "1".to_string(),
-            "Agent".to_string(),
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             tx,
             false,
             Some("http://localhost:8000".to_string()),
@@ -196,7 +197,7 @@ mod tests {
         let context = vec![String::from("context1"), String::from("context2")];
 
         assert_eq!(agent.id, "1");
-        assert_eq!(agent.name, "Agent");
+        assert_eq!(agent.full_identity_name, ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap());
         assert_eq!(agent.perform_locally, false);
         assert_eq!(agent.external_url, Some("http://localhost:8000".to_string()));
         assert_eq!(agent.toolkit_permissions, vec!["tk1".to_string(), "tk2".to_string()]);
@@ -264,7 +265,7 @@ mod tests {
         };
         let agent = Agent::new(
             "1".to_string(),
-            "Agent".to_string(),
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             tx,
             false,
             Some(server.url()), // use the url of the mock server

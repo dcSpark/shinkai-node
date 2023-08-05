@@ -12,7 +12,7 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
-    use shinkai_message_wasm::shinkai_utils::utils::hash_string;
+    use shinkai_message_wasm::{shinkai_utils::utils::hash_string, schemas::shinkai_name::ShinkaiName};
 
     use super::*;
 
@@ -29,7 +29,7 @@ mod tests {
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -74,7 +74,7 @@ mod tests {
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -118,7 +118,7 @@ mod tests {
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::new("test_name".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -153,7 +153,7 @@ mod tests {
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),

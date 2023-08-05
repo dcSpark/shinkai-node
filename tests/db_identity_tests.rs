@@ -1,6 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::task;
 use reqwest::Identity;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
@@ -216,7 +217,7 @@ fn test_new_load_all_sub_identities() {
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
-            subidentity_name.clone(),
+            ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
             None,
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -248,7 +249,7 @@ fn test_new_load_all_sub_identities() {
         let subidentity_name = format!("subidentity_{}", i);
 
         let identity = StandardIdentity::new(
-            subidentity_name.clone(),
+            ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
             None,
             encryption_pk.clone(),
             identity_pk.clone(),
@@ -325,7 +326,7 @@ fn test_new_insert_sub_identity() {
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
-        subidentity_name.to_string(),
+        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
         encryption_pk.clone(),
         identity_pk.clone(),
@@ -385,7 +386,7 @@ fn test_remove_subidentity() {
     let (subencryption_sk, subencryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let identity = StandardIdentity::new(
-        subidentity_name.to_string(),
+        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), subidentity_name.to_string()).unwrap(),
         None,
         encryption_pk.clone(),
         identity_pk.clone(),

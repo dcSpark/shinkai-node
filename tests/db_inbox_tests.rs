@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use prost::Message;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
@@ -207,9 +208,10 @@ fn db_inbox() {
     // Test permissions
     let subidentity_name = "device1";
     let full_subidentity_name =
-        IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
+        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
+
     let device1_subidentity = StandardIdentity::new(
-        full_subidentity_name.clone().to_string(),
+        full_subidentity_name.clone(),
         None,
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -261,10 +263,10 @@ fn test_permission_errors() {
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let subidentity_name = "device1";
     let full_subidentity_name =
-        IdentityManager::merge_to_full_identity_name(node1_identity_name.to_string(), subidentity_name.to_string());
+        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), subidentity_name.to_string()).unwrap();
 
     let device1_subidentity = StandardIdentity::new(
-        full_subidentity_name.clone().to_string(),
+        full_subidentity_name.clone(),
         None,
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -277,7 +279,8 @@ fn test_permission_errors() {
 
     // Create a fake identity for tests
     let nonexistent_identity = StandardIdentity::new(
-        "nonexistent_identity".to_string(),
+        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), "nonexistent_identity".to_string())
+            .unwrap(),
         None,
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -300,7 +303,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone())
+        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
     );
 
     // Test 3: Removing a permission from a nonexistent inbox should result in an error
@@ -316,7 +319,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone())
+        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
@@ -332,6 +335,6 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone())
+        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
     );
 }

@@ -1,6 +1,7 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -196,9 +197,9 @@ impl Node {
         db_path: String,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
-        match IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_profile_name.clone()) {
-            true => (),
-            false => panic!("Invalid node identity name: {}", node_profile_name),
+        match ShinkaiName::new(node_profile_name.to_string().clone()) {
+            Ok(_) => (),
+            Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
         }
 
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
@@ -398,7 +399,7 @@ impl Node {
             .external_profile_to_global_identity(&peer.1.clone())
             .await
             .unwrap();
-        let receiver = receiver_profile_identity.node_identity_name().to_string();
+        let receiver = receiver_profile_identity.full_identity_name.get_node_name().to_string();
         let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
         ping_pong(
@@ -465,9 +466,9 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = IdentityManager::extract_recipient_node_global_name(message);
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message).unwrap().to_string();
             } else {
-                counterpart_identity = IdentityManager::extract_sender_node_global_name(message);
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message).unwrap().to_string();
             }
             // find the sender's encryption public key in external
             let sender_encryption_pk = maybe_identity_manager
@@ -530,7 +531,7 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = IdentityManager::extract_sender_node_global_name(&message);
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message).unwrap().get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await

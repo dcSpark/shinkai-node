@@ -13,6 +13,7 @@ use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::{
+    schemas::shinkai_name::ShinkaiName,
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::{
@@ -134,7 +135,7 @@ impl Node {
         if signature_public_key.is_none() {
             eprintln!(
                 "handle_onionized_message > Signature public key doesn't exist for identity: {}",
-                IdentityManager::get_full_identity_name(&subidentity).unwrap_or_default()
+                subidentity.get_full_identity_name()
             );
             return Ok(());
         }
@@ -179,7 +180,10 @@ impl Node {
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
         let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
 
-        let recipient_profile_name_string = IdentityManager::extract_recipient_node_global_name(&msg);
+        let recipient_profile_name_string = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
+            .unwrap()
+            .to_string();
+
         let external_global_identity = self
             .identity_manager
             .lock()
@@ -398,7 +402,13 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
-            Identity::Device(std_device) => std_device.clone().to_standard_identity(),
+            Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
+                Some(identity) => identity,
+                None => {
+                    res.send(format!("Device identity is not valid.")).await;
+                    return;
+                }
+            },
             Identity::Agent(_) => {
                 res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
@@ -445,7 +455,13 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
-            Identity::Device(std_device) => std_device.clone().to_standard_identity(),
+            Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
+                Some(identity) => identity,
+                None => {
+                    res.send(false).await;
+                    return;
+                }
+            },
             Identity::Agent(_) => {
                 res.send(false).await;
                 return;
@@ -584,8 +600,18 @@ impl Node {
                 let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
                 let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
+                let full_identity_name_result =
+                    ShinkaiName::from_node_and_profile(self.node_profile_name.clone(), profile_name.clone());
+
+                if let Err(e) = &full_identity_name_result {
+                    error!("Failed to add subidentity: {}", e);
+                    let _ = res.send(e.to_string()).await;
+                }
+
+                let full_identity_name = full_identity_name_result.unwrap();
+
                 let subidentity = StandardIdentity {
-                    full_identity_name: full_identity_name,
+                    full_identity_name,
                     addr: None,
                     profile_signature_public_key: Some(signature_pk_obj),
                     profile_encryption_public_key: Some(encryption_pk_obj),
@@ -652,7 +678,7 @@ impl Node {
                 .external_profile_to_global_identity(&peer.1.clone())
                 .await
                 .unwrap();
-            let receiver = receiver_profile_identity.node_identity_name().to_string();
+            let receiver = receiver_profile_identity.full_identity_name.get_node_name();
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection

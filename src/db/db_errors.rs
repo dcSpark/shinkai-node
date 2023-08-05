@@ -44,6 +44,7 @@ pub enum ShinkaiDBError {
     InvalidInboxPermission(String),
     InvalidPermissionType(String),
     InvalidProfileName,
+    InvalidIdentityName(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -100,6 +101,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::InvalidInboxPermission(e) => write!(f, "Invalid inbox permission: {}", e),
             ShinkaiDBError::InvalidPermissionType(e) => write!(f, "Invalid permission type: {}", e),
             ShinkaiDBError::InvalidProfileName => write!(f, "Invalid profile name"),
+            ShinkaiDBError::InvalidIdentityName(e) => write!(f, "Invalid identity name: {}", e),
         }
     }
 }
