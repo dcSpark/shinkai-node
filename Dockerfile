@@ -17,6 +17,12 @@ COPY . .
 RUN cargo clean 
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build -vv
 RUN cargo test -- --test-threads=1
+WORKDIR /app/shinkai-message-wasm
+# Run cargo Tests
+RUN cargo build
+RUN cargo test
+# WASM tests
+RUN wasm-pack test --node
 
 # Build your application
 #RUN cargo build --release --locked
