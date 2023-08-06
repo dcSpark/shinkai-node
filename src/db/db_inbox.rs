@@ -2,10 +2,16 @@ use core::fmt;
 use std::str::FromStr;
 
 use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
+use shinkai_message_wasm::{
+    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
+};
 
 use crate::{
-    managers::{inbox_name_manager::InboxNameManager}, schemas::{inbox_permission::InboxPermission, identity::{StandardIdentity, IdentityType}},
+    managers::inbox_name_manager::InboxNameManager,
+    schemas::{
+        identity::{IdentityType, StandardIdentity},
+        inbox_permission::InboxPermission,
+    },
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -68,7 +74,7 @@ impl ShinkaiDB {
 
                 inbox.clone()
             }
-            None => InboxNameManager::get_inbox_name_from_message(message)?
+            None => InboxNameManager::get_inbox_name_from_message(message)?,
         };
 
         // If the inbox name is empty, use the get_inbox_name function
@@ -90,7 +96,6 @@ impl ShinkaiDB {
             let parts = InboxNameManager::from_inbox_name(inbox_name.clone()).parse_parts()?;
             let identity_a = format!("{}{}", parts.identity_a, parts.identity_a_subidentity);
             let identity_b = format!("{}{}", parts.identity_b, parts.identity_b_subidentity);
-
 
             // TODO: implement after identity_manager is implemented
             // self.add_permission(&inbox_name, , perm);
@@ -142,7 +147,12 @@ impl ShinkaiDB {
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
             Some(cf) => cf,
-            None => return Err(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name))),
+            None => {
+                return Err(ShinkaiDBError::InboxNotFound(format!(
+                    "Inbox not found: {}",
+                    inbox_name
+                )))
+            }
         };
 
         // Fetch the column family for all messages
@@ -180,15 +190,20 @@ impl ShinkaiDB {
         let cf_name_unread_list = format!("{}_unread_list", inbox_name);
         let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
             Some(cf) => cf,
-            None => return Err(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name))),
+            None => {
+                return Err(ShinkaiDBError::InboxNotFound(format!(
+                    "Inbox not found: {}",
+                    inbox_name
+                )))
+            }
         };
-    
+
         // Create an iterator for the specified unread_list, starting from the beginning
         let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-    
+
         // Convert up_to_time to &str
         let up_to_time = up_to_time.as_str();
-    
+
         // Iterate through the unread_list and delete all messages up to the specified time
         for item in iter {
             // Handle the Result returned by the iterator
@@ -198,10 +213,10 @@ impl ShinkaiDB {
                         Ok(s) => s,
                         Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
                     };
-    
+
                     // Split the key_str to separate timestamp and hash
                     let mut split_key = key_str.splitn(2, ':');
-    
+
                     if let Some(timestamp_str) = split_key.next() {
                         if timestamp_str <= up_to_time {
                             // Delete the message from the unread_list
@@ -215,10 +230,9 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-    
+
         Ok(())
     }
-    
 
     pub fn get_last_unread_messages_from_inbox(
         &self,
@@ -230,7 +244,12 @@ impl ShinkaiDB {
         let cf_name_unread_list = format!("{}_unread_list", inbox_name);
         let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
             Some(cf) => cf,
-            None => return Err(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name))),
+            None => {
+                return Err(ShinkaiDBError::InboxNotFound(format!(
+                    "Inbox not found: {}",
+                    inbox_name
+                )))
+            }
         };
 
         // Fetch the column family for all messages
@@ -286,47 +305,85 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<(), ShinkaiDBError> {
+        let profile_name = identity
+            .full_identity_name
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()))?;
+
         // Fetch column family for identity
-        let cf_identity = self
-            .db
-            .cf_handle(Topic::ProfilesIdentityKey.as_str())
-            .ok_or(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)))?;
-    
+        let cf_identity =
+            self.db
+                .cf_handle(Topic::ProfilesIdentityKey.as_str())
+                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
+                    "Identity not found for: {}",
+                    identity.full_identity_name
+                )))?;
+
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, identity.full_identity_name.clone())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)));
+        if self
+            .db
+            .get_cf(cf_identity, profile_name.clone())?
+            .is_none()
+        {
+            return Err(ShinkaiDBError::IdentityNotFound(format!(
+                "Identity not found for: {}",
+                identity.full_identity_name
+            )));
         }
-    
+
         // Handle the original permission addition
         let cf_name = format!("{}_perms", inbox_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name)))?;
+            .ok_or(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found: {}",
+                inbox_name
+            )))?;
         let perm_val = perm.to_i32().to_string(); // Convert permission to i32 and then to String
-        self.db.put_cf(cf, identity.full_identity_name.clone(), perm_val)?;
+        self.db.put_cf(cf, profile_name.clone(), perm_val)?;
         Ok(())
     }
 
     pub fn remove_permission(&mut self, inbox_name: &str, identity: &StandardIdentity) -> Result<(), ShinkaiDBError> {
+        let profile_name = identity
+            .full_identity_name
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()))?;
+
         // Fetch column family for identity
-        let cf_identity = self
-            .db
-            .cf_handle(Topic::ProfilesIdentityKey.as_str())
-            .ok_or(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)))?;
-    
+        let cf_identity =
+            self.db
+                .cf_handle(Topic::ProfilesIdentityKey.as_str())
+                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
+                    "Identity not found for: {}",
+                    identity.full_identity_name
+                )))?;
+
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, identity.full_identity_name.clone())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)));
+        if self
+            .db
+            .get_cf(cf_identity, profile_name.clone())?
+            .is_none()
+        {
+            return Err(ShinkaiDBError::IdentityNotFound(format!(
+                "Identity not found for: {}",
+                identity.full_identity_name
+            )));
         }
-    
+
         // Handle the original permission removal
         let cf_name = format!("{}_perms", inbox_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name)))?;
-        self.db.delete_cf(cf, identity.full_identity_name.clone())?;
+            .ok_or(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found: {}",
+                inbox_name
+            )))?;
+        self.db.delete_cf(cf, profile_name.clone())?;
         Ok(())
     }
 
@@ -336,31 +393,59 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<bool, ShinkaiDBError> {
+        let profile_name = identity
+            .full_identity_name
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(identity.full_identity_name.to_string()))?;
+
         // Fetch column family for identity
-        let cf_identity = self
-            .db
-            .cf_handle(Topic::ProfilesIdentityKey.as_str())
-            .ok_or(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)))?;
+        let cf_identity =
+            self.db
+                .cf_handle(Topic::ProfilesIdentityKey.as_str())
+                .ok_or(ShinkaiDBError::IdentityNotFound(format!(
+                    "Identity not found for: {}",
+                    identity.full_identity_name
+                )))?;
 
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, identity.full_identity_name.clone())?.is_none() {
-            return Err(ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", identity.full_identity_name)));
+        if self
+            .db
+            .get_cf(cf_identity, profile_name.clone())?
+            .is_none()
+        {
+            return Err(ShinkaiDBError::IdentityNotFound(format!(
+                "Identity not found for: {}",
+                identity.full_identity_name
+            )));
         }
 
         // Fetch column family for permissions
-        let cf_permission = self
-            .db
-            .cf_handle(Topic::ProfilesIdentityType.as_str())
-            .ok_or(ShinkaiDBError::PermissionNotFound(format!("Permission not found for: {}", identity.full_identity_name)))?;
+        let cf_permission =
+            self.db
+                .cf_handle(Topic::ProfilesIdentityType.as_str())
+                .ok_or(ShinkaiDBError::PermissionNotFound(format!(
+                    "Permission not found for: {}",
+                    identity.full_identity_name
+                )))?;
 
         // Get the permission type for the identity
         let perm_type_bytes = self
             .db
-            .get_cf(cf_permission, identity.full_identity_name.clone())?
-            .ok_or(ShinkaiDBError::PermissionNotFound(format!("Permission not found for: {}", identity.full_identity_name)))?;
-        let perm_type_str =
-            String::from_utf8(perm_type_bytes.to_vec()).map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
-        let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!("Invalid identity type for: {}", identity.full_identity_name)))?;
+            .get_cf(cf_permission, profile_name.clone())?
+            .ok_or(ShinkaiDBError::PermissionNotFound(format!(
+                "Permission not found for: {}",
+                identity.full_identity_name
+            )))?;
+        let perm_type_str = String::from_utf8(perm_type_bytes.to_vec())
+            .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
+        // TODO: perm_type not used?
+        let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!(
+            "Invalid identity type for: {}",
+            identity.full_identity_name
+        )))?;
+
+        // TODO(?): if it's admin it should be able to access anything :?
 
         // Handle the original permission check
         let cf_name = format!("{}_perms", inbox_name);
@@ -368,12 +453,19 @@ impl ShinkaiDB {
         let cf = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_name)))?;
-        match self.db.get_cf(cf, identity.full_identity_name.clone())? {
+            .ok_or(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found: {}",
+                inbox_name
+            )))?;
+        match self.db.get_cf(cf, profile_name.clone())? {
             Some(val) => {
-                let val_str = String::from_utf8(val.to_vec()).map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
-                let val_perm =
-                    InboxPermission::from_i32(val_str.parse::<i32>().map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?)?;
+                let val_str = String::from_utf8(val.to_vec())
+                    .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
+                let val_perm = InboxPermission::from_i32(
+                    val_str
+                        .parse::<i32>()
+                        .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?,
+                )?;
                 Ok(val_perm >= perm)
             }
             None => Ok(false),

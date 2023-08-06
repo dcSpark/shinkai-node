@@ -15,7 +15,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::{IdentityManager, InboxNameManager};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityPermissions, IdentityType, StandardIdentity};
+use shinkai_node::schemas::identity::{IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType};
 use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -217,13 +217,15 @@ fn db_inbox() {
         node1_identity_pk.clone(),
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
-        IdentityType::Device.to_standard().unwrap(),
+        StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
 
     let _ = shinkai_db.insert_profile(device1_subidentity.clone());
+    println!("Inserted profile");
+    shinkai_db.print_all_keys_for_profiles_identity_key();
+    
 
-    println!("before adding perms> Inbox name: {}", inbox_name);
     shinkai_db
         .add_permission(&inbox_name, &device1_subidentity, InboxPermission::Admin)
         .unwrap();
@@ -231,7 +233,7 @@ fn db_inbox() {
         .has_permission(&inbox_name, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let resp = shinkai_db
+    let _ = shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name).as_str())
         .unwrap();
 
@@ -240,7 +242,7 @@ fn db_inbox() {
         .has_permission(&inbox_name, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
 
-    let resp = shinkai_db
+    let _ = shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name).as_str())
         .unwrap();
 }
@@ -272,7 +274,7 @@ fn test_permission_errors() {
         node1_identity_pk.clone(),
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
-        IdentityType::Device.to_standard().unwrap(),
+        StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
     let _ = shinkai_db.insert_profile(device1_subidentity.clone());
@@ -286,7 +288,7 @@ fn test_permission_errors() {
         node1_identity_pk.clone(),
         Some(node1_subencryption_pk),
         Some(node1_subidentity_pk),
-        IdentityType::Device.to_standard().unwrap(),
+        StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
 
@@ -295,7 +297,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
     );
 
     // Test 2: Adding a permission for a nonexistent identity should result in an error
@@ -303,7 +305,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
+        ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", nonexistent_identity.full_identity_name.clone().to_string()))
     );
 
     // Test 3: Removing a permission from a nonexistent inbox should result in an error
@@ -311,7 +313,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
     );
 
     // Test 4: Removing a permission for a nonexistent identity should result in an error
@@ -319,7 +321,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
+        ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", nonexistent_identity.full_identity_name.clone().to_string()))
     );
 
     // Test 5: Checking permission of a nonexistent inbox should result in an error
@@ -327,7 +329,7 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::InboxNotFound("nonexistent_inbox".to_string())
+        ShinkaiDBError::InboxNotFound("Inbox not found: nonexistent_inbox".to_string())
     );
 
     // Test 6: Checking permission for a nonexistent identity should result in an error
@@ -335,6 +337,6 @@ fn test_permission_errors() {
     assert!(result.is_err());
     assert_eq!(
         result.unwrap_err(),
-        ShinkaiDBError::IdentityNotFound(nonexistent_identity.full_identity_name.clone().to_string())
+        ShinkaiDBError::IdentityNotFound(format!("Identity not found for: {}", nonexistent_identity.full_identity_name.clone().to_string()))
     );
 }

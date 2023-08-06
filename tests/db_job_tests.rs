@@ -148,7 +148,7 @@ mod tests {
 
         match shinkai_db.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiDBError::DataNotFound),
+            Err(e) => assert_eq!(e, ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())),
         }
     }
 
