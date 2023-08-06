@@ -209,10 +209,10 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 #[test]
 fn test_new_load_all_sub_identities() {
     setup();
-    let node_profile_name = "@@node1.shinkai";
+    let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let db_path = format!("db_tests/{}", hash_string(&node_profile_name.clone().to_string()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Create a local node profile
@@ -236,7 +236,6 @@ fn test_new_load_all_sub_identities() {
             identity_pk.clone(),
             Some(subencryption_pk),
             Some(subidentity_pk),
-            // TODO: review this. Too tired to think
             StandardIdentityType::Profile,
             IdentityPermissions::Standard,
         );
@@ -249,10 +248,9 @@ fn test_new_load_all_sub_identities() {
 
     // Test new_load_all_sub_identities
     let identities = shinkai_db
-        .get_all_profiles(node_profile_name.clone().to_string())
+        .get_all_profiles(node_profile_name.clone())
         .unwrap_or_else(|e| panic!("Error loading all sub-identities: {}", e));
 
-    println!("identities: {:?}", identities);
     assert_eq!(identities.len(), 5);
 
     // add asserts to check if the identities are correct

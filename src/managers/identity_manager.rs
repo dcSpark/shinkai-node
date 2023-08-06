@@ -28,9 +28,10 @@ pub struct IdentityManager {
 
 impl IdentityManager {
     pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
+        let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
-            db.get_all_profiles(local_node_name.clone().get_node_name())?
+            db.get_all_profiles(local_node_name.clone())?
                 .into_iter()
                 .map(Identity::Standard)
                 .collect()

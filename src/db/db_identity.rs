@@ -33,11 +33,9 @@ impl ShinkaiDB {
         }
     }
 
-    pub fn get_all_profiles(
-        &self,
-        my_node_identity_name: String,
-    ) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {
-        println!("get_all_profiles::my_node_identity_name: {}", my_node_identity_name);
+    pub fn get_all_profiles(&self, my_node_identity: ShinkaiName) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {
+        let my_node_identity_name = my_node_identity.get_node_name();
+        println!("my_node_identity_name: {}", my_node_identity_name);
 
         let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
@@ -79,7 +77,6 @@ impl ShinkaiDB {
             match item {
                 Ok((key, value)) => {
                     let full_identity_name = String::from_utf8(key.to_vec()).unwrap();
-                    println!("get_all_profiles::full_identity_name: {}", full_identity_name);
                     let subidentity_signature_public_key =
                         string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())
                             .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
@@ -88,7 +85,6 @@ impl ShinkaiDB {
                         Some(value) => {
                             let key_string =
                                 String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
-                                println!("get_all_profiles::key_string: {}", key_string);
                             let subidentity_encryption_public_key = string_to_encryption_public_key(&key_string)
                                 .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
 
@@ -108,18 +104,17 @@ impl ShinkaiDB {
                                             let permissions_str = String::from_utf8(value.to_vec()).unwrap();
                                             let permissions = IdentityPermissions::from_str(&permissions_str)
                                                 .ok_or(ShinkaiDBError::InvalidPermissionsType)?;
-                                            let full_identity_name = match ShinkaiName::new(full_identity_name.clone())
-                                            {
-                                                Ok(name) => name,
-                                                Err(_) => {
-                                                    return Err(ShinkaiDBError::InvalidIdentityName(
-                                                        full_identity_name.clone(),
-                                                    ))
-                                                }
-                                            };
+
+                                            let identity_name = ShinkaiName::from_node_and_profile(
+                                                my_node_identity_name.clone(),
+                                                full_identity_name,
+                                            )
+                                            .map_err(|err_str| {
+                                                ShinkaiDBError::InvalidIdentityName(err_str.to_string())
+                                            })?;
 
                                             let identity = StandardIdentity::new(
-                                                full_identity_name,
+                                                identity_name,
                                                 None,
                                                 node_encryption_public_key.clone(),
                                                 node_signature_public_key.clone(),
