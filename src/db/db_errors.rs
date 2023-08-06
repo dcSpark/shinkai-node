@@ -143,19 +143,18 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::InvalidPermissionType(msg1), ShinkaiDBError::InvalidPermissionType(msg2)) => msg1 == msg2,
             (ShinkaiDBError::InvalidProfileName(msg1), ShinkaiDBError::InvalidProfileName(msg2)) => msg1 == msg2,
             (ShinkaiDBError::InvalidIdentityName(msg1), ShinkaiDBError::InvalidIdentityName(msg2)) => msg1 == msg2,
-            //
-            (ShinkaiDBError::IOError(_), ShinkaiDBError::IOError(_)) => true,
-            (ShinkaiDBError::DecodeError(_), ShinkaiDBError::DecodeError(_)) => true,
+            (ShinkaiDBError::IOError(e1), ShinkaiDBError::IOError(e2)) => e1.to_string() == e2.to_string(),
+            (ShinkaiDBError::DecodeError(e1), ShinkaiDBError::DecodeError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::InvalidInboxName, ShinkaiDBError::InvalidInboxName) => true,
             (ShinkaiDBError::Utf8ConversionError, ShinkaiDBError::Utf8ConversionError) => true,
-            (ShinkaiDBError::JsonSerializationError(_), ShinkaiDBError::JsonSerializationError(_)) => true,
+            (ShinkaiDBError::JsonSerializationError(e1), ShinkaiDBError::JsonSerializationError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
             (ShinkaiDBError::FailedFetchingCF, ShinkaiDBError::FailedFetchingCF) => true,
             (ShinkaiDBError::FailedFetchingValue, ShinkaiDBError::FailedFetchingValue) => true,
-            (ShinkaiDBError::ResourceError(_), ShinkaiDBError::ResourceError(_)) => true,
-            (ShinkaiDBError::BincodeError(_), ShinkaiDBError::BincodeError(_)) => true,
-            (ShinkaiDBError::InboxNameError(_), ShinkaiDBError::InboxNameError(_)) => true,
-            (ShinkaiDBError::ProfileNotFound(_), ShinkaiDBError::ProfileNotFound(_)) => true,
+            (ShinkaiDBError::ResourceError(e1), ShinkaiDBError::ResourceError(e2)) => e1 == e2,  // assuming ResourceError implements PartialEq
+            (ShinkaiDBError::BincodeError(e1), ShinkaiDBError::BincodeError(e2)) => e1.to_string() == e2.to_string(),
+            (ShinkaiDBError::InboxNameError(e1), ShinkaiDBError::InboxNameError(e2)) => e1 == e2,  // assuming InboxNameError implements PartialEq
+            (ShinkaiDBError::ProfileNotFound(msg1), ShinkaiDBError::ProfileNotFound(msg2)) => msg1 == msg2,
             (ShinkaiDBError::DeviceIdentityAlreadyExists, ShinkaiDBError::DeviceIdentityAlreadyExists) => true,
             _ => false,
         }

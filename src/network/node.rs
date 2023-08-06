@@ -21,6 +21,7 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
+use crate::db::db_identity_registration::RegistrationCodeType;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::JobManager;
 use crate::managers::{job_manager, IdentityManager};
@@ -75,7 +76,7 @@ pub enum NodeCommand {
     // Command to make the node create a registration code. The sender will receive the code.
     CreateRegistrationCode {
         permissions: IdentityPermissions,
-        profile_name: Option<String>,
+        code_type: RegistrationCodeType,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
@@ -281,7 +282,7 @@ impl Node {
                             Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_onionized_message(msg).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::CreateRegistrationCode { permissions, profile_name, res }) => self.create_and_send_registration_code(permissions, profile_name, res).await?,
+                            Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
                             Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
                             Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                             Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,

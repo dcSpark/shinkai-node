@@ -1,3 +1,4 @@
+use crate::db::db_identity_registration::RegistrationCodeType;
 use crate::schemas::identity::IdentityPermissions;
 
 use super::node::NodeCommand;
@@ -46,7 +47,7 @@ struct APIErrorMessage {
 #[derive(Serialize, Deserialize)]
 struct RegistrationRequestBody {
     permissions: IdentityPermissions,
-    profile_name: Option<String>,
+    code_type: RegistrationCodeType,
 }
 
 impl APIErrorMessage {
@@ -144,7 +145,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and(warp::post())
             .and(warp::body::json())
             .and_then(move |body: RegistrationRequestBody| {
-                create_registration_code_handler(node_commands_sender.clone(), body.permissions, body.profile_name)
+                create_registration_code_handler(node_commands_sender.clone(), body.permissions, body.code_type)
             })
     };
 
@@ -300,14 +301,14 @@ async fn get_last_messages_handler(
 async fn create_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
     permissions: IdentityPermissions,
-    profile_name: Option<String>,
+    code_type: RegistrationCodeType,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::CreateRegistrationCode {
             permissions,
-            profile_name,
+            code_type,
             res: res_sender,
         })
         .await

@@ -3,7 +3,7 @@ use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResourceError {
     InvalidChunkId,
     ResourceEmpty,

@@ -292,15 +292,10 @@ impl Node {
     pub async fn create_and_send_registration_code(
         &self,
         permissions: IdentityPermissions,
-        profile_name: Option<String>,
+        code_type: RegistrationCodeType,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code_type = match &profile_name {
-            Some(name) if !name.is_empty() => RegistrationCodeType::Device(name.clone()),
-            _ => RegistrationCodeType::Profile,
-        };
-
         let code = db
             .generate_registration_new_code(permissions, code_type)
             .unwrap_or_else(|_| "".to_string());
@@ -564,6 +559,7 @@ impl Node {
 
         // Deserialize body.content into RegistrationCode
         let content = decrypted_message.clone().body.unwrap().content;
+        println!("handle_registration_code_usage> content: {:?}", content);
         let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
 
         // Extract values from the ShinkaiMessage
