@@ -6,26 +6,14 @@ RUN apt-get update && apt-get install -y libclang-dev cmake
 WORKDIR /app
 
 # Copy the Cargo.toml and Cargo.lock files to the container
-COPY Cargo.toml Cargo.lock build.rs ./
 
-# Copy the source code to the container
 COPY . .
-#COPY protos ./protos
-#COPY scripts ./scripts
 
 # Build the dependencies (cached)
 RUN cargo clean 
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build -vv
 RUN cargo test -- --test-threads=1
-WORKDIR /app/shinkai-message-wasm
-# Run cargo Tests
-RUN cargo build
-RUN cargo test
-# WASM tests
-RUN wasm-pack test --node
 
-# Build your application
-#RUN cargo build --release --locked
 
 # Create a new stage for the runtime image
 FROM debian:bookworm-slim
