@@ -55,7 +55,6 @@ mod tests {
     fn test_from_node_and_profile_valid() {
         // Since the function can correct this, we just check for a valid response.
         let result = ShinkaiName::from_node_and_profile("bob.shinkai".to_string(), "profileBob".to_string());
-        println!("Result: {:?}", result);
         assert!(result.is_ok(), "Expected the name to be valid");
     }
 
@@ -90,6 +89,9 @@ mod tests {
     fn test_get_profile_name() {
         let shinkai_name = ShinkaiName::new("@@frank.shinkai/profileFrank".to_string()).unwrap();
         assert_eq!(shinkai_name.get_profile_name(), Some("profilefrank".to_string()));
+
+        let shinkai_name = ShinkaiName::new("@@frank.shinkai/profile_1/device/device_1".to_string()).unwrap();
+        assert_eq!(shinkai_name.get_profile_name(), Some("profile_1".to_string()));
     }
 
     #[test]

@@ -581,7 +581,7 @@ impl Node {
         let result = db
             .use_registration_code(
                 &code,
-                self.node_profile_name.clone().as_str(),
+                self.node_profile_name.get_node_name().as_str(),
                 profile_name.as_str(),
                 &identity_pk,
                 &encryption_pk,
@@ -601,7 +601,7 @@ impl Node {
                 let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                 let full_identity_name_result =
-                    ShinkaiName::from_node_and_profile(self.node_profile_name.clone(), profile_name.clone());
+                    ShinkaiName::from_node_and_profile(self.node_profile_name.get_node_name(), profile_name.clone());
 
                 if let Err(e) = &full_identity_name_result {
                     error!("Failed to add subidentity: {}", e);
@@ -670,7 +670,7 @@ impl Node {
         info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
         let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            let sender = self.node_profile_name.clone();
+            let sender = self.node_profile_name.clone().get_node_name();
             let receiver_profile_identity = self
                 .identity_manager
                 .lock()

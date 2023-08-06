@@ -36,7 +36,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_job_message_creation() {
         setup();
-        let node_profile_name = "@@node1.shinkai";
+        let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -76,7 +76,7 @@ mod tests {
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
-                node_profile_name.clone().to_string(),
+                node_profile_name.clone(),
                 node1_encryption_pk.clone(),
                 node1_identity_pk.clone(),
             ) {
@@ -84,7 +84,7 @@ mod tests {
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
         }
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.to_string())
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -96,7 +96,7 @@ mod tests {
 
         let agent = SerializedAgent {
             id: "test_agent_id".to_string(),
-            full_identity_name: ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "test_name".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::from_node_and_profile(node_profile_name.get_node_name(), "test_name".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),

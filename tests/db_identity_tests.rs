@@ -1,7 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::task;
 use reqwest::Identity;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
@@ -37,7 +37,8 @@ async fn create_local_node_profile(
     encryption_public_key: EncryptionPublicKey,
     identity_public_key: SignaturePublicKey,
 ) {
-    match db.update_local_node_keys(node_profile_name, encryption_public_key, identity_public_key) {
+    let node_profile = ShinkaiName::new(node_profile_name.clone()).unwrap();
+    match db.update_local_node_keys(node_profile, encryption_public_key, identity_public_key) {
         Ok(_) => (),
         Err(e) => panic!("Failed to update local node keys: {}", e),
     }
@@ -81,7 +82,7 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
         .unwrap();
 
     // check in db
-    println!("profile_name: {}", profile_name);
+    let profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
     let permission_in_db = shinkai_db.get_profile_permission(profile_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 }
@@ -143,8 +144,20 @@ fn test_generate_and_use_registration_code_for_device() {
         .unwrap();
 
     // check in db
-    let permission_in_db = shinkai_db.get_profile_permission(device_name).unwrap();
+    let profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
+    let permission_in_db = shinkai_db.get_profile_permission(profile_name.clone()).unwrap();
+    assert_eq!(permission_in_db, IdentityPermissions::Admin);
+
+    // check device permission
+    let device_name = ShinkaiName::from_node_and_profile_and_type_and_name(
+        node_profile_name.to_string(),
+        profile_name.get_profile_name().unwrap().to_string(),
+        ShinkaiSubidentityType::Device,
+        device_name.to_string(),
+    ).unwrap();
+    let permission_in_db = shinkai_db.get_device_permission(device_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Standard);
+
 }
 
 #[test]
@@ -188,7 +201,7 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 
     // Check if an error is returned as no profile is associated
     assert!(
-        matches!(result, Err(ShinkaiDBError::ProfileNotFound)),
+        matches!(result, Err(ShinkaiDBError::ProfileNotFound(node_profile_name))),
         "Expected ProfileNotFound error"
     );
 }
@@ -236,7 +249,7 @@ fn test_new_load_all_sub_identities() {
 
     // Test new_load_all_sub_identities
     let identities = shinkai_db
-        .load_all_sub_identities(node_profile_name.clone().to_string())
+        .get_all_profiles(node_profile_name.clone().to_string())
         .unwrap_or_else(|e| panic!("Error loading all sub-identities: {}", e));
 
     println!("identities: {:?}", identities);
@@ -267,16 +280,16 @@ fn test_new_load_all_sub_identities() {
 #[test]
 fn test_update_local_node_keys() {
     setup();
-    let node_profile_name = "@@node1.shinkai";
+    let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let db_path = format!("db_tests/{}", hash_string(&node_profile_name.clone().to_string()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
     // Test update_local_node_keys
     shinkai_db
         .update_local_node_keys(
-            node_profile_name.clone().to_string(),
+            node_profile_name.clone(),
             encryption_pk.clone(),
             identity_pk.clone(),
         )
@@ -313,7 +326,7 @@ fn test_update_local_node_keys() {
 }
 
 #[test]
-fn test_new_insert_sub_identity() {
+fn test_new_insert_profile() {
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -347,17 +360,17 @@ fn test_new_insert_sub_identity() {
 
     let identity_in_db = shinkai_db
         .db
-        .get_cf(cf_identity, &identity.full_identity_name)
+        .get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap())
         .unwrap()
         .unwrap();
     let encryption_in_db = shinkai_db
         .db
-        .get_cf(cf_encryption, &identity.full_identity_name)
+        .get_cf(cf_encryption, identity.full_identity_name.get_profile_name().unwrap())
         .unwrap()
         .unwrap();
     let permission_in_db = shinkai_db
         .db
-        .get_cf(cf_permission, &identity.full_identity_name)
+        .get_cf(cf_permission, identity.full_identity_name.get_profile_name().unwrap())
         .unwrap()
         .unwrap();
 
@@ -373,7 +386,7 @@ fn test_new_insert_sub_identity() {
 }
 
 #[test]
-fn test_remove_subidentity() {
+fn test_remove_profile() {
     setup();
     let node_profile_name = "@@node1.shinkai";
     let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -408,14 +421,14 @@ fn test_remove_subidentity() {
     let cf_encryption = shinkai_db.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
     let cf_permission = shinkai_db.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
-    let identity_in_db = shinkai_db.db.get_cf(cf_identity, &identity.full_identity_name).unwrap();
+    let identity_in_db = shinkai_db.db.get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap()).unwrap();
     let encryption_in_db = shinkai_db
         .db
-        .get_cf(cf_encryption, &identity.full_identity_name)
+        .get_cf(cf_encryption, identity.full_identity_name.get_profile_name().unwrap())
         .unwrap();
     let permission_in_db = shinkai_db
         .db
-        .get_cf(cf_permission, &identity.full_identity_name)
+        .get_cf(cf_permission, identity.full_identity_name.get_profile_name().unwrap())
         .unwrap();
 
     assert!(identity_in_db.is_none());

@@ -159,7 +159,7 @@ type ProfileName = String;
 // The `Node` struct represents a single node in the network.
 pub struct Node {
     // The profile name of the node.
-    pub node_profile_name: String,
+    pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
     pub identity_secret_key: SignatureStaticKey,
     // The public key corresponding to `identity_secret_key`.
@@ -206,6 +206,7 @@ impl Node {
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
+        let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
@@ -341,7 +342,7 @@ impl Node {
                                 addr,
                                 destination_socket.clone(),
                                 &buffer[..n],
-                                node_profile_name_clone.clone(),
+                                node_profile_name_clone.clone().get_node_name(),
                                 clone_static_secret_key(&encryption_secret_key_clone),
                                 clone_signature_secret_key(&identity_secret_key_clone),
                                 db.clone(),
@@ -388,7 +389,7 @@ impl Node {
         let peer = (peer_address, profile_name.clone());
         let mut db_lock = self.db.lock().await;
 
-        let sender = self.node_profile_name.clone();
+        let sender = self.node_profile_name.clone().get_node_name();
 
         println!(">>> Peer: {:?}", peer);
 

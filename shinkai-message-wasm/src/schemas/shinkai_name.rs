@@ -43,12 +43,8 @@ pub enum ShinkaiNameError {
 
 impl ShinkaiName {
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
-        println!("raw_name: {}", raw_name);
         let raw_name = Self::correct_node_name(raw_name);
-        println!("raw_name_corrected: {}", raw_name);
-    
         let parts: Vec<&str> = raw_name.split('/').collect();
-        println!("parts: {:?}", parts);
     
         if !(parts.len() >= 1 && parts.len() <= 4) {
             return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
@@ -81,7 +77,6 @@ impl ShinkaiName {
             }
             
             if index != 0 && index != 2 && (!re.is_match(part) || part.contains(".shinkai")) {
-                println!("part: {}", part);
                 return Err("Name parts should be alphanumeric or underscore and not contain '.shinkai'.");
             }
         }
@@ -113,8 +108,6 @@ impl ShinkaiName {
         // Construct the full_identity_name
         let full_identity_name = format!("{}/{}", node_name.to_lowercase(), profile_name.to_lowercase());
 
-        println!("full_identity_name: {}", full_identity_name);
-
         // Create a new ShinkaiName
         Self::new(full_identity_name)
     }
@@ -138,6 +131,8 @@ impl ShinkaiName {
             shinkai_type_str,
             name.to_lowercase()
         );
+
+        println!("device full_identity_name: {}", full_identity_name);
 
         // Create a new ShinkaiName
         Self::new(full_identity_name)
@@ -228,12 +223,12 @@ impl ShinkaiName {
         if !self.has_profile() {
             return None;
         }
-
-        let parts: Vec<&str> = self.0.splitn(2, '/').collect();
-        // parts[0] now contains the node name with '@@' and '.shinkai', and parts[1] contains the profile name
-
+    
+        let parts: Vec<&str> = self.0.split('/').collect();
+        // Assuming that parts[0] is always the node name and parts[1] is the profile name
         Some(parts[1].to_string())
     }
+    
 
     pub fn get_node_name(&self) -> String {
         let parts: Vec<&str> = self.0.split('/').collect();

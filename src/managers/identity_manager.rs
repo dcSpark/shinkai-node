@@ -20,33 +20,17 @@ use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Clone)]
 pub struct IdentityManager {
-    pub local_node_name: String,
+    pub local_node_name: ShinkaiName,
     pub local_identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
 }
 
 impl IdentityManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: String) -> Result<Self, Box<dyn std::error::Error>> {
-        if local_node_name.clone().is_empty() {
-            return Err(Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Local node name cannot be empty",
-            )));
-        }
-        match ShinkaiName::from_node_name(local_node_name.to_string()) {
-            Ok(name) => name,
-            Err(_) => {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Local node name is not valid",
-                )))
-            }
-        };
-
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
-            db.load_all_sub_identities(local_node_name.clone())?
+            db.get_all_profiles(local_node_name.clone().get_node_name())?
                 .into_iter()
                 .map(Identity::Standard)
                 .collect()
@@ -70,9 +54,9 @@ impl IdentityManager {
         //     )));
         // }
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
-
+            
         Ok(Self {
-            local_node_name,
+            local_node_name: local_node_name.extract_node(),
             local_identities: identities,
             db,
             external_identity_manager,
@@ -95,10 +79,10 @@ impl IdentityManager {
     }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        let node_name = full_identity_name.split('/').next().unwrap_or(full_identity_name);
+        let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
 
         // If the node name matches local node, search in self.identities
-        if self.local_node_name == node_name {
+        if self.local_node_name == node_in_question {
             self.local_identities
                 .iter()
                 .filter_map(|identity| match identity {
@@ -140,7 +124,7 @@ impl IdentityManager {
         let node_name = identity_name.extract_node();
 
         // If the node name matches local node, search in self.identities
-        if self.local_node_name == node_name.get_node_name() {
+        if self.local_node_name == node_name {
             self.search_local_identity(full_identity_name).await
         } else {
             // If not, query the identity network manager

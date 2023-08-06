@@ -118,7 +118,7 @@ mod tests {
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("test_name".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/test_name".to_string()).unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
