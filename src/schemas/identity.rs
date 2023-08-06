@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum IdentityType {
     Global,
     Device,
@@ -87,6 +88,7 @@ pub struct RegistrationCode {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum IdentityPermissions {
     Admin, // can create and delete other profiles
     Standard, // can add / remove devices
@@ -309,9 +311,9 @@ impl fmt::Display for DeviceIdentity {
 impl fmt::Display for IdentityPermissions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Admin => write!(f, "Admin"),
-            Self::Standard => write!(f, "Standard"),
-            Self::None => write!(f, "None"),
+            Self::Admin => write!(f, "admin"),
+            Self::Standard => write!(f, "standard"),
+            Self::None => write!(f, "none"),
         }
     }
 }

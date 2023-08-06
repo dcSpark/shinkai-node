@@ -4,7 +4,7 @@ use crate::{
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
-        identity::{Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
+        identity::{Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity, DeviceIdentity},
         inbox_permission::InboxPermission,
     },
 };
@@ -568,7 +568,10 @@ impl Node {
         let identity_pk = registration_code.identity_pk;
         let encryption_pk = registration_code.encryption_pk;
         let identity_type = registration_code.identity_type;
-        let standard_identity_type = identity_type.to_standard().unwrap();
+        println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
+        // Comment (to me): this should be able to handle Device and Agent identities
+        // why are we forcing standard_idendity_type?
+        // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
 
         println!("identity_type: {:?}", identity_type);
@@ -586,43 +589,87 @@ impl Node {
             .map(|_| "true".to_string());
         std::mem::drop(db);
 
+        // TODO: we should split this on two flows. Profile registration and Device registration
+
         // TODO: add code if you are the first one some special stuff happens.
         // definition of a shared symmetric encryption key
         // probably we need to sign a message with the pk from the first user
         // TODO: this could had been adding a device for an existent profile
         match result {
             Ok(success) => {
-                let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
-                let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                match identity_type {
+                    IdentityType::Profile | IdentityType::Global => {
+                        // Existing logic for handling profile identity
+                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                let full_identity_name_result =
-                    ShinkaiName::from_node_and_profile(self.node_profile_name.get_node_name(), profile_name.clone());
+                        let full_identity_name_result = ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_name.clone(),
+                        );
 
-                if let Err(e) = &full_identity_name_result {
-                    error!("Failed to add subidentity: {}", e);
-                    let _ = res.send(e.to_string()).await;
-                }
+                        if let Err(e) = &full_identity_name_result {
+                            error!("Failed to add subidentity: {}", e);
+                            let _ = res.send(e.to_string()).await;
+                        }
 
-                let full_identity_name = full_identity_name_result.unwrap();
+                        let full_identity_name = full_identity_name_result.unwrap();
+                        let standard_identity_type = identity_type.to_standard().unwrap();
 
-                let subidentity = StandardIdentity {
-                    full_identity_name,
-                    addr: None,
-                    profile_signature_public_key: Some(signature_pk_obj),
-                    profile_encryption_public_key: Some(encryption_pk_obj),
-                    node_encryption_public_key: self.encryption_public_key.clone(),
-                    node_signature_public_key: self.identity_public_key.clone(),
-                    identity_type: standard_identity_type,
-                    permission_type,
-                };
-                let mut subidentity_manager = self.identity_manager.lock().await;
-                match subidentity_manager.add_subidentity(subidentity).await {
-                    Ok(_) => {
-                        let _ = res.send(success).await.map_err(|_| ());
+                        let subidentity = StandardIdentity {
+                            full_identity_name,
+                            addr: None,
+                            profile_signature_public_key: Some(signature_pk_obj),
+                            profile_encryption_public_key: Some(encryption_pk_obj),
+                            node_encryption_public_key: self.encryption_public_key.clone(),
+                            node_signature_public_key: self.identity_public_key.clone(),
+                            identity_type: standard_identity_type,
+                            permission_type,
+                        };
+                        let mut subidentity_manager = self.identity_manager.lock().await;
+                        match subidentity_manager.add_profile_subidentity(subidentity).await {
+                            Ok(_) => {
+                                let _ = res.send(success).await.map_err(|_| ());
+                            }
+                            Err(err) => {
+                                error!("Failed to add subidentity: {}", err);
+                            }
+                        }
                     }
-                    Err(err) => {
-                        error!("Failed to add subidentity: {}", err);
+                    IdentityType::Device => {
+                        // Logic for handling device identity
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                        let full_identity_name = ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_name.clone(),
+                        )
+                        .unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+
+                        let device_identity = DeviceIdentity {
+                            full_identity_name,
+                            node_encryption_public_key: self.encryption_public_key.clone(),
+                            node_signature_public_key: self.identity_public_key.clone(),
+                            profile_encryption_public_key: Some(encryption_pk_obj),
+                            profile_signature_public_key: Some(signature_pk_obj),
+                            device_signature_public_key: None, // NOTE: This assumes you don't have the device signature PK in the RegistrationCode. Adjust if necessary.
+                            permission_type,
+                        };
+
+                        let mut identity_manager = self.identity_manager.lock().await;
+                        match identity_manager.add_device_subidentity(device_identity).await {
+                            Ok(_) => {
+                                let _ = res.send(success).await.map_err(|_| ());
+                            }
+                            Err(err) => {
+                                error!("Failed to add device subidentity: {}", err);
+                            }
+                        }
+                    }
+                    _ => {
+                        // Handle other cases if required.
                     }
                 }
             }

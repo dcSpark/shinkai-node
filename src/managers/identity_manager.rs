@@ -64,18 +64,19 @@ impl IdentityManager {
         })
     }
 
-    pub async fn add_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
-        let db = self.db.lock().await;
-        db.insert_profile(identity.clone())?;
+    pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
         self.local_identities
             .push(Identity::Standard(identity.clone()));
         Ok(())
     }
 
     pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
-        let mut db = self.db.lock().await;
-        db.add_agent(agent.clone())?;
         self.local_identities.push(Identity::Agent(agent.clone()));
+        Ok(())
+    }
+
+    pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
+        self.local_identities.push(Identity::Device(device.clone()));
         Ok(())
     }
 

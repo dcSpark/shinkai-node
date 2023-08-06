@@ -103,6 +103,7 @@ fn main() {
                 node2_encryption_pk,
                 code.to_string(),
                 "device".to_string(),
+                "global".to_string(),
                 global_identity_name.to_string().clone(),
                 recipient.to_string(),
             )

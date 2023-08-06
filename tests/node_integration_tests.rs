@@ -1,4 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
+use async_std::println;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, encryption_public_key_to_string, EncryptionMethod, decrypt_content_message, encryption_secret_key_to_string};
@@ -152,7 +153,8 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node2_encryption_pk,
                     node2_registration_code.to_string(),
-                    IdentityType::Device.to_string(),
+                    IdentityType::Profile.to_string(),
+                    IdentityPermissions::Admin.to_string(),
                     node2_subidentity_name.to_string().clone(),
                     node2_identity_name.to_string(),
                 )
@@ -188,9 +190,11 @@ fn subidentity_registration() {
                 let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap();
 
                 assert_eq!(node2_all_subidentities.len(), 1, "Node 2 has 1 subidentity");
+                println!("Node 2 subidentity: {:?}", node2_subidentity_name.to_string());
+                println!("Node 2 subidentity: {:?}", node2_all_subidentities[0].full_identity_name);
                 assert_eq!(
                     node2_all_subidentities[0].full_identity_name,
-                    ShinkaiName::new(node2_subidentity_name.to_string()).unwrap(),
+                    ShinkaiName::from_node_and_profile(node2_identity_name.to_string(), node2_subidentity_name.to_string()).unwrap(),
                     "Node 2 has the right subidentity"
                 );
             }
@@ -362,7 +366,8 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_subidentity_sk),
                     node1_encryption_pk,
                     node1_registration_code.to_string(),
-                    IdentityType::Device.to_string(),
+                    IdentityType::Profile.to_string(),
+                    IdentityPermissions::Admin.to_string(),
                     node1_subidentity_name.to_string().clone(),
                     node1_identity_name.to_string(),
                 )

@@ -18,14 +18,23 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use mockito::Server;
-    use shinkai_message_wasm::{shinkai_utils::{utils::hash_string, signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, encryption::unsafe_deterministic_encryption_keypair, shinkai_message_builder::ShinkaiMessageBuilder}, shinkai_message::shinkai_message_schemas::JobScope, schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName}};
+    use shinkai_message_wasm::{
+        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
+        shinkai_message::shinkai_message_schemas::JobScope,
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair,
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+            utils::hash_string,
+        },
+    };
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
             agent::{Agent, AgentAPIModel},
             agent_serialization::SerializedAgent,
             identity_manager,
-            job_manager::{JobLike, AgentManager, JobManager},
+            job_manager::{AgentManager, JobLike, JobManager},
             providers::openai::OpenAI,
         },
     };
@@ -96,7 +105,11 @@ mod tests {
 
         let agent = SerializedAgent {
             id: "test_agent_id".to_string(),
-            full_identity_name: ShinkaiName::from_node_and_profile(node_profile_name.get_node_name(), "test_name".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::from_node_and_profile(
+                node_profile_name.get_node_name(),
+                "test_name".to_string(),
+            )
+            .unwrap(),
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
@@ -106,6 +119,8 @@ mod tests {
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
         {
+            let mut db = db_arc.lock().await;
+            db.add_agent(agent.clone());
             let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone()).await;
         }
 
@@ -157,7 +172,7 @@ mod tests {
             node_profile_name.to_string(),
             agent.id,
         )
-        .unwrap();   
+        .unwrap();
 
         match job_manager.process_job_message(shinkai_job_message, None).await {
             Ok(job_id) => {
