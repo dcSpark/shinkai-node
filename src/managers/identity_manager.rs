@@ -1,5 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::network::Node;
 use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
 };
@@ -11,7 +12,7 @@ use shinkai_message_wasm::shinkai_utils::encryption::{
 use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -24,10 +25,14 @@ pub struct IdentityManager {
     pub local_identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
+    pub is_ready: bool,
 }
 
 impl IdentityManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        local_node_name: ShinkaiName,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
@@ -47,26 +52,31 @@ impl IdentityManager {
 
         identities.extend(agents);
 
-        // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
-        // if identities.is_empty() {
-        //     return Err(Box::new(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         "No identities found in database",
-        //     )));
-        // }
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
-            
+
+        // Logic to check if the node is ready
+        let current_ready_status = identities.iter().any(|identity| {
+            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
+        });
+
         Ok(Self {
             local_node_name: local_node_name.extract_node(),
             local_identities: identities,
             db,
             external_identity_manager,
+            is_ready: current_ready_status
         })
     }
 
     pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
-        self.local_identities
-            .push(Identity::Standard(identity.clone()));
+        eprintln!("add_profile_subidentity > identity: {}", identity);
+        let previously_had_profile_identity = self.has_profile_identity();
+        self.local_identities.push(Identity::Standard(identity.clone()));
+
+        if !previously_had_profile_identity && self.has_profile_identity() {
+            eprintln!("YAY! first profile added!");
+            self.is_ready = true;
+        }
         Ok(())
     }
 
@@ -78,6 +88,12 @@ impl IdentityManager {
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
         self.local_identities.push(Identity::Device(device.clone()));
         Ok(())
+    }
+
+    pub fn has_profile_identity(&self) -> bool {
+        self.local_identities.iter().any(|identity| {
+            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
+        })
     }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {

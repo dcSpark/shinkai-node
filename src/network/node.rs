@@ -1,11 +1,11 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
 use shinkai_message_wasm::shinkai_utils::encryption::{
@@ -20,8 +20,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::ShinkaiDB;
 use crate::db::db_identity_registration::RegistrationCodeType;
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::JobManager;
 use crate::managers::{job_manager, IdentityManager};
@@ -220,6 +220,7 @@ impl Node {
             }
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
+
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
@@ -265,39 +266,40 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
+
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future);
+            pin_mut!(ping_future, commands_future);            
 
             select! {
-                    listen = listen_future => unreachable!(),
-                    ping = ping_future => self.ping_all().await?,
-                    // check_peers = check_peers_future => self.connect_new_peers().await?,
-                    command = commands_future => {
-                        match command {
-                            Some(NodeCommand::PingAll) => self.ping_all().await?,
-                            Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
-                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
-                            Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
-                            Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
-                            Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
-                            Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
-                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
-                            // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
-                            _ => break,
+                        listen = listen_future => unreachable!(),
+                        ping = ping_future => self.ping_all().await?,
+                        // check_peers = check_peers_future => self.connect_new_peers().await?,
+                        command = commands_future => {
+                            match command {
+                                Some(NodeCommand::PingAll) => self.ping_all().await?,
+                                Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
+                                Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
+                                Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
+                                Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
+                                Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
+                                Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
+                                Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
+                                Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
+                                Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
+                                Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
+                                Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                                Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                                Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
+                                Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
+                                // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
+                                _ => break,
+                            }
                         }
-                    }
-            };
+                };
         }
         Ok(())
     }
@@ -362,6 +364,12 @@ impl Node {
                 }
             });
         }
+    }
+
+    // indicates if the node is ready or not
+    pub async fn is_node_ready(&self) -> bool {
+        let identity_manager_guard = self.identity_manager.lock().await;
+        identity_manager_guard.is_ready
     }
 
     // Get a list of peers this node knows about.
@@ -468,9 +476,13 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message)
+                    .unwrap()
+                    .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message)
+                    .unwrap()
+                    .to_string();
             }
             // find the sender's encryption public key in external
             let sender_encryption_pk = maybe_identity_manager
@@ -533,7 +545,9 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message).unwrap().get_node_name();
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message)
+            .unwrap()
+            .get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await
