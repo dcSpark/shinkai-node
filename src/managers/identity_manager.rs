@@ -24,10 +24,15 @@ pub struct IdentityManager {
     pub local_identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
+    standby_update_sender: Option<async_std::channel::Sender<bool>>,
 }
 
 impl IdentityManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        local_node_name: ShinkaiName,
+        sender: async_std::channel::Sender<bool>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
@@ -48,18 +53,30 @@ impl IdentityManager {
         identities.extend(agents);
 
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
-            
+
         Ok(Self {
             local_node_name: local_node_name.extract_node(),
             local_identities: identities,
             db,
             external_identity_manager,
+            standby_update_sender: Some(sender),
         })
     }
 
     pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
-        self.local_identities
-            .push(Identity::Standard(identity.clone()));
+        eprintln!("add_profile_subidentity > identity: {:?}", identity);
+        let previously_had_profile_identity = self.has_profile_identity();
+        self.local_identities.push(Identity::Standard(identity.clone()));
+
+        if !previously_had_profile_identity && self.has_profile_identity() {
+            if let Some(sender) = &self.standby_update_sender {
+                eprintln!("add_profile_subidentity > sender: {:?}", sender);
+                sender
+                    .send(false)
+                    .await
+                    .expect("Failed to notify about profile identity addition");
+            }
+        }
         Ok(())
     }
 

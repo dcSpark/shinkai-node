@@ -93,7 +93,8 @@ mod tests {
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
         }
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
+        let (node_standby_tx, node_standby_rx) = async_std::channel::unbounded::<bool>();
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone(), node_standby_tx)
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));

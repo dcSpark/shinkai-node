@@ -135,6 +135,8 @@ type ProfileName = String;
 pub struct Node {
     // Checks if the Node is in standby mode.
     pub is_standby: AtomicBool,
+    // Require for above
+    pub is_standby_update_listener: Receiver<bool>,
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -196,7 +198,9 @@ impl Node {
             }
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
+        let (node_standby_tx, node_standby_rx) = async_std::channel::unbounded::<bool>();
+
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone(), node_standby_tx)
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -208,6 +212,7 @@ impl Node {
 
         Node {
             is_standby: AtomicBool::new(is_standby),
+            is_standby_update_listener: node_standby_rx,
             node_profile_name,
             identity_secret_key,
             identity_public_key,
@@ -228,7 +233,6 @@ impl Node {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
-        let standby_check_interval_secs = 1;
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
         } else {
@@ -238,24 +242,30 @@ impl Node {
 
         let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
-        let mut standby_check_interval = async_std::stream::interval(Duration::from_secs(standby_check_interval_secs));
 
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
         let mut check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
+        let ping_future = ping_interval.next().fuse();
+        let commands_future = commands_clone.next().fuse();
+        let mut profile_identity_update_listener = self.is_standby_update_listener.clone().fuse();
+
+        pin_mut!(ping_future, commands_future, profile_identity_update_listener);
+
+        eprintln!("Starting node loop");
         loop {
-            let ping_future = ping_interval.next().fuse();
-            let commands_future = commands_clone.next().fuse();
-            let standby_check_future = standby_check_interval.next().fuse();
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future, standby_check_future);
-
             select! {
-                    _ = standby_check_future => {
-                        let current_status = self.identity_manager.lock().await.has_profile_identity();
-                        self.is_standby.store(current_status, Ordering::Relaxed);
+                    standby_update = profile_identity_update_listener.next() => {
+                        if let Some(updated_standby_status) = standby_update {
+                            if !updated_standby_status {
+                                // The profile identity has been added for the first time.
+                                self.is_standby.store(false, Ordering::Relaxed);
+                                info!("Profile identity added and node is now out of standby mode!");
+                            }
+                        }
                     },
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
@@ -323,6 +333,9 @@ impl Node {
                             return;
                         }
                         Ok(n) => {
+                            // TODO: add code that checks if it's in standby
+                            // if so, then return an error message
+
                             // println!("{} > TCP: Received message.", addr);
                             println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
                             let destination_socket = socket.peer_addr().expect("Failed to get peer address");
@@ -359,6 +372,7 @@ impl Node {
     // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> Result<(), NodeError> {
         if self.is_standby.load(Ordering::Relaxed) {
+            eprintln!("{} > Node is in standby mode.", self.node_profile_name);
             return Err(NodeError::InStandbyMode);
         }
 

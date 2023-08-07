@@ -1,10 +1,10 @@
-use super::{node_message_handlers::verify_message_signature, Node, node_error::NodeError};
+use super::{node_error::NodeError, node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
-        identity::{Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity, DeviceIdentity},
+        identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
     },
 };
@@ -62,7 +62,7 @@ impl Node {
 
     pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        println!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
+        eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
@@ -164,7 +164,7 @@ impl Node {
             .await
             .unwrap();
 
-        println!(
+        eprintln!(
             "handle_onionized_message > external_global_identity: {:?}",
             external_global_identity
         );
@@ -192,7 +192,7 @@ impl Node {
             .await
             .unwrap();
 
-        println!(
+        eprintln!(
             "handle_onionized_message > recipient_profile_name_string: {}",
             recipient_profile_name_string
         );
@@ -209,15 +209,6 @@ impl Node {
             self.identity_manager.clone(),
         )
         .await?;
-        // println!(
-        //     "handle_onionized_message who am I: {:?}",
-        //     self.node_profile_name
-        // );
-        // println!(
-        //     "Finished successfully> handle_onionized_message msg: {:?}",
-        //     msg
-        // );
-        // println!("\n\n");
         Ok(())
     }
 
@@ -300,6 +291,7 @@ impl Node {
             .generate_registration_new_code(permissions, code_type)
             .unwrap_or_else(|_| "".to_string());
         let _ = res.send(code).await.map_err(|_| ());
+
         Ok(())
     }
 
@@ -328,14 +320,15 @@ impl Node {
         res: Sender<String>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            res.send(format!("No identity found with the name: {}", identity_name))
+            let _ = res
+                .send(format!("No identity found with the name: {}", identity_name))
                 .await;
             return;
         }
@@ -347,12 +340,14 @@ impl Node {
             Identity::Standard(std_identity) => std_identity.clone(),
             Identity::Device(_) => {
                 // This case shouldn't happen because we are filtering out device identities
-                res.send(format!("Device identities cannot have inbox permissions"))
+                let _ = res
+                    .send(format!("Device identities cannot have inbox permissions"))
                     .await;
                 return;
             }
             Identity::Agent(_) => {
-                res.send(format!("Agent identities cannot have inbox permissions"))
+                let _ = res
+                    .send(format!("Agent identities cannot have inbox permissions"))
                     .await;
                 return;
             }
@@ -380,14 +375,15 @@ impl Node {
         res: Sender<String>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            res.send(format!("No identity found with the name: {}", identity_name))
+            let _ = res
+                .send(format!("No identity found with the name: {}", identity_name))
                 .await;
             return;
         }
@@ -400,12 +396,13 @@ impl Node {
             Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
                 Some(identity) => identity,
                 None => {
-                    res.send(format!("Device identity is not valid.")).await;
+                    let _ = res.send(format!("Device identity is not valid.")).await;
                     return;
                 }
             },
             Identity::Agent(_) => {
-                res.send(format!("Agent identities cannot have inbox permissions"))
+                let _ = res
+                    .send(format!("Agent identities cannot have inbox permissions"))
                     .await;
                 return;
             }
@@ -414,14 +411,15 @@ impl Node {
         // First, check if permission exists and remove it if it does
         match self.db.lock().await.remove_permission(&inbox_name, &standard_identity) {
             Ok(()) => {
-                res.send(format!(
-                    "Permission removed successfully from identity {}.",
-                    identity_name
-                ))
-                .await;
+                let _ = res
+                    .send(format!(
+                        "Permission removed successfully from identity {}.",
+                        identity_name
+                    ))
+                    .await;
             }
             Err(e) => {
-                res.send(format!("Error removing permission: {:?}", e)).await;
+                let _ = res.send(format!("Error removing permission: {:?}", e)).await;
             }
         }
     }
@@ -434,14 +432,14 @@ impl Node {
         res: Sender<bool>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            res.send(false).await;
+            let _ = res.send(false).await;
             return;
         }
 
@@ -453,12 +451,12 @@ impl Node {
             Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
                 Some(identity) => identity,
                 None => {
-                    res.send(false).await;
+                    let _ = res.send(false).await;
                     return;
                 }
             },
             Identity::Agent(_) => {
-                res.send(false).await;
+                let _ = res.send(false).await;
                 return;
             }
         };
@@ -466,7 +464,7 @@ impl Node {
         let perm = match InboxPermission::from_str(&perm_type) {
             Ok(perm) => perm,
             Err(_) => {
-                res.send(false).await;
+                let _ = res.send(false).await;
                 return;
             }
         };
@@ -478,10 +476,10 @@ impl Node {
             .has_permission(&inbox_name, &standard_identity, perm)
         {
             Ok(result) => {
-                res.send(result).await;
+                let _ = res.send(result).await;
             }
             Err(_) => {
-                res.send(false).await;
+                let _ = res.send(false).await;
             }
         }
     }
@@ -496,7 +494,7 @@ impl Node {
         {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
-                res.send((job_id, String::new())).await;
+                let _ = res.send((job_id, String::new())).await;
             }
             Err(err) => {
                 // If there was an error, send the error message
@@ -516,7 +514,7 @@ impl Node {
         {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
-                res.send((job_id, String::new())).await;
+                let _ = res.send((job_id, String::new())).await;
             }
             Err(err) => {
                 // If there was an error, send the error message
@@ -536,8 +534,9 @@ impl Node {
 
         // Decrypt the message
         let message_to_decrypt = msg.clone();
-        let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
-        let encryption_secret_key_string = encryption_secret_key_to_string(self.encryption_secret_key.clone());
+        // TODO: remove this if it's unused
+        // let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
+        // let encryption_secret_key_string = encryption_secret_key_to_string(self.encryption_secret_key.clone());
 
         let decrypted_content = decrypt_body_message(
             &message_to_decrypt.clone(),

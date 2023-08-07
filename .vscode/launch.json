@@ -82,40 +82,22 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug integration test 'libp2p_tests'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--test=libp2p_tests",
-                    "--package=shinkai_node"
-                ],
-                "filter": {
-                    "name": "libp2p_tests",
-                    "kind": "test"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug integration test 'subidentity_registation'",
             "cargo": {
                 "args": [
                     "test",
-                    "--no-run",
-                    "--test=subidentity_registation",
-                    "--package=shinkai_node"
+                    "--bin=shinkai_node",
+                    "--package=shinkai_node",
+                    "--test=node_integration_tests"
                 ],
                 "filter": {
-                    "name": "subidentity_registation",
+                    "name": "subidentity_registration",
                     "kind": "test"
                 }
             },
-            "args": [],
-            "cwd": "${workspaceFolder}"
+            "args": ["--nocapture", "subidentity_registration"],
+            "cwd": "${workspaceFolder}",
+            "sourceLanguages": ["rust"]
         },
         {
             "type": "lldb",
