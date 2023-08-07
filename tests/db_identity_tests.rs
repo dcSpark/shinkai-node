@@ -196,12 +196,10 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
             &encryption_public_key_to_string(device_encryption_pk),
         );
 
-    println!("device_result: {:?}", device_result);
-
     // Check if "main" profile exists in db
     let main_profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "main".to_string()).unwrap();
     let main_permission_in_db = shinkai_db.get_profile_permission(main_profile_name.clone()).unwrap();
-    assert_eq!(main_permission_in_db, IdentityPermissions::Admin);  // Assuming main has Admin permissions
+    assert_eq!(main_permission_in_db, IdentityPermissions::Admin);
 
     // Check if device exists in db
     let device_full_name = ShinkaiName::from_node_and_profile_and_type_and_name(

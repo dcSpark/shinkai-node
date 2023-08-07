@@ -1,14 +1,19 @@
+use crate::db::db_identity_registration::RegistrationCodeType;
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
+use crate::schemas::identity::IdentityPermissions;
 use crate::utils::args::parse_args;
+use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
+use crate::utils::qr_code_setup::QRSetupData;
 use anyhow::Error;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{info, warn};
 use network::Node;
+use qrcode::QrCode;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
@@ -18,13 +23,12 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
-use shinkai_message_wasm::ShinkaiMessageWrapper;
-use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
@@ -77,84 +81,10 @@ fn main() {
         encryption_public_key_to_string(node_keys.encryption_public_key.clone())
     );
 
+    // CLI
     if args.create_message {
-        let node2_encryption_pk_str = args
-            .receiver_encryption_pk
-            .expect("receiver_encryption_pk argument is required for create_message");
-        let recipient = args
-            .recipient
-            .expect("recipient argument is required for create_message");
-        let sender_subidentity = args.sender_subidentity.unwrap_or("".to_string());
-        let receiver_subidentity = args.receiver_subidentity.unwrap_or("".to_string());
-        let inbox = args.inbox.unwrap_or("".to_string());
-        let body_content = args.body_content.unwrap_or("body content".to_string());
-        let other = args.other.unwrap_or("".to_string());
-        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
-
-        println!("Creating message for recipient: {}", recipient);
-        println!("identity_secret_key: {}", identity_secret_key_string);
-        println!("receiver_encryption_pk: {}", node2_encryption_pk_str);
-
-        if let Some(code) = args.code_registration {
-            // Call the `code_registration` function
-            let message = ShinkaiMessageBuilder::code_registration(
-                node_keys.encryption_secret_key,
-                node_keys.identity_secret_key,
-                node2_encryption_pk,
-                code.to_string(),
-                "device".to_string(),
-                "global".to_string(),
-                global_identity_name.to_string().clone(),
-                recipient.to_string(),
-            )
-            .expect("Failed to create message with code registration");
-
-            println!(
-                "Message's signature: {}",
-                message.clone().external_metadata.unwrap().signature
-            );
-
-            // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message);
-
-            match message_json {
-                Ok(json) => println!("{}", json),
-                Err(e) => println!("Error creating JSON: {}", e),
-            }
-            return;
-        } else if args.create_message {
-            // Use your key generation and ShinkaiMessageBuilder code here
-            let message = ShinkaiMessageBuilder::new(
-                node_keys.encryption_secret_key,
-                node_keys.identity_secret_key,
-                node2_encryption_pk,
-            )
-            .body(body_content.to_string())
-            .body_encryption(EncryptionMethod::None)
-            .message_schema_type(MessageSchemaType::Empty)
-            .internal_metadata(
-                sender_subidentity.to_string(),
-                receiver_subidentity.to_string(),
-                inbox.to_string(),
-                EncryptionMethod::None,
-            )
-            .external_metadata(recipient.to_string(), global_identity_name.to_string().clone())
-            .build();
-
-            println!(
-                "Message's signature: {}",
-                message.clone().unwrap().external_metadata.unwrap().signature
-            );
-
-            // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message);
-
-            match message_json {
-                Ok(json) => println!("{}", json),
-                Err(e) => println!("Error creating JSON: {}", e),
-            }
-            return;
-        }
+        cli_handle_create_message(args, &node_keys, &global_identity_name);
+        return;
     }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
@@ -189,11 +119,6 @@ fn main() {
 
     // Run the API server and node in separate tasks
     rt.block_on(async {
-        // API Server task
-        let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
-        });
-
         // Node task
         // TODO: this needs redo after node refactoring
         let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
@@ -206,6 +131,79 @@ fn main() {
         } else {
             tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
         };
+
+        // Check if the node is ready
+        if !node.lock().await.is_node_ready().await {
+            println!("The node doesn't have any profiles or devices initialized so it's waiting for that.");
+
+            // Generate the device code
+            let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
+            node_commands_sender
+                .send(NodeCommand::CreateRegistrationCode {
+                    permissions: IdentityPermissions::Admin,
+                    code_type: RegistrationCodeType::Device("main".to_string()),
+                    res: res1_registration_sender,
+                })
+                .await
+                .unwrap();
+            let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
+
+            // Print the device code
+            println!("Device Code: {}", node_registration_code);
+
+            let qr_data = QRSetupData {
+                registration_code: node_registration_code,
+                profile: "main".to_string(),
+                registration_type: "device".to_string(),
+                node_ip: "123".to_string(), // You need to extract the IP from node_env.api_listen_address
+                node_port: "...".to_string(), // You need to extract the Port from node_env.api_listen_address
+                shinkai_identity: global_identity_name,
+                node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+                node_signature_pk: identity_public_key_string,
+            };
+
+            let qr_json_string = serde_json::to_string(&qr_data).expect("Failed to serialize QR data to JSON");
+
+            // Generate and save QR code as an image
+            let qr_code = QrCode::new(qr_json_string.as_bytes()).unwrap();
+            let image = qr_code.render::<image::Luma<u8>>().build();
+            image.save("device_code.png").unwrap();
+
+            // Optionally: Display QR code in terminal (requires "qrcode" crate with "term" feature)
+            // let term_qr = code.render::<char>().dark_color('█').light_color(' ').build();
+            // println!("{}", term_qr);
+            let border = 2;
+            let colors = qr_code.to_colors();
+            let size = (colors.len() as f64).sqrt() as usize;
+
+            for y in (-border..size as isize + border).step_by(2) {
+                for x in -border..size as isize + border {
+                    let get_color = |x: isize, y: isize| -> bool {
+                        if x >= 0 && y >= 0 && x < size as isize && y < size as isize {
+                            colors[y as usize * size + x as usize] == qrcode::Color::Dark
+                        } else {
+                            false
+                        }
+                    };
+
+                    let top_module = get_color(x, y);
+                    let bottom_module = get_color(x, y + 1);
+
+                    match (top_module, bottom_module) {
+                        (true, true) => print!("█"),
+                        (true, false) => print!("▀"),
+                        (false, true) => print!("▄"),
+                        _ => print!(" "),
+                    }
+                }
+                println!();
+            }
+        }
+
+        // API Server task
+        let api_server = tokio::spawn(async move {
+            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
+        });
 
         let _ = tokio::try_join!(api_server, node_task);
     });
