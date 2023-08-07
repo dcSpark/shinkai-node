@@ -9,6 +9,8 @@ use std::env;
 use std::process::Command;
 
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
     prepare_bert_cpp();
 

@@ -1,7 +1,7 @@
 use crate::resources::resource_errors::*;
 use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
-use pdf_extract;
+use mupdf::pdf::{PdfDocument, PdfFilterOptions, PdfPage};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use std::{io::Cursor, vec};
@@ -11,17 +11,6 @@ pub struct FileParser {}
 impl FileParser {
     /// Parse CSV data from a buffer and attempt to automatically detect
     /// headers.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the CSV data.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `Vec<String>`. Each `String` represents a row in
-    /// the CSV, and contains the column values for that row, concatenated
-    /// together with commas. If an error occurs while parsing the CSV data,
-    /// the `Result` will contain an `Error`.
     pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = reader
@@ -43,19 +32,8 @@ impl FileParser {
     }
 
     /// Parse CSV data from a buffer.
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the CSV data.
     /// * `header` - A boolean indicating whether to prepend column headers to
     ///   values.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `Vec<String>`. Each `String` represents a row in
-    /// the CSV, and contains the column values for that row, concatenated
-    /// together with commas. If an error occurs while parsing the CSV data,
-    /// the `Result` will contain an `Error`.
     pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, ResourceError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = if header {
@@ -90,18 +68,8 @@ impl FileParser {
 
     /// Parse text from a PDF in a buffer, performing sentence extraction,
     /// text cleanup, and sentence grouping (for data chunks).
-    ///
-    /// # Arguments
-    ///
-    /// * `buffer` - A byte slice containing the PDF data.
     /// * `average_group_size` - Average number of characters per group desired.
     ///   Do note, we stop at fully sentences, so this is just a target minimum.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a `Vec<String>` of sentences groups from the PDF.
-    /// If an error occurs while parsing the PDF data, the `Result` will
-    /// contain an `Error`.
     pub fn parse_pdf(buffer: &[u8], average_group_size: u64) -> Result<Vec<String>, ResourceError> {
         // Setting average length to 400, to respect small context size LLMs.
         // Sentences continue past this light 400 cap, so it has to be less than the
@@ -111,10 +79,25 @@ impl FileParser {
         } else {
             average_group_size
         };
-        let text = pdf_extract::extract_text_from_mem(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
+        let text = FileParser::extract_text_from_pdf_buffer(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
         let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
 
         grouped_text_list
+    }
+
+    /// Extracts text from a pdf buffer using MuPDF
+    fn extract_text_from_pdf_buffer(buffer: &[u8]) -> Result<String, mupdf::Error> {
+        let document = PdfDocument::from_bytes(buffer)?;
+
+        let mut text = String::new();
+
+        for page_number in 0..document.page_count()? {
+            let page = document.load_page(page_number)?;
+            let page_text = page.to_text()?;
+            text.push_str(&page_text);
+        }
+
+        Ok(text)
     }
 
     /// Generates a Sha256 hash of the input data.
@@ -127,16 +110,6 @@ impl FileParser {
 
     /// Extracts the most important keywords from a given text,
     /// using the RAKE algorithm.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - A string slice that holds the text from which keywords are to
-    ///   be extracted.
-    /// * `num` - The number of keywords to extract/return.
-    ///
-    /// # Returns
-    ///
-    /// A `Vec<String>` that contains the extracted keywords.
     pub fn extract_keywords(text: &str, num: u64) -> Vec<String> {
         // Create a new KeyPhraseExtractor with a maximum of num keywords
         let extractor = KeyPhraseExtractor::new(text, num as usize);
@@ -249,22 +222,6 @@ impl FileParser {
     /// into sentences, and then the sentences are grouped together until the
     /// total length of the group exceeds the character minimum. Once the
     /// character minimum is exceeded, a new group is started.
-    ///
-    /// # Arguments
-    ///
-    /// * `text` - A string slice that holds the text to be split into groups.
-    /// * `average_group_size` - The minimum total length of the sentences in a
-    ///   group.
-    ///
-    /// # Returns
-    ///
-    /// * `Result<Vec<String>, ResourceError>` - A vector of groups, or an error
-    ///   if one occurred during the grouping process.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if a regular expression fails to
-    /// compile.
     fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, ResourceError> {
         let cleaned_text = FileParser::clean_text(text)?;
         let sentences = FileParser::split_into_sentences(&cleaned_text);
