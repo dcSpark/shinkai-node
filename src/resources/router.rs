@@ -3,6 +3,7 @@ use crate::resources::embeddings::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
+use std::collections::HashMap;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::str::FromStr;
@@ -39,6 +40,14 @@ impl ResourcePointer {
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
         }
+    }
+
+    /// Wraps the resource pointer's db_key into a hashmap ready to use for
+    /// the resource router's chunk metadata
+    pub fn _db_key_as_metadata_hashmap(&self) -> HashMap<String, String> {
+        let mut hmap = HashMap::new();
+        hmap.insert(ResourceRouter::router_chunk_metadata_key(), self.db_key.clone());
+        hmap
     }
 }
 
@@ -100,6 +109,12 @@ impl ResourceRouter {
         self.ret_data_chunks_to_pointers(&chunks)
     }
 
+    /// A hardcoded key string used for the metadata hashmap of data chunks
+    /// in the router's internal resource
+    fn router_chunk_metadata_key() -> String {
+        "db_key".to_string()
+    }
+
     /// Takes a list of RetrievedDataChunks and outputs a list of ResourcePointers
     /// that point to the real resource (not the resource router).
     ///
@@ -113,7 +128,11 @@ impl ResourceRouter {
             if let Ok(resource_type) =
                 ResourceType::from_str(&ret_chunk.chunk.data).map_err(|_| ResourceError::InvalidResourceType)
             {
-                let db_key = &ret_chunk.chunk.metadata.clone().unwrap_or_default();
+                let metadata = &ret_chunk.chunk.metadata.clone().unwrap_or_default();
+                let db_key: String = metadata
+                    .get(&ResourceRouter::router_chunk_metadata_key())
+                    .cloned()
+                    .unwrap_or_default();
                 let id = &ret_chunk.chunk.id;
                 let embedding = self.routing_resource.get_chunk_embedding(id).ok();
                 let resource_pointer = ResourcePointer::new(
@@ -144,9 +163,10 @@ impl ResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(ResourceError::NoEmbeddingProvided)?;
-        let metadata = resource_pointer.db_key.clone();
+        let db_key = resource_pointer.db_key.to_string();
+        let metadata = Some(resource_pointer._db_key_as_metadata_hashmap());
 
-        match self.db_key_search(&metadata) {
+        match self.db_key_search(&db_key) {
             Ok(old_pointer) => {
                 // If a resource pointer with matching db_key is found,
                 // replace the existing resource pointer with the new one.
@@ -159,7 +179,7 @@ impl ResourceRouter {
                 // original resource.
                 self.routing_resource._append_data_without_tag_validation(
                     &data,
-                    Some(&metadata),
+                    metadata,
                     &embedding,
                     &resource_pointer.data_tag_names,
                 );
@@ -172,7 +192,9 @@ impl ResourceRouter {
     /// Search through the resource pointers to find if one exists with
     /// a matching db_key.
     pub fn db_key_search(&self, db_key: &str) -> Result<ResourcePointer, ResourceError> {
-        let ret_data = self.routing_resource.metadata_search(db_key)?;
+        let ret_data = self
+            .routing_resource
+            .metadata_search(&ResourceRouter::router_chunk_metadata_key(), db_key)?;
 
         if let Some(res_pointer) = self.ret_data_chunks_to_pointers(&ret_data).get(0).cloned() {
             return Ok(res_pointer);
@@ -192,7 +214,7 @@ impl ResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(ResourceError::NoEmbeddingProvided)?;
-        let metadata = resource_pointer.db_key.clone();
+        let metadata = Some(resource_pointer._db_key_as_metadata_hashmap());
         let old_pointer_id = old_pointer_id
             .parse::<u64>()
             .map_err(|_| ResourceError::InvalidChunkId)?;
@@ -200,7 +222,7 @@ impl ResourceRouter {
         self.routing_resource._replace_data_without_tag_validation(
             old_pointer_id,
             &data,
-            Some(&metadata),
+            metadata,
             &embedding,
             &resource_pointer.data_tag_names,
         )?;

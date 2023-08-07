@@ -6,7 +6,7 @@ use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
 
 use super::document::DocumentResource;
@@ -56,21 +56,31 @@ pub struct RetrievedDataChunk {
 pub struct DataChunk {
     pub id: String,
     pub data: String,
-    pub metadata: Option<String>,
+    pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>, // `DataTag` type is excessively heavy when we convert to JSON, thus we just use the names here
 }
 
 impl DataChunk {
-    pub fn new(id: String, data: &str, metadata: Option<&str>, data_tag_names: &Vec<String>) -> Self {
+    pub fn new(
+        id: String,
+        data: &str,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
         Self {
             id,
             data: data.to_string(),
-            metadata: metadata.map(|s| s.to_string()),
+            metadata,
             data_tag_names: data_tag_names.clone(),
         }
     }
 
-    pub fn new_with_integer_id(id: u64, data: &str, metadata: Option<&str>, data_tag_names: &Vec<String>) -> Self {
+    pub fn new_with_integer_id(
+        id: u64,
+        data: &str,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
         Self::new(id.to_string(), data, metadata, data_tag_names)
     }
 }

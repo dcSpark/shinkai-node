@@ -6,6 +6,7 @@ use crate::resources::model_type::*;
 use crate::resources::resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentResource {
@@ -169,17 +170,22 @@ impl DocumentResource {
         Ok(chunks)
     }
 
-    /// Returns all DataChunks with the same metadata.
-    pub fn metadata_search(&self, query_metadata: &str) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+    /// Returns all DataChunks with a matching key/value pair in the metadata hashmap
+    pub fn metadata_search(
+        &self,
+        metadata_key: &str,
+        metadata_value: &str,
+    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
         let mut matching_chunks = Vec::new();
 
         for chunk in &self.data_chunks {
             match &chunk.metadata {
-                Some(metadata) if metadata == &query_metadata => matching_chunks.push(RetrievedDataChunk {
-                    chunk: chunk.clone(),
-                    score: 0.00,
-                    resource_pointer: self.get_resource_pointer(),
-                }),
+                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_chunks
+                    .push(RetrievedDataChunk {
+                        chunk: chunk.clone(),
+                        score: 0.00,
+                        resource_pointer: self.get_resource_pointer(),
+                    }),
                 _ => (),
             }
         }
@@ -196,7 +202,7 @@ impl DocumentResource {
     pub fn append_data(
         &mut self,
         data: &str,
-        metadata: Option<&str>,
+        metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
@@ -210,7 +216,7 @@ impl DocumentResource {
     pub fn _append_data_without_tag_validation(
         &mut self,
         data: &str,
-        metadata: Option<&str>,
+        metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
@@ -231,7 +237,7 @@ impl DocumentResource {
         &mut self,
         id: u64,
         new_data: &str,
-        new_metadata: Option<&str>,
+        new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
     ) -> Result<DataChunk, ResourceError> {
@@ -247,7 +253,7 @@ impl DocumentResource {
         &mut self,
         id: u64,
         new_data: &str,
-        new_metadata: Option<&str>,
+        new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
     ) -> Result<DataChunk, ResourceError> {
