@@ -26,7 +26,7 @@ env:
 jobs:
   build-docker-image:
     name: build docker image
-    runs-on: ubuntu-22.04
+    runs-on: self-hosted
 
     steps:
       - name: Checkout

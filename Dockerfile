@@ -1,25 +1,22 @@
 # Use a Rust base image
-FROM rust:latest as builder
-RUN apt-get update && apt-get install -y libclang-dev 
+FROM rust:bookworm as builder
+RUN apt-get update && apt-get install -y libclang-dev cmake 
 
 # Create a new directory for your app
 WORKDIR /app
 
 # Copy the Cargo.toml and Cargo.lock files to the container
-COPY Cargo.toml Cargo.lock build.rs ./
 
-# Copy the source code to the container
-COPY src ./src
-COPY protos ./protos
+COPY . .
 
 # Build the dependencies (cached)
-RUN cargo build
+RUN cargo clean 
+RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build -vv
+RUN cargo test -- --test-threads=1
 
-# Build your application
-#RUN cargo build --release --locked
 
 # Create a new stage for the runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Install any necessary system dependencies
 RUN apt-get update && apt-get install -y \
