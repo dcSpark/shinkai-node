@@ -134,7 +134,7 @@ fn main() {
 
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {
-            println!("Warning! (Expected from for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
+            println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
 
             // Generate the device code
             let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
