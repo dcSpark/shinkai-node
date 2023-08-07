@@ -47,13 +47,6 @@ impl IdentityManager {
 
         identities.extend(agents);
 
-        // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
-        // if identities.is_empty() {
-        //     return Err(Box::new(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         "No identities found in database",
-        //     )));
-        // }
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
             
         Ok(Self {
@@ -78,6 +71,12 @@ impl IdentityManager {
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
         self.local_identities.push(Identity::Device(device.clone()));
         Ok(())
+    }
+
+    pub fn has_profile_identity(&self) -> bool {
+        self.local_identities.iter().any(|identity| {
+            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
+        })
     }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
@@ -218,52 +217,6 @@ impl IdentityManager {
 }
 
 impl IdentityManager {
-    // pub fn extract_subidentity(s: &str) -> String {
-    //     let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
-    //     re.captures(s)
-    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-    //         .unwrap_or_else(|| s.to_string())
-    // }
-
-    // pub fn extract_node_name(s: &str) -> String {
-    //     let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
-    //     re.captures(s)
-    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-    //         .unwrap_or_else(|| s.to_string())
-    // }
-
-    // pub fn is_valid_node_identity_name_and_no_subidentities(s: &str) -> bool {
-    //     let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
-    //     re.is_match(s)
-    // }
-
-    // pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
-    //     let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
-    //     re.is_match(s)
-    // }
-
-    // pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
-    //     let node_name = if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) {
-    //         node_name
-    //     } else {
-    //         format!("@@{}.shinkai", node_name)
-    //     };
-
-    //     let name = format!("{}/{}", node_name.to_lowercase(), subidentity_name.to_lowercase());
-    //     name
-    // }
-
-    // TODO: add a new that creates an Identity instance from a message
-    // pub fn extract_sender_node_global_name(message: &ShinkaiMessage) -> String {
-    //     let sender_profile_name = message.external_metadata.clone().unwrap().sender;
-    //     ShinkaiName::new(sender_profile_name).unwrap().node_name().to_string()
-    // }
-
-    // pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
-    //     let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
-    //     IdentityManager::extract_node_name(&sender_profile_name)
-    // }
-
     pub fn get_full_identity_name(identity: &Identity) -> Option<String> {
         match identity {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
@@ -271,8 +224,4 @@ impl IdentityManager {
             Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
         }
     }
-
-    // pub fn get_profile_name_from_device(device: &DeviceIdentity) -> Option<String> {
-    //     device.to_standard_identity().profile_name().map(|s| s.to_string())
-    // }
 }

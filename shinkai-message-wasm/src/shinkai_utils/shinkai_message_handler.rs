@@ -127,17 +127,20 @@ impl ShinkaiMessageHandler {
     }
 
     pub fn is_content_currently_encrypted(message: &ShinkaiMessage) -> bool {
+        println!("is_content_currently_encrypted {:?}", message);
         if ShinkaiMessageHandler::is_body_currently_encrypted(&message.clone()) {
             return true;
         }
 
         if let Some(body) = message.clone().body {
             if let Some(internal_metadata) = body.internal_metadata {
-                let encryption_method_none = EncryptionMethod::None.as_str().to_string();
-
+                // let encryption_method_none = EncryptionMethod::None.as_str().to_string();
+                println!("internal_metadata.encryption is empty: {:?}", internal_metadata.message_schema_type.is_empty());
+                println!("internal_metadata.encryption: {:?}", internal_metadata.encryption);
                 if internal_metadata.encryption != EncryptionMethod::None
                     && internal_metadata.message_schema_type.is_empty()
                 {
+                    println!("true");
                     return true;
                 }
             }

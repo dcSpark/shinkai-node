@@ -1,11 +1,11 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
 use shinkai_message_wasm::shinkai_utils::encryption::{
@@ -13,6 +13,8 @@ use shinkai_message_wasm::shinkai_utils::encryption::{
 };
 use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -20,11 +22,12 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::ShinkaiDB;
 use crate::db::db_identity_registration::RegistrationCodeType;
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::JobManager;
 use crate::managers::{job_manager, IdentityManager};
+use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
@@ -32,35 +35,6 @@ use crate::schemas::identity::{IdentityPermissions, StandardIdentity};
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
-
-#[derive(Debug)]
-pub struct NodeError {
-    message: String,
-}
-
-impl std::fmt::Display for NodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for NodeError {}
-
-impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<std::io::Error> for NodeError {
-    fn from(err: std::io::Error) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
 
 pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
@@ -159,6 +133,8 @@ type ProfileName = String;
 
 // The `Node` struct represents a single node in the network.
 pub struct Node {
+    // Checks if the Node is in standby mode.
+    pub is_standby: AtomicBool,
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -224,11 +200,14 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+        let is_standby = identity_manager.lock().await.has_profile_identity();
+
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(db_arc.clone(), identity_manager.clone()).await,
         ));
 
         Node {
+            is_standby: AtomicBool::new(is_standby),
             node_profile_name,
             identity_secret_key,
             identity_public_key,
@@ -249,6 +228,7 @@ impl Node {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
+        let standby_check_interval_secs = 1;
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
         } else {
@@ -258,6 +238,8 @@ impl Node {
 
         let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
+        let mut standby_check_interval = async_std::stream::interval(Duration::from_secs(standby_check_interval_secs));
+
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
         let mut check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
@@ -265,11 +247,16 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
+            let standby_check_future = standby_check_interval.next().fuse();
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future);
+            pin_mut!(ping_future, commands_future, standby_check_future);
 
             select! {
+                    _ = standby_check_future => {
+                        let current_status = self.identity_manager.lock().await.has_profile_identity();
+                        self.is_standby.store(current_status, Ordering::Relaxed);
+                    },
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
@@ -369,16 +356,12 @@ impl Node {
         return self.peers.clone();
     }
 
-    // pub async fn get_encryption_public_key(
-    //     &self,
-    //     identity_public_key: String,
-    // ) -> Result<String, ShinkaiDBError> {
-    //     let db = self.db.lock().await;
-    //     db.get_encryption_public_key(&identity_public_key)
-    // }
-
     // Connect to a peer node.
-    pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
+    pub async fn connect(&self, peer_address: &str, profile_name: String) -> Result<(), NodeError> {
+        if self.is_standby.load(Ordering::Relaxed) {
+            return Err(NodeError::InStandbyMode);
+        }
+
         info!(
             "{} {} > Connecting to {} with profile_name: {:?}",
             self.node_profile_name, self.listen_address, peer_address, profile_name
@@ -468,9 +451,13 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message)
+                    .unwrap()
+                    .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message)
+                    .unwrap()
+                    .to_string();
             }
             // find the sender's encryption public key in external
             let sender_encryption_pk = maybe_identity_manager
@@ -533,7 +520,9 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message).unwrap().get_node_name();
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message)
+            .unwrap()
+            .get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await

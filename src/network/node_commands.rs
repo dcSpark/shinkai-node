@@ -1,4 +1,4 @@
-use super::{node_message_handlers::verify_message_signature, Node};
+use super::{node_message_handlers::verify_message_signature, Node, node_error::NodeError};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
     managers::identity_manager::{self, IdentityManager},
@@ -54,7 +54,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), Error> {
+    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), NodeError> {
         let address_str = address.to_string();
         self.connect(&address_str, profile_name).await?;
         Ok(())
