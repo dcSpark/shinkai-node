@@ -1,5 +1,26 @@
 # Shinkai Node
 
+## Dependencies
+
+For MuPDF you will need to install the following:
+
+```
+sudo apt install mupdf libfontconfig1-dev gcc g++
+```
+
+Mac:
+
+```
+brew install mupdf fontconfig
+```
+
+And make sure you have gcc/g++ as your default compilers:
+
+```
+export CC=gcc
+export CXX=g++
+```
+
 ## Tests
 
 Note: You must run tests from the root directory of this repo.

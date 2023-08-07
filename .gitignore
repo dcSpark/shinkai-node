@@ -9,3 +9,4 @@ server
 embeddings
 bert.cpp/
 bert-cpp-server
+a.out
