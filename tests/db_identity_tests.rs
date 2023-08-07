@@ -161,6 +161,60 @@ fn test_generate_and_use_registration_code_for_device() {
 }
 
 #[test]
+fn test_generate_and_use_registration_code_for_device_with_main_profile() {
+    setup();
+    let node_profile_name = "@@node1.shinkai";
+    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+    let device_name = "device_main";
+    let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
+    let (device_encryption_sk, device_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
+
+    // Create the keys for the node
+    task::block_on(create_local_node_profile(
+        &shinkai_db,
+        node_profile_name.clone().to_string(),
+        encryption_pk.clone(),
+        identity_pk.clone(),
+    ));
+
+    // Generate a registration code for device with main as profile_name
+    let registration_code = shinkai_db
+        .generate_registration_new_code(IdentityPermissions::Standard, RegistrationCodeType::Device("main".to_string()))
+        .unwrap();
+
+    // Use the registration code to create the device and automatically the "main" profile if not exists
+    let device_result = shinkai_db
+        .use_registration_code(
+            &registration_code,
+            node_profile_name,
+            device_name,
+            &signature_public_key_to_string(device_identity_pk),
+            &encryption_public_key_to_string(device_encryption_pk),
+        );
+
+    println!("device_result: {:?}", device_result);
+
+    // Check if "main" profile exists in db
+    let main_profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "main".to_string()).unwrap();
+    let main_permission_in_db = shinkai_db.get_profile_permission(main_profile_name.clone()).unwrap();
+    assert_eq!(main_permission_in_db, IdentityPermissions::Admin);  // Assuming main has Admin permissions
+
+    // Check if device exists in db
+    let device_full_name = ShinkaiName::from_node_and_profile_and_type_and_name(
+        node_profile_name.to_string(),
+        "main".to_string(),
+        ShinkaiSubidentityType::Device,
+        device_name.to_string(),
+    ).unwrap();
+    let device_permission_in_db = shinkai_db.get_device_permission(device_full_name).unwrap();
+    assert_eq!(device_permission_in_db, IdentityPermissions::Standard);
+}
+
+#[test]
 fn test_generate_and_use_registration_code_no_associated_profile() {
     setup();
     let node_profile_name = "@@node1.shinkai";
