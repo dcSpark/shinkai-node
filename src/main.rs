@@ -7,7 +7,7 @@ use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
-use crate::utils::qr_code_setup::QRSetupData;
+use crate::utils::qr_code_setup::{QRSetupData, display_qr, print_qr_data_to_console, save_qr_data_to_local_image};
 use anyhow::Error;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -134,7 +134,7 @@ fn main() {
 
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {
-            println!("The node doesn't have any profiles or devices initialized so it's waiting for that.");
+            println!("Warning! (Expected from for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
 
             // Generate the device code
             let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
@@ -148,56 +148,19 @@ fn main() {
                 .unwrap();
             let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
 
-            // Print the device code
-            println!("Device Code: {}", node_registration_code);
-
             let qr_data = QRSetupData {
-                registration_code: node_registration_code,
+                registration_code: node_registration_code.clone(),
                 profile: "main".to_string(),
                 registration_type: "device".to_string(),
-                node_ip: "123".to_string(), // You need to extract the IP from node_env.api_listen_address
-                node_port: "...".to_string(), // You need to extract the Port from node_env.api_listen_address
-                shinkai_identity: global_identity_name,
+                node_address: node_env.api_listen_address.to_string(), // You need to extract the IP from node_env.api_listen_address
+                shinkai_identity: global_identity_name.clone(),
                 node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
-                node_signature_pk: identity_public_key_string,
+                node_signature_pk: identity_public_key_string.clone(),
             };
 
-            let qr_json_string = serde_json::to_string(&qr_data).expect("Failed to serialize QR data to JSON");
-
-            // Generate and save QR code as an image
-            let qr_code = QrCode::new(qr_json_string.as_bytes()).unwrap();
-            let image = qr_code.render::<image::Luma<u8>>().build();
-            image.save("device_code.png").unwrap();
-
-            // Optionally: Display QR code in terminal (requires "qrcode" crate with "term" feature)
-            // let term_qr = code.render::<char>().dark_color('█').light_color(' ').build();
-            // println!("{}", term_qr);
-            let border = 2;
-            let colors = qr_code.to_colors();
-            let size = (colors.len() as f64).sqrt() as usize;
-
-            for y in (-border..size as isize + border).step_by(2) {
-                for x in -border..size as isize + border {
-                    let get_color = |x: isize, y: isize| -> bool {
-                        if x >= 0 && y >= 0 && x < size as isize && y < size as isize {
-                            colors[y as usize * size + x as usize] == qrcode::Color::Dark
-                        } else {
-                            false
-                        }
-                    };
-
-                    let top_module = get_color(x, y);
-                    let bottom_module = get_color(x, y + 1);
-
-                    match (top_module, bottom_module) {
-                        (true, true) => print!("█"),
-                        (true, false) => print!("▀"),
-                        (false, true) => print!("▄"),
-                        _ => print!(" "),
-                    }
-                }
-                println!();
-            }
+            save_qr_data_to_local_image(qr_data.clone());
+            print_qr_data_to_console(qr_data.clone());
+            display_qr(&qr_data); 
         }
 
         // API Server task
