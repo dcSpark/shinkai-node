@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InboxNameError {
     InvalidFormat,
     InvalidSenderRecipientFormat,

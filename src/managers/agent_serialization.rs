@@ -1,8 +1,5 @@
-use std::sync::Arc;
-
-use reqwest::Client;
 use serde::{Serialize, Deserialize};
-use tokio::sync::{mpsc, Mutex};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
 use super::agent::{AgentAPIModel, Agent};
 
@@ -10,7 +7,7 @@ use super::agent::{AgentAPIModel, Agent};
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SerializedAgent {
     pub id: String,
-    pub name: String,
+    pub full_identity_name: ShinkaiName,
     pub perform_locally: bool,
     pub external_url: Option<String>,
     pub api_key: Option<String>,
@@ -24,7 +21,7 @@ impl From<Agent> for SerializedAgent {
     fn from(agent: Agent) -> Self {
         SerializedAgent {
             id: agent.id,
-            name: agent.name,
+            full_identity_name: agent.full_identity_name,
             perform_locally: agent.perform_locally,
             external_url: agent.external_url,
             api_key: agent.api_key,

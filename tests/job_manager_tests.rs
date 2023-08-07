@@ -1,5 +1,4 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_node::managers::identity_manager::{Identity, IdentityType};
 use shinkai_node::managers::IdentityManager;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
@@ -19,14 +18,23 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use mockito::Server;
-    use shinkai_message_wasm::{shinkai_utils::{utils::hash_string, signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, encryption::unsafe_deterministic_encryption_keypair, shinkai_message_builder::ShinkaiMessageBuilder}, shinkai_message::shinkai_message_schemas::JobScope, schemas::inbox_name::InboxName};
+    use shinkai_message_wasm::{
+        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
+        shinkai_message::shinkai_message_schemas::JobScope,
+        shinkai_utils::{
+            encryption::unsafe_deterministic_encryption_keypair,
+            shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+            utils::hash_string,
+        },
+    };
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
             agent::{Agent, AgentAPIModel},
             agent_serialization::SerializedAgent,
             identity_manager,
-            job_manager::{JobLike, AgentManager, JobManager},
+            job_manager::{AgentManager, JobLike, JobManager},
             providers::openai::OpenAI,
         },
     };
@@ -37,7 +45,7 @@ mod tests {
     #[tokio::test]
     async fn test_process_job_message_creation() {
         setup();
-        let node_profile_name = "@@node1.shinkai";
+        let node_profile_name = ShinkaiName::new("@@node1.shinkai".to_string()).unwrap();
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -77,7 +85,7 @@ mod tests {
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
-                node_profile_name.clone().to_string(),
+                node_profile_name.clone(),
                 node1_encryption_pk.clone(),
                 node1_identity_pk.clone(),
             ) {
@@ -85,7 +93,7 @@ mod tests {
                 Err(e) => panic!("Failed to update local node keys: {}", e),
             }
         }
-        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.to_string())
+        let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
@@ -97,7 +105,11 @@ mod tests {
 
         let agent = SerializedAgent {
             id: "test_agent_id".to_string(),
-            name: "test_name".to_string(),
+            full_identity_name: ShinkaiName::from_node_and_profile(
+                node_profile_name.get_node_name(),
+                "test_name".to_string(),
+            )
+            .unwrap(),
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
@@ -107,6 +119,8 @@ mod tests {
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
         };
         {
+            let mut db = db_arc.lock().await;
+            db.add_agent(agent.clone());
             let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone()).await;
         }
 
@@ -158,7 +172,7 @@ mod tests {
             node_profile_name.to_string(),
             agent.id,
         )
-        .unwrap();   
+        .unwrap();
 
         match job_manager.process_job_message(shinkai_job_message, None).await {
             Ok(job_id) => {

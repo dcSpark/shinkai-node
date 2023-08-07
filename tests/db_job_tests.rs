@@ -24,7 +24,7 @@ mod tests {
     use std::collections::HashSet;
 
     use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::JobScope, shinkai_utils::utils::hash_string, schemas::inbox_name::InboxName};
-    use shinkai_node::{db::db_errors::ShinkaiDBError};
+    use shinkai_node::{db::db_errors::ShinkaiDBError, managers::agent};
 
     use super::*;
 
@@ -148,7 +148,7 @@ mod tests {
 
         match shinkai_db.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent),
+            Err(e) => assert_eq!(e, ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())),
         }
     }
 
@@ -169,7 +169,7 @@ mod tests {
             }
             Err(e) => {
                 // If we got an error, check if it's because the agent doesn't exist
-                assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent);
+                assert_eq!(e, ShinkaiDBError::ColumnFamilyNotFound(format!("agentid_{}", agent_id)));
             }
         }
     }
@@ -182,9 +182,9 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string(&agent_id));
         let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
-        match shinkai_db.update_job_to_finished(job_id) {
+        match shinkai_db.update_job_to_finished(job_id.clone()) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent),
+            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent(format!("jobtopic_{}", job_id))),
         }
     }
 

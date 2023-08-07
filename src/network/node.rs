@@ -1,29 +1,34 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
-use shinkai_message_wasm::shinkai_utils::encryption::{clone_static_secret_key, decrypt_body_message, encryption_secret_key_to_string, encryption_public_key_to_string};
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_utils::encryption::{
+    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
+use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self, StandardIdentity};
-use crate::managers::job_manager::{JobManager};
+use crate::db::db_identity_registration::RegistrationCodeType;
+use crate::managers::identity_manager::{self};
+use crate::managers::job_manager::JobManager;
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
+use crate::schemas::identity::{IdentityPermissions, StandardIdentity};
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -70,6 +75,8 @@ pub enum NodeCommand {
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code. The sender will receive the code.
     CreateRegistrationCode {
+        permissions: IdentityPermissions,
+        code_type: RegistrationCodeType,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
@@ -153,7 +160,7 @@ type ProfileName = String;
 // The `Node` struct represents a single node in the network.
 pub struct Node {
     // The profile name of the node.
-    pub node_profile_name: String,
+    pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
     pub identity_secret_key: SignatureStaticKey,
     // The public key corresponding to `identity_secret_key`.
@@ -191,15 +198,16 @@ impl Node {
         db_path: String,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
-        match IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_profile_name.clone()) {
-            true => (),
-            false => panic!("Invalid node identity name: {}", node_profile_name),
+        match ShinkaiName::new(node_profile_name.to_string().clone()) {
+            Ok(_) => (),
+            Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
         }
 
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
         let db_arc = Arc::new(Mutex::new(db));
+        let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
         {
             let db_lock = db_arc.lock().await;
             match db_lock.update_local_node_keys(
@@ -271,12 +279,12 @@ impl Node {
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
                             Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_onionized_message(msg).await?,
+                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::CreateRegistrationCode { res }) => self.create_and_send_registration_code(res).await?,
+                            Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
                             Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_subidentities(res).await?,
+                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                             Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
                             Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
                             Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
@@ -335,7 +343,7 @@ impl Node {
                                 addr,
                                 destination_socket.clone(),
                                 &buffer[..n],
-                                node_profile_name_clone.clone(),
+                                node_profile_name_clone.clone().get_node_name(),
                                 clone_static_secret_key(&encryption_secret_key_clone),
                                 clone_signature_secret_key(&identity_secret_key_clone),
                                 db.clone(),
@@ -382,7 +390,7 @@ impl Node {
         let peer = (peer_address, profile_name.clone());
         let mut db_lock = self.db.lock().await;
 
-        let sender = self.node_profile_name.clone();
+        let sender = self.node_profile_name.clone().get_node_name();
 
         println!(">>> Peer: {:?}", peer);
 
@@ -393,7 +401,7 @@ impl Node {
             .external_profile_to_global_identity(&peer.1.clone())
             .await
             .unwrap();
-        let receiver = receiver_profile_identity.node_identity_name().to_string();
+        let receiver = receiver_profile_identity.full_identity_name.get_node_name().to_string();
         let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
         ping_pong(
@@ -460,9 +468,9 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = IdentityManager::extract_recipient_node_global_name(message);
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message).unwrap().to_string();
             } else {
-                counterpart_identity = IdentityManager::extract_sender_node_global_name(message);
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message).unwrap().to_string();
             }
             // find the sender's encryption public key in external
             let sender_encryption_pk = maybe_identity_manager
@@ -525,7 +533,7 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = IdentityManager::extract_sender_node_global_name(&message);
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message).unwrap().get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await
