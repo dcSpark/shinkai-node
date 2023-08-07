@@ -1,9 +1,9 @@
 target/
 .env
 ./db/
-db_tests/
-*.json
-*.bin
+./db_tests/
+./*.json
+./*.bin
 local-ai
 server
 embeddings
