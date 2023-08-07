@@ -166,9 +166,9 @@ impl IdentityPermissions {
 
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
-            "Admin" => Some(Self::Admin),
-            "Standard" => Some(Self::Standard),
-            "None" => Some(Self::None),
+            "admin" => Some(Self::Admin),
+            "standard" => Some(Self::Standard),
+            "none" => Some(Self::None),
             _ => None,
         }
     }

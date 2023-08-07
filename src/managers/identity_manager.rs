@@ -170,12 +170,12 @@ impl IdentityManager {
         })
     }
 
-    pub fn find_by_profile_name(&self, full_profile_name: &str) -> Option<&Identity> {
+    pub fn find_by_profile_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
         self.local_identities.iter().find(|identity| {
             match identity {
-                Identity::Standard(identity) => identity.full_identity_name.to_string() == full_profile_name,
-                Identity::Device(device) => device.full_identity_name.to_string() == full_profile_name,
-                Identity::Agent(agent) => agent.full_identity_name.to_string() == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                Identity::Device(device) => device.full_identity_name == full_profile_name,
+                Identity::Agent(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
             }
         })
     }
@@ -218,52 +218,6 @@ impl IdentityManager {
 }
 
 impl IdentityManager {
-    // pub fn extract_subidentity(s: &str) -> String {
-    //     let re = Regex::new(r"@@[^/]+\.shinkai/(.+)").unwrap();
-    //     re.captures(s)
-    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-    //         .unwrap_or_else(|| s.to_string())
-    // }
-
-    // pub fn extract_node_name(s: &str) -> String {
-    //     let re = Regex::new(r"(@@[^/]+\.shinkai)(?:/.*)?").unwrap();
-    //     re.captures(s)
-    //         .and_then(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-    //         .unwrap_or_else(|| s.to_string())
-    // }
-
-    // pub fn is_valid_node_identity_name_and_no_subidentities(s: &str) -> bool {
-    //     let re = Regex::new(r"^@@[^/]+\.shinkai$").unwrap();
-    //     re.is_match(s)
-    // }
-
-    // pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
-    //     let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
-    //     re.is_match(s)
-    // }
-
-    // pub fn merge_to_full_identity_name(node_name: String, subidentity_name: String) -> String {
-    //     let node_name = if IdentityManager::is_valid_node_identity_name_and_no_subidentities(&node_name) {
-    //         node_name
-    //     } else {
-    //         format!("@@{}.shinkai", node_name)
-    //     };
-
-    //     let name = format!("{}/{}", node_name.to_lowercase(), subidentity_name.to_lowercase());
-    //     name
-    // }
-
-    // TODO: add a new that creates an Identity instance from a message
-    // pub fn extract_sender_node_global_name(message: &ShinkaiMessage) -> String {
-    //     let sender_profile_name = message.external_metadata.clone().unwrap().sender;
-    //     ShinkaiName::new(sender_profile_name).unwrap().node_name().to_string()
-    // }
-
-    // pub fn extract_recipient_node_global_name(message: &ShinkaiMessage) -> String {
-    //     let sender_profile_name = message.external_metadata.clone().unwrap().recipient;
-    //     IdentityManager::extract_node_name(&sender_profile_name)
-    // }
-
     pub fn get_full_identity_name(identity: &Identity) -> Option<String> {
         match identity {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
@@ -271,8 +225,4 @@ impl IdentityManager {
             Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
         }
     }
-
-    // pub fn get_profile_name_from_device(device: &DeviceIdentity) -> Option<String> {
-    //     device.to_standard_identity().profile_name().map(|s| s.to_string())
-    // }
 }

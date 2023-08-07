@@ -4,7 +4,7 @@ use crate::{
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
-        identity::{Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity, DeviceIdentity},
+        identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
     },
 };
@@ -60,10 +60,11 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
+    pub async fn handle_send_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        println!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
+        eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
+        // Decrypt message if needed
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
             let sender_encryption_pk_string = potentially_encrypted_msg
@@ -94,7 +95,7 @@ impl Node {
             potentially_encrypted_msg.clone()
         };
 
-        let subidentity_manager = self.identity_manager.lock().await;
+        // Check if the message is coming from one of our subidentities and validate signature
         let sender_subidentity = msg
             .clone()
             .body
@@ -104,7 +105,16 @@ impl Node {
             .sender_subidentity
             .clone();
 
-        let subidentity = subidentity_manager.find_by_profile_name(&sender_subidentity).cloned();
+        let sender_name_string = format!(
+            "{}/{}",
+            self.node_profile_name.get_node_name(),
+            sender_subidentity.clone()
+        );
+        let sender_name =
+            ShinkaiName::new(sender_name_string.clone()).expect("Failed to create ShinkaiName from sender_name");
+
+        let subidentity_manager = self.identity_manager.lock().await;
+        let subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
         // Check that the subidentity that's trying to prox through us exist / is valid
@@ -123,9 +133,7 @@ impl Node {
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            // TODO: fix this code to handle device identity verification correctly
-            // currently it's assuming only one signature per profile but it's as many as devices
-            Identity::Device(std_device) => std_device.profile_signature_public_key.clone(),
+            Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
             Identity::Agent(_) => {
                 eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
                 return Ok(());
@@ -150,36 +158,6 @@ impl Node {
 
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_node_profile_name = msg.external_metadata.clone().unwrap().recipient;
-        println!(
-            "handle_onionized_message > recipient_node_profile_name: {}",
-            recipient_node_profile_name
-        );
-
-        let external_global_identity = self
-            .identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&recipient_node_profile_name.clone())
-            .await
-            .unwrap();
-
-        println!(
-            "handle_onionized_message > external_global_identity: {:?}",
-            external_global_identity
-        );
-
-        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
-            msg.clone(),
-            self.encryption_secret_key.clone(),
-            external_global_identity.node_encryption_public_key, // other node's encryption public key
-        );
-
-        // We update the signature so it comes from the node and not the profile
-        // that way the recipient will be able to verify it
-        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
-
         let recipient_profile_name_string = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
             .unwrap()
             .to_string();
@@ -197,6 +175,17 @@ impl Node {
             recipient_profile_name_string
         );
 
+        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
+            msg.clone(),
+            self.encryption_secret_key.clone(),
+            external_global_identity.node_encryption_public_key, // other node's encryption public key
+        );
+
+        // We update the signature so it comes from the node and not the profile
+        // that way the recipient will be able to verify it
+        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
+        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
+        
         let mut db_guard = self.db.lock().await;
 
         let node_addr = external_global_identity.addr.unwrap();
