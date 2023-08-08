@@ -69,8 +69,8 @@ export class ShinkaiMessageBuilderWrapper {
     return ShinkaiMessageBuilderWrapperWASM.ack_message(my_encryption_secret_key, my_signature_secret_key, receiver_public_key, sender, receiver);
   }
 
-  static code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, sender: string, receiver: string): string {
-    return ShinkaiMessageBuilderWrapperWASM.code_registration(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key, code, identity_type, sender, receiver);
+  static code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string {
+    return ShinkaiMessageBuilderWrapperWASM.code_registration(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key, code, identity_type, permission_type, registration_name, sender_profile_name, receiver);
   }
 
   static ping_pong_message(message: string, my_encryption_secret_key: string, my_signature_secret_key: string, receiver_public_key: string, sender: string, receiver: string): string {

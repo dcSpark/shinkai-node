@@ -502,6 +502,7 @@ async fn registration_profile_node(
             IdentityType::Profile.to_string(),
             IdentityPermissions::Admin.to_string(),
             node_profile_name.to_string().clone(),
+            node_profile_name.to_string().clone(),
             node_identity_name.to_string(),
         )
         .unwrap();
@@ -584,6 +585,7 @@ async fn try_re_register_profile_node(
         node_registration_code.to_string(),
         IdentityType::Profile.to_string(),
         IdentityPermissions::Admin.to_string(),
+        node_profile_name.to_string().clone(),
         node_profile_name.to_string().clone(),
         node_identity_name.to_string(),
     )

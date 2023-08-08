@@ -306,7 +306,8 @@ impl ShinkaiMessageBuilderWrapper {
         code: String,
         identity_type: String,
         permission_type: String,
-        sender: ProfileName,
+        registration_name: String,
+        sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
         let my_subidentity_encryption_sk = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
@@ -319,7 +320,7 @@ impl ShinkaiMessageBuilderWrapper {
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
-            profile_name: sender.clone(),
+            registration_name: registration_name.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
             identity_type,
@@ -341,7 +342,7 @@ impl ShinkaiMessageBuilderWrapper {
         let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
         let _ = builder.body(body);
         let _ = builder.body_encryption(body_encryption);
-        let _ = builder.internal_metadata(sender, "".to_string(), "".to_string(), internal_encryption);
+        let _ = builder.internal_metadata(sender_profile_name, "".to_string(), "".to_string(), internal_encryption);
         let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
 
         builder.build_to_string()

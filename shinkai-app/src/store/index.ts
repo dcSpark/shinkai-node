@@ -19,7 +19,7 @@ export type AppThunk<ReturnType = void> = ThunkAction<
 const persistConfig = {
   key: 'root',
   storage,
-  whitelist: ['registrationStatusReducer']
+  whitelist: ['registrationStatus', 'setupDetailsState']
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

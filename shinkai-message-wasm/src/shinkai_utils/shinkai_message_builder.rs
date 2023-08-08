@@ -406,7 +406,8 @@ impl ShinkaiMessageBuilder {
         code: String,
         identity_type: String,
         permission_type: String,
-        sender: ProfileName,
+        registration_name: String,
+        sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
@@ -415,7 +416,7 @@ impl ShinkaiMessageBuilder {
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
-            profile_name: sender.clone(),
+            registration_name: registration_name.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
             identity_type,
@@ -436,7 +437,7 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata(sender, "".to_string(), "".to_string(), EncryptionMethod::None)
+        .internal_metadata(sender_profile_name, "".to_string(), "".to_string(), EncryptionMethod::None)
         // we are interacting with the associated node so the receiver and the sender are from the same base node
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()

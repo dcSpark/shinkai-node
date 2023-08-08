@@ -1,47 +1,74 @@
-import axios from 'axios';
-import { AppDispatch } from '../store/index';
-import { getPublicKey, useRegistrationCode, pingAll } from '../store/actions';
-import { ThunkAction } from 'redux-thunk';
-import { Action } from 'redux';
-import { RootState } from '../store';
-import { AppThunk } from '../types';
-import { ShinkaiMessageBuilderWrapper } from '../lib/wasm/ShinkaiMessageBuilderWrapper';
+import axios from "axios";
+import { AppDispatch } from "../store/index";
+import {
+  getPublicKey,
+  useRegistrationCode,
+  pingAll,
+  registrationError,
+} from "../store/actions";
+import { ThunkAction } from "redux-thunk";
+import { Action } from "redux";
+import { RootState } from "../store";
+import { AppThunk } from "../types";
+import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
+import { MergedSetupType } from "../pages/Connect";
 
-const API_URL = 'http://localhost:3030/v1';
-
-// export type AppThunk<ReturnType = void> = ThunkAction<ReturnType, RootState, unknown, Action<string>>;
+let API_ENDPOINT = "";
 
 export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   try {
-    const response = await axios.get(`${API_URL}/get_public_key`);
+    const response = await axios.get(`${API_ENDPOINT}/get_public_key`);
     dispatch(getPublicKey(response.data));
   } catch (error) {
-    console.error('Error fetching public key:', error);
+    console.error("Error fetching public key:", error);
   }
 };
 
-export const submitRegistrationCode = (my_encryption_sk: string, my_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, sender: string, receiver: string): AppThunk => async (dispatch: AppDispatch) => {
-  try {
-    // Build the ShinkaiMessage
-    const messageStr = ShinkaiMessageBuilderWrapper.code_registration(my_encryption_sk, my_signature_sk, receiver_public_key, code, identity_type, sender, receiver);
+export const submitRegistrationCode =
+  (setupData: MergedSetupType): AppThunk =>
+  async (dispatch: AppDispatch) => {
+    try {
+      const messageStr = ShinkaiMessageBuilderWrapper.code_registration(
+        setupData.myEncryptionSk,
+        setupData.myIdentitySk,
+        setupData.node_encryption_pk,
+        setupData.registration_code,
+        setupData.identity_type,
+        setupData.permission_type,
+        setupData.registration_name,
+        "", // sender_profile_name: it doesn't exist yet in the Node
+        setupData.shinkai_identity
+      );
 
-    // Parse the message into a JSON object
-    const message = JSON.parse(messageStr);
+      const message = JSON.parse(messageStr);
 
-    // POST the message to the server
-    await axios.post(`${API_URL}/use_registration_code`, message);
+      // Use node_address from setupData for API endpoint
+      await axios.post(
+        `${setupData.node_address}/v1/use_registration_code`,
+        message
+      );
 
-    dispatch(useRegistrationCode());
-  } catch (error) {
-    console.error('Error using registration code:', error);
-  }
-};
+      // Update the API_ENDPOINT after successful registration
+      API_ENDPOINT = setupData.node_address;
+
+      dispatch(useRegistrationCode(setupData));
+    } catch (error) {
+      let errorMessage = "Unexpected error occurred";
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
+      dispatch(registrationError(errorMessage));
+      console.error("Error using registration code:", error);
+    }
+  };
 
 export const pingAllNodes = () => async (dispatch: AppDispatch) => {
   try {
-    const response = await axios.post(`${API_URL}/ping_all`);
+    const response = await axios.post(`${API_ENDPOINT}/ping_all`);
     dispatch(pingAll(response.data.result));
   } catch (error) {
-    console.error('Error pinging all nodes:', error);
+    console.error("Error pinging all nodes:", error);
   }
 };

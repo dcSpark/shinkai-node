@@ -283,7 +283,7 @@ impl ShinkaiDB {
                     permission_type: code_info.permission,
                 };
 
-                println!("device: {:?}", device);
+                println!("device: {}", device);
                 self.add_device_to_profile(device)?;
             }
         }

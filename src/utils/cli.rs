@@ -26,6 +26,7 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
         println!("Creating message for recipient: {}", recipient);
         println!("receiver_encryption_pk: {}", node2_encryption_pk_str);
 
+        // TODO: redo all of this
         if let Some(code) = args.code_registration {
             // Call the `code_registration` function
             let message = ShinkaiMessageBuilder::code_registration(
@@ -34,7 +35,8 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
                 node2_encryption_pk,
                 code.to_string(),
                 "device".to_string(),
-                "global".to_string(),
+                "admin".to_string(),
+                "".to_string(),
                 global_identity_name.to_string().clone(),
                 recipient.to_string(),
             )

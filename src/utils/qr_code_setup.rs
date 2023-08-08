@@ -5,7 +5,8 @@ use serde::Serialize;
 pub struct QRSetupData {
     pub registration_code: String,
     pub profile: String,
-    pub registration_type: String,
+    pub identity_type: String,
+    pub permission_type: String,
     pub node_address: String,
     pub shinkai_identity: String,
     pub node_encryption_pk: String,
@@ -28,7 +29,8 @@ pub fn print_qr_data_to_console(qr_data: QRSetupData) {
     println!("---------------------------------------------------------------");
     println!("Node registration code: {}", qr_data.registration_code);
     println!("Node profile: main");
-    println!("Node registration type: device");
+    println!("Node identity type: device");
+    println!("Node permission type: admin");
     println!("Node address: {}", qr_data.node_address);
     println!("Node Shinkai identity: {}", qr_data.shinkai_identity);
     println!("Node encryption pk: {}", qr_data.node_encryption_pk);

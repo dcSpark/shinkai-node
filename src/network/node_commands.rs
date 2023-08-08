@@ -2,7 +2,7 @@ use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
     managers::identity_manager::{self, IdentityManager},
-    network::node_message_handlers::{ping_pong, PingPong},
+    network::{node_message_handlers::{ping_pong, PingPong}, node::NodeError},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
@@ -185,7 +185,7 @@ impl Node {
         // that way the recipient will be able to verify it
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
         let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
-        
+
         let mut db_guard = self.db.lock().await;
 
         let node_addr = external_global_identity.addr.unwrap();
@@ -549,11 +549,14 @@ impl Node {
         // Deserialize body.content into RegistrationCode
         let content = decrypted_message.clone().body.unwrap().content;
         println!("handle_registration_code_usage> content: {:?}", content);
-        let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
+        // let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
+        let registration_code: RegistrationCode = serde_json::from_str(&content).map_err(|e| NodeError {
+            message: format!("Failed to deserialize the content: {}", e),
+        })?;
 
         // Extract values from the ShinkaiMessage
         let code = registration_code.code;
-        let profile_name = registration_code.profile_name;
+        let registration_name = registration_code.registration_name;
         let identity_pk = registration_code.identity_pk;
         let encryption_pk = registration_code.encryption_pk;
         let identity_type = registration_code.identity_type;
@@ -563,6 +566,7 @@ impl Node {
         // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
 
+        println!("handle_registration_code_usage> code: {:?}", code);
         println!("identity_type: {:?}", identity_type);
 
         let db = self.db.lock().await;
@@ -570,7 +574,7 @@ impl Node {
             .use_registration_code(
                 &code,
                 self.node_profile_name.get_node_name().as_str(),
-                profile_name.as_str(),
+                registration_name.as_str(),
                 &identity_pk,
                 &encryption_pk,
             )
@@ -595,7 +599,7 @@ impl Node {
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile(
                             self.node_profile_name.get_node_name(),
-                            profile_name.clone(),
+                            registration_name.clone(),
                         );
 
                         if let Err(e) = &full_identity_name_result {
@@ -631,7 +635,7 @@ impl Node {
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
                         let full_identity_name = ShinkaiName::from_node_and_profile(
                             self.node_profile_name.get_node_name(),
-                            profile_name.clone(),
+                            registration_name.clone(),
                         )
                         .unwrap();
                         let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();

@@ -6,6 +6,8 @@ import Chat from "./pages/Chat";
 import ChatList from "./pages/ChatList";
 import Settings from "./pages/Settings";
 import Connect from "./pages/Connect";
+import CreateJob from "./pages/CreateJob";
+import AdminCommands from "./pages/AdminCommands";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./store";
@@ -43,6 +45,8 @@ const App: React.FC = () => {
             <IonRouterOutlet>
               <Route path="/connect" component={Connect} />
               <Route exact path="/home" component={Home} />
+              <Route exact path="/admin-commands" component={AdminCommands} />
+              <Route exact path="/create-job" component={CreateJob} />
               <Route path="/chatlist" component={ChatList} />
               <Route path="/chat/:id" component={Chat} />
               <Route path="/settings" component={Settings} />

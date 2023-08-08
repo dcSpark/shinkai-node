@@ -148,11 +148,21 @@ fn main() {
                 .unwrap();
             let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
 
+            let node_address = {
+                let address_str = node_env.api_listen_address.to_string();
+                if !address_str.starts_with("http://") {
+                    format!("http://{}", address_str)
+                } else {
+                    address_str
+                }
+            };
+
             let qr_data = QRSetupData {
                 registration_code: node_registration_code.clone(),
                 profile: "main".to_string(),
-                registration_type: "device".to_string(),
-                node_address: node_env.api_listen_address.to_string(), // You need to extract the IP from node_env.api_listen_address
+                identity_type: "device".to_string(),
+                permission_type: "admin".to_string(),
+                node_address,
                 shinkai_identity: global_identity_name.clone(),
                 node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
                 node_signature_pk: identity_public_key_string.clone(),

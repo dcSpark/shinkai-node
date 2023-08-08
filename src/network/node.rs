@@ -35,7 +35,7 @@ const BUFFER_SIZE: usize = 2024;
 
 #[derive(Debug)]
 pub struct NodeError {
-    message: String,
+    pub message: String,
 }
 
 impl std::fmt::Display for NodeError {
