@@ -106,7 +106,7 @@ fn db_inbox() {
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
-    let _ = shinkai_db.insert_inbox_message(&message.clone());
+    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone());
 
     let last_messages_all = shinkai_db.get_last_messages_from_all(10).unwrap();
     assert_eq!(last_messages_all.len(), 1);
@@ -157,12 +157,12 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "20230702T20533481347".to_string(),
     );
-    match shinkai_db.insert_inbox_message(&message2.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message2.clone()) {
         Ok(_) => println!("message2 inserted successfully"),
         Err(e) => println!("Failed to insert message2: {}", e),
     }
 
-    match shinkai_db.insert_inbox_message(&message3.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message3.clone()) {
         Ok(_) => println!("message3 inserted successfully"),
         Err(e) => println!("Failed to insert message3: {}", e),
     }

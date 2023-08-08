@@ -9,6 +9,7 @@ mod tests {
         println!("Testing valid names");
         let valid_names = vec![
             "@@alice.shinkai",
+            "@@alice/subidentity",
             "@@alice.shinkai/profileName",
             "@@alice.shinkai/profileName/agent/myChatGPTAgent",
             "@@alice.shinkai/profileName/device/myPhone",
@@ -21,17 +22,35 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_names() {
+    fn test_invalid_names_with_repair() {
         let invalid_names = vec![
             "@@alice.shinkai/profileName/myPhone",
             "@@al!ce.shinkai",
             "@@alice.shinkai//",
+            "@@alice.shinkai//subidentity",
             "@@node1.shinkai/profile_1.shinkai",
         ];
 
         for name in invalid_names {
             let result = ShinkaiName::new(name.to_string());
             assert!(result.is_err(), "Expected {} to be invalid, but it was not.", name);
+        }
+    }
+
+    #[test]
+    fn test_invalid_names_without_repair() {
+        let invalid_names = vec![
+            "@@alice.shinkai/profileName/myPhone",
+            "@@al!ce.shinkai",
+            "@@alice/subidentity",
+            "@@alice.shinkai//",
+            "@@alice.shinkai//subidentity",
+            "@@node1.shinkai/profile_1.shinkai",
+        ];
+
+        for name in invalid_names {
+            let result = ShinkaiName::is_fully_valid(name.to_string());
+            assert!(!result, "Expected {} to be invalid, but it was not.", name);
         }
     }
 
@@ -107,5 +126,38 @@ mod tests {
         let shinkai_name = ShinkaiName::new("@@henry.shinkai/profileHenry/device/myDevice".to_string()).unwrap();
         let node = shinkai_name.extract_node();
         assert_eq!(node.to_string(), "@@henry.shinkai");
+    }
+
+    #[test]
+    fn test_contains() {
+        let alice = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
+        let alice_profile = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
+        let alice_agent = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+        let alice_device = ShinkaiName::new("@@alice.shinkai/profileName/device".to_string()).unwrap();
+
+        assert!(alice.contains(&alice_profile));
+        assert!(alice.contains(&alice_agent));
+        assert!(alice_profile.contains(&alice_agent));
+        assert!(alice_profile.contains(&alice_profile));
+
+        assert!(!alice_profile.contains(&alice));
+        assert!(!alice_profile.contains(&alice_device));
+        assert!(!alice_device.contains(&alice_profile));
+    }
+
+    #[test]
+    fn test_does_not_contain() {
+        let alice = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
+        let bob = ShinkaiName::new("@@bob.shinkai".to_string()).unwrap();
+        let alice_profile = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
+        let alice_agent = ShinkaiName::new("@@alice.shinkai/profileName/agent".to_string()).unwrap();
+        let bob_agent = ShinkaiName::new("@@bob.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+
+        assert!(!alice.contains(&bob));
+        assert!(!bob.contains(&alice));
+        assert!(!alice_profile.contains(&bob));
+        assert!(!bob.contains(&alice_profile));
+        assert!(!alice.contains(&alice_agent));
+        assert!(!bob.contains(&bob_agent));
     }
 }

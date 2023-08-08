@@ -515,7 +515,7 @@ impl Node {
             }
         }
 
-        let db_result = db.insert_inbox_message(&message_to_save);
+        let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),
             Err(e) => {

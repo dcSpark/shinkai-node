@@ -1,10 +1,11 @@
 use crate::resources::resource_errors::ResourceError;
 use core::fmt;
 use std::{io, str::Utf8Error};
-use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
+use shinkai_message_wasm::schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError};
 
 #[derive(Debug)]
 pub enum ShinkaiDBError {
+    ShinkaiNameError(ShinkaiNameError),
     RocksDBError(rocksdb::Error),
     DecodeError(prost::DecodeError),
     IOError(io::Error),
@@ -102,6 +103,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::InvalidPermissionType(e) => write!(f, "Invalid permission type: {}", e),
             ShinkaiDBError::InvalidProfileName(e) => write!(f, "Invalid profile name: {}", e),
             ShinkaiDBError::InvalidIdentityName(e) => write!(f, "Invalid identity name: {}", e),
+            ShinkaiDBError::ShinkaiNameError(e) => write!(f, "Shinkai name error: {:?}", e),
         }
     }
 }
@@ -156,6 +158,8 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::InboxNameError(e1), ShinkaiDBError::InboxNameError(e2)) => e1 == e2,  // assuming InboxNameError implements PartialEq
             (ShinkaiDBError::ProfileNotFound(msg1), ShinkaiDBError::ProfileNotFound(msg2)) => msg1 == msg2,
             (ShinkaiDBError::DeviceIdentityAlreadyExists, ShinkaiDBError::DeviceIdentityAlreadyExists) => true,
+            (ShinkaiDBError::ProfileNameNotProvided, ShinkaiDBError::ProfileNameNotProvided) => true,
+            (ShinkaiDBError::InvalidPermissionsType, ShinkaiDBError::InvalidPermissionsType) => true,
             _ => false,
         }
     }
@@ -212,5 +216,11 @@ impl From<bincode::Error> for ShinkaiDBError {
 impl From<InboxNameError> for ShinkaiDBError {
     fn from(error: InboxNameError) -> Self {
         ShinkaiDBError::InboxNameError(error)
+    }
+}
+
+impl From<ShinkaiNameError> for ShinkaiDBError {
+    fn from(error: ShinkaiNameError) -> Self {
+        ShinkaiDBError::ShinkaiNameError(error)
     }
 }

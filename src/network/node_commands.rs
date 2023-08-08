@@ -1,8 +1,11 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
-    managers::identity_manager::{self, IdentityManager},
-    network::{node_message_handlers::{ping_pong, PingPong}, node::NodeError},
+    managers::{identity_manager::{self, IdentityManager}, InboxNameManager},
+    network::{
+        node::NodeError,
+        node_message_handlers::{ping_pong, PingPong},
+    },
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
@@ -64,6 +67,9 @@ impl Node {
         // This command is used to send messages that are already signed and (potentially) encrypted
         eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
+        //
+        // Part 1: Decrypting and validating message
+        //
         // Decrypt message if needed
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
@@ -114,11 +120,12 @@ impl Node {
             ShinkaiName::new(sender_name_string.clone()).expect("Failed to create ShinkaiName from sender_name");
 
         let subidentity_manager = self.identity_manager.lock().await;
-        let subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
+        let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        // Check that the subidentity that's trying to prox through us exist / is valid
-        if subidentity.is_none() {
+        // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
+        // We (currently) don't proxy external messages from other nodes to other nodes
+        if sender_subidentity.is_none() {
             eprintln!(
                 "handle_onionized_message > Subidentity not found for profile name: {}",
                 msg.external_metadata.clone().unwrap().sender
@@ -128,7 +135,7 @@ impl Node {
         }
 
         // If we reach this point, it means that subidentity exists, so it's safe to unwrap
-        let subidentity = subidentity.unwrap();
+        let subidentity = sender_subidentity.unwrap();
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
@@ -156,6 +163,32 @@ impl Node {
             }
         }
 
+        //
+        // Part 2: Check if the message needs to be sent to another node or not
+        //
+
+        let recipient_node_name = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
+            .unwrap()
+            .get_node_name();
+
+        let sender_node_name = ShinkaiName::from_shinkai_message_using_sender(&msg.clone())
+            .unwrap()
+            .get_node_name();
+
+        if recipient_node_name == sender_node_name {
+            //
+            // Part 3A: Validate and store message locally
+            //
+
+            // Has sender access to the inbox specified in the message?
+            let inbox = InboxNameManager::from_message(&msg.clone());
+            // let inbox_name = msg.clone().body.unwrap().external_metadata.unwrap().inbox_name;
+            
+        }
+
+        //
+        // Part 3B: Preparing to externally send Message
+        //
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
         let recipient_profile_name_string = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())

@@ -24,9 +24,13 @@ impl fmt::Display for ShinkaiSubidentityType {
 
 #[derive(Debug)]
 pub enum ShinkaiNameError {
+    MissingBody(String),
+    MissingInternalMetadata(String),
     MetadataMissing,
     MessageBodyMissing,
+    InvalidGroupFormat(String),
     InvalidNameFormat(String),
+    SomeError(String)
 }
 
 // Valid Examples
@@ -44,12 +48,28 @@ pub enum ShinkaiNameError {
 impl ShinkaiName {
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
         let raw_name = Self::correct_node_name(raw_name);
+        Self::validate_name(&raw_name)?;
+        Ok(Self(raw_name.to_lowercase()))
+    }
+
+    pub fn is_fully_valid(shinkai_name: String) -> bool {
+        match Self::validate_name(&shinkai_name) {
+            Ok(_) => true,
+            Err(err) => {
+                eprintln!("Validation error: {}", err);
+                false
+            }
+        }
+    }
+
+    pub fn validate_name(raw_name: &str) -> Result<(), &'static str> {
+        println!("validating name: {}", raw_name);
         let parts: Vec<&str> = raw_name.split('/').collect();
-    
+
         if !(parts.len() >= 1 && parts.len() <= 4) {
             return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
         }
-    
+
         if !parts[0].starts_with("@@") || !parts[0].ends_with(".shinkai") {
             return Err("Node part of the name should start with '@@' and end with '.shinkai'.");
         }
@@ -57,9 +77,9 @@ impl ShinkaiName {
         if !Regex::new(r"^@@[a-zA-Z0-9\-\.]+\.shinkai$").unwrap().is_match(parts[0]) {
             return Err("Node part of the name contains invalid characters.");
         }
-    
+
         let re = Regex::new(r"^[a-zA-Z0-9_]*$").unwrap();
-    
+
         for (index, part) in parts.iter().enumerate() {
             if index == 0 {
                 if part.contains("/") {
@@ -67,25 +87,31 @@ impl ShinkaiName {
                 }
                 continue;
             }
-            
-            if index == 2 && !(part == &ShinkaiSubidentityType::Agent.to_string() || part == &ShinkaiSubidentityType::Device.to_string()) {
+
+            if index == 2
+                && !(part == &ShinkaiSubidentityType::Agent.to_string()
+                    || part == &ShinkaiSubidentityType::Device.to_string())
+            {
                 return Err("The third part should either be 'agent' or 'device'.");
             }
-    
+
             if index == 3 && !re.is_match(part) {
                 return Err("The fourth part (name after 'agent' or 'device') should be alphanumeric or underscore.");
             }
-            
+
             if index != 0 && index != 2 && (!re.is_match(part) || part.contains(".shinkai")) {
                 return Err("Name parts should be alphanumeric or underscore and not contain '.shinkai'.");
             }
         }
-    
-        if parts.len() == 3 && (parts[2] == &ShinkaiSubidentityType::Agent.to_string() || parts[2] == &ShinkaiSubidentityType::Device.to_string()) {
+
+        if parts.len() == 3
+            && (parts[2] == &ShinkaiSubidentityType::Agent.to_string()
+                || parts[2] == &ShinkaiSubidentityType::Device.to_string())
+        {
             return Err("If type is 'agent' or 'device', a fourth part is expected.");
         }
-    
-        Ok(Self(raw_name.to_lowercase()))
+
+        Ok(())
     }
 
     pub fn from_node_name(node_name: String) -> Result<Self, ShinkaiNameError> {
@@ -204,6 +230,20 @@ impl ShinkaiName {
         name.starts_with("@@") && name.ends_with(".shinkai") && !name.contains("/")
     }
 
+    pub fn contains(&self, other: &ShinkaiName) -> bool {
+        let self_parts: Vec<&str> = self.0.split('/').collect();
+        let other_parts: Vec<&str> = other.0.split('/').collect();
+
+        if self_parts.len() > other_parts.len() {
+            return false;
+        }
+
+        self_parts
+            .iter()
+            .zip(other_parts.iter())
+            .all(|(self_part, other_part)| self_part == other_part)
+    }
+
     pub fn has_profile(&self) -> bool {
         // Check if it contains two '/' (indicating it has a profile)
         self.0.matches('/').count() >= 1
@@ -223,12 +263,11 @@ impl ShinkaiName {
         if !self.has_profile() {
             return None;
         }
-    
+
         let parts: Vec<&str> = self.0.split('/').collect();
         // Assuming that parts[0] is always the node name and parts[1] is the profile name
         Some(parts[1].to_string())
     }
-    
 
     pub fn get_node_name(&self) -> String {
         let parts: Vec<&str> = self.0.split('/').collect();
@@ -271,9 +310,9 @@ impl ShinkaiName {
 impl ShinkaiName {
     fn correct_node_name(raw_name: String) -> String {
         let mut parts: Vec<&str> = raw_name.splitn(2, '/').collect();
-        
+
         let mut node_name = parts[0].to_string();
-        
+
         // Prepend with "@@" if the node doesn't already start with "@@"
         if !node_name.starts_with("@@") {
             node_name = format!("@@{}", node_name);
