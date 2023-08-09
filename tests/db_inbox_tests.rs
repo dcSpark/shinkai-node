@@ -138,7 +138,7 @@ fn db_inbox() {
     println!("Inbox name: {}", inbox_name_value);
     assert_eq!(
         inbox_name_value,
-        "inbox::@@node1.shinkai/::@@node1.shinkai/main_profile_node1::false".to_string()
+        "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()
     );
 
     println!("Inbox name: {}", inbox_name_value);

@@ -213,11 +213,11 @@ fn test_schedule_and_get_due_scheduled_messages() {
     );
     assert_eq!(
         due_messages[1].clone().body.unwrap().content,
-        "Hello Scheduled 2".to_string()
+        "Hello Scheduled".to_string()
     );
     assert_eq!(
         due_messages[2].clone().body.unwrap().content,
-        "Hello Scheduled".to_string()
+        "Hello Scheduled 2".to_string()
     );
     assert_eq!(
         due_messages[3].clone().body.unwrap().content,

@@ -268,6 +268,7 @@ impl ShinkaiMessageBuilder {
                     let encrypted_content = encrypt_string_content(
                         body_content,
                         internal_metadata.message_schema_type.clone().to_str().to_string(),
+                        internal_metadata.inbox.clone(),
                         &new_self.my_encryption_secret_key,
                         &new_self.receiver_public_key,
                         internal_metadata.encryption.as_str(),
@@ -530,6 +531,7 @@ mod tests {
             .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
             .build();
 
+        println!("message_result = {:?}", message_result);
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
         let message_clone = message.clone();
@@ -539,7 +541,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.scheduled_time, scheduled_time);
@@ -583,7 +585,7 @@ mod tests {
         let internal_metadata = binding.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())

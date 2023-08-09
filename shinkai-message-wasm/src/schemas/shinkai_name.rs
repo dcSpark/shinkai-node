@@ -47,7 +47,9 @@ pub enum ShinkaiNameError {
 
 impl ShinkaiName {
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
+        println!("creating name: {}", raw_name);
         let raw_name = Self::correct_node_name(raw_name);
+        println!("corrected name: {}", raw_name);
         Self::validate_name(&raw_name)?;
         Ok(Self(raw_name.to_lowercase()))
     }
@@ -56,7 +58,7 @@ impl ShinkaiName {
         match Self::validate_name(&shinkai_name) {
             Ok(_) => true,
             Err(err) => {
-                eprintln!("Validation error: {}", err);
+                eprintln!("### Validation error: {}", err);
                 false
             }
         }
@@ -67,14 +69,17 @@ impl ShinkaiName {
         let parts: Vec<&str> = raw_name.split('/').collect();
 
         if !(parts.len() >= 1 && parts.len() <= 4) {
+            eprintln!("Name should have one to four parts: node, profile, type (device or agent), and name: {}", raw_name);
             return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
         }
 
         if !parts[0].starts_with("@@") || !parts[0].ends_with(".shinkai") {
+            eprintln!("### Validation error: {}", raw_name);
             return Err("Node part of the name should start with '@@' and end with '.shinkai'.");
         }
 
-        if !Regex::new(r"^@@[a-zA-Z0-9\-\.]+\.shinkai$").unwrap().is_match(parts[0]) {
+        if !Regex::new(r"^@@[a-zA-Z0-9\_\.]+\.shinkai$").unwrap().is_match(parts[0]) {
+            eprintln!("Node part of the name contains invalid characters: {}", raw_name);
             return Err("Node part of the name contains invalid characters.");
         }
 

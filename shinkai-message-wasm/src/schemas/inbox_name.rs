@@ -138,10 +138,23 @@ impl InboxName {
         recipient_subidentity: String,
         is_e2e: bool,
     ) -> Result<InboxName, InboxNameError> {
+        println!("sender: {}", sender);
+        println!("sender_subidentity: {}", sender_subidentity);
+        println!("recipient: {}", recipient);
+        println!("recipient_subidentity: {}", recipient_subidentity);
         let inbox_name_separator = "::";
 
-        let sender_full = format!("{}/{}", sender, sender_subidentity);
-        let recipient_full = format!("{}/{}", recipient, recipient_subidentity);
+        let sender_full = if sender_subidentity.is_empty() {
+            sender
+        } else {
+            format!("{}/{}", sender, sender_subidentity)
+        };
+
+        let recipient_full = if recipient_subidentity.is_empty() {
+            recipient
+        } else {
+            format!("{}/{}", recipient, recipient_subidentity)
+        };
 
         let sender_name = ShinkaiName::new(sender_full.clone())
             .map_err(|_| ShinkaiNameError::InvalidNameFormat(sender_full.to_string()))?;
@@ -160,6 +173,7 @@ impl InboxName {
             inbox_name_separator,
             is_e2e
         );
+        println!("inbox_name: {}", inbox_name);
         InboxName::new(inbox_name)
     }
 
@@ -470,9 +484,9 @@ mod tests {
             }),
             encryption: EncryptionMethod::None,
         };
-    
+
         let manager = InboxName::from_message(&mock_message).unwrap();
-    
+
         match manager.has_sender_creation_access(mock_message) {
             Ok(access) => assert!(!access, "Expected sender to not have creation access"),
             Err(err) => panic!("Unexpected error: {:?}", err),

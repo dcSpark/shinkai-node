@@ -177,7 +177,7 @@ mod tests {
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
+            .internal_metadata("".to_string(), "".to_string(), content_encryption)
             .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
             .build();
 
