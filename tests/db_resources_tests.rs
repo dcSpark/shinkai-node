@@ -53,7 +53,7 @@ fn test_remote_embeddings_generation() {
 }
 
 #[test]
-fn test_manual_document_resource() {
+fn test_manual_document_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
@@ -100,7 +100,7 @@ fn test_manual_document_resource() {
 }
 
 #[test]
-fn test_pdf_parsed_document_resource() {
+fn test_pdf_parsed_document_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
@@ -160,7 +160,7 @@ fn test_pdf_resource_save_to_db() {
 }
 
 #[test]
-fn test_multi_resource_vector_search() {
+fn test_multi_resource_db_vector_search() {
     setup();
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -260,7 +260,7 @@ fn test_multi_resource_vector_search() {
 }
 
 #[test]
-fn test_syntactic_vector_search() {
+fn test_db_syntactic_vector_search() {
     setup();
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
