@@ -1,7 +1,7 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
-    managers::{identity_manager::{self, IdentityManager}},
+    managers::identity_manager::{self, IdentityManager},
     network::{
         node::NodeError,
         node_message_handlers::{ping_pong, PingPong},
@@ -16,7 +16,7 @@ use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::{
-    schemas::{shinkai_name::ShinkaiName, inbox_name::InboxName},
+    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::{
@@ -111,11 +111,11 @@ impl Node {
             .sender_subidentity
             .clone();
 
-        let sender_name_string = format!(
-            "{}/{}",
-            self.node_profile_name.get_node_name(),
-            sender_subidentity.clone()
-        );
+        let sender_name_string = if sender_subidentity.is_empty() {
+            self.node_profile_name.get_node_name()
+        } else {
+            format!("{}/{}", self.node_profile_name.get_node_name(), sender_subidentity)
+        };
         let sender_name =
             ShinkaiName::new(sender_name_string.clone()).expect("Failed to create ShinkaiName from sender_name");
 
@@ -182,8 +182,35 @@ impl Node {
 
             // Has sender access to the inbox specified in the message?
             let inbox = InboxName::from_message(&msg.clone());
-            // let inbox_name = msg.clone().body.unwrap().external_metadata.unwrap().inbox_name;
-            
+            match inbox {
+                Ok(inbox) => {
+                    // TODO: extend and verify that the sender may have access to the inbox using the access db method
+                    match inbox.has_sender_creation_access(msg.clone()) {
+                        Ok(_) => {
+                            // use unsafe_insert_inbox_message because we already validated the message
+                            let mut db_guard = self.db.lock().await;
+                            db_guard
+                                .unsafe_insert_inbox_message(&msg.clone())
+                                .map_err(|e| {
+                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                    std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
+                                })?;
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "handle_onionized_message > Error checking if sender has access to inbox: {}",
+                                e
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("handle_onionized_message > Error getting inbox from message: {}", e);
+                    return Ok(());
+                }
+            }
+            return Ok::<(), std::io::Error>(());
         }
 
         //
@@ -191,9 +218,10 @@ impl Node {
         //
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_profile_name_string = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
-            .unwrap()
-            .to_string();
+        let recipient_profile_name_string =
+            ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
+                .unwrap()
+                .to_string();
 
         let external_global_identity = self
             .identity_manager
