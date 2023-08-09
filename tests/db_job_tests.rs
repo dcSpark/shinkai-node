@@ -34,7 +34,7 @@ mod tests {
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
         let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string())
+            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
@@ -70,7 +70,7 @@ mod tests {
         for i in 1..=5 {
             let job_id = format!("job{}", i);
             let inbox_name =
-                InboxName::new("inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string())
+                InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                     .unwrap();
             let inbox_names = vec![inbox_name];
             let documents = vec!["document1".to_string(), "document2".to_string()];
@@ -97,7 +97,7 @@ mod tests {
         let job_id = "job3".to_string();
         let agent_id = "agent3".to_string();
         let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string())
+            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -120,7 +120,7 @@ mod tests {
         let job_id = "job4".to_string();
         let agent_id = "agent4".to_string();
         let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string())
+            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
         let scope = JobScope::new(Some(vec![inbox_name]), None);
         let step = "step1".to_string();
@@ -199,7 +199,7 @@ mod tests {
         for i in 1..=5 {
             let job_id = format!("job{}", i);
             let inbox_name =
-                InboxName::new("inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string())
+                InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                     .unwrap();
             let inbox_names = vec![inbox_name];
             let documents = vec!["document1".to_string(), "document2".to_string()];

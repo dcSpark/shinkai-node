@@ -42,6 +42,8 @@ pub struct InboxName {
 
 impl InboxName {
     pub fn new(inbox_name: String) -> Result<Self, InboxNameError> {
+        println!("inbox_name: {}", inbox_name);
+        // job_inbox::{}::false
         let parts: Vec<&str> = inbox_name.split("::").collect();
         if parts.len() < 3 || parts.len() > 101 || parts[0] != "inbox" {
             return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
