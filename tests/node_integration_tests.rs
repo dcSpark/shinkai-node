@@ -180,6 +180,7 @@ fn subidentity_registration() {
                     node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
                     clone_signature_secret_key(&node1_subidentity_sk),
+                    1
                 )
                 .await;
             }
@@ -194,6 +195,7 @@ fn subidentity_registration() {
                     node2_subencryption_sk_clone.clone(),
                     node2_encryption_pk,
                     clone_signature_secret_key(&node2_subidentity_sk),
+                    1
                 )
                 .await;
             }
@@ -349,8 +351,103 @@ fn subidentity_registration() {
                     node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
                     clone_signature_secret_key(&node1_subidentity_sk),
-                ).await;
+                )
+                .await;
             }
+
+            // Node 1 creates a new subidentity and that subidentity sends a message to the other one in Node 1
+            {
+                let node1_subidentity_name_2 = "node1_subidentity_2";
+                let (node1_subidentity_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_signature_keypair(3);
+                let (node1_subencryption_sk_2, node1_subencryption_pk_2) = unsafe_deterministic_encryption_keypair(3);
+
+                eprintln!("Register another Profile in Node1 and verifies it");
+                registration_profile_node(
+                    node1_commands_sender.clone(),
+                    node1_subidentity_name_2,
+                    node1_identity_name,
+                    node1_subencryption_sk_2.clone(),
+                    node1_encryption_pk,
+                    clone_signature_secret_key(&node1_subidentity_sk_2),
+                    2
+                )
+                .await;
+
+                println!("Sending message from Node 1 subidentity to Node 1 subidentity 2");
+                let message_content =
+                    "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
+                let unchanged_message = ShinkaiMessageBuilder::new(
+                    node1_subencryption_sk.clone(),
+                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node1_subencryption_pk_2,
+                )
+                .body(message_content.clone())
+                .no_body_encryption()
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node1_subidentity_name.to_string().clone(),
+                    node1_subidentity_name_2.to_string().clone(),
+                    EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                )
+                .external_metadata_with_other(
+                    node1_identity_name.to_string().clone(),
+                    node1_identity_name.to_string().clone(),
+                    encryption_public_key_to_string(node1_subencryption_pk.clone()),
+                )
+                .build()
+                .unwrap();
+                eprintln!("unchanged_message node 1 sub to node 1 sub 2: {:?}", unchanged_message);
+
+                let (res1_send_msg_sender, res1_send_msg_receiver): (
+                    async_channel::Sender<Vec<StandardIdentity>>,
+                    async_channel::Receiver<Vec<StandardIdentity>>,
+                ) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                    .await
+                    .unwrap();
+
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::FetchLastMessages {
+                        limit: 2,
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let node1_last_messages = res1_receiver.recv().await.unwrap();
+
+                // Check the last message
+                let message_to_check = node1_last_messages[0].clone();
+
+                // Check that the message is not body encrypted
+                assert_eq!(
+                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    false,
+                    "Message from Node 1 subidentity to Node 1 subidentity 2 is not body encrypted"
+                );
+
+                // Check that the content is encrypted
+                assert_eq!(
+                    ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
+                    true,
+                    "Message from Node 1 subidentity to Node 1 subidentity 2 is content encrypted"
+                );
+
+                // Check the sender and recipient
+                let internal_metadata = message_to_check.clone().body.unwrap().internal_metadata.unwrap();
+                assert_eq!(
+                    internal_metadata.sender_subidentity,
+                    node1_subidentity_name.to_string(),
+                    "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right sender."
+                );
+                assert_eq!(
+                    internal_metadata.recipient_subidentity,
+                    node1_subidentity_name_2.to_string(),
+                    "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right recipient."
+                );
+            }
+
             // Send message from Node 1 subidentity to Node 2 subidentity
             {
                 println!("Final trick. Sending message from Node 1 subidentity to Node 2 subidentity");
@@ -479,6 +576,7 @@ async fn registration_profile_node(
     node_profile_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
     node_subidentity_sk: SignatureStaticKey,
+    identities_number: usize,
 ) {
     {
         let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
@@ -541,7 +639,7 @@ async fn registration_profile_node(
             .unwrap();
         let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap();
 
-        assert_eq!(node2_all_subidentities.len(), 1, "Node has 1 subidentity");
+        assert_eq!(node2_all_subidentities.len(), identities_number, "Node has 1 subidentity");
         eprintln!(
             "{}",
             format!(
@@ -550,7 +648,7 @@ async fn registration_profile_node(
             )
         );
         assert_eq!(
-            node2_all_subidentities[0].full_identity_name,
+            node2_all_subidentities[identities_number-1].full_identity_name,
             ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
             "Node has the right subidentity"
         );
