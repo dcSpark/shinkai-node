@@ -9,6 +9,8 @@ mod tests {
         println!("Testing valid names");
         let valid_names = vec![
             "@@alice.shinkai",
+            "@@ALICE.SHINKAI",
+            "@@alice_in_chains.shinkai",
             "@@alice/subidentity",
             "@@alice.shinkai/profileName",
             "@@alice.shinkai/profileName/agent/myChatGPTAgent",
@@ -25,6 +27,9 @@ mod tests {
     fn test_invalid_names_with_repair() {
         let invalid_names = vec![
             "@@alice.shinkai/profileName/myPhone",
+            "@@alice-not-in-chains.shinkai",
+            "@alice.shinkai",
+            "@@@alice.shinkai",
             "@@al!ce.shinkai",
             "@@alice.shinkai//",
             "@@alice.shinkai//subidentity",

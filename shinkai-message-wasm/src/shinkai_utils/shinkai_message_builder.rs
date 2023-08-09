@@ -268,7 +268,6 @@ impl ShinkaiMessageBuilder {
                     let encrypted_content = encrypt_string_content(
                         body_content,
                         internal_metadata.message_schema_type.clone().to_str().to_string(),
-                        internal_metadata.inbox.clone(),
                         &new_self.my_encryption_secret_key,
                         &new_self.receiver_public_key,
                         internal_metadata.encryption.as_str(),

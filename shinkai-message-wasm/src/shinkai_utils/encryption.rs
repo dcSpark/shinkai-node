@@ -170,7 +170,6 @@ pub fn encrypt_body(
 pub fn encrypt_string_content(
     content: String,
     content_schema: String,
-    inbox: String,
     self_sk: &StaticSecret,
     destination_pk: &PublicKey,
     encryption: &str,
@@ -190,7 +189,7 @@ pub fn encrypt_string_content(
             let nonce = GenericArray::from_slice(&nonce);
 
             // Combine the content and content_schema into a single string
-            let combined_content = format!("{}{}{}", content, content_schema, inbox);
+            let combined_content = format!("{}{}", content, content_schema);
             let ciphertext = cipher
                 .encrypt(nonce, combined_content.as_bytes())
                 .expect("encryption failure!");
@@ -202,11 +201,9 @@ pub fn encrypt_string_content(
             // = 140,737,488,355.328 MB (or roughly 140 terabytes).
             let content_len = (content.len() as u64).to_le_bytes();
             let content_schema_len = (content_schema.len() as u64).to_le_bytes();
-            let inbox_len = (inbox.len() as u64).to_le_bytes();
             let length_prefixed_nonce_and_ciphertext = [
                 &content_len[..],
                 &content_schema_len[..],
-                &inbox_len[..],
                 &nonce_and_ciphertext[..],
             ]
             .concat();
@@ -288,7 +285,7 @@ pub fn decrypt_content_message(
     encryption: &str,
     self_sk: &StaticSecret,
     sender_pk: &PublicKey,
-) -> Result<(String, String, String), DecryptionError> {
+) -> Result<(String, String), DecryptionError> {
     match EncryptionMethod::from_str(encryption) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(sender_pk);
@@ -303,8 +300,7 @@ pub fn decrypt_content_message(
                 .expect("Failed to decode bs58");
 
             let (content_len_bytes, remainder) = decoded.split_at(8);
-            let (content_schema_len_bytes, remainder) = remainder.split_at(8);
-            let (inbox_len_bytes, remainder) = remainder.split_at(8);
+            let (_, remainder) = remainder.split_at(8);
             let (nonce, ciphertext) = remainder.split_at(12);
 
             let content_len = u64::from_le_bytes(
@@ -312,30 +308,21 @@ pub fn decrypt_content_message(
                     .try_into()
                     .map_err(|_| DecryptionError::new("Failed to parse content length"))?,
             );
-            let content_schema_len = u64::from_le_bytes(
-                content_schema_len_bytes
-                    .try_into()
-                    .map_err(|_| DecryptionError::new("Failed to parse content schema length"))?,
-            );
-            let _ = u64::from_le_bytes(
-                inbox_len_bytes
-                    .try_into()
-                    .map_err(|_| DecryptionError::new("Failed to parse inbox length"))?,
-            );
 
             let nonce = GenericArray::from_slice(nonce);
 
-            let plaintext_bytes = cipher.decrypt(nonce, ciphertext).expect("Decryption failure!");
+            let plaintext_bytes = cipher
+                .decrypt(nonce, ciphertext)
+                .expect("Decryption failure!");
 
-            let (content_bytes, remainder) = plaintext_bytes.split_at(content_len as usize);
-            let (schema_bytes, inbox_bytes) = remainder.split_at(content_schema_len as usize);
+            let (content_bytes, schema_bytes) = plaintext_bytes.split_at(content_len as usize);
 
-            let content = String::from_utf8(content_bytes.to_vec()).expect("Failed to decode decrypted content");
-            let schema = String::from_utf8(schema_bytes.to_vec()).expect("Failed to decode decrypted content schema");
-            let inbox = String::from_utf8(inbox_bytes.to_vec())
-                .expect("Failed to decode decrypted inbox");
+            let content = String::from_utf8(content_bytes.to_vec())
+                .expect("Failed to decode decrypted content");
+            let schema = String::from_utf8(schema_bytes.to_vec())
+                .expect("Failed to decode decrypted content schema");
 
-            Ok((content, schema, inbox))
+            Ok((content, schema))
         }
         EncryptionMethod::None => Err(DecryptionError::new("Encryption method is None")),
     }
