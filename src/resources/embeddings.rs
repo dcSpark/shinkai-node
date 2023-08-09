@@ -1,4 +1,7 @@
 pub use llm::ModelArchitecture;
+use ordered_float::NotNan;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embedding {
@@ -49,16 +52,48 @@ impl Embedding {
         v.iter().map(|&x| x * x).sum::<f32>().sqrt()
     }
 
-    /// Calculate the cosine similarity between the query embedding
-    /// (self) and a list of embeddings.
-    pub fn score_similarities(&self, embeddings: Vec<Embedding>) -> Vec<(f32, Embedding)> {
-        // Calculate the cosine similarity between the query and each embedding, and
-        // sort by similarity
-        let mut similarities: Vec<(f32, Embedding)> = embeddings
+    /// Calculate the cosine similarity score between the query embedding
+    /// (self) and a list of embeddings, returning the num_of_results
+    /// most similar embeddings as a tuple of (score, embedding_id)
+    pub fn score_similarities(&self, embeddings: &Vec<Embedding>, num_of_results: u64) -> Vec<(f32, String)> {
+        let num_of_results = num_of_results as usize;
+
+        // Calculate the similarity scores for all chunk embeddings and skip any that
+        // are NaN
+        let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()
-            .map(|embedding| (self.cosine_similarity(&embedding), embedding.clone()))
+            .filter_map(|embedding| {
+                let similarity = self.cosine_similarity(embedding);
+                match NotNan::new(similarity) {
+                    Ok(not_nan_similarity) => Some((not_nan_similarity, embedding.id.clone())),
+                    Err(_) => None, // Skip this embedding if similarity is NaN
+                }
+            })
             .collect();
-        similarities.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
-        similarities
+
+        // Use a binary heap to more efficiently order the scores to get most similar
+        let mut heap = BinaryHeap::with_capacity(num_of_results);
+        for score in scores {
+            if heap.len() < num_of_results {
+                heap.push(Reverse(score));
+            } else if let Some(least_similar_score) = heap.peek() {
+                if least_similar_score.0 .0 < score.0 {
+                    heap.pop();
+                    heap.push(Reverse(score));
+                }
+            }
+        }
+
+        // Create a Vec to hold the reversed results
+        let mut results: Vec<(f32, String)> = Vec::new();
+
+        while let Some(Reverse((similarity, id))) = heap.pop() {
+            results.push((similarity.into_inner(), id));
+        }
+
+        // Reverse the order of the scores so that the highest score is first
+        results.reverse();
+
+        results
     }
 }
