@@ -16,7 +16,7 @@ ENV NVM_DIR /usr/local/nvm
 ENV NODE_VERSION v16.20.1
 RUN mkdir $NVM_DIR
 
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | /bin/bash
 RUN source $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
     && nvm alias default $NODE_VERSION \
