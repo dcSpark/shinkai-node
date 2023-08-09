@@ -13,7 +13,7 @@ jobs:
         run: docker build -t testing_image -f .github/Dockerfile .
 
       - name: Run tests main cargo tests
-        run: docker run --entrypoint /entrypoints/run-root-cargo-tests.sh testing_image
+        run: docker run --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
 
   test-wasm:
     runs-on: self-hosted
