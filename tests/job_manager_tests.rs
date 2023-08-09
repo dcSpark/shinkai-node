@@ -129,7 +129,7 @@ mod tests {
 
         // Create a JobCreationMessage ShinkaiMessage
         let scope = JobScope {
-            buckets: vec![InboxName::new("inbox::@@node1.shinkai|test_name::@@|::false".to_string()).unwrap()],
+            buckets: vec![InboxName::new("inbox::@@node1.shinkai/test_name::false".to_string()).unwrap()],
             documents: vec!["document1".to_string(), "document2".to_string()],
         };
         let shinkai_message_creation = ShinkaiMessageBuilder::job_creation(

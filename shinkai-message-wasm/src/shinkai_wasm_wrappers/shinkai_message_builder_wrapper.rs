@@ -104,13 +104,33 @@ impl ShinkaiMessageBuilderWrapper {
         &mut self,
         sender_subidentity: String,
         recipient_subidentity: String,
+        encryption: JsValue,
+    ) -> Result<(), JsValue> {
+        let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
+
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, encryption);
+            self.inner = Some(inner);
+            Ok(())
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn internal_metadata_with_inbox(
+        &mut self,
+        sender_subidentity: String,
+        recipient_subidentity: String,
         inbox: String,
         encryption: JsValue,
     ) -> Result<(), JsValue> {
         let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
 
         if let Some(mut inner) = self.inner.take() {
-            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, inbox, encryption);
+            inner = inner.internal_metadata_with_inbox(sender_subidentity, recipient_subidentity, inbox, encryption);
             self.inner = Some(inner);
             Ok(())
         } else {
@@ -342,7 +362,7 @@ impl ShinkaiMessageBuilderWrapper {
         let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
         let _ = builder.body(body);
         let _ = builder.body_encryption(body_encryption);
-        let _ = builder.internal_metadata(sender_profile_name, "".to_string(), "".to_string(), internal_encryption);
+        let _ = builder.internal_metadata(sender_profile_name, "".to_string(), internal_encryption);
         let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
 
         builder.build_to_string()

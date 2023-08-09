@@ -227,7 +227,6 @@ fn subidentity_registration() {
                 .internal_metadata(
                     node2_subidentity_name.to_string().clone(),
                     node1_subidentity_name.to_string(),
-                    "".to_string(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(
@@ -368,7 +367,6 @@ fn subidentity_registration() {
                 .internal_metadata(
                     node1_subidentity_name.to_string().clone(),
                     node2_subidentity_name.to_string().clone(),
-                    "".to_string(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(

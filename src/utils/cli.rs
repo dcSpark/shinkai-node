@@ -65,7 +65,7 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
             .body(body_content.to_string())
             .body_encryption(EncryptionMethod::None)
             .message_schema_type(MessageSchemaType::Empty)
-            .internal_metadata(
+            .internal_metadata_with_inbox(
                 sender_subidentity.to_string(),
                 receiver_subidentity.to_string(),
                 inbox.to_string(),

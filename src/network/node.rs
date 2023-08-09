@@ -475,6 +475,8 @@ impl Node {
         // The body should only be decrypted if it's currently encrypted.
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
+            // Debug only
+            println!("save_to_db> message: {:?}", message.clone());
             if am_i_sender {
                 counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
                     .unwrap()
@@ -515,6 +517,7 @@ impl Node {
             }
         }
 
+        // TODO: add identity to this fn so we can check for permissions
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),

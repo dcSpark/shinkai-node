@@ -3,14 +3,13 @@ use std::str::FromStr;
 
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_wasm::{
-    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler, schemas::inbox_name::InboxName,
+    schemas::inbox_name::InboxName, shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
 };
 
-use crate::{
-    schemas::{
-        identity::{IdentityType, StandardIdentity},
-        inbox_permission::InboxPermission,
-    },
+use crate::schemas::{
+    identity::{IdentityType, StandardIdentity},
+    inbox_permission::InboxPermission,
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -53,16 +52,22 @@ impl ShinkaiDB {
     // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regards
     pub fn unsafe_insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
-        let inbox_name = inbox_name_manager.value.clone();
+
+        // If the inbox name is empty, use the get_inbox_name function
+        let inbox_name = match &inbox_name_manager {
+            InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value.clone(),
+        };
 
         // If the inbox name is empty, use the get_inbox_name function
         if inbox_name.is_empty() {
             return Err(ShinkaiDBError::SomeError("Inbox name is empty".to_string()));
         }
 
-        if !inbox_name_manager.has_sender_creation_access(message.clone()) {
+        if let Err(_) | Ok(false) = inbox_name_manager.has_sender_creation_access(message.clone()) {
+            // TODO: check if it has "manual" permissions for this adding identity is required as an input to this fn
             return Err(ShinkaiDBError::SomeError("Sender doesn't have creation access".to_string()));
         }
+
         // TODO: should be check that the recipient also has access?
 
         println!("Inserting message into inbox: {:?}", inbox_name);
@@ -75,7 +80,7 @@ impl ShinkaiDB {
             self.create_empty_inbox(inbox_name.clone())?;
 
             // TODO: review how to add permissions to keep stuff in sync
-            // self.add_permission(&inbox_name, , perm);
+            // we need the identity as an input to this fn
         }
 
         // Calculate the hash of the message for the key
@@ -413,13 +418,13 @@ impl ShinkaiDB {
                 )))?;
         let perm_type_str = String::from_utf8(perm_type_bytes.to_vec())
             .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
+        
         // TODO: perm_type not used?
+        // TODO(?): if it's admin it should be able to access anything :?
         let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!(
             "Invalid identity type for: {}",
             identity.full_identity_name
         )))?;
-
-        // TODO(?): if it's admin it should be able to access anything :?
 
         // Handle the original permission check
         let cf_name = format!("{}_perms", inbox_name);

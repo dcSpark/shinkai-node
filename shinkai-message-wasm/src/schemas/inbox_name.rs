@@ -11,6 +11,7 @@ pub enum InboxNameError {
     ShinkaiNameError(ShinkaiNameError),
     InvalidFormat(String),
     InvalidSenderRecipientFormat(String),
+    InvalidOperation(String),
 }
 
 impl fmt::Display for InboxNameError {
@@ -21,6 +22,7 @@ impl fmt::Display for InboxNameError {
             InboxNameError::InvalidSenderRecipientFormat(ref s) => {
                 write!(f, "Invalid sender/recipient format: {}", s)
             }
+            InboxNameError::InvalidOperation(ref s) => write!(f, "Invalid operation: {}", s),
         }
     }
 }
@@ -34,42 +36,61 @@ impl From<ShinkaiNameError> for InboxNameError {
 impl std::error::Error for InboxNameError {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct InboxName {
-    pub value: String,
-    pub is_e2e: bool,
-    pub identities: Vec<ShinkaiName>,
+pub enum InboxName {
+    RegularInbox {
+        value: String,
+        is_e2e: bool,
+        identities: Vec<ShinkaiName>,
+    },
+    JobInbox {
+        value: String,
+        unique_id: String,
+        is_e2e: bool,
+    },
 }
 
 impl InboxName {
     pub fn new(inbox_name: String) -> Result<Self, InboxNameError> {
         println!("inbox_name: {}", inbox_name);
-        // job_inbox::{}::false
         let parts: Vec<&str> = inbox_name.split("::").collect();
-        if parts.len() < 3 || parts.len() > 101 || parts[0] != "inbox" {
+        if parts.len() < 3 || parts.len() > 101 {
             return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
         }
 
-        let is_e2e = match parts.last().unwrap().parse::<bool>() {
-            Ok(b) => b,
-            Err(_) => return Err(InboxNameError::InvalidFormat(inbox_name.clone())),
-        };
+        let is_e2e = parts
+            .last()
+            .unwrap()
+            .parse::<bool>()
+            .map_err(|_| InboxNameError::InvalidFormat(inbox_name.clone()))?;
 
-        let mut identities = Vec::new();
-        for part in &parts[1..parts.len() - 1] {
-            if !ShinkaiName::is_fully_valid(part.to_string()) {
-                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+        if parts[0] == "inbox" {
+            let mut identities = Vec::new();
+            for part in &parts[1..parts.len() - 1] {
+                if !ShinkaiName::is_fully_valid(part.to_string()) {
+                    return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+                }
+                match ShinkaiName::new(part.to_string()) {
+                    Ok(name) => identities.push(name),
+                    Err(_) => return Err(InboxNameError::InvalidFormat(inbox_name.clone())),
+                }
             }
-            match ShinkaiName::new(part.to_string()) {
-                Ok(name) => identities.push(name),
-                Err(_) => return Err(InboxNameError::InvalidFormat(inbox_name.clone())),
-            }
+
+            Ok(InboxName::RegularInbox {
+                value: inbox_name,
+                is_e2e,
+                identities,
+            })
+        } else if parts[0] == "job_inbox" {
+            let unique_id = parts[1].to_string();
+
+            Ok(InboxName::JobInbox {
+                value: inbox_name,
+                unique_id,
+                is_e2e,
+            })
+        } else {
+            Err(InboxNameError::InvalidFormat(inbox_name.clone()))
         }
-
-        Ok(InboxName {
-            value: inbox_name,
-            is_e2e,
-            identities,
-        })
     }
 
     pub fn from_message(message: &ShinkaiMessage) -> Result<InboxName, InboxNameError> {
@@ -88,23 +109,29 @@ impl InboxName {
         InboxName::new(inbox_name)
     }
 
-    pub fn has_creation_access(&self, identity_name: ShinkaiName) -> bool {
-        for identity in &self.identities {
-            if identity.contains(&identity_name) {
-                return true;
+    pub fn has_creation_access(&self, identity_name: ShinkaiName) -> Result<bool, InboxNameError> {
+        if let InboxName::RegularInbox { identities, .. } = self {
+            for identity in identities {
+                if identity.contains(&identity_name) {
+                    return Ok(true);
+                }
             }
+            Ok(false)
+        } else {
+            Err(InboxNameError::InvalidOperation(
+                "has_creation_access is not applicable for JobInbox".to_string(),
+            ))
         }
-        false
     }
 
-    pub fn has_sender_creation_access(&self, message: ShinkaiMessage) -> bool {
+    pub fn has_sender_creation_access(&self, message: ShinkaiMessage) -> Result<bool, InboxNameError> {
         match ShinkaiName::from_shinkai_message_using_sender_subidentity(&message) {
             Ok(shinkai_name) => self.has_creation_access(shinkai_name),
-            Err(_) => false,
+            Err(_) => Ok(false),
         }
     }
 
-    pub fn get_inbox_name_from_params(
+    pub fn get_regular_inbox_name_from_params(
         sender: String,
         sender_subidentity: String,
         recipient: String,
@@ -132,6 +159,15 @@ impl InboxName {
             inbox_name_parts[1],
             inbox_name_separator,
             is_e2e
+        );
+        InboxName::new(inbox_name)
+    }
+
+    pub fn get_job_inbox_name_from_params(unique_id: String) -> Result<InboxName, InboxNameError> {
+        let inbox_name_separator = "::";
+        let inbox_name = format!(
+            "job_inbox{}{}{}false",
+            inbox_name_separator, unique_id, inbox_name_separator
         );
         InboxName::new(inbox_name)
     }
@@ -191,13 +227,52 @@ mod tests {
         }
     }
 
+    #[test]
+    fn valid_job_inbox_names() {
+        let valid_names = vec![
+            "job_inbox::unique_id_1::false",
+            "job_inbox::unique_id_2::false",
+            "job_inbox::job_1234::false",
+            // add other valid examples here...
+        ];
+
+        for name in valid_names {
+            let result = InboxName::new(name.to_string());
+            assert!(result.is_ok(), "Expected valid job inbox name {}", name);
+        }
+    }
+
+    #[test]
+    fn invalid_job_inbox_names() {
+        let invalid_names = vec![
+            "job_inbox::false",
+            "job_inbox::unique_id_1::true",
+            "jobinbox::unique_id_2::false",
+            "job_inbox::::false",
+            "inbox::unique_id_1::false",
+            // add other invalid examples here...
+        ];
+
+        for name in &invalid_names {
+            let result = InboxName::new(name.to_string());
+            assert!(
+                result.is_err(),
+                "Expected invalid job inbox name, but got a valid one for: {}",
+                name
+            );
+        }
+    }
+
     // Test creation of InboxNameManager instance from an inbox name
     #[test]
     fn test_from_inbox_name() {
         let inbox_name = "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string();
         let manager = InboxName::new(inbox_name.clone()).unwrap();
 
-        assert_eq!(manager.value, inbox_name);
+        match &manager {
+            InboxName::RegularInbox { value, .. } => assert_eq!(value, &inbox_name),
+            _ => panic!("Expected RegularInbox variant"),
+        }
     }
 
     #[test]
@@ -225,10 +300,13 @@ mod tests {
         };
 
         let manager = InboxName::from_message(&mock_message).unwrap();
-        assert_eq!(
-            manager.value,
-            "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true"
-        );
+        match &manager {
+            InboxName::RegularInbox { value, .. } => assert_eq!(
+                value,
+                "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true"
+            ),
+            _ => panic!("Expected RegularInbox variant"),
+        }
     }
 
     #[test]
@@ -267,8 +345,13 @@ mod tests {
         let recipient_subidentity = "subidentity2".to_string();
         let is_e2e = true;
 
-        let result =
-            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+        let result = InboxName::get_regular_inbox_name_from_params(
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            is_e2e,
+        );
 
         assert!(result.is_ok(), "Expected valid conversion");
     }
@@ -281,8 +364,13 @@ mod tests {
         let recipient_subidentity = "subidentity2".to_string();
         let is_e2e = true;
 
-        let result =
-            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+        let result = InboxName::get_regular_inbox_name_from_params(
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            is_e2e,
+        );
 
         assert!(result.is_ok(), "Expected valid conversion");
     }
@@ -295,8 +383,13 @@ mod tests {
         let recipient_subidentity = "subidentity2".to_string();
         let is_e2e = true;
 
-        let result =
-            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+        let result = InboxName::get_regular_inbox_name_from_params(
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            is_e2e,
+        );
 
         assert!(result.is_err(), "Expected invalid conversion");
     }
@@ -307,18 +400,19 @@ mod tests {
             "inbox::@@node1.shinkai/subidentity::@@node2.shinkai::@@node3.shinkai/subidentity3::true".to_string(),
         )
         .unwrap();
+
         let identity_name = ShinkaiName::new("@@node1.shinkai/subidentity".to_string()).unwrap();
         let identity_name_2 = ShinkaiName::new("@@node2.shinkai/subidentity".to_string()).unwrap();
 
-        assert!(
-            manager.has_creation_access(identity_name),
-            "Expected identity to have creation access"
-        );
+        match manager.has_creation_access(identity_name) {
+            Ok(access) => assert!(access, "Expected identity to have creation access"),
+            Err(err) => panic!("Unexpected error: {:?}", err),
+        }
 
-        assert!(
-            manager.has_creation_access(identity_name_2),
-            "Expected identity to have creation access"
-        );
+        match manager.has_creation_access(identity_name_2) {
+            Ok(access) => assert!(access, "Expected identity to have creation access"),
+            Err(err) => panic!("Unexpected error: {:?}", err),
+        }
     }
 
     #[test]
@@ -347,10 +441,10 @@ mod tests {
 
         let manager = InboxName::from_message(&mock_message).unwrap();
 
-        assert!(
-            manager.has_sender_creation_access(mock_message),
-            "Expected sender to have creation access"
-        );
+        match manager.has_sender_creation_access(mock_message) {
+            Ok(access) => assert!(access, "Expected sender to have creation access"),
+            Err(err) => panic!("Unexpected error: {:?}", err),
+        }
     }
 
     #[test]
@@ -376,12 +470,12 @@ mod tests {
             }),
             encryption: EncryptionMethod::None,
         };
-
+    
         let manager = InboxName::from_message(&mock_message).unwrap();
-
-        assert!(
-            !manager.has_sender_creation_access(mock_message),
-            "Expected sender to not have creation access"
-        );
+    
+        match manager.has_sender_creation_access(mock_message) {
+            Ok(access) => assert!(!access, "Expected sender to not have creation access"),
+            Err(err) => panic!("Unexpected error: {:?}", err),
+        }
     }
 }

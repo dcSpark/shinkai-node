@@ -4,6 +4,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
+    schemas::{inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
         shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
         shinkai_message_schemas::{JobCreation, JobMessage, JobScope, MessageSchemaType},
@@ -11,7 +12,7 @@ use crate::{
     shinkai_utils::{
         encryption::{encrypt_body, encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
         signatures::{sign_message, signature_public_key_to_string},
-    }, schemas::registration_code::RegistrationCode,
+    },
 };
 
 use super::{
@@ -80,6 +81,22 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn internal_metadata(
+        mut self,
+        sender_subidentity: String,
+        recipient_subidentity: String,
+        encryption: EncryptionMethod,
+    ) -> Self {
+        self.internal_metadata = Some(InternalMetadata {
+            sender_subidentity,
+            recipient_subidentity,
+            message_schema_type: self.message_schema_type.clone(),
+            inbox: "".to_string(),
+            encryption,
+        });
+        self
+    }
+
+    pub fn internal_metadata_with_inbox(
         mut self,
         sender_subidentity: String,
         recipient_subidentity: String,
@@ -215,6 +232,29 @@ impl ShinkaiMessageBuilder {
             && new_self.internal_metadata.as_ref().unwrap().encryption != encryption_method_none
         {
             return Err("Encryption should not be set on both body and internal metadata simultaneously");
+        }
+
+        if let Some(internal_metadata) = &mut new_self.internal_metadata {
+            if internal_metadata.inbox.is_empty() {
+                if let Some(external_metadata) = &new_self.external_metadata {
+                    // Generate a new inbox name
+                    let new_inbox_name = InboxName::get_regular_inbox_name_from_params(
+                        external_metadata.sender.clone(),
+                        internal_metadata.sender_subidentity.clone(),
+                        external_metadata.recipient.clone(),
+                        internal_metadata.recipient_subidentity.clone(),
+                        internal_metadata.encryption != EncryptionMethod::None,
+                    )
+                    .map_err(|_| "Failed to generate inbox name")?;
+
+                    // Update the inbox name in the internal metadata
+                    internal_metadata.inbox = match new_inbox_name {
+                        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+                    };
+                } else {
+                    return Err("Inbox is required");
+                }
+            }
         }
 
         if let Some(mut body) = new_self.body {
@@ -420,7 +460,7 @@ impl ShinkaiMessageBuilder {
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
             identity_type,
-            permission_type
+            permission_type,
         };
 
         let body =
@@ -437,7 +477,11 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata(sender_profile_name, "".to_string(), "".to_string(), EncryptionMethod::None)
+        .internal_metadata(
+            sender_profile_name,
+            "".to_string(),
+            EncryptionMethod::None,
+        )
         // we are interacting with the associated node so the receiver and the sender are from the same base node
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
@@ -482,7 +526,7 @@ mod tests {
             .body("body content".to_string())
             .body_encryption(EncryptionMethod::None)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
+            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None)
             .external_metadata_with_schedule(recipient.clone(), sender.clone(), scheduled_time.clone())
             .build();
 
@@ -517,7 +561,7 @@ mod tests {
             .body("body content".to_string())
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), EncryptionMethod::None)
+            .internal_metadata("".to_string(), "".to_string(), EncryptionMethod::None)
             .external_metadata(recipient, sender.clone())
             .build();
 
@@ -560,7 +604,6 @@ mod tests {
             .no_body_encryption()
             .message_schema_type(MessageSchemaType::TextContent)
             .internal_metadata(
-                "".to_string(),
                 "".to_string(),
                 "".to_string(),
                 EncryptionMethod::DiffieHellmanChaChaPoly1305,

@@ -40,7 +40,6 @@ fn generate_message_with_text(
         .internal_metadata(
             "".to_string(),
             recipient_subidentity_name.clone().to_string(),
-            "".to_string(),
             EncryptionMethod::None,
         )
         .external_metadata_with_schedule(
