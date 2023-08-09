@@ -1,14 +1,9 @@
-use serde_json::{from_str, to_string};
-use shinkai_node::db::{ShinkaiDB, Topic};
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::document::DocumentResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_node::resources::embeddings::Embedding;
-use shinkai_node::resources::resource::RetrievedDataChunk;
-use shinkai_node::resources::resource::{Resource, ResourceType};
+use shinkai_node::resources::resource::Resource;
 use shinkai_node::resources::resource_errors::ResourceError;
-use shinkai_node::resources::router::{ResourcePointer, ResourceRouter};
 use shinkai_node::resources::{bert_cpp::BertCPPProcess, data_tags::DataTag};
-use std::any::Any;
 use std::fs;
 use std::path::Path;
 
