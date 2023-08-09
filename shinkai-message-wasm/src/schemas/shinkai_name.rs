@@ -5,9 +5,15 @@ use std::fmt;
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-pub struct ShinkaiName(String);
+pub struct ShinkaiName {
+    full_name: String,
+    node_name: String,
+    profile_name: Option<String>,
+    subidentity_type: Option<ShinkaiSubidentityType>,
+    subidentity_name: Option<String>,
+}
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum ShinkaiSubidentityType {
     Agent,
     Device,
@@ -47,11 +53,30 @@ pub enum ShinkaiNameError {
 
 impl ShinkaiName {
     pub fn new(raw_name: String) -> Result<Self, &'static str> {
-        println!("creating name: {}", raw_name);
         let raw_name = Self::correct_node_name(raw_name);
-        println!("corrected name: {}", raw_name);
         Self::validate_name(&raw_name)?;
-        Ok(Self(raw_name.to_lowercase()))
+
+        let parts: Vec<&str> = raw_name.split('/').collect();
+        let node_name = parts[0].to_string();
+        let profile_name = parts.get(1).map(|s| s.to_string());
+        let subidentity_type = parts.get(2).map(|s| {
+            if *s == "agent" {
+                ShinkaiSubidentityType::Agent
+            } else if *s == "device" {
+                ShinkaiSubidentityType::Device
+            } else {
+                panic!("Invalid subidentity type");
+            }
+        });
+        let subidentity_name = parts.get(3).map(|s| s.to_string());
+
+        Ok(Self {
+            full_name: raw_name.to_lowercase(),
+            node_name,
+            profile_name,
+            subidentity_type,
+            subidentity_name,
+        })
     }
 
     pub fn is_fully_valid(shinkai_name: String) -> bool {
@@ -259,13 +284,13 @@ impl ShinkaiName {
     }
 
     pub fn contains(&self, other: &ShinkaiName) -> bool {
-        let self_parts: Vec<&str> = self.0.split('/').collect();
-        let other_parts: Vec<&str> = other.0.split('/').collect();
-
+        let self_parts: Vec<&str> = self.full_name.split('/').collect();
+        let other_parts: Vec<&str> = other.full_name.split('/').collect();
+    
         if self_parts.len() > other_parts.len() {
             return false;
         }
-
+    
         self_parts
             .iter()
             .zip(other_parts.iter())
@@ -273,44 +298,34 @@ impl ShinkaiName {
     }
 
     pub fn has_profile(&self) -> bool {
-        // Check if it contains two '/' (indicating it has a profile)
-        self.0.matches('/').count() >= 1
+        self.profile_name.is_some()
     }
 
     pub fn has_device(&self) -> bool {
-        let parts: Vec<&str> = self.0.split('/').collect();
-        parts.contains(&"device")
+        match self.subidentity_type {
+            Some(ShinkaiSubidentityType::Device) => true,
+            _ => false,
+        }
     }
 
     pub fn has_no_subidentities(&self) -> bool {
-        // If it contains no '/' then it's only a node
-        !self.0.contains('/')
+        self.profile_name.is_none() && self.subidentity_type.is_none()
     }
 
     pub fn get_profile_name(&self) -> Option<String> {
-        if !self.has_profile() {
-            return None;
-        }
-
-        let parts: Vec<&str> = self.0.split('/').collect();
-        // Assuming that parts[0] is always the node name and parts[1] is the profile name
-        Some(parts[1].to_string())
+        self.profile_name.clone()
     }
 
     pub fn get_node_name(&self) -> String {
-        let parts: Vec<&str> = self.0.split('/').collect();
-        // parts[0] now contains the node name with '@@' and '.shinkai'
-        parts[0].to_string()
+        self.node_name.clone()
     }
 
     pub fn get_device_name(&self) -> Option<String> {
-        if !self.has_device() {
-            return None;
+        if self.has_device() {
+            self.subidentity_name.clone()
+        } else {
+            None
         }
-
-        let parts: Vec<&str> = self.0.rsplitn(2, '/').collect();
-        // parts[0] now contains the device name
-        Some(parts[0].to_string())
     }
 
     pub fn extract_profile(&self) -> Result<Self, &'static str> {
@@ -318,20 +333,23 @@ impl ShinkaiName {
             return Err("This ShinkaiName does not include a profile.");
         }
 
-        let parts: Vec<&str> = self.0.splitn(2, '/').collect();
-        // parts[0] now contains the node name with '@@' and '.shinkai', and parts[1] contains the profile name
-
-        // Form a new ShinkaiName with only the node and profile, but no device
-        Self::new(format!("{}/{}", parts[0], parts[1]))
+        Ok(Self {
+            full_name: format!("{}/{}", self.node_name, self.profile_name.as_ref().unwrap()),
+            node_name: self.node_name.clone(),
+            profile_name: self.profile_name.clone(),
+            subidentity_type: None,
+            subidentity_name: None,
+        })
     }
 
     pub fn extract_node(&self) -> Self {
-        let parts: Vec<&str> = self.0.split('/').collect();
-        // parts[0] now contains the node name with '@@' and '.shinkai'
-        let node_name = parts[0].to_string();
-
-        // create a new ShinkaiName instance from the extracted node_name
-        Self::new(node_name).unwrap()
+        Self {
+            full_name: self.node_name.clone(),
+            node_name: self.node_name.clone(),
+            profile_name: None,
+            subidentity_type: None,
+            subidentity_name: None,
+        }
     }
 }
 
@@ -364,12 +382,12 @@ impl ShinkaiName {
 
 impl fmt::Display for ShinkaiName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.full_name)
     }
 }
 
-impl AsRef<[u8]> for ShinkaiName {
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_bytes()
+impl AsRef<str> for ShinkaiName {
+    fn as_ref(&self) -> &str {
+        &self.full_name
     }
 }

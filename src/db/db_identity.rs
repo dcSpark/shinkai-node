@@ -309,7 +309,7 @@ impl ShinkaiDB {
         let cf_device = self.db.cf_handle(Topic::Devices.as_str()).unwrap();
 
         // Check that the full device identity name doesn't already exist in the column
-        if self.db.get_cf(cf_device, &device.full_identity_name)?.is_some() {
+        if self.db.get_cf(cf_device, &device.full_identity_name.to_string().as_bytes())?.is_some() {
             return Err(ShinkaiDBError::DeviceIdentityAlreadyExists);
         }
 
@@ -326,7 +326,7 @@ impl ShinkaiDB {
         // Add the device information to the batch
         batch.put_cf(
             cf_device,
-            &device.full_identity_name,
+            &device.full_identity_name.to_string().as_bytes(),
             device_signature_public_key.as_bytes(),
         );
 
@@ -339,7 +339,7 @@ impl ShinkaiDB {
         // Add the device permission to the batch
         batch.put_cf(
             cf_device_permissions,
-            &device.full_identity_name,
+            &device.full_identity_name.to_string().as_bytes(),
             permission_str.as_bytes(),
         );
 

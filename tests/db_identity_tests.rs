@@ -356,12 +356,12 @@ fn test_update_local_node_keys() {
         .unwrap();
     let encryption_key_in_db = shinkai_db
         .db
-        .get_cf(cf_node_encryption, &node_profile_name)
+        .get_cf(cf_node_encryption, &node_profile_name.to_string())
         .unwrap()
         .unwrap();
     let identity_key_in_db = shinkai_db
         .db
-        .get_cf(cf_node_identity, &node_profile_name)
+        .get_cf(cf_node_identity, &node_profile_name.to_string())
         .unwrap()
         .unwrap();
 
