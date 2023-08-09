@@ -1,7 +1,7 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
-    managers::{identity_manager::{self, IdentityManager}, InboxNameManager},
+    managers::{identity_manager::{self, IdentityManager}},
     network::{
         node::NodeError,
         node_message_handlers::{ping_pong, PingPong},
@@ -16,7 +16,7 @@ use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::{
-    schemas::shinkai_name::ShinkaiName,
+    schemas::{shinkai_name::ShinkaiName, inbox_name::InboxName},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::{
@@ -167,11 +167,11 @@ impl Node {
         // Part 2: Check if the message needs to be sent to another node or not
         //
 
-        let recipient_node_name = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
+        let recipient_node_name = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
             .unwrap()
             .get_node_name();
 
-        let sender_node_name = ShinkaiName::from_shinkai_message_using_sender(&msg.clone())
+        let sender_node_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&msg.clone())
             .unwrap()
             .get_node_name();
 
@@ -181,7 +181,7 @@ impl Node {
             //
 
             // Has sender access to the inbox specified in the message?
-            let inbox = InboxNameManager::from_message(&msg.clone());
+            let inbox = InboxName::from_message(&msg.clone());
             // let inbox_name = msg.clone().body.unwrap().external_metadata.unwrap().inbox_name;
             
         }
@@ -191,7 +191,7 @@ impl Node {
         //
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_profile_name_string = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
+        let recipient_profile_name_string = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
             .unwrap()
             .to_string();
 

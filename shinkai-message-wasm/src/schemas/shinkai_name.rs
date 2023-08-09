@@ -4,7 +4,7 @@ use std::fmt;
 
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ShinkaiName(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,7 +22,7 @@ impl fmt::Display for ShinkaiSubidentityType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ShinkaiNameError {
     MissingBody(String),
     MissingInternalMetadata(String),
@@ -164,14 +164,14 @@ impl ShinkaiName {
         Self::new(full_identity_name)
     }
 
-    pub fn from_shinkai_message_using_sender(message: &ShinkaiMessage) -> Result<Self, &'static str> {
+    pub fn from_shinkai_message_only_using_sender_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         match &message.external_metadata {
             Some(metadata) => Self::new(metadata.sender.clone()),
             None => Err("External metadata is missing."),
         }
     }
 
-    pub fn from_shinkai_message_using_recipient(message: &ShinkaiMessage) -> Result<Self, &'static str> {
+    pub fn from_shinkai_message_only_using_recipient_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         match &message.external_metadata {
             Some(metadata) => Self::new(metadata.recipient.clone()),
             None => Err("External metadata is missing."),

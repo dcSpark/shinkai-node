@@ -1,19 +1,33 @@
 use std::fmt;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use super::shinkai_name::{ShinkaiName, ShinkaiNameError};
+use crate::shinkai_message::shinkai_message::ShinkaiMessage;
+use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
 pub enum InboxNameError {
-    InvalidFormat,
-    InvalidSenderRecipientFormat,
+    ShinkaiNameError(ShinkaiNameError),
+    InvalidFormat(String),
+    InvalidSenderRecipientFormat(String),
 }
 
 impl fmt::Display for InboxNameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            InboxNameError::InvalidFormat => write!(f, "Invalid inbox name format"),
-            InboxNameError::InvalidSenderRecipientFormat => write!(f, "Invalid sender/recipient format"),
+            InboxNameError::ShinkaiNameError(ref err) => err.fmt(f),
+            InboxNameError::InvalidFormat(ref s) => write!(f, "Invalid inbox name format: {}", s),
+            InboxNameError::InvalidSenderRecipientFormat(ref s) => {
+                write!(f, "Invalid sender/recipient format: {}", s)
+            }
         }
+    }
+}
+
+impl From<ShinkaiNameError> for InboxNameError {
+    fn from(error: ShinkaiNameError) -> Self {
+        InboxNameError::ShinkaiNameError(error)
     }
 }
 
@@ -22,63 +36,350 @@ impl std::error::Error for InboxNameError {}
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InboxName {
     pub value: String,
+    pub is_e2e: bool,
+    pub identities: Vec<ShinkaiName>,
 }
 
 impl InboxName {
-    pub fn new(s: String) -> Result<Self, InboxNameError> {
-        Self::from_str(&s)
-    }
-
-    fn from_str(s: &str) -> Result<Self, InboxNameError> {
-        let parts: Vec<&str> = s.split("::").collect();
-        if parts.len() != 4 {
-            return Err(InboxNameError::InvalidFormat);
+    pub fn new(inbox_name: String) -> Result<Self, InboxNameError> {
+        let parts: Vec<&str> = inbox_name.split("::").collect();
+        if parts.len() < 3 || parts.len() > 101 || parts[0] != "inbox" {
+            return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
         }
 
-        let is_e2e = match parts[3].parse::<bool>() {
+        let is_e2e = match parts.last().unwrap().parse::<bool>() {
             Ok(b) => b,
-            Err(_) => return Err(InboxNameError::InvalidFormat),
+            Err(_) => return Err(InboxNameError::InvalidFormat(inbox_name.clone())),
         };
 
-        let sender_parts: Vec<&str> = parts[1].split("|").collect();
-        let recipient_parts: Vec<&str> = parts[2].split("|").collect();
-
-        if sender_parts.len() != 2 || recipient_parts.len() != 2 {
-            return Err(InboxNameError::InvalidFormat);
+        let mut identities = Vec::new();
+        for part in &parts[1..parts.len() - 1] {
+            if !ShinkaiName::is_fully_valid(part.to_string()) {
+                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+            }
+            match ShinkaiName::new(part.to_string()) {
+                Ok(name) => identities.push(name),
+                Err(_) => return Err(InboxNameError::InvalidFormat(inbox_name.clone())),
+            }
         }
 
-        Ok(InboxName { value: s.to_string() })
+        Ok(InboxName {
+            value: inbox_name,
+            is_e2e,
+            identities,
+        })
+    }
+
+    pub fn from_message(message: &ShinkaiMessage) -> Result<InboxName, InboxNameError> {
+        let body = message
+            .body
+            .as_ref()
+            .ok_or(ShinkaiNameError::MissingBody(message.to_json_str().unwrap()))?;
+        let internal_metadata = body
+            .internal_metadata
+            .as_ref()
+            .ok_or(ShinkaiNameError::MissingInternalMetadata(
+                message.to_json_str().unwrap(),
+            ))?;
+
+        let inbox_name = internal_metadata.inbox.clone();
+        InboxName::new(inbox_name)
+    }
+
+    pub fn has_creation_access(&self, identity_name: ShinkaiName) -> bool {
+        for identity in &self.identities {
+            if identity.contains(&identity_name) {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn has_sender_creation_access(&self, message: ShinkaiMessage) -> bool {
+        match ShinkaiName::from_shinkai_message_using_sender_subidentity(&message) {
+            Ok(shinkai_name) => self.has_creation_access(shinkai_name),
+            Err(_) => false,
+        }
+    }
+
+    pub fn get_inbox_name_from_params(
+        sender: String,
+        sender_subidentity: String,
+        recipient: String,
+        recipient_subidentity: String,
+        is_e2e: bool,
+    ) -> Result<InboxName, InboxNameError> {
+        let inbox_name_separator = "::";
+
+        let sender_full = format!("{}/{}", sender, sender_subidentity);
+        let recipient_full = format!("{}/{}", recipient, recipient_subidentity);
+
+        let sender_name = ShinkaiName::new(sender_full.clone())
+            .map_err(|_| ShinkaiNameError::InvalidNameFormat(sender_full.to_string()))?;
+        let recipient_name = ShinkaiName::new(recipient_full.clone())
+            .map_err(|_| ShinkaiNameError::InvalidNameFormat(recipient_full.to_string()))?;
+
+        let mut inbox_name_parts = vec![sender_name.to_string(), recipient_name.to_string()];
+        inbox_name_parts.sort();
+
+        let inbox_name = format!(
+            "inbox{}{}{}{}{}{}",
+            inbox_name_separator,
+            inbox_name_parts[0],
+            inbox_name_separator,
+            inbox_name_parts[1],
+            inbox_name_separator,
+            is_e2e
+        );
+        InboxName::new(inbox_name)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        shinkai_message::{
+            shinkai_message::{Body, ExternalMetadata, InternalMetadata},
+            shinkai_message_schemas::MessageSchemaType,
+        },
+        shinkai_utils::encryption::EncryptionMethod,
+    };
+
     use super::*;
 
+    // Test new inbox name
     #[test]
-    fn test_inbox_name_valid() {
-        let name = "part1|part2::part3|part4::part5|part6::true".to_string();
-        assert!(InboxName::new(name).is_ok());
+    fn valid_inbox_names() {
+        let valid_names = vec![
+            "inbox::@@node.shinkai::true",
+            "inbox::@@node1.shinkai/subidentity::false",
+            "inbox::@@alice.shinkai/profileName/agent/myChatGPTAgent::true",
+            "inbox::@@alice.shinkai/profileName/device/myPhone::true",
+            "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::false",
+            "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity::@@node3.shinkai/subidentity2::false",
+        ];
+
+        for name in valid_names {
+            let result = InboxName::new(name.to_string());
+            assert!(result.is_ok(), "Expected valid inbox name {}", name);
+        }
     }
 
     #[test]
-    fn test_inbox_real_name_valid() {
-        let name = "inbox::@@node1.shinkai|subidentity::@@node2.shinkai|subidentity2::true".to_string();
-        assert!(InboxName::new(name).is_ok());
+    fn invalid_inbox_names() {
+        let invalid_names = vec![
+            "@@node1.shinkai::false",
+            "inbox::@@node1.shinkai::falsee",
+            "@@node1.shinkai",
+            "inbox::@@node1.shinkai",
+            "inbox::node1::false",
+            "inbox::node1.shinkai::false",
+            "inbox::@@node1::false",
+            "inbox::@@node1.shinkai//subidentity::@@node2.shinkai::false",
+            "inbox::@@node1/subidentity::false",
+        ];
+
+        for name in &invalid_names {
+            let result = InboxName::new(name.to_string());
+            assert!(
+                result.is_err(),
+                "Expected invalid inbox name, but got a valid one for: {}",
+                name
+            );
+        }
+    }
+
+    // Test creation of InboxNameManager instance from an inbox name
+    #[test]
+    fn test_from_inbox_name() {
+        let inbox_name = "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string();
+        let manager = InboxName::new(inbox_name.clone()).unwrap();
+
+        assert_eq!(manager.value, inbox_name);
     }
 
     #[test]
-    fn test_inbox_name_invalid() {
-        let name1 = "part1|part2::part3::part4::false".to_string();
-        assert!(InboxName::new(name1).is_err());
+    fn test_from_message() {
+        let mock_message = ShinkaiMessage {
+            body: Some(Body {
+                content: "ACK".into(),
+                internal_metadata: Some(InternalMetadata {
+                    sender_subidentity: "".into(),
+                    recipient_subidentity: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
+                    inbox: "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".into(),
+                    encryption: EncryptionMethod::None,
+                }),
+            }),
+            external_metadata: Some(ExternalMetadata {
+                sender: "@@node2.shinkai".into(),
+                recipient: "@@node1.shinkai".into(),
+                scheduled_time: "20230714T19363326163".into(),
+                signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
+                    .into(),
+                other: "".into(),
+            }),
+            encryption: EncryptionMethod::None,
+        };
 
-        let name2 = "part1|part2::part3|part4::part5|part6::maybe".to_string();
-        assert!(InboxName::new(name2).is_err());
+        let manager = InboxName::from_message(&mock_message).unwrap();
+        assert_eq!(
+            manager.value,
+            "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true"
+        );
+    }
 
-        let name3 = "part1|part2|part3|part4::part5|part6::true".to_string();
-        assert!(InboxName::new(name3).is_err());
+    #[test]
+    fn test_from_message_invalid() {
+        let mock_message = ShinkaiMessage {
+            body: Some(Body {
+                content: "ACK".into(),
+                internal_metadata: Some(InternalMetadata {
+                    sender_subidentity: "".into(),
+                    recipient_subidentity: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
+                    inbox: "1nb0x::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::truee".into(),
+                    encryption: EncryptionMethod::None,
+                }),
+            }),
+            external_metadata: Some(ExternalMetadata {
+                sender: "@@node2.shinkai".into(),
+                recipient: "@@node1.shinkai".into(),
+                scheduled_time: "20230714T19363326163".into(),
+                signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
+                    .into(),
+                other: "".into(),
+            }),
+            encryption: EncryptionMethod::None,
+        };
 
-        let name4 = "part1::part2|part3::part4|part5|part6::false".to_string();
-        assert!(InboxName::new(name4).is_err());
+        let result = InboxName::from_message(&mock_message);
+        assert!(result.is_err(), "Expected invalid conversion");
+    }
+
+    #[test]
+    fn test_get_inbox_name_from_params_valid() {
+        let sender = "@@sender.shinkai".to_string();
+        let sender_subidentity = "subidentity".to_string();
+        let recipient = "@@recipient.shinkai".to_string();
+        let recipient_subidentity = "subidentity2".to_string();
+        let is_e2e = true;
+
+        let result =
+            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+
+        assert!(result.is_ok(), "Expected valid conversion");
+    }
+
+    #[test]
+    fn test_get_inbox_name_from_reparable_params() {
+        let sender = "sender.shinkai".to_string();
+        let sender_subidentity = "subidentity".to_string();
+        let recipient = "@@recipient".to_string();
+        let recipient_subidentity = "subidentity2".to_string();
+        let is_e2e = true;
+
+        let result =
+            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+
+        assert!(result.is_ok(), "Expected valid conversion");
+    }
+
+    #[test]
+    fn test_get_inbox_name_from_params_invalid() {
+        let sender = "invald.sender".to_string(); // Invalid sender
+        let sender_subidentity = "subidentity//1".to_string();
+        let recipient = "@@@recipient.shinkai".to_string();
+        let recipient_subidentity = "subidentity2".to_string();
+        let is_e2e = true;
+
+        let result =
+            InboxName::get_inbox_name_from_params(sender, sender_subidentity, recipient, recipient_subidentity, is_e2e);
+
+        assert!(result.is_err(), "Expected invalid conversion");
+    }
+
+    #[test]
+    fn test_has_creation_access() {
+        let manager = InboxName::new(
+            "inbox::@@node1.shinkai/subidentity::@@node2.shinkai::@@node3.shinkai/subidentity3::true".to_string(),
+        )
+        .unwrap();
+        let identity_name = ShinkaiName::new("@@node1.shinkai/subidentity".to_string()).unwrap();
+        let identity_name_2 = ShinkaiName::new("@@node2.shinkai/subidentity".to_string()).unwrap();
+
+        assert!(
+            manager.has_creation_access(identity_name),
+            "Expected identity to have creation access"
+        );
+
+        assert!(
+            manager.has_creation_access(identity_name_2),
+            "Expected identity to have creation access"
+        );
+    }
+
+    #[test]
+    fn test_has_sender_creation_access() {
+        let mock_message = ShinkaiMessage {
+            body: Some(Body {
+                content: "ACK".into(),
+                internal_metadata: Some(InternalMetadata {
+                    sender_subidentity: "subidentity2".into(),
+                    recipient_subidentity: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
+                    inbox: "inbox::@@node1.shinkai::@@node2.shinkai/subidentity2::true".into(),
+                    encryption: EncryptionMethod::None,
+                }),
+            }),
+            external_metadata: Some(ExternalMetadata {
+                sender: "@@node2.shinkai".into(),
+                recipient: "@@node1.shinkai".into(),
+                scheduled_time: "20230714T19363326163".into(),
+                signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
+                    .into(),
+                other: "".into(),
+            }),
+            encryption: EncryptionMethod::None,
+        };
+
+        let manager = InboxName::from_message(&mock_message).unwrap();
+
+        assert!(
+            manager.has_sender_creation_access(mock_message),
+            "Expected sender to have creation access"
+        );
+    }
+
+    #[test]
+    fn test_sender_does_not_have_creation_access() {
+        let mock_message = ShinkaiMessage {
+            body: Some(Body {
+                content: "ACK".into(),
+                internal_metadata: Some(InternalMetadata {
+                    sender_subidentity: "subidentity3".into(),
+                    recipient_subidentity: "".into(),
+                    message_schema_type: MessageSchemaType::TextContent,
+                    inbox: "inbox::@@node1.shinkai::@@node2.shinkai::true".into(),
+                    encryption: EncryptionMethod::None,
+                }),
+            }),
+            external_metadata: Some(ExternalMetadata {
+                sender: "@@node3.shinkai".into(),
+                recipient: "@@node1.shinkai".into(),
+                scheduled_time: "20230714T19363326163".into(),
+                signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
+                    .into(),
+                other: "".into(),
+            }),
+            encryption: EncryptionMethod::None,
+        };
+
+        let manager = InboxName::from_message(&mock_message).unwrap();
+
+        assert!(
+            !manager.has_sender_creation_access(mock_message),
+            "Expected sender to not have creation access"
+        );
     }
 }

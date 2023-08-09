@@ -476,11 +476,11 @@ impl Node {
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
                     .unwrap()
                     .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
                     .unwrap()
                     .to_string();
             }
@@ -545,7 +545,7 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message)
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)
             .unwrap()
             .get_node_name();
         let sender_identity = maybe_identity_manager

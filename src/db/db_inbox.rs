@@ -3,11 +3,10 @@ use std::str::FromStr;
 
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_wasm::{
-    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
+    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler, schemas::inbox_name::InboxName,
 };
 
 use crate::{
-    managers::inbox_name_manager::InboxNameManager,
     schemas::{
         identity::{IdentityType, StandardIdentity},
         inbox_permission::InboxPermission,
@@ -53,8 +52,8 @@ impl ShinkaiDB {
     // TODO: finish this
     // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regards
     pub fn unsafe_insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
-        let inbox_name_manager = InboxNameManager::from_message(message).map_err(ShinkaiDBError::from)?;
-        let inbox_name = inbox_name_manager.inbox_name.clone();
+        let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
+        let inbox_name = inbox_name_manager.value.clone();
 
         // If the inbox name is empty, use the get_inbox_name function
         if inbox_name.is_empty() {

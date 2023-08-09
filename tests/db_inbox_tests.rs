@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use prost::Message;
+use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
@@ -12,7 +13,7 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::managers::{IdentityManager, InboxNameManager};
+use shinkai_node::managers::{IdentityManager};
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use shinkai_node::schemas::identity::{IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType};
@@ -61,6 +62,7 @@ fn generate_message_with_text(
     origin_destination_identity_name: String,
     timestamp: String,
 ) -> ShinkaiMessage {
+    let inbox_name = InboxName::get_inbox_name_from_params(origin_destination_identity_name.clone().to_string(), "".to_string(), origin_destination_identity_name.clone().to_string(), recipient_subidentity_name.clone().to_string(), false).unwrap();
     let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
         .body(content.to_string())
         .body_encryption(EncryptionMethod::None)
@@ -68,7 +70,7 @@ fn generate_message_with_text(
         .internal_metadata(
             "".to_string(),
             recipient_subidentity_name.clone().to_string(),
-            "".to_string(),
+            inbox_name.value,
             EncryptionMethod::None,
         )
         .external_metadata_with_schedule(
@@ -115,11 +117,11 @@ fn db_inbox() {
         "Hello World".to_string()
     );
 
-    let inbox_name = InboxNameManager::get_inbox_name_from_message(&message).unwrap();
+    let inbox_name = InboxName::from_message(&message).unwrap().value;
     println!("Inbox name: {}", inbox_name);
     assert_eq!(
         inbox_name,
-        "inbox::@@node1.shinkai|::@@node1.shinkai|main_profile_node1::false".to_string()
+        "inbox::@@node1.shinkai/::@@node1.shinkai/main_profile_node1::false".to_string()
     );
 
     println!("Inbox name: {}", inbox_name);
