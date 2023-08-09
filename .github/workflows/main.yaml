@@ -13,7 +13,7 @@ jobs:
         run: docker build -t testing_image -f .github/Dockerfile .
 
       - name: Run tests main cargo tests
-        run: docker run --entrypoint /entrypoints/run-root-cargo-test.sh testing_image
+        run: docker run --entrypoint /entrypoints/run-root-cargo-tests.sh testing_image
 
   test-wasm:
     runs-on: self-hosted
@@ -22,7 +22,7 @@ jobs:
         run: docker build -t testing_image_wasm -f .github/Dockerfile.wasm .
 
       - name: Run tests shinkai-message-wasm cargo tests
-        run: docker run --entrypoint /entrypoints/run-wasm-pack-test.sh testing_image_wasm
+        run: docker run --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm
 
       - name: Run tests shinkai-message-wasm wasm-pack tests
-        run: docker run --entrypoint /entrypoints/run-wasm-cargo-test.sh testing_image_wasm
+        run: docker run --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
