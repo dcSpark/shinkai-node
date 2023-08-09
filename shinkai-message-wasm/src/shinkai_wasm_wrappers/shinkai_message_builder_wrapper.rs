@@ -1,3 +1,4 @@
+use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
 use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope};
 use crate::shinkai_utils::encryption::{
@@ -17,7 +18,7 @@ use crate::{
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use js_sys::Uint8Array;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -435,6 +436,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
+        let job_id_clone = job_id.clone();
         let job_message = JobMessage { job_id, content };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -442,11 +444,15 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
+        let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?
+            .get_value();
+
         let _ = builder.body(body);
         let _ = builder.internal_metadata_with_schema(
             "".to_string(),
             receiver_subidentity.clone(),
-            "".to_string(),
+            inbox,
             JsValue::from_str("JobMessageSchema"),
             JsValue::from_str("None"),
         );

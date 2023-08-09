@@ -407,15 +407,20 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
+        let job_id_clone = job_id.clone();
         let job_message = JobMessage { job_id, content };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
+
+        let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+            .map_err(|_| "Failed to get job inbox name")?
+            .get_value();
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .body(body)
             .internal_metadata_with_schema(
                 "".to_string(),
                 node_receiver_subidentity.clone(),
-                "".to_string(),
+                inbox,
                 MessageSchemaType::JobMessageSchema,
                 EncryptionMethod::None,
             )
@@ -477,11 +482,7 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata(
-            sender_profile_name,
-            "".to_string(),
-            EncryptionMethod::None,
-        )
+        .internal_metadata(sender_profile_name, "".to_string(), EncryptionMethod::None)
         // we are interacting with the associated node so the receiver and the sender are from the same base node
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
@@ -540,7 +541,10 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
+        assert_eq!(
+            internal_metadata.inbox,
+            "inbox::@@my_node.shinkai::@@other_node.shinkai::false"
+        );
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.scheduled_time, scheduled_time);
@@ -584,7 +588,10 @@ mod tests {
         let internal_metadata = binding.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
+        assert_eq!(
+            internal_metadata.inbox,
+            "inbox::@@my_node.shinkai::@@other_node.shinkai::false"
+        );
         let external_metadata = message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())

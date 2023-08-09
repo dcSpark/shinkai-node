@@ -49,7 +49,6 @@ mod tests {
         let _ = builder.internal_metadata(
             sender_subidentity.clone().into(),
             recipient_subidentity.clone().into(),
-            "".into(),
             "None".into(),
         );
         let _ = builder.external_metadata_with_schedule(
@@ -72,7 +71,7 @@ mod tests {
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai/sender_user2::@@other_node.shinkai/recipient_user1::false");
 
         let external_metadata = message.clone().external_metadata.unwrap();
 
@@ -116,7 +115,6 @@ mod tests {
         let _ = builder.internal_metadata(
             sender_subidentity.clone().into(),
             recipient_subidentity.clone().into(),
-            "".into(),
             "None".into(),
         );
         let _ = builder.external_metadata_with_schedule(
@@ -140,7 +138,7 @@ mod tests {
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai/sender_user2::@@other_node.shinkai/recipient_user1::false");
 
         let external_metadata_string = message.external_metadata().unwrap();
         let external_metadata: ExternalMetadata = ExternalMetadata::from_jsvalue(&external_metadata_string).unwrap();
@@ -168,7 +166,8 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let scope = JobScope {
-            buckets: vec![InboxName::new("inbox::@@node1.shinkai|test_name::@@|::false".to_string()).unwrap()],
+            // get_job_inbox_name_from_params
+            buckets: vec![InboxName::new("job_inbox::job2::false".to_string()).unwrap()],
             documents: vec!["document1".to_string(), "document2".to_string()],
         };
 

@@ -38,10 +38,10 @@ struct ConnectBody {
 }
 
 #[derive(Serialize)]
-struct APIErrorMessage {
+struct APIError {
     code: u16,
+    error: String,
     message: String,
-    user_recovery: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -50,12 +50,12 @@ struct RegistrationRequestBody {
     code_type: RegistrationCodeType,
 }
 
-impl APIErrorMessage {
-    fn new(code: StatusCode, message: &str, user_recovery: &str) -> Self {
+impl APIError {
+    fn new(code: StatusCode, error: &str, message: &str) -> Self {
         Self {
             code: code.as_u16(),
+            error: error.to_string(),
             message: message.to_string(),
-            user_recovery: user_recovery.to_string(),
         }
     }
 }
@@ -350,21 +350,21 @@ async fn get_all_subidentities_handler(
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
     if err.is_not_found() {
-        let json = warp::reply::json(&APIErrorMessage::new(
+        let json = warp::reply::json(&APIError::new(
             StatusCode::NOT_FOUND,
             "Not Found",
             "Please check your URL.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::NOT_FOUND))
     } else if let Some(_) = err.find::<warp::filters::body::BodyDeserializeError>() {
-        let json = warp::reply::json(&APIErrorMessage::new(
+        let json = warp::reply::json(&APIError::new(
             StatusCode::BAD_REQUEST,
             "Invalid Body",
             "Please check your JSON body.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST))
     } else if let Some(_) = err.find::<warp::reject::MethodNotAllowed>() {
-        let json = warp::reply::json(&APIErrorMessage::new(
+        let json = warp::reply::json(&APIError::new(
             StatusCode::METHOD_NOT_ALLOWED,
             "Method Not Allowed",
             "Please check your request method.",
@@ -372,7 +372,7 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
         Ok(warp::reply::with_status(json, StatusCode::METHOD_NOT_ALLOWED))
     } else {
         // Unexpected error, we don't want to expose anything to the user.
-        let json = warp::reply::json(&APIErrorMessage::new(
+        let json = warp::reply::json(&APIError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Internal Server Error",
             "An unexpected error occurred. Please try again.",

@@ -138,10 +138,6 @@ impl InboxName {
         recipient_subidentity: String,
         is_e2e: bool,
     ) -> Result<InboxName, InboxNameError> {
-        println!("sender: {}", sender);
-        println!("sender_subidentity: {}", sender_subidentity);
-        println!("recipient: {}", recipient);
-        println!("recipient_subidentity: {}", recipient_subidentity);
         let inbox_name_separator = "::";
 
         let sender_full = if sender_subidentity.is_empty() {
@@ -173,7 +169,7 @@ impl InboxName {
             inbox_name_separator,
             is_e2e
         );
-        println!("inbox_name: {}", inbox_name);
+        eprintln!("inbox_name: {}", inbox_name);
         InboxName::new(inbox_name)
     }
 
@@ -184,6 +180,13 @@ impl InboxName {
             inbox_name_separator, unique_id, inbox_name_separator
         );
         InboxName::new(inbox_name)
+    }
+
+    pub fn get_value(&self) -> String {
+        match self {
+            InboxName::RegularInbox { value, .. } => value.clone(),
+            InboxName::JobInbox { value, .. } => value.clone(),
+        }
     }
 }
 
