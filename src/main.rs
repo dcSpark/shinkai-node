@@ -140,8 +140,8 @@ fn main() {
             let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
             node_commands_sender
                 .send(NodeCommand::CreateRegistrationCode {
-                    permissions: IdentityPermissions::Admin,
-                    code_type: RegistrationCodeType::Device("main".to_string()),
+                    // permissions: IdentityPermissions::Admin,
+                    // code_type: RegistrationCodeType::Device("main".to_string()),
                     res: res1_registration_sender,
                 })
                 .await

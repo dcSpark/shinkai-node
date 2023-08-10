@@ -1,17 +1,22 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::network::node::NodeError;
+use crate::network::node_message_handlers::verify_message_signature;
 use crate::network::Node;
 use crate::schemas::identity::{
-    DeviceIdentity, Identity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref,
 };
 use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
+use std::io::Error;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -64,7 +69,7 @@ impl IdentityManager {
             local_identities: identities,
             db,
             external_identity_manager,
-            is_ready: current_ready_status
+            is_ready: current_ready_status,
         })
     }
 
@@ -239,6 +244,55 @@ impl IdentityManager {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
             Identity::Agent(agent) => Some(agent.full_identity_name.clone().to_string()),
             Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
+        }
+    }
+
+    pub fn verify_message_signature(
+        sender_subidentity: Option<Identity>,
+        original_message: &ShinkaiMessage,
+        decrypted_message: &ShinkaiMessage,
+    ) -> Result<(), NodeError> {
+        if sender_subidentity.is_none() {
+            eprintln!(
+                "handle_onionized_message > Subidentity not found for profile name: {}",
+                decrypted_message.external_metadata.clone().unwrap().sender
+            );
+            return Err(NodeError {
+                message: format!(
+                    "Subidentity not found for profile name: {}",
+                    decrypted_message.external_metadata.clone().unwrap().sender
+                ),
+            });
+        }
+        // If we reach this point, it means that subidentity exists, so it's safe to unwrap
+        let subidentity = sender_subidentity.unwrap();
+
+        // Validate that the message actually came from the subidentity
+        let signature_public_key = match &subidentity {
+            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
+            Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
+            Identity::Agent(_) => {
+                eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
+                return Ok(());
+            }
+        };
+
+        if signature_public_key.is_none() {
+            eprintln!(
+                "handle_onionized_message > Signature public key doesn't exist for identity: {}",
+                subidentity.get_full_identity_name()
+            );
+            return Ok(());
+        }
+
+        match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {
+            Ok(_) => Ok({}),
+            Err(e) => {
+                eprintln!("handle_onionized_message > Failed to verify message signature: {}", e);
+                return Err(NodeError {
+                    message: format!("Failed to verify message signature: {}", e.to_string()),
+                });
+            }
         }
     }
 }

@@ -1,14 +1,17 @@
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde_json::Result;
 use regex::Regex;
 
-use crate::schemas::inbox_name::InboxName;
+use crate::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
     JobMessageSchema,
     PreMessageSchema,
+    CreateRegistrationCode,
     TextContent,
     Empty
 }
@@ -19,6 +22,7 @@ impl MessageSchemaType {
             "JobCreationSchema" => Some(Self::JobCreationSchema),
             "JobMessageSchema" => Some(Self::JobMessageSchema),
             "PreMessageSchema" => Some(Self::PreMessageSchema),
+            "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "TextContent" => Some(Self::TextContent),
             "" => Some(Self::Empty),
             _ => None,
@@ -30,6 +34,7 @@ impl MessageSchemaType {
             Self::JobCreationSchema => "JobCreationSchema",
             Self::JobMessageSchema => "JobMessageSchema",
             Self::PreMessageSchema => "PreMessageSchema",
+            Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::TextContent => "TextContent",
             Self::Empty => "",
         }
@@ -146,16 +151,10 @@ impl JobPreMessage {
 }
 
 impl JobRecipient {
-    // TODO: this should be moved to a more general place
-    pub fn is_valid_node_identity_name_with_subidentities(s: &str) -> bool {
-        let re = Regex::new(r"^@@[^/]+\.shinkai(/[^/]*)*$").unwrap();
-        re.is_match(s)
-    }
-
     pub fn validate_external(&self) -> std::result::Result<(), &'static str> {
         match self {
             Self::ExternalIdentity(identity) => {
-                if JobRecipient::is_valid_node_identity_name_with_subidentities(identity) {
+                if ShinkaiName::new(identity.to_string()).is_ok() {
                     Ok(())
                 } else {
                     Err("Invalid identity")
@@ -173,5 +172,108 @@ impl JobRecipient {
     pub fn to_json_str(&self) -> Result<String> {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct RegistrationCodeRequest {
+    pub permissions: IdentityPermissions,
+    pub code_type: RegistrationCodeType,
+}
+
+impl RegistrationCodeRequest {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> Result<String> {
+        let json_str = serde_json::to_string(self)?;
+        Ok(json_str)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum IdentityPermissions {
+    Admin, // can create and delete other profiles
+    Standard, // can add / remove devices
+    None, // none of the above
+}
+
+impl IdentityPermissions {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        let s = std::str::from_utf8(slice).unwrap();
+        match s {
+            "admin" => Self::Admin,
+            "standard" => Self::Standard,
+            _ => Self::None,
+        }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Admin => b"admin",
+            Self::Standard => b"standard",
+            Self::None => b"none",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "admin" => Some(Self::Admin),
+            "standard" => Some(Self::Standard),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for IdentityPermissions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Admin => write!(f, "admin"),
+            Self::Standard => write!(f, "standard"),
+            Self::None => write!(f, "none"),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub enum RegistrationCodeType {
+    Device(String),
+    Profile,
+}
+
+impl Serialize for RegistrationCodeType {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            RegistrationCodeType::Device(device_name) => {
+                let s = format!("device:{}", device_name);
+                serializer.serialize_str(&s)
+            },
+            RegistrationCodeType::Profile => serializer.serialize_str("profile"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RegistrationCodeType {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        let parts: Vec<&str> = s.split(':').collect();
+        match parts.get(0) {
+            Some(&"device") => {
+                let device_name = parts.get(1).unwrap_or(&"default");
+                Ok(RegistrationCodeType::Device(device_name.to_string()))
+            },
+            Some(&"profile") => Ok(RegistrationCodeType::Profile),
+            _ => Err(serde::de::Error::custom("Unexpected variant")),
+        }
     }
 }

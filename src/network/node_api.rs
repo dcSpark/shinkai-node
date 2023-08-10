@@ -1,6 +1,3 @@
-use crate::db::db_identity_registration::RegistrationCodeType;
-use crate::schemas::identity::IdentityPermissions;
-
 use super::node::NodeCommand;
 use async_channel::Sender;
 use reqwest::StatusCode;
@@ -42,12 +39,6 @@ struct APIError {
     code: u16,
     error: String,
     message: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct RegistrationRequestBody {
-    permissions: IdentityPermissions,
-    code_type: RegistrationCodeType,
 }
 
 impl APIError {
@@ -143,9 +134,9 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_registration_code")
             .and(warp::post())
-            .and(warp::body::json())
-            .and_then(move |body: RegistrationRequestBody| {
-                create_registration_code_handler(node_commands_sender.clone(), body.permissions, body.code_type)
+            .and(warp::body::json::<ShinkaiMessage>()) 
+            .and_then(move |message: ShinkaiMessage| {
+                create_registration_code_handler(node_commands_sender.clone(), message)
             })
     };
 
@@ -300,15 +291,13 @@ async fn get_last_messages_handler(
 
 async fn create_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
-    permissions: IdentityPermissions,
-    code_type: RegistrationCodeType,
+    message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::CreateRegistrationCode {
-            permissions,
-            code_type,
+            msg: message,
             res: res_sender,
         })
         .await

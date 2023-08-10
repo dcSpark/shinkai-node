@@ -20,7 +20,6 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::db_identity_registration::RegistrationCodeType;
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::JobManager;
@@ -28,7 +27,7 @@ use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::identity::{IdentityPermissions, StandardIdentity};
+use crate::schemas::identity::{StandardIdentity};
 
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
@@ -75,8 +74,9 @@ pub enum NodeCommand {
     GetPeers(Sender<Vec<SocketAddr>>),
     // Command to make the node create a registration code. The sender will receive the code.
     CreateRegistrationCode {
-        permissions: IdentityPermissions,
-        code_type: RegistrationCodeType,
+        // permissions: IdentityPermissions,
+        // code_type: RegistrationCodeType,
+        msg: ShinkaiMessage,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
@@ -284,7 +284,7 @@ impl Node {
                                 Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
                                 Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                                 Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                                Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
+                                Some(NodeCommand::CreateRegistrationCode { msg, res }) => self.create_and_send_registration_code(msg, res).await?,
                                 Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
                                 Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                                 Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,

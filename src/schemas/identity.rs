@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde::ser::{Serializer, SerializeStruct};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use std::sync::Arc;
@@ -87,13 +88,13 @@ pub struct RegistrationCode {
     pub permission_type: IdentityPermissions,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum IdentityPermissions {
-    Admin, // can create and delete other profiles
-    Standard, // can add / remove devices
-    None, // none of the above
-}
+// #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+// #[serde(rename_all = "lowercase")]
+// pub enum IdentityPermissions {
+//     Admin, // can create and delete other profiles
+//     Standard, // can add / remove devices
+//     None, // none of the above
+// }
 
 #[derive(Debug, Clone)]
 pub enum Identity {
@@ -143,34 +144,6 @@ impl DeviceIdentity {
             identity_type: StandardIdentityType::Profile,
             permission_type: self.permission_type.clone(),
         })
-    }
-}
-
-impl IdentityPermissions {
-    pub fn from_slice(slice: &[u8]) -> Self {
-        let s = std::str::from_utf8(slice).unwrap();
-        match s {
-            "admin" => Self::Admin,
-            "standard" => Self::Standard,
-            _ => Self::None,
-        }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Admin => b"admin",
-            Self::Standard => b"standard",
-            Self::None => b"none",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "admin" => Some(Self::Admin),
-            "standard" => Some(Self::Standard),
-            "none" => Some(Self::None),
-            _ => None,
-        }
     }
 }
 
@@ -305,16 +278,6 @@ impl fmt::Display for DeviceIdentity {
             device_signature_public_key,
             self.permission_type
         )
-    }
-}
-
-impl fmt::Display for IdentityPermissions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Admin => write!(f, "admin"),
-            Self::Standard => write!(f, "standard"),
-            Self::None => write!(f, "none"),
-        }
     }
 }
 

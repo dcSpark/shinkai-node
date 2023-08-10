@@ -2,7 +2,7 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::agent_serialization::SerializedAgent;
 use crate::managers::IdentityManager;
 use crate::schemas::identity::{
-    DeviceIdentity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
@@ -10,6 +10,7 @@ use rocksdb::{Error, Options};
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use serde_json::to_vec;
 use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{RegistrationCodeType, IdentityPermissions};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -36,45 +37,6 @@ impl RegistrationCodeStatus {
         match self {
             Self::Unused => b"unused",
             Self::Used => b"used",
-        }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub enum RegistrationCodeType {
-    Device(String),
-    Profile,
-}
-
-impl Serialize for RegistrationCodeType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            RegistrationCodeType::Device(device_name) => {
-                let s = format!("device:{}", device_name);
-                serializer.serialize_str(&s)
-            },
-            RegistrationCodeType::Profile => serializer.serialize_str("profile"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for RegistrationCodeType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s: String = Deserialize::deserialize(deserializer)?;
-        let parts: Vec<&str> = s.split(':').collect();
-        match parts.get(0) {
-            Some(&"device") => {
-                let device_name = parts.get(1).unwrap_or(&"default");
-                Ok(RegistrationCodeType::Device(device_name.to_string()))
-            },
-            Some(&"profile") => Ok(RegistrationCodeType::Profile),
-            _ => Err(serde::de::Error::custom("Unexpected variant")),
         }
     }
 }

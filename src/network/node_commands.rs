@@ -1,13 +1,13 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
+    db::{db_errors::ShinkaiDBError},
     managers::identity_manager::{self, IdentityManager},
     network::{
         node::NodeError,
         node_message_handlers::{ping_pong, PingPong},
     },
     schemas::{
-        identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
+        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
     },
 };
@@ -17,7 +17,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
-    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::{MessageSchemaType, RegistrationCodeRequest, IdentityPermissions}},
     shinkai_utils::{
         encryption::{
             clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
@@ -71,97 +71,30 @@ impl Node {
         // Part 1: Decrypting and validating message
         //
         // Decrypt message if needed
-        let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
-            // Decrypt the message
-            let sender_encryption_pk_string = potentially_encrypted_msg
-                .clone()
-                .external_metadata
-                .clone()
-                .unwrap()
-                .other;
-            let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
-
-            let decrypted_msg = decrypt_body_message(
-                &potentially_encrypted_msg.clone(),
-                &self.encryption_secret_key,
-                &sender_encryption_pk,
-            );
-
-            match decrypted_msg {
-                Ok(msg) => msg,
-                Err(e) => {
-                    println!("handle_onionized_message > Error decrypting message: {}", e);
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Decryption error: {}", e),
-                    ));
-                }
-            }
-        } else {
-            potentially_encrypted_msg.clone()
-        };
+        let msg = ShinkaiMessageHandler::decrypt_message_body_if_needed(
+            potentially_encrypted_msg.clone(),
+            &self.encryption_secret_key,
+        )?;
 
         // Check if the message is coming from one of our subidentities and validate signature
-        let sender_subidentity = msg
-            .clone()
-            .body
-            .unwrap()
-            .internal_metadata
-            .unwrap()
-            .sender_subidentity
-            .clone();
+        let sender_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        let sender_name_string = if sender_subidentity.is_empty() {
-            self.node_profile_name.get_node_name()
-        } else {
-            format!("{}/{}", self.node_profile_name.get_node_name(), sender_subidentity)
-        };
-        let sender_name =
-            ShinkaiName::new(sender_name_string.clone()).expect("Failed to create ShinkaiName from sender_name");
+        // We (currently) don't proxy external messages from other nodes to other nodes
+        if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "sender_name.node_name is not the same as self.node_name. It can't proxy through this node.",
+            ));
+        }
 
+        // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
         let subidentity_manager = self.identity_manager.lock().await;
         let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
-        // We (currently) don't proxy external messages from other nodes to other nodes
-        if sender_subidentity.is_none() {
-            eprintln!(
-                "handle_onionized_message > Subidentity not found for profile name: {}",
-                msg.external_metadata.clone().unwrap().sender
-            );
-            // TODO: add error messages here
-            return Ok(());
-        }
-
-        // If we reach this point, it means that subidentity exists, so it's safe to unwrap
-        let subidentity = sender_subidentity.unwrap();
-
-        // Validate that the message actually came from the subidentity
-        let signature_public_key = match &subidentity {
-            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
-            Identity::Agent(_) => {
-                eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
-                return Ok(());
-            }
-        };
-
-        if signature_public_key.is_none() {
-            eprintln!(
-                "handle_onionized_message > Signature public key doesn't exist for identity: {}",
-                subidentity.get_full_identity_name()
-            );
-            return Ok(());
-        }
-
-        match verify_message_signature(signature_public_key.unwrap(), &potentially_encrypted_msg.clone()) {
-            Ok(_) => {}
-            Err(e) => {
-                eprintln!("handle_onionized_message > Failed to verify message signature: {}", e);
-                return Ok(());
-            }
-        }
+        IdentityManager::verify_message_signature(sender_subidentity, &potentially_encrypted_msg, &msg.clone())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         //
         // Part 2: Check if the message needs to be sent to another node or not
@@ -189,12 +122,10 @@ impl Node {
                         Ok(_) => {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
-                            db_guard
-                                .unsafe_insert_inbox_message(&msg.clone())
-                                .map_err(|e| {
-                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
-                                    std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
-                                })?;
+                            db_guard.unsafe_insert_inbox_message(&msg.clone()).map_err(|e| {
+                                eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
+                            })?;
                         }
                         Err(e) => {
                             eprintln!(
@@ -341,10 +272,77 @@ impl Node {
 
     pub async fn create_and_send_registration_code(
         &self,
-        permissions: IdentityPermissions,
-        code_type: RegistrationCodeType,
+        potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<String>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<(), NodeError> {
+        let msg = ShinkaiMessageHandler::decrypt_message_body_if_needed(
+            potentially_encrypted_msg.clone(),
+            &self.encryption_secret_key,
+        )?;
+
+        // Check that the message has the right schema type
+        ShinkaiMessageHandler::validate_message_schema(&msg, MessageSchemaType::CreateRegistrationCode);
+
+        // TODO: Check that the message is correctly signed
+        // Check if the message is coming from one of our subidentities and validate signature
+        let sender_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        // We (currently) don't proxy external messages from other nodes to other nodes
+        if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
+            return Err(NodeError {
+                message: "sender_name.node_name is not the same as self.node_name. It can't proxy through this node."
+                    .to_string(),
+            });
+        }
+
+        // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
+        let subidentity_manager = self.identity_manager.lock().await;
+        let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
+        std::mem::drop(subidentity_manager);
+
+        IdentityManager::verify_message_signature(sender_subidentity.clone(), &potentially_encrypted_msg, &msg.clone())
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        // TODO: Check that the message is coming from someone with the right permissions to do this action
+        let sender = match sender_subidentity.clone() {
+            Some(sender) => sender,
+            None => {
+                return Err(NodeError {
+                    message: "Sender subidentity is None".to_string(),
+                })
+            }
+        };
+
+        match sender {
+            Identity::Standard(std_identity) => {
+                if std_identity.permission_type != IdentityPermissions::Admin {
+                    return Err(NodeError {
+                        message: "Permission denied. Only Admin can perform this operation.".to_string(),
+                    });
+                }
+            }
+            _ => {
+                return Err(NodeError {
+                    message: "Invalid identity type. Only StandardIdentity is allowed.".to_string(),
+                })
+            }
+        }
+
+        // TODO: Parse the message content (message.body.content). it's of type CreateRegistrationCode and continue.
+        let content = msg.body.unwrap().content;
+        let create_registration_code: RegistrationCodeRequest = serde_json::from_str(&content)
+            .map_err(|e| NodeError {
+                message: format!("Failed to parse CreateRegistrationCode: {}", e),
+            })?;
+
+        let permissions = create_registration_code.permissions;
+        let code_type = create_registration_code.code_type;        
+
+
+        // permissions: IdentityPermissions,
+        // code_type: RegistrationCodeType,
+
         let db = self.db.lock().await;
         let code = db
             .generate_registration_new_code(permissions, code_type)

@@ -39,6 +39,30 @@ pub enum ShinkaiNameError {
     SomeError(String),
 }
 
+impl fmt::Display for ShinkaiNameError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ShinkaiNameError::MissingBody(message) => {
+                write!(f, "Missing body in ShinkaiMessage: {}", message)
+            }
+            ShinkaiNameError::MissingInternalMetadata(message) => write!(
+                f,
+                "Missing internal metadata in ShinkaiMessage: {}",
+                message
+            ),
+            ShinkaiNameError::MetadataMissing => write!(f, "Metadata missing"),
+            ShinkaiNameError::MessageBodyMissing => write!(f, "Message body missing"),
+            ShinkaiNameError::InvalidGroupFormat(message) => {
+                write!(f, "Invalid group format: {}", message)
+            }
+            ShinkaiNameError::InvalidNameFormat(message) => {
+                write!(f, "Invalid name format: {}", message)
+            }
+            ShinkaiNameError::SomeError(message) => write!(f, "Some error: {}", message),
+        }
+    }
+}
+
 // Valid Examples
 // @@alice.shinkai
 // @@alice.shinkai/profileName

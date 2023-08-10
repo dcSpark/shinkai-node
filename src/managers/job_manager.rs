@@ -268,11 +268,7 @@ impl AgentManager {
                 let pre_message: JobPreMessage = serde_json::from_str(&body.content).map_err(|_| JobManagerError::ContentParseFailed)?;
                 self.handle_pre_message_schema(pre_message).await
             }
-            MessageSchemaType::TextContent => {
-                // Handle TextContent if needed, or return an error if it's not a valid job message
-                Err(JobManagerError::NotAJobMessage)
-            }
-            MessageSchemaType::Empty => {
+            _ => {
                 // Handle Empty message type if needed, or return an error if it's not a valid job message
                 Err(JobManagerError::NotAJobMessage)
             }

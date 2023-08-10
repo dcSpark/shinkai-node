@@ -17,7 +17,7 @@ pub enum InboxNameError {
 impl fmt::Display for InboxNameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            InboxNameError::ShinkaiNameError(ref err) => err.fmt(f),
+            InboxNameError::ShinkaiNameError(ref err) => std::fmt::Display::fmt(err, f),
             InboxNameError::InvalidFormat(ref s) => write!(f, "Invalid inbox name format: {}", s),
             InboxNameError::InvalidSenderRecipientFormat(ref s) => {
                 write!(f, "Invalid sender/recipient format: {}", s)
