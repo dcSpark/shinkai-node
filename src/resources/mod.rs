@@ -1,4 +1,5 @@
 pub mod bert_cpp;
+pub mod data_tags;
 pub mod document;
 pub mod embedding_generator;
 pub mod embeddings;

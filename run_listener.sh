@@ -8,6 +8,6 @@ export IDENTITY_SECRET_KEY="G2TyLP33XfqndppUzipoTWTs6XnKjmUhCQg1tH44isAG"
 export ENCRYPTION_SECRET_KEY="FZ97ouxTGpNnmyyfSBxgC2FGHTpvo7mM7LWoMut6gEYx"
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node1.shinkai"
-export RUST_LOG=warn,error,info,debug,trace
+export RUST_LOG=warn,error,info,debug
 
 cargo run

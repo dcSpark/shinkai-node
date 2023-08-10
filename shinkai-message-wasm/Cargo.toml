@@ -54,3 +54,6 @@ path = "tests/shinkai_message_tests.rs"
 name = "shinkai_message_builder_tests"
 path = "tests/shinkai_message_builder_tests.rs"
 
+[[test]]
+name = "shinkai_name_tests"
+path = "tests/shinkai_name_tests.rs"

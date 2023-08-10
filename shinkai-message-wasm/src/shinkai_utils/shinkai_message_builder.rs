@@ -3,9 +3,21 @@ use wasm_bindgen::prelude::*;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_string_content, encrypt_body, encryption_public_key_to_string}, signatures::{sign_message, signature_public_key_to_string}}, schemas::registration_code::RegistrationCode, shinkai_message::{shinkai_message::{Body, InternalMetadata, ExternalMetadata, ShinkaiMessage}, shinkai_message_schemas::{MessageSchemaType, JobScope, JobCreation, JobMessage}}};
+use crate::{
+    shinkai_message::{
+        shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
+        shinkai_message_schemas::{JobCreation, JobMessage, JobScope, MessageSchemaType},
+    },
+    shinkai_utils::{
+        encryption::{encrypt_body, encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
+        signatures::{sign_message, signature_public_key_to_string},
+    }, schemas::registration_code::RegistrationCode,
+};
 
-use super::{shinkai_message_handler::ShinkaiMessageHandler, encryption::clone_static_secret_key, signatures::clone_signature_secret_key};
+use super::{
+    encryption::clone_static_secret_key, shinkai_message_handler::ShinkaiMessageHandler,
+    signatures::clone_signature_secret_key,
+};
 
 pub type ProfileName = String;
 
@@ -392,6 +404,7 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
+        identity_type: String,
         permission_type: String,
         sender: ProfileName,
         receiver: ProfileName,
@@ -405,7 +418,8 @@ impl ShinkaiMessageBuilder {
             profile_name: sender.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
-            permission_type,
+            identity_type,
+            permission_type
         };
 
         let body =
@@ -446,7 +460,10 @@ impl ShinkaiMessageBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::shinkai_utils::{signatures::{unsafe_deterministic_signature_keypair, verify_signature}, encryption::{unsafe_deterministic_encryption_keypair, decrypt_body_message, decrypt_content_message}};
+    use crate::shinkai_utils::{
+        encryption::{decrypt_body_message, decrypt_content_message, unsafe_deterministic_encryption_keypair},
+        signatures::{unsafe_deterministic_signature_keypair, verify_signature},
+    };
 
     use super::*;
 
@@ -507,10 +524,7 @@ mod tests {
         let message = message_result.unwrap();
         let message_clone = message.clone();
         // let body_content = message.body.as_ref().unwrap().content.clone();
-        assert_eq!(
-            message.encryption,
-            EncryptionMethod::DiffieHellmanChaChaPoly1305
-        );
+        assert_eq!(message.encryption, EncryptionMethod::DiffieHellmanChaChaPoly1305);
 
         let decrypted_message = decrypt_body_message(&message.clone(), &my_encryption_sk, &node2_encryption_pk)
             .expect("Failed to decrypt body content");
@@ -567,7 +581,15 @@ mod tests {
         let decrypted_content = decrypt_content_message(
             // decrypt_content_message(
             message.clone().body.unwrap().content,
-            &message.clone().body.unwrap().internal_metadata.unwrap().encryption.as_str().to_string(),
+            &message
+                .clone()
+                .body
+                .unwrap()
+                .internal_metadata
+                .unwrap()
+                .encryption
+                .as_str()
+                .to_string(),
             &my_encryption_sk,
             &node2_encryption_pk,
         )

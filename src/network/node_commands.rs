@@ -1,15 +1,29 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, Identity, IdentityManager, IdentityType, RegistrationCode, StandardIdentity},
+    db::{db_errors::ShinkaiDBError, db_identity_registration::RegistrationCodeType},
+    managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
-    schemas::inbox_permission::InboxPermission,
+    schemas::{
+        identity::{DeviceIdentity, Identity, IdentityPermissions, IdentityType, RegistrationCode, StandardIdentity},
+        inbox_permission::InboxPermission,
+    },
 };
 use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
-use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{encryption::{string_to_encryption_public_key, decrypt_body_message, clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string}, shinkai_message_handler::ShinkaiMessageHandler, signatures::{clone_signature_secret_key, string_to_signature_public_key}}};
+use shinkai_message_wasm::{
+    schemas::shinkai_name::ShinkaiName,
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::{
+        encryption::{
+            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
+        },
+        shinkai_message_handler::ShinkaiMessageHandler,
+        signatures::{clone_signature_secret_key, string_to_signature_public_key},
+    },
+};
 use std::str::FromStr;
 use std::{
     cell::RefCell,
@@ -46,10 +60,11 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
+    pub async fn handle_send_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
-        println!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
+        eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
+        // Decrypt message if needed
         let msg = if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg.clone()) {
             // Decrypt the message
             let sender_encryption_pk_string = potentially_encrypted_msg
@@ -80,7 +95,7 @@ impl Node {
             potentially_encrypted_msg.clone()
         };
 
-        let subidentity_manager = self.identity_manager.lock().await;
+        // Check if the message is coming from one of our subidentities and validate signature
         let sender_subidentity = msg
             .clone()
             .body
@@ -90,7 +105,16 @@ impl Node {
             .sender_subidentity
             .clone();
 
-        let subidentity = subidentity_manager.find_by_profile_name(&sender_subidentity).cloned();
+        let sender_name_string = format!(
+            "{}/{}",
+            self.node_profile_name.get_node_name(),
+            sender_subidentity.clone()
+        );
+        let sender_name =
+            ShinkaiName::new(sender_name_string.clone()).expect("Failed to create ShinkaiName from sender_name");
+
+        let subidentity_manager = self.identity_manager.lock().await;
+        let subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
         // Check that the subidentity that's trying to prox through us exist / is valid
@@ -108,7 +132,8 @@ impl Node {
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
-            Identity::Standard(std_identity) => std_identity.subidentity_signature_public_key.clone(),
+            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
+            Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
             Identity::Agent(_) => {
                 eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
                 return Ok(());
@@ -118,7 +143,7 @@ impl Node {
         if signature_public_key.is_none() {
             eprintln!(
                 "handle_onionized_message > Signature public key doesn't exist for identity: {}",
-                IdentityManager::get_full_identity_name(&subidentity).unwrap_or_default()
+                subidentity.get_full_identity_name()
             );
             return Ok(());
         }
@@ -133,37 +158,10 @@ impl Node {
 
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_node_profile_name = msg.external_metadata.clone().unwrap().recipient;
-        println!(
-            "handle_onionized_message > recipient_node_profile_name: {}",
-            recipient_node_profile_name
-        );
+        let recipient_profile_name_string = ShinkaiName::from_shinkai_message_using_recipient(&msg.clone())
+            .unwrap()
+            .to_string();
 
-        let external_global_identity = self
-            .identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&recipient_node_profile_name.clone())
-            .await
-            .unwrap();
-
-        println!(
-            "handle_onionized_message > external_global_identity: {:?}",
-            external_global_identity
-        );
-
-        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
-            msg.clone(),
-            self.encryption_secret_key.clone(),
-            external_global_identity.node_encryption_public_key, // other node's encryption public key
-        );
-
-        // We update the signature so it comes from the node and not the profile
-        // that way the recipient will be able to verify it
-        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
-
-        let recipient_profile_name_string = IdentityManager::extract_recipient_node_global_name(&msg);
         let external_global_identity = self
             .identity_manager
             .lock()
@@ -177,6 +175,17 @@ impl Node {
             recipient_profile_name_string
         );
 
+        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
+            msg.clone(),
+            self.encryption_secret_key.clone(),
+            external_global_identity.node_encryption_public_key, // other node's encryption public key
+        );
+
+        // We update the signature so it comes from the node and not the profile
+        // that way the recipient will be able to verify it
+        let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
+        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
+        
         let mut db_guard = self.db.lock().await;
 
         let node_addr = external_global_identity.addr.unwrap();
@@ -271,10 +280,14 @@ impl Node {
 
     pub async fn create_and_send_registration_code(
         &self,
+        permissions: IdentityPermissions,
+        code_type: RegistrationCodeType,
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code = db.generate_registration_new_code().unwrap_or_else(|_| "".to_string());
+        let code = db
+            .generate_registration_new_code(permissions, code_type)
+            .unwrap_or_else(|_| "".to_string());
         let _ = res.send(code).await.map_err(|_| ());
         Ok(())
     }
@@ -321,6 +334,12 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(_) => {
+                // This case shouldn't happen because we are filtering out device identities
+                res.send(format!("Device identities cannot have inbox permissions"))
+                    .await;
+                return;
+            }
             Identity::Agent(_) => {
                 res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
@@ -367,6 +386,13 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
+                Some(identity) => identity,
+                None => {
+                    res.send(format!("Device identity is not valid.")).await;
+                    return;
+                }
+            },
             Identity::Agent(_) => {
                 res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
@@ -413,6 +439,13 @@ impl Node {
         // Check if the found identity is a StandardIdentity. If not, send an error message.
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
+            Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
+                Some(identity) => identity,
+                None => {
+                    res.send(false).await;
+                    return;
+                }
+            },
             Identity::Agent(_) => {
                 res.send(false).await;
                 return;
@@ -515,6 +548,7 @@ impl Node {
 
         // Deserialize body.content into RegistrationCode
         let content = decrypted_message.clone().body.unwrap().content;
+        println!("handle_registration_code_usage> content: {:?}", content);
         let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
 
         // Extract values from the ShinkaiMessage
@@ -522,43 +556,109 @@ impl Node {
         let profile_name = registration_code.profile_name;
         let identity_pk = registration_code.identity_pk;
         let encryption_pk = registration_code.encryption_pk;
+        let identity_type = registration_code.identity_type;
+        println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
+        // Comment (to me): this should be able to handle Device and Agent identities
+        // why are we forcing standard_idendity_type?
+        // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
 
-        println!("permission_type: {}", permission_type);
+        println!("identity_type: {:?}", identity_type);
 
         let db = self.db.lock().await;
         let result = db
-            .use_registration_code(&code, &profile_name, &identity_pk, &encryption_pk, &permission_type)
+            .use_registration_code(
+                &code,
+                self.node_profile_name.get_node_name().as_str(),
+                profile_name.as_str(),
+                &identity_pk,
+                &encryption_pk,
+            )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
         std::mem::drop(db);
 
+        // TODO: we should split this on two flows. Profile registration and Device registration
+
         // TODO: add code if you are the first one some special stuff happens.
         // definition of a shared symmetric encryption key
         // probably we need to sign a message with the pk from the first user
+        // TODO: this could had been adding a device for an existent profile
         match result {
             Ok(success) => {
-                let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
-                let permission_type = IdentityType::to_enum(&permission_type).unwrap();
-                let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                match identity_type {
+                    IdentityType::Profile | IdentityType::Global => {
+                        // Existing logic for handling profile identity
+                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
-                let subidentity = StandardIdentity {
-                    full_identity_name: full_identity_name,
-                    addr: None,
-                    subidentity_signature_public_key: Some(signature_pk_obj),
-                    subidentity_encryption_public_key: Some(encryption_pk_obj),
-                    node_encryption_public_key: self.encryption_public_key.clone(),
-                    node_signature_public_key: self.identity_public_key.clone(),
-                    permission_type: permission_type,
-                };
-                let mut subidentity_manager = self.identity_manager.lock().await;
-                match subidentity_manager.add_subidentity(subidentity).await {
-                    Ok(_) => {
-                        let _ = res.send(success).await.map_err(|_| ());
+                        let full_identity_name_result = ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_name.clone(),
+                        );
+
+                        if let Err(e) = &full_identity_name_result {
+                            error!("Failed to add subidentity: {}", e);
+                            let _ = res.send(e.to_string()).await;
+                        }
+
+                        let full_identity_name = full_identity_name_result.unwrap();
+                        let standard_identity_type = identity_type.to_standard().unwrap();
+
+                        let subidentity = StandardIdentity {
+                            full_identity_name,
+                            addr: None,
+                            profile_signature_public_key: Some(signature_pk_obj),
+                            profile_encryption_public_key: Some(encryption_pk_obj),
+                            node_encryption_public_key: self.encryption_public_key.clone(),
+                            node_signature_public_key: self.identity_public_key.clone(),
+                            identity_type: standard_identity_type,
+                            permission_type,
+                        };
+                        let mut subidentity_manager = self.identity_manager.lock().await;
+                        match subidentity_manager.add_profile_subidentity(subidentity).await {
+                            Ok(_) => {
+                                let _ = res.send(success).await.map_err(|_| ());
+                            }
+                            Err(err) => {
+                                error!("Failed to add subidentity: {}", err);
+                            }
+                        }
                     }
-                    Err(err) => {
-                        error!("Failed to add subidentity: {}", err);
+                    IdentityType::Device => {
+                        // Logic for handling device identity
+                        // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
+                        let full_identity_name = ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_name.clone(),
+                        )
+                        .unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+
+                        let device_identity = DeviceIdentity {
+                            full_identity_name,
+                            node_encryption_public_key: self.encryption_public_key.clone(),
+                            node_signature_public_key: self.identity_public_key.clone(),
+                            profile_encryption_public_key: Some(encryption_pk_obj),
+                            profile_signature_public_key: Some(signature_pk_obj),
+                            device_signature_public_key: None, // NOTE: This assumes you don't have the device signature PK in the RegistrationCode. Adjust if necessary.
+                            permission_type,
+                        };
+
+                        let mut identity_manager = self.identity_manager.lock().await;
+                        match identity_manager.add_device_subidentity(device_identity).await {
+                            Ok(_) => {
+                                let _ = res.send(success).await.map_err(|_| ());
+                            }
+                            Err(err) => {
+                                error!("Failed to add device subidentity: {}", err);
+                            }
+                        }
+                    }
+                    _ => {
+                        // Handle other cases if required.
                     }
                 }
             }
@@ -570,7 +670,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_all_subidentities(
+    pub async fn get_all_profiles(
         &self,
         res: Sender<Vec<StandardIdentity>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -602,7 +702,7 @@ impl Node {
         info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
         let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
-            let sender = self.node_profile_name.clone();
+            let sender = self.node_profile_name.clone().get_node_name();
             let receiver_profile_identity = self
                 .identity_manager
                 .lock()
@@ -610,7 +710,7 @@ impl Node {
                 .external_profile_to_global_identity(&peer.1.clone())
                 .await
                 .unwrap();
-            let receiver = receiver_profile_identity.node_identity_name().to_string();
+            let receiver = receiver_profile_identity.full_identity_name.get_node_name();
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
