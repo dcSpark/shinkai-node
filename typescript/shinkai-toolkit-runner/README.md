@@ -21,11 +21,11 @@ Options:
 
 ### Execute tool:
 
-`node runner.js -e -s shinkai-tools.js -t isEven -i '{"number": 2}'`
+`node runner.js -e -s packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'`
 > `{"isEven":true}`
 
 ### Generate interface:
-`node runner.js -e -s shinkai-tools.js -c`
+`node runner.js -e -s packaged-shinkai-toolkit.js -c`
 > `{
   "toolkit-name": "Shinkai Toolkit",
   "author": "local.shinkai",

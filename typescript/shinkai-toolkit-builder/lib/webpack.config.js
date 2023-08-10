@@ -10,7 +10,7 @@ module.exports = {
   output: {
     iife: true,
     path: path.resolve(__dirname, './dist'),
-    filename: 'shinkai-tools.js',
+    filename: 'packaged-shinkai-toolkit.js',
     libraryTarget: 'commonjs-module',
   },
   resolve: {
