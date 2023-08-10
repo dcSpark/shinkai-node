@@ -34,7 +34,7 @@ import "./theme/variables.css";
 setupIonicReact();
 
 const App: React.FC = () => {
-  const setupComplete = false; // localStorage.getItem("setupComplete") === "true";
+  const setupComplete = localStorage.getItem("setupComplete") === "true"; 
   console.log(`Setup complete: ${setupComplete}`);
 
   return (

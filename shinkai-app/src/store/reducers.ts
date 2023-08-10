@@ -5,6 +5,8 @@ import {
   USE_REGISTRATION_CODE,
   PING_ALL,
   REGISTRATION_ERROR,
+  CREATE_REGISTRATION_CODE,
+  CLEAR_REGISTRATION_CODE,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -36,6 +38,7 @@ const setupInitialState: SetupDetailsState = {
 };
 
 export interface RootState {
+  registrationCode: string;
   publicKey: string;
   registrationStatus: boolean;
   pingResult: string;
@@ -48,6 +51,7 @@ const initialState: RootState = {
   registrationStatus: false,
   pingResult: "",
   setupDetailsState: setupInitialState,
+  registrationCode: "",
   error: null,
 };
 
@@ -61,8 +65,12 @@ const rootReducer = (state = initialState, action: Action): RootState => {
         registrationStatus: true,
         setupDetailsState: action.payload,
       };
+    case CREATE_REGISTRATION_CODE:
+      return { ...state, registrationCode: action.payload };
     case REGISTRATION_ERROR:
       return { ...state, error: action.payload };
+    case CLEAR_REGISTRATION_CODE:
+      return { ...state, registrationCode: "" };
     case PING_ALL:
       return { ...state, pingResult: action.payload };
     default:

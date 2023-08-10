@@ -16,6 +16,7 @@ import { useHistory } from "react-router-dom";
 import { RootState } from "../store";
 import { useSelector } from "react-redux";
 import { useEffect, useState } from "react";
+import { ApiConfig } from "../api/api_config";
 
 const Home: React.FC = () => {
   const { setupDetailsState } = useSelector((state: RootState) => state);
@@ -28,6 +29,7 @@ const Home: React.FC = () => {
 
   useEffect(() => {
     console.log("Redux State:", setupDetailsState);
+    ApiConfig.getInstance().setEndpoint(setupDetailsState.node_address)
   }, []);
 
   return (
@@ -77,7 +79,7 @@ const Home: React.FC = () => {
           {
             text: "Create Chat",
             handler: () => {
-              console.log("Create Chat clicked");
+              history.push("/create-chat");
             },
           },
           {
