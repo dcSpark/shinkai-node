@@ -1,0 +1,30 @@
+{
+  "name": "shinkai-tools",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsc && jest",
+    "lint": "gts lint",
+    "clean": "gts clean && rm -rf dist",
+    "compile": "webpack",
+    "fix": "gts fix",
+    "tools": "EMIT_TOOLS=1 npx ts-node src/Registry.ts",
+    "build": "npm run compile && npm run tools"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "gts": "^3.1.1",
+    "jest": "^29.6.2",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.1.6",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "reflect-metadata": "^0.1.13"
+  }
+}

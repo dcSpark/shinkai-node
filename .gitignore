@@ -3,6 +3,10 @@ target/
 /db/
 db_tests/
 *.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!.eslintrc.json
 *.bin
 local-ai
 server

@@ -1,6 +1,4 @@
-# Shinkai-Tools
-
-Shinkai-Tools is a collection of general tools for Shinkai-Node.
+# Shinkai-Toolkit
 
 ## Generate Tools Definition
 
@@ -74,14 +72,4 @@ This command generates the complete source in `./dist/shinkai-tools.js`
 
 ## Test
 `npm run test`
-
-## How to add new tools
-1. Duplicate `./src/packages/is-even`
-2. Replace `isEven` with your tool name.
-3. Update `run` code and `Input_*` `Output_` interfaces.
-4. Add export to `./src/Registry.ts`
-5. Optional add test to `./tests/tool-name.test.js`
-
-
-
 
