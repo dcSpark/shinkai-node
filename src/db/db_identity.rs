@@ -1,11 +1,12 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{
-    DeviceIdentity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };

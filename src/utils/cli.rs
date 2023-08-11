@@ -52,7 +52,7 @@ fn handle_code_registration(
     recipient: String,
     node2_encryption_pk: EncryptionPublicKey,
 ) {
-    let message = ShinkaiMessageBuilder::code_registration(
+    let message = ShinkaiMessageBuilder::use_code_registration(
         node_keys.encryption_secret_key.clone(),
         clone_signature_secret_key(&node_keys.identity_secret_key),
         node2_encryption_pk,

@@ -296,7 +296,7 @@ async fn create_registration_code_handler(
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::CreateRegistrationCode {
+        .send(NodeCommand::APICreateRegistrationCode {
             msg: message,
             res: res_sender,
         })

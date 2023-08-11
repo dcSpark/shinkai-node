@@ -7,7 +7,7 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobToolCall, IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -72,11 +72,15 @@ pub enum NodeCommand {
     },
     // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
-    // Command to make the node create a registration code. The sender will receive the code.
-    CreateRegistrationCode {
-        // permissions: IdentityPermissions,
-        // code_type: RegistrationCodeType,
+    // Command to make the node create a registration code through the API. The sender will receive the code.
+    APICreateRegistrationCode {
         msg: ShinkaiMessage,
+        res: Sender<String>,
+    },
+    // Command to make the node create a registration code locally. The sender will receive the code.
+    LocalCreateRegistrationCode {
+        permissions: IdentityPermissions,
+        code_type: RegistrationCodeType,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
@@ -284,7 +288,8 @@ impl Node {
                                 Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
                                 Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                                 Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                                Some(NodeCommand::CreateRegistrationCode { msg, res }) => self.create_and_send_registration_code(msg, res).await?,
+                                Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
+                                Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
                                 Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
                                 Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                                 Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,

@@ -1,3 +1,4 @@
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -7,7 +8,10 @@ use crate::{
     schemas::{inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::{
         shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreation, JobMessage, JobScope, MessageSchemaType},
+        shinkai_message_schemas::{
+            IdentityPermissions, JobCreation, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
+        },
     },
     shinkai_utils::{
         encryption::{encrypt_body, encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
@@ -444,7 +448,31 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
-    pub fn code_registration(
+    pub fn request_code_registration(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        permissions: IdentityPermissions,
+        code_type: RegistrationCodeType,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        println!("sender: {}", sender_profile_name.clone());
+        println!("receiver: {}", receiver.clone());
+        
+        let registration_code_request = RegistrationCodeRequest { permissions, code_type };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            registration_code_request,
+            sender_profile_name,
+            receiver,
+        )
+    }
+
+    pub fn use_code_registration(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
@@ -455,10 +483,12 @@ impl ShinkaiMessageBuilder {
         sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
+        println!("sender: {}", sender_profile_name.clone());
+        println!("receiver: {}", receiver.clone());
         let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
-
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+
         let registration_code = RegistrationCode {
             code,
             registration_name: registration_name.clone(),
@@ -468,13 +498,28 @@ impl ShinkaiMessageBuilder {
             permission_type,
         };
 
-        let body =
-            serde_json::to_string(&registration_code).map_err(|_| "Failed to serialize registration code to JSON")?;
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            registration_code,
+            sender_profile_name,
+            receiver,
+        )
+    }
 
-        println!(
-            "code_registration> receiver_public_key = {:?}",
-            encryption_public_key_to_string(receiver_public_key)
-        );
+    pub fn create_custom_shinkai_message_to_node<T: Serialize>(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        data: T,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let body = serde_json::to_string(&data).map_err(|_| "Failed to serialize data to JSON")?;
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+
         ShinkaiMessageBuilder::new(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
@@ -483,7 +528,6 @@ impl ShinkaiMessageBuilder {
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .internal_metadata(sender_profile_name, "".to_string(), EncryptionMethod::None)
-        // we are interacting with the associated node so the receiver and the sender are from the same base node
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
     }
@@ -499,6 +543,7 @@ impl ShinkaiMessageBuilder {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .body(format!("{{error: \"{}\"}}", error_msg))
             .empty_encrypted_internal_metadata()
+            .external_metadata(receiver, sender)
             .no_body_encryption()
             .build()
     }

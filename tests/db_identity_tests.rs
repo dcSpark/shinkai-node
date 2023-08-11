@@ -2,6 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use async_std::task;
 use reqwest::Identity;
 use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
@@ -12,10 +13,9 @@ use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::db::Topic;
-use shinkai_node::db::db_identity_registration::RegistrationCodeType;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType};
+use shinkai_node::schemas::identity::{IdentityType, StandardIdentity, StandardIdentityType};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;

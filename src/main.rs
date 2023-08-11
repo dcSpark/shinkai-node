@@ -1,8 +1,6 @@
-use crate::db::db_identity_registration::RegistrationCodeType;
 // main.rs
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
-use crate::schemas::identity::IdentityPermissions;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
@@ -14,7 +12,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{info, warn};
 use network::Node;
 use qrcode::QrCode;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{MessageSchemaType, RegistrationCodeType, IdentityPermissions};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
 };
@@ -139,9 +137,9 @@ fn main() {
             // Generate the device code
             let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
             node_commands_sender
-                .send(NodeCommand::CreateRegistrationCode {
-                    // permissions: IdentityPermissions::Admin,
-                    // code_type: RegistrationCodeType::Device("main".to_string()),
+                .send(NodeCommand::LocalCreateRegistrationCode {
+                    permissions: IdentityPermissions::Admin,
+                    code_type: RegistrationCodeType::Device("main".to_string()),
                     res: res1_registration_sender,
                 })
                 .await

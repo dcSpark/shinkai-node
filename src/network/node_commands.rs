@@ -1,6 +1,6 @@
 use super::{node_message_handlers::verify_message_signature, Node};
 use crate::{
-    db::{db_errors::ShinkaiDBError},
+    db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::{
         node::NodeError,
@@ -17,7 +17,12 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
-    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::{MessageSchemaType, RegistrationCodeRequest, IdentityPermissions}},
+    shinkai_message::{
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::{
+            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+        },
+    },
     shinkai_utils::{
         encryption::{
             clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
@@ -270,7 +275,25 @@ impl Node {
         Ok(())
     }
 
-    pub async fn create_and_send_registration_code(
+    pub async fn local_create_and_send_registration_code(
+        &self,
+        permissions: IdentityPermissions,
+        code_type: RegistrationCodeType,
+        res: Sender<String>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let db = self.db.lock().await;
+
+        // TODO: remove this
+        db.print_all_keys_for_profiles_identity_key();
+
+        let code = db
+            .generate_registration_new_code(permissions, code_type)
+            .unwrap_or_else(|_| "".to_string());
+        let _ = res.send(code).await.map_err(|_| ());
+        Ok(())
+    }
+
+    pub async fn api_create_and_send_registration_code(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<String>,
@@ -331,14 +354,13 @@ impl Node {
 
         // TODO: Parse the message content (message.body.content). it's of type CreateRegistrationCode and continue.
         let content = msg.body.unwrap().content;
-        let create_registration_code: RegistrationCodeRequest = serde_json::from_str(&content)
-            .map_err(|e| NodeError {
+        let create_registration_code: RegistrationCodeRequest =
+            serde_json::from_str(&content).map_err(|e| NodeError {
                 message: format!("Failed to parse CreateRegistrationCode: {}", e),
             })?;
 
         let permissions = create_registration_code.permissions;
-        let code_type = create_registration_code.code_type;        
-
+        let code_type = create_registration_code.code_type;
 
         // permissions: IdentityPermissions,
         // code_type: RegistrationCodeType,
@@ -627,8 +649,11 @@ impl Node {
 
         println!("handle_registration_code_usage> code: {:?}", code);
         println!("identity_type: {:?}", identity_type);
+        println!("registration name: {}", registration_name);
 
         let db = self.db.lock().await;
+        // TODO: remove this
+        db.print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
                 &code,
@@ -639,6 +664,9 @@ impl Node {
             )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
+        
+        // TODO: remove this
+        db.print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
 
         // TODO: we should split this on two flows. Profile registration and Device registration
