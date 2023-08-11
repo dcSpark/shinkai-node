@@ -4,13 +4,7 @@ Contents
 
 ## shinkai-toolkit-buidler
 
-To create new toolkit, run:
-
-`./shinkai-toolkit-buidler MyToolName`
-
-This creates a new folder called `MyToolName` with a empty project.
-
-To create and build Tool:
+To create and build a toolkit:
 ```
 # Node.js 16+ is required
 ./shinkai-toolkit-buidler/new-tool.js MyToolName
@@ -21,7 +15,9 @@ npm run build
 npm run test
 ```
 
-The compiled toolkit is located at `dist/shinkai-tools.js`
+This creates a new folder called `MyToolName` with a base project template.
+
+The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
 
 ## shinkai-toolkit-example
 
@@ -34,33 +30,36 @@ cd shinkai-toolkit-example
 npm ci
 npm run build
 ```
-The compiled toolkit is located at `dist/shinkai-tools.js`
+The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
 
 
 ## shinkai-toolkit-runner
 
-This is program that executes the compiled `shinkai-tools.js` 
-* Runs as an executable:
+This is the program that executes compiled `packaged-shinkai-toolkit.js` 
+
+You have two options for using the runner, either as an executable or webserver.
+
+### As an executable:
 
 ```
 cd shinkai-toolkit-runner
 npm ci
 npm run build
-node build/runner.js -e -s ../shinkai-toolkit-example/dist/shinkai-tools.js -t isEven -i '{"number": 2}'
+node build/runner.js -e -s ../shinkai-toolkit-example/dist/packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'
 ```
 
-* Runs as a webserver
+### As a webserver
 
 ```
-cd shinkai-tookkit-runner
+cd shinkai-toolkit-runner
 npm ci
 npm run build
 node build/runner.js -w
 ```
 
-Perform a network request
+Trigger executing a tool inside of a toolkit via network request:
 ```
 curl localhost:3000/exec -H "Content-Type: application/json" -d '{ {"tool":"isEven","input":{"number":2},"source":"<FILE CONTENTS>" }'`
 
-# replace <FILE CONTENTS> with content of shinkai-toolkit-example/dist/shinkai-tools.js
+# replace <FILE CONTENTS> with content of your given `packaged-shinkai-toolkit.js`
 ```

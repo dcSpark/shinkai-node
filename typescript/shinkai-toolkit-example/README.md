@@ -6,7 +6,7 @@ Shinkai-Tools-Example collection of example tools for Shinkai-Node.
 
 From source: `npm run tools`  
 or  
-From compiled code: `EMIT_TOOLS=1 node dist/shinkai-tools.js`
+From compiled code: `EMIT_TOOLS=1 node dist/packaged-shinkai-toolkit.js`
 
 Example:
 ```json
@@ -70,7 +70,7 @@ weight: number
 ## Compile Output
 `npm run compile`
 
-This command generates the complete source in `./dist/shinkai-tools.js`
+This command generates the complete source in `./dist/packaged-shinkai-toolkit.js`
 
 ## Test
 `npm run test`
