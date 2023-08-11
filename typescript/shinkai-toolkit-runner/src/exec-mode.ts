@@ -20,17 +20,24 @@ async function runScript(src: string, env: string = '') {
 // Exec mode run once
 export async function execMode(source: string, tool: string, input: string): Promise<any> {
   const src = `
-  const tools = require('${source}');  (async () => { 
-    if (!tools['${tool}']) {
-      console.log(JSON.stringify({ error: 'Tool "${tool}" not found' }));
-      return;
-    }
-    const tool = new tools['${tool}'];
-    const input = new tools.DecoratorsTools.classMap['${tool}']();
-    Object.assign(input, ${input || '{}'});
-    const response = await tool.run(input);
-    console.log(JSON.stringify(response));
-  })();
+  const tools = require('${source}'); 
+  setTimeout(() => {
+    (async () => {
+      try {
+        if (!tools['${tool}']) {
+          console.log(JSON.stringify({ error: 'Tool "${tool}" not found' }));
+          return;
+        }
+        const tool = new tools['${tool}'];
+        const input = new tools.DecoratorsTools.classMap['${tool}']();
+        Object.assign(input, ${input || '{}'});
+        const response = await tool.run(input);
+        console.log(JSON.stringify(response));
+      } catch (e) {
+        console.log(JSON.stringify({ error: e.message }));
+      }
+    })();
+  }, 0);
   `;
   return await runScript(src);
 }

@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 
 import {ToolKit} from '../setup';
+import {BaseInput, BaseOutput, BaseTool} from './BaseTool';
+import Joi from 'joi';
 
 enum DATA_TYPES {
   BOOLEAN = 'BOOL',
@@ -15,7 +17,8 @@ enum DATA_TYPES {
 export class DecoratorsTools {
   static tools: Record<string, {name: string; description: string}> = {};
   static toolsInOut: Record<string, [string?, string?]> = {};
-  static classMap: Record<string, any> = {};
+  static classMap: Record<string, typeof BaseInput> = {};
+  static validators: Record<string, any> = {};
   static ebnf: Record<
     string,
     {
@@ -27,6 +30,88 @@ export class DecoratorsTools {
       wrapperType?: 'none' | 'array';
     }
   > = {};
+
+  public static getInputValidator(toolName: string): Joi.ObjectSchema {
+    // This returns a Joi Schema.
+    return DecoratorsTools.validators[toolName];
+  }
+
+  static generateValidator() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const joiObjects: Record<string, Record<string, any>> = {};
+
+    const fieldNames: string[] = Object.keys(this.ebnf);
+    fieldNames.forEach(fieldName => {
+      const fieldData = this.ebnf[fieldName];
+
+      // From the input, find the tool name.
+      let toolName = '';
+      Object.keys(DecoratorsTools.toolsInOut).forEach(toolName_ => {
+        const x = DecoratorsTools.toolsInOut[toolName_];
+        if (x[0] === fieldData.context) {
+          toolName = toolName_;
+          if (!joiObjects[toolName]) {
+            joiObjects[toolName] = {};
+          }
+        }
+      });
+
+      if (!toolName) {
+        // Field is output type.
+        return;
+      }
+
+      // Generate the Joi validation for each field
+      const required = !fieldData.isOptional;
+      switch (fieldData.type) {
+        case DATA_TYPES.BOOLEAN:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.boolean().required()
+            : Joi.boolean();
+          break;
+        case DATA_TYPES.INTEGER:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.number().integer().required()
+            : Joi.number().integer();
+          break;
+        case DATA_TYPES.FLOAT:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.number().required()
+            : Joi.number();
+          break;
+        case DATA_TYPES.STRING:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.string().required()
+            : Joi.string();
+          break;
+        case DATA_TYPES.ENUM:
+          {
+            const enm = fieldData.enum as string[];
+            joiObjects[toolName][fieldName] = required
+              ? Joi.string()
+                  .valid(...enm)
+                  .required()
+              : Joi.string().valid(...enm);
+          }
+          break;
+        case DATA_TYPES.CHAR:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.string().length(1).required()
+            : Joi.string().length(1);
+          break;
+        case DATA_TYPES.JSON:
+          joiObjects[toolName][fieldName] = required
+            ? Joi.object().required()
+            : Joi.object();
+          break;
+      }
+    });
+
+    // Build the Input Object Validators
+    Object.keys(DecoratorsTools.classMap).forEach(className => {
+      DecoratorsTools.validators[className] = Joi.object(joiObjects[className]);
+    });
+  }
 
   static validate() {
     const interfaces = Object.keys(DecoratorsTools.toolsInOut)
@@ -65,6 +150,7 @@ Use @description('') to add a description.`
     // setTimeout is to execute this once all files are loaded, and all decorators are executed.
     setTimeout(() => {
       DecoratorsTools.validate();
+      DecoratorsTools.generateValidator();
       if (process.env.EMIT_TOOLS) {
         const config = DecoratorsTools.generateConfig();
         console.log(JSON.stringify(config, null, 2));
@@ -73,7 +159,7 @@ Use @description('') to add a description.`
   }
 
   static generateConfig() {
-    const toolData: any[] = Object.keys(DecoratorsTools.tools).map(toolName => {
+    const toolData = Object.keys(DecoratorsTools.tools).map(toolName => {
       const extract = (contextName: string | undefined) => {
         if (!contextName) throw new Error('No context name provided');
         return Object.keys(DecoratorsTools.ebnf)
@@ -166,7 +252,7 @@ Use @description('') to add a description.`
     DecoratorsTools.tools[toolName].description = description;
   }
 
-  static registerClass(className: string, classRef: any) {
+  static registerClass(className: string, classRef: typeof BaseInput) {
     DecoratorsTools.classMap[className] = classRef;
   }
 
@@ -198,14 +284,18 @@ Use @description('') to add a description.`
 DecoratorsTools.run();
 
 // Decorator for main tool description
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isTool(classDef: any) {
+  // Tool description is a non-static member.
+  // TODO Find a way to make it static.
+  //      abstract static is not allowed by TS.
   const tool = new classDef();
   DecoratorsTools.registerTool(classDef.name, tool.description);
 }
 
 // Decorator for input class
 export function input(className: string) {
-  return function (classDef: any) {
+  return function (classDef: typeof BaseInput) {
     const key = classDef.name;
     DecoratorsTools.registerToolInput(key, className);
     DecoratorsTools.registerClass(className, classDef);
@@ -214,7 +304,7 @@ export function input(className: string) {
 
 // Decorator for output class
 export function output(className: string) {
-  return function (classDef: any) {
+  return function (classDef: typeof BaseOutput) {
     const key = classDef.name;
     DecoratorsTools.registerToolOutput(key, className);
   };
@@ -222,7 +312,7 @@ export function output(className: string) {
 
 // Decorator for field description
 export function description(description: string) {
-  return function (context: any, propertyKey: any) {
+  return function (context: Object, propertyKey: string) {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldDescription(
       propertyKey,
@@ -237,14 +327,14 @@ export function description(description: string) {
 }
 
 // Decorator to mark field as array.
-export function isArray(context: any, propertyKey: any) {
+export function isArray(context: Object, propertyKey: string) {
   const contextName = context.constructor.name;
   DecoratorsTools.registerFieldArray(propertyKey, contextName);
 }
 
 // Decorator for string field
 export function isString(description?: string) {
-  return function (context: any, propertyKey: any): void {
+  return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -262,7 +352,7 @@ export function isString(description?: string) {
 }
 
 export function isEnum(enumValues: string[], description?: string) {
-  return (context: any, propertyKey: any) => {
+  return (context: Object, propertyKey: string) => {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -281,7 +371,7 @@ export function isEnum(enumValues: string[], description?: string) {
 }
 
 export function isChar(enumValues: string[], description?: string) {
-  return (context: any, propertyKey: any) => {
+  return (context: Object, propertyKey: string) => {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -300,7 +390,7 @@ export function isChar(enumValues: string[], description?: string) {
 }
 
 export function isJSON(description?: string) {
-  return (context: any, propertyKey: any) => {
+  return (context: Object, propertyKey: string) => {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -318,7 +408,7 @@ export function isJSON(description?: string) {
 }
 
 export function isBoolean(description?: string) {
-  return function (context: any, propertyKey: any): void {
+  return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -336,7 +426,7 @@ export function isBoolean(description?: string) {
 }
 
 export function isInteger(description?: string) {
-  return function (context: any, propertyKey: any): void {
+  return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -354,7 +444,7 @@ export function isInteger(description?: string) {
 }
 
 export function isFloat(description?: string) {
-  return function (context: any, propertyKey: any): void {
+  return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
     DecoratorsTools.registerFieldType(
       propertyKey,
@@ -371,7 +461,7 @@ export function isFloat(description?: string) {
   };
 }
 
-export function isOptional(context: any, propertyKey: any): void {
+export function isOptional(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
   DecoratorsTools.registerFieldOptional(propertyKey, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
@@ -380,7 +470,7 @@ export function isOptional(context: any, propertyKey: any): void {
   }
 }
 
-export function isRequired(context: any, propertyKey: any): void {
+export function isRequired(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
   DecoratorsTools.registerFieldRequired(propertyKey, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
@@ -390,8 +480,8 @@ export function isRequired(context: any, propertyKey: any): void {
 }
 
 function extractTypeFromDecorator(
-  context: any,
-  propertyKey: any
+  context: Object,
+  propertyKey: string
 ): DATA_TYPES | undefined {
   const typeInfo = Reflect.getMetadata('design:type', context, propertyKey);
   switch (typeInfo.name) {
