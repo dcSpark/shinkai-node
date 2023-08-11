@@ -254,7 +254,7 @@ impl IdentityManager {
     ) -> Result<(), NodeError> {
         if sender_subidentity.is_none() {
             eprintln!(
-                "handle_onionized_message > Subidentity not found for profile name: {}",
+                "signature check > Subidentity not found for profile name: {}",
                 decrypted_message.external_metadata.clone().unwrap().sender
             );
             return Err(NodeError {
@@ -272,14 +272,14 @@ impl IdentityManager {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
             Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
             Identity::Agent(_) => {
-                eprintln!("handle_onionized_message > Agent identities cannot send onionized messages");
+                eprintln!("signature check > Agent identities cannot send onionized messages");
                 return Ok(());
             }
         };
 
         if signature_public_key.is_none() {
             eprintln!(
-                "handle_onionized_message > Signature public key doesn't exist for identity: {}",
+                "signature check > Signature public key doesn't exist for identity: {}",
                 subidentity.get_full_identity_name()
             );
             return Ok(());
@@ -288,7 +288,7 @@ impl IdentityManager {
         match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {
             Ok(_) => Ok({}),
             Err(e) => {
-                eprintln!("handle_onionized_message > Failed to verify message signature: {}", e);
+                eprintln!("signature check > Failed to verify message signature: {}", e);
                 return Err(NodeError {
                     message: format!("Failed to verify message signature: {}", e.to_string()),
                 });

@@ -469,6 +469,7 @@ impl ShinkaiMessageBuilder {
             registration_code_request,
             sender_profile_name,
             receiver,
+            MessageSchemaType::CreateRegistrationCode
         )
     }
 
@@ -505,6 +506,7 @@ impl ShinkaiMessageBuilder {
             registration_code,
             sender_profile_name,
             receiver,
+            MessageSchemaType::TextContent
         )
     }
 
@@ -515,6 +517,7 @@ impl ShinkaiMessageBuilder {
         data: T,
         sender_profile_name: String,
         receiver: ProfileName,
+        schema: MessageSchemaType,
     ) -> Result<ShinkaiMessage, &'static str> {
         let body = serde_json::to_string(&data).map_err(|_| "Failed to serialize data to JSON")?;
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
@@ -527,7 +530,7 @@ impl ShinkaiMessageBuilder {
         )
         .body(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .internal_metadata(sender_profile_name, "".to_string(), EncryptionMethod::None)
+        .internal_metadata_with_schema(sender_profile_name, "".to_string(), "".to_string(), schema, EncryptionMethod::None)
         .external_metadata_with_other(receiver.clone(), receiver, other)
         .build()
     }
