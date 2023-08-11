@@ -304,7 +304,7 @@ impl Node {
         )?;
 
         // Check that the message has the right schema type
-        ShinkaiMessageHandler::validate_message_schema(&msg, MessageSchemaType::CreateRegistrationCode);
+        ShinkaiMessageHandler::validate_message_schema(&msg, MessageSchemaType::CreateRegistrationCode)?;
 
         // TODO: Check that the message is correctly signed
         // Check if the message is coming from one of our subidentities and validate signature

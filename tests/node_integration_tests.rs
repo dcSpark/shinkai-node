@@ -2,7 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{MessageSchemaType, IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -14,10 +14,9 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
-use shinkai_node::db::db_identity_registration::RegistrationCodeType;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityPermissions, IdentityType, StandardIdentity};
+use shinkai_node::schemas::identity::{IdentityType, StandardIdentity};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -100,7 +99,7 @@ fn subidentity_registration() {
         // Printing
         eprintln!(
             "Node 1 encryption sk: {:?}",
-            encryption_secret_key_to_string(node1_encryption_sk_clone2)
+            encryption_secret_key_to_string(node1_encryption_sk_clone2.clone())
         );
         eprintln!(
             "Node 1 encryption pk: {:?}",
@@ -373,6 +372,18 @@ fn subidentity_registration() {
                 )
                 .await;
 
+                // api_registration_profile_node(
+                //     node1_commands_sender.clone(),
+                //     node1_subidentity_name_2,
+                //     node1_identity_name,
+                //     node1_subencryption_sk_2.clone(),
+                //     node1_encryption_sk_clone2.clone(),
+                //     node1_encryption_pk,
+                //     clone_signature_secret_key(&node1_subidentity_sk_2),
+                //     2
+                // )
+                // .await;
+
                 println!("Sending message from Node 1 subidentity to Node 1 subidentity 2");
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
@@ -581,7 +592,7 @@ async fn registration_profile_node(
     {
         let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::CreateRegistrationCode {
+            .send(NodeCommand::LocalCreateRegistrationCode {
                 permissions: IdentityPermissions::Admin,
                 code_type: RegistrationCodeType::Profile,
                 res: res_registration_sender,
@@ -590,7 +601,7 @@ async fn registration_profile_node(
             .unwrap();
         let node_registration_code = res_registraton_receiver.recv().await.unwrap();
 
-        let code_message = ShinkaiMessageBuilder::code_registration(
+        let code_message = ShinkaiMessageBuilder::use_code_registration(
             node_profile_encryption_sk.clone(),
             clone_signature_secret_key(&node_subidentity_sk),
             node_encryption_pk,
@@ -665,7 +676,7 @@ async fn try_re_register_profile_node(
 ) {
     let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::CreateRegistrationCode {
+        .send(NodeCommand::LocalCreateRegistrationCode {
             permissions: IdentityPermissions::Admin,
             code_type: RegistrationCodeType::Profile,
             res: res1_registration_sender,
@@ -674,7 +685,7 @@ async fn try_re_register_profile_node(
         .unwrap();
     let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
 
-    let code_message = ShinkaiMessageBuilder::code_registration(
+    let code_message = ShinkaiMessageBuilder::use_code_registration(
         node_profile_encryption_sk.clone(),
         clone_signature_secret_key(&node_subidentity_sk),
         node_encryption_pk,
@@ -714,4 +725,108 @@ async fn try_re_register_profile_node(
         .unwrap();
     let node1_all_subidentities = res1_all_subidentities_receiver.recv().await.unwrap();
     assert_eq!(node1_all_subidentities.len(), 1, "Node still has 1 subidentity");
+}
+
+async fn api_registration_profile_node(
+    node_commands_sender: Sender<NodeCommand>,
+    node_profile_name: &str,
+    node_identity_name: &str,
+    node_profile_encryption_sk: EncryptionStaticKey,
+    node_encryption_sk: EncryptionStaticKey,
+    node_encryption_pk: EncryptionPublicKey,
+    node_subidentity_sk: SignatureStaticKey,
+    identities_number: usize,
+) {
+    {
+        let permissions = IdentityPermissions::Admin;
+        let code_type = RegistrationCodeType::Profile;
+
+        let msg = ShinkaiMessageBuilder::request_code_registration(
+            node_encryption_sk.clone(),
+            clone_signature_secret_key(&node_subidentity_sk),
+            node_encryption_pk.clone(),
+            permissions,
+            code_type,
+            node_profile_name.to_string().clone(),
+            node_identity_name.to_string().clone(),
+        )
+        .expect("Failed to create registration message");
+
+        let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::APICreateRegistrationCode {
+                msg,
+                res: res_registration_sender,
+            })
+            .await
+            .unwrap();
+        let node_registration_code = res_registraton_receiver.recv().await.unwrap();
+
+        let code_message = ShinkaiMessageBuilder::use_code_registration(
+            node_profile_encryption_sk.clone(),
+            clone_signature_secret_key(&node_subidentity_sk),
+            node_encryption_pk,
+            node_registration_code.to_string(),
+            IdentityType::Profile.to_string(),
+            IdentityPermissions::Admin.to_string(),
+            node_profile_name.to_string().clone(),
+            node_profile_name.to_string().clone(),
+            node_identity_name.to_string(),
+        )
+        .unwrap();
+
+        eprintln!("code_message: {:?}", code_message);
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);
+
+        eprintln!("node_commands_sender: {:?}", node_commands_sender);
+        eprintln!("res_use_registration_sender: {:?}", res_use_registration_sender);
+        node_commands_sender
+            .send(NodeCommand::UseRegistrationCode {
+                msg: code_message,
+                res: res_use_registration_sender,
+            })
+            .await
+            .unwrap();
+        let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
+        eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
+        assert_eq!(
+            node2_use_registration_code,
+            "true".to_string(),
+            "{} used registration code",
+            node_profile_name
+        );
+
+        let (res_all_subidentities_sender, res_all_subidentities_receiver): (
+            async_channel::Sender<Vec<StandardIdentity>>,
+            async_channel::Receiver<Vec<StandardIdentity>>,
+        ) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::GetAllSubidentities {
+                res: res_all_subidentities_sender,
+            })
+            .await
+            .unwrap();
+        let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap();
+
+        assert_eq!(
+            node2_all_subidentities.len(),
+            identities_number,
+            "Node has 1 subidentity"
+        );
+        eprintln!(
+            "{}",
+            format!(
+                "{} subidentity: {:?}",
+                node_profile_name, node2_all_subidentities[0].full_identity_name
+            )
+        );
+        assert_eq!(
+            node2_all_subidentities[identities_number - 1].full_identity_name,
+            ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
+            "Node has the right subidentity"
+        );
+    }
 }
