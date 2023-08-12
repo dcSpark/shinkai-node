@@ -155,6 +155,7 @@ fn main() {
                 }
             };
 
+            // TODO: make this take a param to it can generate multiple ones. profile name should be configurable.
             let qr_data = QRSetupData {
                 registration_code: node_registration_code.clone(),
                 profile: "main".to_string(),
@@ -166,7 +167,7 @@ fn main() {
                 node_signature_pk: identity_public_key_string.clone(),
             };
 
-            save_qr_data_to_local_image(qr_data.clone());
+            save_qr_data_to_local_image(qr_data.clone(), "qr_code_1".to_string());
             print_qr_data_to_console(qr_data.clone());
             display_qr(&qr_data); 
         }

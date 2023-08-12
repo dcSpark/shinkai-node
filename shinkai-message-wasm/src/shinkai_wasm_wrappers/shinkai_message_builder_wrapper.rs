@@ -1,6 +1,6 @@
 use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
-use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope};
+use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope, RegistrationCodeRequest, RegistrationCodeType, IdentityPermissions};
 use crate::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
     string_to_encryption_static_key,
@@ -320,7 +320,35 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn code_registration(
+    pub fn request_code_registration(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        permissions: String,
+        code_type: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let permissions =
+            IdentityPermissions::from_str(&permissions).ok_or_else(|| JsValue::from_str("Invalid permissions"))?;
+        let code_type = RegistrationCodeType::deserialize(serde_json::Value::String(code_type))
+            .map_err(|_| JsValue::from_str("Invalid code type"))?;
+        let registration_code_request = RegistrationCodeRequest { permissions, code_type };
+        let data = registration_code_request.to_json_str()?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            data,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::CreateRegistrationCode.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn use_code_registration(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
@@ -366,6 +394,41 @@ impl ShinkaiMessageBuilderWrapper {
         let _ = builder.internal_metadata(sender_profile_name, "".to_string(), internal_encryption);
         let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
 
+        builder.build_to_string()
+    }
+
+    pub fn create_custom_shinkai_message_to_node(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        data: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+        schema: String,
+    ) -> Result<String, JsValue> {
+        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+        )?;
+        let body_encryption = JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str());
+        let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
+        let schema_jsvalue = JsValue::from_str(&schema);
+
+        let _ = builder.body(data);
+        let _ = builder.body_encryption(body_encryption);
+        let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
+        let _ = builder.internal_metadata_with_schema(
+            sender_profile_name,
+            "".to_string(),
+            "".to_string(),
+            schema_jsvalue,
+            internal_encryption,
+        );
         builder.build_to_string()
     }
 

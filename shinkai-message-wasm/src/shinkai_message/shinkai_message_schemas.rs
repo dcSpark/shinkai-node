@@ -3,6 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize, Serializer, Deserializer};
 use serde_json::Result;
 use regex::Regex;
+use wasm_bindgen::JsValue;
 
 use crate::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName};
 
@@ -187,9 +188,9 @@ impl RegistrationCodeRequest {
         Ok(deserialized)
     }
 
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
+    // TODO: use this as an example and apply this to the other to_json_str
+    pub fn to_json_str(&self) -> std::result::Result<String, JsValue> {
+        serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 

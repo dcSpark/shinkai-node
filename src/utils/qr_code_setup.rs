@@ -13,14 +13,14 @@ pub struct QRSetupData {
     pub node_signature_pk: String,
 }
 
-pub fn save_qr_data_to_local_image(qr_data: QRSetupData) {
+pub fn save_qr_data_to_local_image(qr_data: QRSetupData, name: String) {
     // Serialize QR data to JSON
     let qr_json_string = serde_json::to_string(&qr_data).expect("Failed to serialize QR data to JSON");
 
     // Generate and save QR code as an image
     let qr_code = QrCode::new(qr_json_string.as_bytes()).unwrap();
     let image = qr_code.render::<image::Luma<u8>>().build();
-    image.save("device_code.png").unwrap();
+    image.save(format!("{}.png", name)).unwrap();
 }
 
 pub fn print_qr_data_to_console(qr_data: QRSetupData) {
@@ -44,7 +44,6 @@ pub fn display_qr<T: Serialize>(data: &T) {
     // Generate QR code from serialized data
     let qr_code = QrCode::new(qr_json_string.as_bytes()).unwrap();
 
-    // Optionally: Display QR code in terminal
     let border = 2;
     let colors = qr_code.to_colors();
     let size = (colors.len() as f64).sqrt() as usize;
