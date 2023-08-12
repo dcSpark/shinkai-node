@@ -41,6 +41,13 @@ impl EncryptionMethod {
     }
 }
 
+#[wasm_bindgen]
+pub fn convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: String) -> Result<String, JsValue> {
+    let my_encryption_sk_type = string_to_encryption_static_key(&encryption_sk)?;
+    let my_encryption_pk = x25519_dalek::PublicKey::from(&my_encryption_sk_type);
+    Ok(encryption_public_key_to_string(my_encryption_pk))
+}
+
 pub fn encryption_secret_key_to_jsvalue(secret: &StaticSecret) -> JsValue {
     let bytes = secret.to_bytes().to_vec();
     JsValue::from(Uint8Array::from(&bytes[..]))

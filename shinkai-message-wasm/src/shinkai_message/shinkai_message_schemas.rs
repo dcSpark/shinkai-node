@@ -278,3 +278,12 @@ impl<'de> Deserialize<'de> for RegistrationCodeType {
         }
     }
 }
+
+impl fmt::Display for RegistrationCodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RegistrationCodeType::Device(device_name) => write!(f, "device:{}", device_name),
+            RegistrationCodeType::Profile => write!(f, "profile"),
+        }
+    }
+}

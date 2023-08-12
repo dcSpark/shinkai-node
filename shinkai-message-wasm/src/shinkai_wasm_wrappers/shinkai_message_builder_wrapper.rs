@@ -1,6 +1,8 @@
 use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
-use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope, RegistrationCodeRequest, RegistrationCodeType, IdentityPermissions};
+use crate::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, JobCreation, JobMessage, JobScope, RegistrationCodeRequest, RegistrationCodeType,
+};
 use crate::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
     string_to_encryption_static_key,
@@ -359,12 +361,11 @@ impl ShinkaiMessageBuilderWrapper {
         sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
-        let my_subidentity_encryption_sk = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
-        let my_subidentity_signature_sk = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
-        let receiver_public_key = string_to_encryption_public_key(&receiver_public_key)?;
+        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
+        let my_subidentity_signature_sk_type = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
@@ -378,23 +379,15 @@ impl ShinkaiMessageBuilderWrapper {
 
         let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let my_subidentity_encryption_sk_str = encryption_secret_key_to_string(my_subidentity_encryption_sk);
-        let my_subidentity_signature_sk_str = signature_secret_key_to_string(my_subidentity_signature_sk);
-        let receiver_public_key_str = encryption_public_key_to_string(receiver_public_key);
-
-        let mut builder = ShinkaiMessageBuilderWrapper::new(
-            my_subidentity_encryption_sk_str,
-            my_subidentity_signature_sk_str,
-            receiver_public_key_str,
-        )?;
-        let body_encryption = JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str());
-        let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
-        let _ = builder.body(body);
-        let _ = builder.body_encryption(body_encryption);
-        let _ = builder.internal_metadata(sender_profile_name, "".to_string(), internal_encryption);
-        let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
-
-        builder.build_to_string()
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::TextContent.to_str().to_string(),
+        )
     }
 
     pub fn create_custom_shinkai_message_to_node(
