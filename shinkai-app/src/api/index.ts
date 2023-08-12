@@ -15,6 +15,17 @@ import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderW
 import { MergedSetupType } from "../pages/Connect";
 import { useSelector } from "react-redux";
 import { ApiConfig } from "./api_config";
+import { SetupDetailsState } from "../store/reducers";
+
+// Helper function to handle HTTP errors
+export const handleHttpError = (response: any) => {
+  if (response.status < 200 || response.status >= 300) {
+    const error = response.data;
+    throw new Error(
+      `HTTP error: ${error.code}, ${error.error}, ${error.message}`
+    );
+  }
+};
 
 export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   const apiEndpoint = ApiConfig.getInstance().getEndpoint();
@@ -26,20 +37,37 @@ export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   }
 };
 
-export const submitCreateRegistrationCode =
-  (identity_permissions: string, code_type = "profile") =>
+export const submitRequestRegistrationCode =
+  (
+    identity_permissions: string,
+    code_type = "profile",
+    setupDetailsState: SetupDetailsState
+  ) =>
   async (dispatch: AppDispatch) => {
-    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
     try {
+      // TODO: refactor this
+      let sender_profile_name = setupDetailsState.profile + "/device/" + setupDetailsState.registration_name;
+      console.log("sender_profile_name:", sender_profile_name);
+      const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(
+        setupDetailsState.myEncryptionSk,
+        setupDetailsState.myIdentitySk,
+        setupDetailsState.node_encryption_pk,
+        identity_permissions,
+        code_type,
+        sender_profile_name,
+        setupDetailsState.shinkai_identity
+      );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(
         `${apiEndpoint}/v1/create_registration_code`,
-        {
-          // Identity permissions are: "admin", "standard" and "none"
-          permissions: identity_permissions,
-          // "device" or "profile"
-          code_type,
-        }
+        message
       );
+
+      handleHttpError(response);
       dispatch(createRegistrationCode(response.data.code));
     } catch (error) {
       console.error("Error creating registration code:", error);
@@ -66,24 +94,25 @@ export const submitRegistrationCode =
       console.log("Message:", message);
 
       // Use node_address from setupData for API endpoint
-      let _ = await axios.post(
+      let response = await axios.post(
         `${setupData.node_address}/v1/use_registration_code`,
         message
       );
+
+      handleHttpError(response);
 
       // Update the API_ENDPOINT after successful registration
       ApiConfig.getInstance().setEndpoint(setupData.node_address);
 
       dispatch(useRegistrationCode(setupData));
+
+      return true;
     } catch (error) {
-      let errorMessage = "Unexpected error occurred";
-
+      console.log("Error using registration code:", error);
       if (error instanceof Error) {
-        errorMessage = error.message;
+        dispatch(registrationError(error.message));
       }
-
-      dispatch(registrationError(errorMessage));
-      console.error("Error using registration code:", error);
+      return false;
     }
   };
 
@@ -91,6 +120,7 @@ export const pingAllNodes = () => async (dispatch: AppDispatch) => {
   const apiEndpoint = ApiConfig.getInstance().getEndpoint();
   try {
     const response = await axios.post(`${apiEndpoint}/ping_all`);
+    handleHttpError(response);
     dispatch(pingAll(response.data.result));
   } catch (error) {
     console.error("Error pinging all nodes:", error);

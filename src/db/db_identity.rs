@@ -311,7 +311,7 @@ impl ShinkaiDB {
 
         // Check that the full device identity name doesn't already exist in the column
         if self.db.get_cf(cf_device, &device.full_identity_name.to_string().as_bytes())?.is_some() {
-            return Err(ShinkaiDBError::DeviceIdentityAlreadyExists);
+            return Err(ShinkaiDBError::DeviceIdentityAlreadyExists(device.full_identity_name.to_string()));
         }
 
         // Start write batch for atomic operation

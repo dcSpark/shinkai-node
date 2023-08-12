@@ -1,5 +1,11 @@
+use async_channel::Sender;
 use qrcode::{Color, QrCode};
 use serde::Serialize;
+use shinkai_message_wasm::{shinkai_utils::encryption::encryption_public_key_to_string, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}};
+
+use crate::network::node::NodeCommand;
+
+use super::{keys::NodeKeys, environment::NodeEnvironment};
 
 #[derive(Serialize, Clone)]
 pub struct QRSetupData {
@@ -11,6 +17,83 @@ pub struct QRSetupData {
     pub shinkai_identity: String,
     pub node_encryption_pk: String,
     pub node_signature_pk: String,
+}
+
+pub async fn generate_qr_codes(
+    node_commands_sender: &Sender<NodeCommand>,
+    node_env: &NodeEnvironment,
+    node_keys: &NodeKeys,
+    global_identity_name: &str,
+    identity_public_key_string: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let node_address = {
+        let address_str = node_env.api_listen_address.to_string();
+        if !address_str.starts_with("http://") {
+            format!("http://{}", address_str)
+        } else {
+            address_str
+        }
+    };
+
+    // Generate QR codes for devices
+    for i in 0..node_env.starting_num_qr_devices {
+        let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::LocalCreateRegistrationCode {
+                permissions: IdentityPermissions::Admin,
+                code_type: RegistrationCodeType::Device("main".to_string()),
+                res: res1_registration_sender,
+            })
+            .await?;
+        let node_registration_code = res1_registraton_receiver.recv().await?;
+
+        let qr_data = QRSetupData {
+            registration_code: node_registration_code,
+            profile: "main".to_string(),
+            identity_type: "device".to_string(),
+            permission_type: "admin".to_string(),
+            node_address: node_address.clone(),
+            shinkai_identity: global_identity_name.to_string(),
+            node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+            node_signature_pk: identity_public_key_string.to_string(),
+        };
+
+        let qr_code_name = format!("qr_code_device_{}", i);
+        save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
+        print_qr_data_to_console(qr_data.clone(), "device");
+        display_qr(&qr_data);
+    }
+
+    // Generate QR codes for profiles
+    for i in 0..node_env.starting_num_qr_profiles {
+        let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::LocalCreateRegistrationCode {
+                permissions: IdentityPermissions::Admin,
+                code_type: RegistrationCodeType::Profile,
+                res: res1_registration_sender,
+            })
+            .await?;
+        let node_registration_code = res1_registraton_receiver.recv().await?;
+
+        let qr_data = QRSetupData {
+            registration_code: node_registration_code,
+            profile: "".to_string(),
+            identity_type: "profile".to_string(),
+            permission_type: "admin".to_string(),
+            node_address: node_address.clone(),
+            shinkai_identity: global_identity_name.to_string(),
+            node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+            node_signature_pk: identity_public_key_string.to_string(),
+        };
+
+        let qr_code_name = format!("qr_code_profile_{}", i);
+        save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
+        print_qr_data_to_console(qr_data.clone(), "profile");
+        display_qr(&qr_data);
+    }
+
+    Ok(())
 }
 
 pub fn save_qr_data_to_local_image(qr_data: QRSetupData, name: String) {

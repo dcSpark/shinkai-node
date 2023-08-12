@@ -624,7 +624,7 @@ async fn registration_profile_node(
         eprintln!("node_commands_sender: {:?}", node_commands_sender);
         eprintln!("res_use_registration_sender: {:?}", res_use_registration_sender);
         node_commands_sender
-            .send(NodeCommand::UseRegistrationCode {
+            .send(NodeCommand::APIUseRegistrationCode {
                 msg: code_message,
                 res: res_use_registration_sender,
             })
@@ -632,12 +632,10 @@ async fn registration_profile_node(
             .unwrap();
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
-        assert_eq!(
-            node2_use_registration_code,
-            "true".to_string(),
-            "{} used registration code",
-            node_profile_name
-        );
+        match node2_use_registration_code {
+            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Err(e) => panic!("Registration code error: {:?}", e),
+        }
 
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Vec<StandardIdentity>>,
@@ -705,18 +703,17 @@ async fn try_re_register_profile_node(
 
     let (res1_use_registration_sender, res1_use_registraton_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::UseRegistrationCode {
+        .send(NodeCommand::APIUseRegistrationCode {
             msg: code_message,
             res: res1_use_registration_sender,
         })
         .await
         .unwrap();
     let node1_use_registration_code = res1_use_registraton_receiver.recv().await.unwrap();
-    assert_eq!(
-        node1_use_registration_code,
-        "Profile name already exists".to_string(),
-        "Node 1 used registration code"
-    );
+    match node1_use_registration_code {
+        Ok(code) => assert_eq!(code,  "Profile name already exists".to_string(), ),
+        Err(e) => panic!("Registration code error: {:?}", e),
+    }
 
     let (res1_all_subidentities_sender, res1_all_subidentities_receiver): (
         async_channel::Sender<Vec<StandardIdentity>>,
@@ -772,7 +769,7 @@ async fn api_registration_profile_node(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            node_registration_code.to_string(),
+            node_registration_code.unwrap().to_string(),
             IdentityType::Profile.to_string(),
             IdentityPermissions::Admin.to_string(),
             node_profile_name.to_string().clone(),
@@ -790,7 +787,7 @@ async fn api_registration_profile_node(
         eprintln!("node_commands_sender: {:?}", node_commands_sender);
         eprintln!("res_use_registration_sender: {:?}", res_use_registration_sender);
         node_commands_sender
-            .send(NodeCommand::UseRegistrationCode {
+            .send(NodeCommand::APIUseRegistrationCode {
                 msg: code_message,
                 res: res_use_registration_sender,
             })
@@ -798,12 +795,10 @@ async fn api_registration_profile_node(
             .unwrap();
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
-        assert_eq!(
-            node2_use_registration_code,
-            "true".to_string(),
-            "{} used registration code",
-            node_profile_name
-        );
+        match node2_use_registration_code {
+            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Err(e) => panic!("Registration code error: {:?}", e),
+        }
 
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
             async_channel::Sender<Vec<StandardIdentity>>,

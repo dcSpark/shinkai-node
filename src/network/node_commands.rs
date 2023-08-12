@@ -1,4 +1,4 @@
-use super::{node_message_handlers::verify_message_signature, Node};
+use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
@@ -15,6 +15,7 @@ use async_channel::Sender;
 use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::{debug, error, info, trace, warn};
+use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
     shinkai_message::{
@@ -296,7 +297,7 @@ impl Node {
     pub async fn api_create_and_send_registration_code(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<String>,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let msg = ShinkaiMessageHandler::decrypt_message_body_if_needed(
             potentially_encrypted_msg.clone(),
@@ -312,10 +313,15 @@ impl Node {
 
         // We (currently) don't proxy external messages from other nodes to other nodes
         if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
-            return Err(NodeError {
-                message: "sender_name.node_name is not the same as self.node_name. It can't proxy through this node."
-                    .to_string(),
-            });
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message:
+                        "sender_name.node_name is not the same as self.node_name. It can't proxy through this node."
+                            .to_string(),
+                }))
+                .await;
         }
 
         // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
@@ -323,8 +329,28 @@ impl Node {
         let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        IdentityManager::verify_message_signature(sender_subidentity.clone(), &potentially_encrypted_msg, &msg.clone())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        {
+            // TODO: remove this debug code
+            let db = self.db.lock().await;
+            db.print_all_keys_for_profiles_identity_key();
+        }
+
+        match IdentityManager::verify_message_signature(
+            sender_subidentity.clone(),
+            &potentially_encrypted_msg,
+            &msg.clone(),
+        ) {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Failed to verify message signature: {}", e);
+                let _ = res.send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to verify message signature: {}", e),
+                })).await;
+                return Ok(());
+            }
+        }
 
         // TODO: Check that the message is coming from someone with the right permissions to do this action
         let sender = match sender_subidentity.clone() {
@@ -345,9 +371,12 @@ impl Node {
                 }
             }
             _ => {
-                return Err(NodeError {
-                    message: "Invalid identity type. Only StandardIdentity is allowed.".to_string(),
-                })
+                let _ = res.send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Invalid identity type. Only StandardIdentity is allowed. Value: {:?}", sender).to_string(),
+                })).await;
+                return Ok(());
             }
         }
 
@@ -365,10 +394,20 @@ impl Node {
         // code_type: RegistrationCodeType,
 
         let db = self.db.lock().await;
-        let code = db
-            .generate_registration_new_code(permissions, code_type)
-            .unwrap_or_else(|_| "".to_string());
-        let _ = res.send(code).await.map_err(|_| ());
+        match db.generate_registration_new_code(permissions, code_type) {
+            Ok(code) => {
+                let _ = res.send(Ok(code)).await.map_err(|_| ());
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to generate registration code: {}", err),
+                    }))
+                    .await;
+            }
+        }
         Ok(())
     }
 
@@ -594,10 +633,10 @@ impl Node {
         };
     }
 
-    pub async fn handle_registration_code_usage(
+    pub async fn api_handle_registration_code_usage(
         &self,
         msg: ShinkaiMessage,
-        res: Sender<String>,
+        res: Sender<Result<String, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().unwrap().other;
@@ -652,6 +691,7 @@ impl Node {
 
         let db = self.db.lock().await;
         // TODO: remove this
+        println!("handle_registration_code_usage> before use_registration_code");
         db.print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
@@ -663,17 +703,12 @@ impl Node {
             )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
-        
-        // TODO: remove this
+
+        // TODO: remove this eventually or make it a debug
+        println!("handle_registration_code_usage> after use_registration_code");
         db.print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
 
-        // TODO: we should split this on two flows. Profile registration and Device registration
-
-        // TODO: add code if you are the first one some special stuff happens.
-        // definition of a shared symmetric encryption key
-        // probably we need to sign a message with the pk from the first user
-        // TODO: this could had been adding a device for an existent profile
         match result {
             Ok(success) => {
                 match identity_type {
@@ -688,9 +723,15 @@ impl Node {
                             registration_name.clone(),
                         );
 
-                        if let Err(e) = &full_identity_name_result {
-                            error!("Failed to add subidentity: {}", e);
-                            let _ = res.send(e.to_string()).await;
+                        if let Err(err) = &full_identity_name_result {
+                            error!("Failed to add subidentity: {}", err);
+                            let _ = res
+                                .send(Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("Failed to add device subidentity: {}", err),
+                                }))
+                                .await;
                         }
 
                         let full_identity_name = full_identity_name_result.unwrap();
@@ -709,10 +750,17 @@ impl Node {
                         let mut subidentity_manager = self.identity_manager.lock().await;
                         match subidentity_manager.add_profile_subidentity(subidentity).await {
                             Ok(_) => {
-                                let _ = res.send(success).await.map_err(|_| ());
+                                let _ = res.send(Ok(success)).await.map_err(|_| ());
                             }
                             Err(err) => {
                                 error!("Failed to add subidentity: {}", err);
+                                let _ = res
+                                    .send(Err(APIError {
+                                        code: StatusCode::BAD_REQUEST.as_u16(),
+                                        error: "Internal Server Error".to_string(),
+                                        message: format!("Failed to add device subidentity: {}", err),
+                                    }))
+                                    .await;
                             }
                         }
                     }
@@ -740,10 +788,17 @@ impl Node {
                         let mut identity_manager = self.identity_manager.lock().await;
                         match identity_manager.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                let _ = res.send(success).await.map_err(|_| ());
+                                let _ = res.send(Ok(success)).await.map_err(|_| ());
                             }
                             Err(err) => {
                                 error!("Failed to add device subidentity: {}", err);
+                                let _ = res
+                                    .send(Err(APIError {
+                                        code: StatusCode::BAD_REQUEST.as_u16(),
+                                        error: "Internal Server Error".to_string(),
+                                        message: format!("Failed to add device subidentity: {}", err),
+                                    }))
+                                    .await;
                             }
                         }
                     }
@@ -752,9 +807,15 @@ impl Node {
                     }
                 }
             }
-            Err(e) => {
-                error!("Failed to add subidentity: {}", e);
-                let _ = res.send(e).await.map_err(|_| ());
+            Err(err) => {
+                error!("Failed to add subidentity: {}", err);
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to add device subidentity: {}", err),
+                    }))
+                    .await;
             }
         }
         Ok(())

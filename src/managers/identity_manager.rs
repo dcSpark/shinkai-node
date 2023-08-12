@@ -41,6 +41,7 @@ impl IdentityManager {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
+            db.print_all_keys_for_profiles_identity_key();
             db.get_all_profiles(local_node_name.clone())?
                 .into_iter()
                 .map(Identity::Standard)

@@ -29,6 +29,8 @@ use crate::network::node_message_handlers::{
 };
 use crate::schemas::identity::{StandardIdentity};
 
+use super::node_api::APIError;
+
 // Buffer size in bytes.
 const BUFFER_SIZE: usize = 2024;
 
@@ -75,7 +77,7 @@ pub enum NodeCommand {
     // Command to make the node create a registration code through the API. The sender will receive the code.
     APICreateRegistrationCode {
         msg: ShinkaiMessage,
-        res: Sender<String>,
+        res: Sender<Result<String, APIError>>,
     },
     // Command to make the node create a registration code locally. The sender will receive the code.
     LocalCreateRegistrationCode {
@@ -84,9 +86,9 @@ pub enum NodeCommand {
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
-    UseRegistrationCode {
+    APIUseRegistrationCode {
         msg: ShinkaiMessage,
-        res: Sender<String>,
+        res: Sender<Result<String, APIError>>,
     },
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
@@ -290,7 +292,7 @@ impl Node {
                                 Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
                                 Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
                                 Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
-                                Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
+                                Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
                                 Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
                                 Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
                                 Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,

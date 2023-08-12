@@ -1,7 +1,7 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
 use reqwest::StatusCode;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shinkai_message_wasm::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -34,11 +34,11 @@ struct ConnectBody {
     profile_name: String,
 }
 
-#[derive(Serialize)]
-struct APIError {
-    code: u16,
-    error: String,
-    message: String,
+#[derive(Serialize, Debug, Clone)]
+pub struct APIError {
+    pub code: u16,
+    pub error: String,
+    pub message: String,
 }
 
 impl APIError {
@@ -134,7 +134,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_registration_code")
             .and(warp::post())
-            .and(warp::body::json::<ShinkaiMessage>()) 
+            .and(warp::body::json::<ShinkaiMessage>())
             .and_then(move |message: ShinkaiMessage| {
                 create_registration_code_handler(node_commands_sender.clone(), message)
             })
@@ -302,9 +302,18 @@ async fn create_registration_code_handler(
         })
         .await
         .map_err(|_| warp::reject::reject())?; // Send the command to Node
-    let code = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    let response = serde_json::json!({ "code": code });
-    Ok(warp::reply::json(&response))
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(code) => {
+            let response = serde_json::json!({ "code": code });
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        },
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
 }
 
 async fn use_registration_code_handler(
@@ -314,14 +323,21 @@ async fn use_registration_code_handler(
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::UseRegistrationCode {
+        .send(NodeCommand::APIUseRegistrationCode {
             msg: message,
             res: res_sender,
         })
         .await
         .map_err(|_| warp::reject::reject())?; // Send the command to Node
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    Ok(warp::reply::json(&result))
+
+    match result {
+        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
 }
 
 async fn get_all_subidentities_handler(

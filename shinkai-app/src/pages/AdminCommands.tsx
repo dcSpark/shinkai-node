@@ -16,13 +16,14 @@ import {
 } from "@ionic/react";
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { submitCreateRegistrationCode } from "../api";
+import { submitRequestRegistrationCode } from "../api";
 import { RootState } from "../store";
 import { clearRegistrationCode } from "../store/actions";
 import { useSetup } from "../hooks/usetSetup";
 
 const AdminCommands: React.FC = () => {
   useSetup();
+  const setupDetailsState = useSelector((state: RootState) => state.setupDetailsState);
   const [showCodeRegistrationActionSheet, setShowCodeRegistrationActionSheet] =
     useState(false);
   const [showCodeRegistrationModal, setCodeRegistrationShowModal] =
@@ -52,8 +53,9 @@ const AdminCommands: React.FC = () => {
     navigator.clipboard.writeText(registrationCode);
   };
 
-  const handleIdentityClick = async (identityType: string) => {
-    await dispatch(submitCreateRegistrationCode(identityType));
+  const handleIdentityClick = async (permissionsType: string) => {
+    let identityType = "profile"; // TODO: add the option for device as well, which requires to ask for a valid profile name
+    await dispatch(submitRequestRegistrationCode(permissionsType, identityType, setupDetailsState));
     setCodeRegistrationShowModal(true); // Show the modal after the registration code is created
     return true;
   };

@@ -120,12 +120,13 @@ const Connect: React.FC = () => {
   };
 
   const finishSetup = async () => {
-    await dispatch(submitRegistrationCode(setupData));
+    const success = await dispatch(submitRegistrationCode(setupData));
 
-    if (!errorFromState) {
+    if (success) {
       localStorage.setItem("setupComplete", "true");
       history.push("/home");
     } else {
+      console.log("Error from state:", errorFromState);
       toast.error(errorFromState);
     }
   };

@@ -32,7 +32,7 @@ pub enum ShinkaiDBError {
     BincodeError(bincode::Error),
     InboxNameError(InboxNameError),
     ProfileNotFound(String),
-    DeviceIdentityAlreadyExists,
+    DeviceIdentityAlreadyExists(String),
     InvalidPermissionsType,
     MissingValue(String),
     ColumnFamilyNotFound(String),
@@ -87,7 +87,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::BincodeError(e) => write!(f, "Bincode error: {}", e),
             ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
             ShinkaiDBError::ProfileNotFound(e) => write!(f, "Profile not found: {}", e),
-            ShinkaiDBError::DeviceIdentityAlreadyExists => write!(f, "Device identity already exists"),
+            ShinkaiDBError::DeviceIdentityAlreadyExists(e) => write!(f, "Device identity already exists: {}", e),
         }
     }
 }
@@ -147,7 +147,6 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::BincodeError(e1), ShinkaiDBError::BincodeError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::InboxNameError(e1), ShinkaiDBError::InboxNameError(e2)) => e1 == e2, // assuming InboxNameError implements PartialEq
             (ShinkaiDBError::ProfileNotFound(msg1), ShinkaiDBError::ProfileNotFound(msg2)) => msg1 == msg2,
-            (ShinkaiDBError::DeviceIdentityAlreadyExists, ShinkaiDBError::DeviceIdentityAlreadyExists) => true,
             (ShinkaiDBError::InvalidPermissionsType, ShinkaiDBError::InvalidPermissionsType) => true,
             _ => false,
         }

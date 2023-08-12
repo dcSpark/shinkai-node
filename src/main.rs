@@ -5,11 +5,11 @@ use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
-use crate::utils::qr_code_setup::{QRSetupData, display_qr, print_qr_data_to_console, save_qr_data_to_local_image};
+use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use network::Node;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{RegistrationCodeType, IdentityPermissions};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -126,64 +126,7 @@ fn main() {
         if !node.lock().await.is_node_ready().await {
             println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
 
-            // Generate the device code
-            let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
-            node_commands_sender
-                .send(NodeCommand::LocalCreateRegistrationCode {
-                    permissions: IdentityPermissions::Admin,
-                    code_type: RegistrationCodeType::Device("main".to_string()),
-                    res: res1_registration_sender,
-                })
-                .await
-                .unwrap();
-            let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
-
-            let node_address = {
-                let address_str = node_env.api_listen_address.to_string();
-                if !address_str.starts_with("http://") {
-                    format!("http://{}", address_str)
-                } else {
-                    address_str
-                }
-            };
-
-            // Generate QR codes for profiles
-            for i in 0..node_env.starting_num_qr_profiles {
-                let qr_data = QRSetupData {
-                    registration_code: node_registration_code.clone(),
-                    profile: "".to_string(),
-                    identity_type: "profile".to_string(),
-                    permission_type: "admin".to_string(),
-                    node_address: node_address.clone(),
-                    shinkai_identity: global_identity_name.clone(),
-                    node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
-                    node_signature_pk: identity_public_key_string.clone(),
-                };
-
-                let qr_code_name = format!("qr_code_profile_{}", i);
-                save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
-                print_qr_data_to_console(qr_data.clone(), "profile");
-                display_qr(&qr_data);
-            }
-
-            // Generate QR codes for devices
-            for i in 0..node_env.starting_num_qr_devices {
-                let qr_data = QRSetupData {
-                    registration_code: node_registration_code.clone(),
-                    profile: "main".to_string(),
-                    identity_type: "device".to_string(),
-                    permission_type: "admin".to_string(),
-                    node_address: node_address.clone(),
-                    shinkai_identity: global_identity_name.clone(),
-                    node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
-                    node_signature_pk: identity_public_key_string.clone(),
-                };
-
-                let qr_code_name = format!("qr_code_device_{}", i);
-                save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
-                print_qr_data_to_console(qr_data.clone(), "device");
-                display_qr(&qr_data);
-            }
+            let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
 
         // API Server task
