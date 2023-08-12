@@ -50,7 +50,7 @@ export const submitRegistrationCode =
   (setupData: MergedSetupType): AppThunk =>
   async (dispatch: AppDispatch) => {
     try {
-      const messageStr = ShinkaiMessageBuilderWrapper.code_registration(
+      const messageStr = ShinkaiMessageBuilderWrapper.use_code_registration(
         setupData.myEncryptionSk,
         setupData.myIdentitySk,
         setupData.node_encryption_pk,
@@ -63,6 +63,7 @@ export const submitRegistrationCode =
       );
 
       const message = JSON.parse(messageStr);
+      console.log("Message:", message);
 
       // Use node_address from setupData for API endpoint
       let _ = await axios.post(
