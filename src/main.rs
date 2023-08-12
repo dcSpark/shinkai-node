@@ -6,25 +6,18 @@ use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::{QRSetupData, display_qr, print_qr_data_to_console, save_qr_data_to_local_image};
-use anyhow::Error;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use log::{info, warn};
 use network::Node;
-use qrcode::QrCode;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{MessageSchemaType, RegistrationCodeType, IdentityPermissions};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{RegistrationCodeType, IdentityPermissions};
 use shinkai_message_wasm::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
 use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -118,7 +111,6 @@ fn main() {
     // Run the API server and node in separate tasks
     rt.block_on(async {
         // Node task
-        // TODO: this needs redo after node refactoring
         let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
             if let Ok(_) = env::var("CONNECT_PK") {
                 tokio::spawn(async move { connect_node.lock().await.start().await.unwrap() })
@@ -155,21 +147,43 @@ fn main() {
                 }
             };
 
-            // TODO: make this take a param to it can generate multiple ones. profile name should be configurable.
-            let qr_data = QRSetupData {
-                registration_code: node_registration_code.clone(),
-                profile: "main".to_string(),
-                identity_type: "device".to_string(),
-                permission_type: "admin".to_string(),
-                node_address,
-                shinkai_identity: global_identity_name.clone(),
-                node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
-                node_signature_pk: identity_public_key_string.clone(),
-            };
+            // Generate QR codes for profiles
+            for i in 0..node_env.starting_num_qr_profiles {
+                let qr_data = QRSetupData {
+                    registration_code: node_registration_code.clone(),
+                    profile: "".to_string(),
+                    identity_type: "profile".to_string(),
+                    permission_type: "admin".to_string(),
+                    node_address: node_address.clone(),
+                    shinkai_identity: global_identity_name.clone(),
+                    node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+                    node_signature_pk: identity_public_key_string.clone(),
+                };
 
-            save_qr_data_to_local_image(qr_data.clone(), "qr_code_1".to_string());
-            print_qr_data_to_console(qr_data.clone());
-            display_qr(&qr_data); 
+                let qr_code_name = format!("qr_code_profile_{}", i);
+                save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
+                print_qr_data_to_console(qr_data.clone(), "profile");
+                display_qr(&qr_data);
+            }
+
+            // Generate QR codes for devices
+            for i in 0..node_env.starting_num_qr_devices {
+                let qr_data = QRSetupData {
+                    registration_code: node_registration_code.clone(),
+                    profile: "main".to_string(),
+                    identity_type: "device".to_string(),
+                    permission_type: "admin".to_string(),
+                    node_address: node_address.clone(),
+                    shinkai_identity: global_identity_name.clone(),
+                    node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+                    node_signature_pk: identity_public_key_string.clone(),
+                };
+
+                let qr_code_name = format!("qr_code_device_{}", i);
+                save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
+                print_qr_data_to_console(qr_data.clone(), "device");
+                display_qr(&qr_data);
+            }
         }
 
         // API Server task

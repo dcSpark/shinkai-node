@@ -10,3 +10,5 @@ embeddings
 bert.cpp/
 bert-cpp-server
 a.out
+qr_code_profile_*.png
+qr_code_device_*.png

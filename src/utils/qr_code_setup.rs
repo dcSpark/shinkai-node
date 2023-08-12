@@ -23,13 +23,13 @@ pub fn save_qr_data_to_local_image(qr_data: QRSetupData, name: String) {
     image.save(format!("{}.png", name)).unwrap();
 }
 
-pub fn print_qr_data_to_console(qr_data: QRSetupData) {
+pub fn print_qr_data_to_console(qr_data: QRSetupData, node_profile: &str) {
     // Print qr_data to console in a beautiful way
     println!("Please scan the QR code below with your phone to register this device:");
     println!("---------------------------------------------------------------");
     println!("Node registration code: {}", qr_data.registration_code);
-    println!("Node profile: main");
-    println!("Node identity type: device");
+    println!("Node profile: {}", node_profile);
+    println!("Node identity type: {}", qr_data.identity_type);
     println!("Node permission type: admin");
     println!("Node address: {}", qr_data.node_address);
     println!("Node Shinkai identity: {}", qr_data.shinkai_identity);
