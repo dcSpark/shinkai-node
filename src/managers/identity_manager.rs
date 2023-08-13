@@ -41,12 +41,12 @@ impl IdentityManager {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
-            db.print_all_keys_for_profiles_identity_key();
-            db.get_all_profiles(local_node_name.clone())?
+            db.debug_print_all_keys_for_profiles_identity_key();
+            db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
-                .map(Identity::Standard)
                 .collect()
         };
+        println!("identities_manager identities: {:?}", identities);
 
         let agents = {
             let db = db.lock().await;
@@ -192,8 +192,9 @@ impl IdentityManager {
         })
     }
 
-    pub fn find_by_profile_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+    pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
         self.local_identities.iter().find(|identity| {
+            println!("find_by_identity_name > identity: {:?}", identity);
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
                 Identity::Device(device) => device.full_identity_name == full_profile_name,

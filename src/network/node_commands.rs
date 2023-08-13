@@ -96,7 +96,7 @@ impl Node {
 
         // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
         let subidentity_manager = self.identity_manager.lock().await;
-        let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
+        let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
         IdentityManager::verify_message_signature(sender_subidentity, &potentially_encrypted_msg, &msg.clone())
@@ -285,7 +285,7 @@ impl Node {
         let db = self.db.lock().await;
 
         // TODO: remove this
-        db.print_all_keys_for_profiles_identity_key();
+        db.debug_print_all_keys_for_profiles_identity_key();
 
         let code = db
             .generate_registration_new_code(permissions, code_type)
@@ -304,6 +304,7 @@ impl Node {
             &self.encryption_secret_key,
         )?;
 
+        println!("api_create_and_send_registration_code > msg: {:?}", msg);
         // Check that the message has the right schema type
         ShinkaiMessageHandler::validate_message_schema(&msg, MessageSchemaType::CreateRegistrationCode)?;
 
@@ -326,33 +327,10 @@ impl Node {
 
         // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
         let subidentity_manager = self.identity_manager.lock().await;
-        let sender_subidentity = subidentity_manager.find_by_profile_name(sender_name).cloned();
+        let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        {
-            // TODO: remove this debug code
-            let db = self.db.lock().await;
-            db.print_all_keys_for_profiles_identity_key();
-        }
-
-        match IdentityManager::verify_message_signature(
-            sender_subidentity.clone(),
-            &potentially_encrypted_msg,
-            &msg.clone(),
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                error!("Failed to verify message signature: {}", e);
-                let _ = res.send(Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to verify message signature: {}", e),
-                })).await;
-                return Ok(());
-            }
-        }
-
-        // TODO: Check that the message is coming from someone with the right permissions to do this action
+        // Check that the identity exists locally
         let sender = match sender_subidentity.clone() {
             Some(sender) => sender,
             None => {
@@ -362,6 +340,27 @@ impl Node {
             }
         };
 
+        // Check that the message signature is valid according to the local keys
+        match IdentityManager::verify_message_signature(
+            sender_subidentity.clone(),
+            &potentially_encrypted_msg,
+            &msg.clone(),
+        ) {
+            Ok(_) => (),
+            Err(e) => {
+                error!("Failed to verify message signature: {}", e);
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!("Failed to verify message signature: {}", e),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        }
+
+        // Check that the message is coming from someone with the right permissions to do this action
         match sender {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type != IdentityPermissions::Admin {
@@ -370,17 +369,30 @@ impl Node {
                     });
                 }
             }
+            Identity::Device(std_device) => {
+                if std_device.permission_type != IdentityPermissions::Admin {
+                    return Err(NodeError {
+                        message: "Permission denied. Only Admin can perform this operation.".to_string(),
+                    });
+                }
+            }
             _ => {
-                let _ = res.send(Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Invalid identity type. Only StandardIdentity is allowed. Value: {:?}", sender).to_string(),
-                })).await;
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender
+                        )
+                        .to_string(),
+                    }))
+                    .await;
                 return Ok(());
             }
         }
 
-        // TODO: Parse the message content (message.body.content). it's of type CreateRegistrationCode and continue.
+        // Parse the message content (message.body.content). it's of type CreateRegistrationCode and continue.
         let content = msg.body.unwrap().content;
         let create_registration_code: RegistrationCodeRequest =
             serde_json::from_str(&content).map_err(|e| NodeError {
@@ -692,7 +704,7 @@ impl Node {
         let db = self.db.lock().await;
         // TODO: remove this
         println!("handle_registration_code_usage> before use_registration_code");
-        db.print_all_keys_for_profiles_identity_key();
+        db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
                 &code,
@@ -706,7 +718,7 @@ impl Node {
 
         // TODO: remove this eventually or make it a debug
         println!("handle_registration_code_usage> after use_registration_code");
-        db.print_all_keys_for_profiles_identity_key();
+        db.debug_print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
 
         match result {

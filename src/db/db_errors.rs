@@ -40,6 +40,7 @@ pub enum ShinkaiDBError {
     InvalidPermissionType(String),
     InvalidProfileName(String),
     InvalidIdentityName(String),
+    DeviceNameNonExistent(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -88,6 +89,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
             ShinkaiDBError::ProfileNotFound(e) => write!(f, "Profile not found: {}", e),
             ShinkaiDBError::DeviceIdentityAlreadyExists(e) => write!(f, "Device identity already exists: {}", e),
+            ShinkaiDBError::DeviceNameNonExistent(e) => write!(f, "Device name does not exist: {}", e),
         }
     }
 }
