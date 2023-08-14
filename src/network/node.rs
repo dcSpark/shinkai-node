@@ -22,7 +22,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
-use crate::managers::job_manager::JobManager;
+use crate::managers::job_manager::{JobManager, JobManagerError};
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -60,6 +60,14 @@ impl From<std::io::Error> for NodeError {
         NodeError {
             message: format!("{}", err),
         }
+    }
+}
+
+impl From<JobManagerError> for NodeError {
+    fn from(error: JobManagerError) -> Self {
+        // Here you need to decide how to convert a JobManagerError into a NodeError.
+        // This is just an example, adjust it according to your needs.
+        NodeError { message: format!("JobManagerError occurred: {}", error) }
     }
 }
 
@@ -332,21 +340,26 @@ impl Node {
                                 Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                                 Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
                                 Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
-                                Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
-                                Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
-                                Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
                                 Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
                                 Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
                                 Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                                Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                                Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                                Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                                 Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                                Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
+                                Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
                                 Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
                                 // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                                 // API Endpoints
+                                Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
+                                Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
+                                Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
                                 Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
                                 Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
+                                Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
+                                // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?, 
+                                // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
+                                Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
+                                // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                                 _ => break,
                             }
                         }
