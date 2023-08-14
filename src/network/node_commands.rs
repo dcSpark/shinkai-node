@@ -17,11 +17,15 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{debug, error, info, trace, warn};
 use reqwest::StatusCode;
 use shinkai_message_wasm::{
-    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
+    schemas::{
+        inbox_name::InboxName,
+        shinkai_name::{ShinkaiName, ShinkaiNameError},
+    },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest,
+            RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -208,46 +212,75 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_last_unread_messages_from_inbox(
+
+    pub async fn internal_get_last_unread_messages_from_inbox(
+        &self,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+    ) -> Vec<ShinkaiMessage> {
+        // Query the database for the last `limit` number of messages from the specified inbox.
+        let result = match self
+            .db
+            .lock()
+            .await
+            .get_last_unread_messages_from_inbox(inbox_name, limit, offset_key)
+        {
+            Ok(messages) => messages,
+            Err(e) => {
+                error!("Failed to get last messages from inbox: {}", e);
+                return Vec::new();
+            }
+        };
+
+        result
+    }
+
+    pub async fn local_get_last_unread_messages_from_inbox(
         &self,
         inbox_name: String,
         limit: usize,
         offset: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
     ) {
-        // check
-        let result = match self
-            .db
-            .lock()
-            .await
-            .get_last_unread_messages_from_inbox(inbox_name, limit, offset)
-        {
-            Ok(messages) => messages,
-            Err(e) => {
-                error!("Failed to get last unread messages from inbox: {}", e);
-                return;
-            }
-        };
-
+        let result = self.internal_get_last_unread_messages_from_inbox(inbox_name, limit, offset).await; 
         if let Err(e) = res.send(result).await {
             error!("Failed to send last unread messages: {}", e);
         }
     }
 
-    pub async fn get_last_messages_from_inbox(
+    pub async fn internal_get_last_messages_from_inbox(
         &self,
         inbox_name: String,
         limit: usize,
-        res: Sender<Vec<ShinkaiMessage>>,
-    ) {
+        offset_key: Option<String>,
+    ) -> Vec<ShinkaiMessage> {
         // Query the database for the last `limit` number of messages from the specified inbox.
-        let result = match self.db.lock().await.get_last_messages_from_inbox(inbox_name, limit) {
+        let result = match self
+            .db
+            .lock()
+            .await
+            .get_last_messages_from_inbox(inbox_name, limit, offset_key)
+        {
             Ok(messages) => messages,
             Err(e) => {
                 error!("Failed to get last messages from inbox: {}", e);
-                return;
+                return Vec::new();
             }
         };
+
+        result
+    }
+
+    pub async fn local_get_last_messages_from_inbox(
+        &self,
+        inbox_name: String,
+        limit: usize,
+        offset_key: Option<String>,
+        res: Sender<Vec<ShinkaiMessage>>,
+    ) {
+        // Query the database for the last `limit` number of messages from the specified inbox.
+        let result = self.internal_get_last_messages_from_inbox(inbox_name, limit, offset_key).await; 
 
         // Send the retrieved messages back to the requester.
         if let Err(e) = res.send(result).await {
@@ -423,7 +456,20 @@ impl Node {
         Ok(())
     }
 
-    pub async fn mark_as_read_up_to(&self, inbox_name: String, up_to_time: String, res: Sender<String>) {
+    pub async fn internal_mark_as_read_up_to(&self, inbox_name: String, up_to_time: String) -> Result<bool, NodeError> {
+        // Attempt to mark messages as read in the database
+        self.db.lock().await.mark_as_read_up_to(inbox_name, up_to_time)
+            .map_err(|e| {
+                let error_message = format!("Failed to mark messages as read: {}", e);
+                error!("{}", &error_message);
+                NodeError {
+                    message: error_message
+                }
+            })?;
+        Ok(true)
+    }
+
+    pub async fn local_mark_as_read_up_to(&self, inbox_name: String, up_to_time: String, res: Sender<String>) {
         // Attempt to mark messages as read in the database
         let result = match self.db.lock().await.mark_as_read_up_to(inbox_name, up_to_time) {
             Ok(()) => "Successfully marked messages as read.".to_string(),
@@ -833,9 +879,9 @@ impl Node {
         Ok(())
     }
 
-    pub async fn get_all_profiles(
+    pub async fn api_get_all_profiles(
         &self,
-        res: Sender<Vec<StandardIdentity>>,
+        res: Sender<Result<Vec<StandardIdentity>, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Obtain the IdentityManager lock
         let identity_manager = self.identity_manager.lock().await;
@@ -856,7 +902,14 @@ impl Node {
             .collect();
 
         // Send the result back
-        let _ = res.send(subidentities).await.map_err(|_| ());
+        if res.send(Ok(subidentities)).await.is_err() {
+            let error = APIError {
+                code: 500,
+                error: "ChannelSendError".to_string(),
+                message: "Failed to send data through the channel".to_string(),
+            };
+            let _ = res.send(Err(error)).await;
+        }
 
         Ok(())
     }

@@ -65,7 +65,9 @@ impl ShinkaiDB {
 
         if let Err(_) | Ok(false) = inbox_name_manager.has_sender_creation_access(message.clone()) {
             // TODO: check if it has "manual" permissions for this adding identity is required as an input to this fn
-            return Err(ShinkaiDBError::SomeError("Sender doesn't have creation access".to_string()));
+            return Err(ShinkaiDBError::SomeError(
+                "Sender doesn't have creation access".to_string(),
+            ));
         }
 
         // TODO: should be check that the recipient also has access?
@@ -125,6 +127,7 @@ impl ShinkaiDB {
         &self,
         inbox_name: String,
         n: usize,
+        offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
@@ -140,8 +143,25 @@ impl ShinkaiDB {
         // Fetch the column family for all messages
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
 
-        // Create an iterator for the specified inbox, starting from the end
-        let iter = self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End);
+        // Create an iterator for the specified inbox
+        let mut iter = match &offset_key {
+            Some(offset_key) => self.db.iterator_cf(
+                inbox_cf,
+                rocksdb::IteratorMode::From(offset_key.as_bytes(), rocksdb::Direction::Reverse),
+            ),
+            None => self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End),
+        };
+
+        // Skip the first entry if an offset_key was provided and it matches the current key
+        if let Some(offset_key) = &offset_key {
+            if let Some(Ok((key, _))) = iter.next() {
+                let key_str = String::from_utf8_lossy(&key);
+                if key_str != *offset_key {
+                    // If the key didn't match the offset_key, recreate the iterator to start from the end
+                    iter = self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End);
+                }
+            }
+        }
 
         let mut messages = Vec::new();
         for item in iter.take(n) {
@@ -418,7 +438,7 @@ impl ShinkaiDB {
                 )))?;
         let perm_type_str = String::from_utf8(perm_type_bytes.to_vec())
             .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?;
-        
+
         // TODO: perm_type not used?
         // TODO(?): if it's admin it should be able to access anything :?
         let perm_type = IdentityType::to_enum(&perm_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!(

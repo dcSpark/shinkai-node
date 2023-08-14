@@ -345,12 +345,16 @@ async fn get_all_subidentities_handler(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
+
     node_commands_sender
-        .send(NodeCommand::GetAllSubidentities { res: res_sender })
+        .send(NodeCommand::APIGetAllSubidentities { res: res_sender })
         .await
         .map_err(|_| warp::reject::reject())?;
-    let subidentities = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    Ok(warp::reply::json(&subidentities))
+
+    match res_receiver.recv().await {
+        Ok(subidentities) => Ok(warp::reply::json(&subidentities)),
+        Err(_) => Err(warp::reject::reject()),
+    }
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {

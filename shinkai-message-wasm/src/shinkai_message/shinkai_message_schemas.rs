@@ -13,6 +13,8 @@ pub enum MessageSchemaType {
     JobMessageSchema,
     PreMessageSchema,
     CreateRegistrationCode,
+    APIGetMessagesFromInboxRequest,
+    APIReadUpToTimeRequest,
     TextContent,
     Empty
 }
@@ -25,6 +27,8 @@ impl MessageSchemaType {
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "TextContent" => Some(Self::TextContent),
+            "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
+            "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -37,6 +41,8 @@ impl MessageSchemaType {
             Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::TextContent => "TextContent",
+            Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
+            Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::Empty => "",
         }
     }
@@ -173,6 +179,40 @@ impl JobRecipient {
     pub fn to_json_str(&self) -> Result<String> {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIGetMessagesFromInboxRequest {
+    pub inbox: InboxName,
+    pub count: usize,
+    pub offset: Option<String>,
+}
+
+impl APIGetMessagesFromInboxRequest {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> std::result::Result<String, JsValue> {
+        serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIReadUpToTimeRequest {
+    pub inbox_name: InboxName,
+    pub up_to_time: String,
+}
+
+impl APIReadUpToTimeRequest {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> std::result::Result<String, JsValue> {
+        serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 

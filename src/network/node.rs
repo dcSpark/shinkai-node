@@ -100,24 +100,45 @@ pub enum NodeCommand {
         address: SocketAddr,
         profile_name: String,
     },
+    // Command to make the node connect to a new node, given the node's address and profile name.
+    APIConnect {
+        address: SocketAddr,
+        profile_name: String,
+        res: Sender<Result<bool, APIError>>,
+    },
     // Command to fetch the last 'n' messages, where 'n' is defined by `limit`. The sender will receive the messages.
     FetchLastMessages {
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
-    GetAllSubidentities {
-        res: Sender<Vec<StandardIdentity>>,
+    APIGetAllSubidentities {
+        res: Sender<Result<Vec<StandardIdentity>, APIError>>,
+    },
+    APIGetLastMessagesFromInbox {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
         limit: usize,
+        offset_key: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
+    },
+    APIMarkAsReadUpTo {
+        // inbox_name: String,
+        // up_to_time: String,
+        msg: ShinkaiMessage, 
+        res: Sender<Result<String, APIError>>,
     },
     MarkAsReadUpTo {
         inbox_name: String,
         up_to_time: String,
         res: Sender<String>,
+    },
+    APIGetLastUnreadMessagesFromInbox {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     },
     GetLastUnreadMessagesFromInbox {
         inbox_name: String,
@@ -125,11 +146,19 @@ pub enum NodeCommand {
         offset: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
     },
+    APIAddInboxPermission {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     AddInboxPermission {
         inbox_name: String,
         perm_type: String,
         identity: String,
         res: Sender<String>,
+    },
+    APIRemoveInboxPermission {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     RemoveInboxPermission {
         inbox_name: String,
@@ -143,14 +172,26 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<bool>,
     },
+    APICreateNewJob {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     CreateNewJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
+    },
+    APIJobMessage {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     JobMessage {
         job_id: String,
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
+    },
+    APIJobPreMessage {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     JobPreMessage {
         tool_calls: Vec<JobToolCall>,
@@ -293,16 +334,19 @@ impl Node {
                                 Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
                                 Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
                                 Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
-                                Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
-                                Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
-                                Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                                Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                                Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
+                                Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
+                                Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                                Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
                                 Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
                                 Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                                 Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
                                 Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
                                 Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
                                 // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
+                                // API Endpoints
+                                Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
+                                Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
                                 _ => break,
                             }
                         }

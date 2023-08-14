@@ -642,7 +642,7 @@ async fn registration_profile_node(
             async_channel::Receiver<Vec<StandardIdentity>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentities {
+            .send(NodeCommand::APIGetAllSubidentities {
                 res: res_all_subidentities_sender,
             })
             .await
@@ -720,7 +720,7 @@ async fn try_re_register_profile_node(
         async_channel::Receiver<Vec<StandardIdentity>>,
     ) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::GetAllSubidentities {
+        .send(NodeCommand::APIGetAllSubidentities {
             res: res1_all_subidentities_sender,
         })
         .await
@@ -805,7 +805,7 @@ async fn api_registration_profile_node(
             async_channel::Receiver<Vec<StandardIdentity>>,
         ) = async_channel::bounded(1);
         node_commands_sender
-            .send(NodeCommand::GetAllSubidentities {
+            .send(NodeCommand::APIGetAllSubidentities {
                 res: res_all_subidentities_sender,
             })
             .await
