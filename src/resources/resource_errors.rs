@@ -34,8 +34,8 @@ impl fmt::Display for ResourceError {
             ResourceError::NoEmbeddingProvided => write!(f, "No embedding provided."),
             ResourceError::InvalidResourceType => write!(f, "The resource type does not exist."),
             ResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
-            ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e), // Add this line
-            ResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),       // Add this line
+            ResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
+            ResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
         }
     }
 }
