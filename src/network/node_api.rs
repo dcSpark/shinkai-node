@@ -118,15 +118,44 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
-    // GET v1/last_messages?limit={number}
+    // POST v1/last_messages?limit={number}&offset={key}
     let get_last_messages = {
         let node_commands_sender = node_commands_sender.clone();
-        warp::path!("v1" / "last_messages")
-            .and(warp::get())
-            .and(warp::query::<HashMap<String, usize>>())
-            .and_then(move |params: HashMap<String, usize>| {
-                get_last_messages_handler(node_commands_sender.clone(), params)
+        warp::path!("v1" / "last_messages_from_inbox")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_last_messages_from_inbox_handler(node_commands_sender.clone(), message)
             })
+    };
+
+    // POST v1/last_unread_messages?limit={number}&offset={key}
+    let get_last_unread_messages = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "last_unread_messages_from_inbox")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_last_unread_messages_from_inbox_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/create_job
+    let create_job = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "create_job")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| create_job_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/mark_as_read_up_to
+    let mark_as_read_up_to = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "mark_as_read_up_to")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| mark_as_read_up_to_handler(node_commands_sender.clone(), message))
     };
 
     // POST v1/create_registration_code
@@ -171,6 +200,9 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_public_key)
         .or(connect)
         .or(get_last_messages)
+        .or(get_last_unread_messages)
+        .or(create_job)
+        .or(mark_as_read_up_to)
         .or(create_registration_code)
         .or(use_registration_code)
         .or(get_all_subidentities)
@@ -181,6 +213,32 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     warp::serve(routes).run(address).await;
 
     println!("Server successfully started at: {}", &address);
+}
+
+async fn handle_node_command<T, U>(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+    command: T,
+) -> Result<impl warp::Reply, warp::reject::Rejection>
+where
+    T: FnOnce(Sender<NodeCommand>, ShinkaiMessage, Sender<Result<U, APIError>>) -> NodeCommand,
+    U: Serialize, // Add this line
+{
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .clone() // Clone here
+        .send(command(node_commands_sender, message, res_sender))
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+        Err(error) => Ok(warp::reply::with_status(
+            warp::reply::json(&error),
+            StatusCode::from_u16(error.code).unwrap(),
+        )),
+    }
 }
 
 async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
@@ -273,20 +331,64 @@ async fn connect_handler(
     Ok(warp::reply::json(&"OK".to_string()))
 }
 
-async fn get_last_messages_handler(
+async fn get_last_messages_from_inbox_handler(
     node_commands_sender: Sender<NodeCommand>,
-    params: HashMap<String, usize>,
+    message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let node_commands_sender = node_commands_sender.clone();
-    let limit = *params.get("limit").unwrap_or(&10); // Default to 10 if limit is not specified
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::FetchLastMessages { limit, res: res_sender })
-        .await
-        .map_err(|_| warp::reject::reject())?; // Send the command to Node
-    let messages: Vec<ShinkaiMessage> = res_receiver.recv().await.unwrap();
-    let messages: Vec<JSONSerdeShinkaiMessage> = messages.into_iter().map(JSONSerdeShinkaiMessage::new).collect();
-    Ok(warp::reply::json(&messages))
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastMessagesFromInbox {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn get_last_unread_messages_from_inbox_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastUnreadMessagesFromInbox {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn create_job_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APICreateNewJob {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn mark_as_read_up_to_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIMarkAsReadUpTo {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
 }
 
 async fn create_registration_code_handler(
@@ -308,7 +410,7 @@ async fn create_registration_code_handler(
         Ok(code) => {
             let response = serde_json::json!({ "code": code });
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        },
+        }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),

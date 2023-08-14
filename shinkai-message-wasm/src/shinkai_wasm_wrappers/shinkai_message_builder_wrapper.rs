@@ -1,7 +1,8 @@
 use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
 use crate::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, JobCreation, JobMessage, JobScope, RegistrationCodeRequest, RegistrationCodeType,
+    APIGetMessagesFromInboxRequest, IdentityPermissions, JobCreation, JobMessage, JobScope, RegistrationCodeRequest,
+    RegistrationCodeType, APIReadUpToTimeRequest,
 };
 use crate::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
@@ -387,6 +388,96 @@ impl ShinkaiMessageBuilderWrapper {
             sender_profile_name,
             receiver,
             MessageSchemaType::TextContent.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn get_last_messages_from_inbox(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
+            inbox: inbox_name,
+            count,
+            offset,
+        };
+
+        let body =
+            serde_json::to_string(&get_last_messages_from_inbox).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn get_last_unread_messages_from_inbox(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
+            inbox: inbox_name,
+            count,
+            offset,
+        };
+
+        let body = serde_json::to_string(&get_last_unread_messages_from_inbox)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn read_up_to_time(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        up_to_time: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let read_up_to_time = APIReadUpToTimeRequest { inbox_name, up_to_time };
+
+        let body = serde_json::to_string(&read_up_to_time).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIReadUpToTimeRequest.to_str().to_string(),
         )
     }
 

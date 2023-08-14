@@ -1,22 +1,13 @@
-use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node};
+use super::{Node};
 use crate::{
-    db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, IdentityManager},
-    network::{
-        node::NodeError,
-        node_message_handlers::{ping_pong, PingPong},
-    },
     schemas::{
-        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
+        identity::{Identity},
         inbox_permission::InboxPermission,
     },
 };
 use async_channel::Sender;
-use chrono::{TimeZone, Utc};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use log::{debug, error, info, trace, warn};
-use mupdf::Device;
-use reqwest::StatusCode;
+use log::{error};
 use shinkai_message_wasm::{
     schemas::{
         inbox_name::InboxName,
@@ -25,8 +16,7 @@ use shinkai_message_wasm::{
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{
-            APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
-            RegistrationCodeRequest, RegistrationCodeType,
+            IdentityPermissions, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -133,7 +123,7 @@ impl Node {
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            res.send(format!("No identity found with the name: {}", identity_name))
+            let _ = res.send(format!("No identity found with the name: {}", identity_name))
                 .await;
             return;
         }
@@ -145,12 +135,12 @@ impl Node {
             Identity::Standard(std_identity) => std_identity.clone(),
             Identity::Device(_) => {
                 // This case shouldn't happen because we are filtering out device identities
-                res.send(format!("Device identities cannot have inbox permissions"))
+                let _ = res.send(format!("Device identities cannot have inbox permissions"))
                     .await;
                 return;
             }
             Identity::Agent(_) => {
-                res.send(format!("Agent identities cannot have inbox permissions"))
+                let _ = res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
                 return;
             }
@@ -185,7 +175,7 @@ impl Node {
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            res.send(format!("No identity found with the name: {}", identity_name))
+            let _ = res.send(format!("No identity found with the name: {}", identity_name))
                 .await;
             return;
         }
@@ -198,12 +188,12 @@ impl Node {
             Identity::Device(std_device) => match std_device.clone().to_standard_identity() {
                 Some(identity) => identity,
                 None => {
-                    res.send(format!("Device identity is not valid.")).await;
+                    let _ = res.send(format!("Device identity is not valid.")).await;
                     return;
                 }
             },
             Identity::Agent(_) => {
-                res.send(format!("Agent identities cannot have inbox permissions"))
+                let _ = res.send(format!("Agent identities cannot have inbox permissions"))
                     .await;
                 return;
             }
@@ -212,14 +202,14 @@ impl Node {
         // First, check if permission exists and remove it if it does
         match self.db.lock().await.remove_permission(&inbox_name, &standard_identity) {
             Ok(()) => {
-                res.send(format!(
+                let _ = res.send(format!(
                     "Permission removed successfully from identity {}.",
                     identity_name
                 ))
                 .await;
             }
             Err(e) => {
-                res.send(format!("Error removing permission: {:?}", e)).await;
+                let _ = res.send(format!("Error removing permission: {:?}", e)).await;
             }
         }
     }
@@ -229,7 +219,7 @@ impl Node {
         {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
-                res.send((job_id, String::new())).await;
+                let _ = res.send((job_id, String::new())).await;
             }
             Err(err) => {
                 // If there was an error, send the error message

@@ -10,7 +10,7 @@ use crate::{
         shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
         shinkai_message_schemas::{
             IdentityPermissions, JobCreation, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest,
-            RegistrationCodeType,
+            RegistrationCodeType, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest,
         },
     },
     shinkai_utils::{
@@ -20,7 +20,8 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string}, shinkai_message_handler::ShinkaiMessageHandler,
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string},
+    shinkai_message_handler::ShinkaiMessageHandler,
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
@@ -396,7 +397,7 @@ impl ShinkaiMessageBuilder {
                 MessageSchemaType::JobCreationSchema,
                 EncryptionMethod::None,
             )
-            .no_body_encryption()
+            .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata(node_receiver, node_sender)
             .build()
     }
@@ -428,7 +429,7 @@ impl ShinkaiMessageBuilder {
                 MessageSchemaType::JobMessageSchema,
                 EncryptionMethod::None,
             )
-            .no_body_encryption()
+            .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
             .external_metadata(node_receiver, node_sender)
             .build()
     }
@@ -505,6 +506,81 @@ impl ShinkaiMessageBuilder {
             sender_profile_name,
             receiver,
             MessageSchemaType::TextContent,
+        )
+    }
+
+    pub fn get_last_messages_from_inbox(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
+        let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest { inbox: inbox_name, count, offset };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            get_last_messages_from_inbox,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest,
+        )
+    }
+
+    pub fn get_last_unread_messages_from_inbox(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
+        let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
+            inbox: inbox_name,
+            count,
+            offset,
+        };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            get_last_unread_messages_from_inbox,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest,
+        )
+    }
+
+    pub fn read_up_to_time(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        inbox: String,
+        up_to_time: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
+        let read_up_to_time = APIReadUpToTimeRequest { inbox_name, up_to_time };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            read_up_to_time,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIReadUpToTimeRequest,
         )
     }
 
