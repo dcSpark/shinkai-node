@@ -6,6 +6,9 @@ jobs:
   test-shinkai-app:
     runs-on: self-hosted
     steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
       - name: Build testing image - shinkai-app
         run: docker build -t testing_image_shinkai_app -f .github/Dockerfile.shinkai-app .
 
