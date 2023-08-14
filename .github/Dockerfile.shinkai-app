@@ -29,6 +29,8 @@ RUN cp -R pkg/ ../shinkai-app/src
 WORKDIR /app/shinkai-app
 RUN source $NVM_DIR/nvm.sh && nvm install $(cat .nvmrc) && nvm use
 RUN npm install
+COPY .github/run-app*.sh /entrypoints/
+RUN chmod 755 /entrypoints/*.sh
 #RUN npm run test.unit
 
 
