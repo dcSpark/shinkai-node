@@ -1,17 +1,19 @@
 // import { createAction, Property } from '@activepieces/pieces-framework';
-// import { HttpRequest, HttpMethod, AuthenticationType, httpClient } from '@activepieces/pieces-common';
-import {googleCalendarCommon} from '../common';
-import {googleCalendarAuth} from '../../';
 import {
   Property,
   createAction,
 } from '../../../../../@activespieces/pieces-framework';
+// import { HttpRequest, HttpMethod, AuthenticationType, httpClient } from '@activepieces/pieces-common';
 import {
   AuthenticationType,
   HttpMethod,
   HttpRequest,
   httpClient,
 } from '../../../../../@activespieces/pieces-common';
+
+import {googleCalendarCommon} from '../common';
+
+import {googleCalendarAuth} from '../../auth';
 
 export const createQuickCalendarEvent = createAction({
   auth: googleCalendarAuth,

@@ -1,19 +1,20 @@
 // import { createAction, Property } from '@activepieces/pieces-framework';
+import {
+  Property,
+  createAction,
+} from '../../../../../@activespieces/pieces-framework';
 // import { HttpRequest, HttpMethod, AuthenticationType, httpClient } from '@activepieces/pieces-common';
-import {googleCalendarCommon} from '../common';
 import {
   AuthenticationType,
   HttpMethod,
   HttpRequest,
   httpClient,
 } from '../../../../../@activespieces/pieces-common';
-// import dayjs from 'dayjs';
-import {googleCalendarAuth} from '../../';
-import {
-  Property,
-  createAction,
-} from '../../../../../@activespieces/pieces-framework';
-const dayjs = require('dayjs');
+import {googleCalendarCommon} from '../common';
+
+import {googleCalendarAuth} from '../../auth';
+
+import dayjs from 'dayjs';
 
 export const createEvent = createAction({
   auth: googleCalendarAuth,

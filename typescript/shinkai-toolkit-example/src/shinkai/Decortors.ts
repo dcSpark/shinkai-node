@@ -15,10 +15,19 @@ enum DATA_TYPES {
 }
 
 export class DecoratorsTools {
+  // Store ToolName: {name, description}
   static tools: Record<string, {name: string; description: string}> = {};
+
+  // Store ToolName: [Input Name, Output Name]
   static toolsInOut: Record<string, [string?, string?]> = {};
+
+  // Store ToolName: InputClass
   static classMap: Record<string, typeof BaseInput> = {};
-  static validators: Record<string, any> = {};
+
+  // Store ToolName: Input JoiSchema Validator
+  static validators: Record<string, Joi.ObjectSchema> = {};
+
+  // Store ClassName.FieldName : {type, description ...}
   static ebnf: Record<
     string,
     {
@@ -41,8 +50,9 @@ export class DecoratorsTools {
     const joiObjects: Record<string, Record<string, any>> = {};
 
     const fieldNames: string[] = Object.keys(this.ebnf);
-    fieldNames.forEach(fieldName => {
-      const fieldData = this.ebnf[fieldName];
+    fieldNames.forEach(fullFieldName => {
+      const [prefix, fieldName] = fullFieldName.split('.');
+      const fieldData = this.ebnf[fullFieldName];
 
       // From the input, find the tool name.
       let toolName = '';
@@ -165,9 +175,10 @@ Use @description('') to add a description.`
         return Object.keys(DecoratorsTools.ebnf)
           .filter(field => DecoratorsTools.ebnf[field].context === contextName)
           .map(field => {
+            const [prefix, fieldName] = field.split('.'); // [input, field
             const f = DecoratorsTools.ebnf[field];
             return {
-              name: field,
+              name: fieldName,
               type: f.type,
               description: f.description,
               isOptional: f.isOptional || false,
@@ -281,6 +292,8 @@ Use @description('') to add a description.`
   }
 }
 
+// This async function processes the decorators and
+// generates the tool descriptions and validators.
 DecoratorsTools.run();
 
 // Decorator for main tool description
@@ -311,39 +324,52 @@ export function output(className: string) {
 }
 
 // Decorator for field description
+//
+// Description can be set with @description("some description")
+// or with type decorators as @isString("some description"),
+// @isNumber("some description"), @isEnum([values], "some description"), etc...
 export function description(description: string) {
   return function (context: Object, propertyKey: string) {
     const contextName = context.constructor.name;
+    const fieldName = buildFieldName(context, propertyKey);
+
     DecoratorsTools.registerFieldDescription(
-      propertyKey,
+      fieldName,
       contextName,
       description
     );
     const type = extractTypeFromDecorator(context, propertyKey);
     if (type) {
-      DecoratorsTools.registerFieldAutoType(propertyKey, contextName, type);
+      DecoratorsTools.registerFieldAutoType(fieldName, contextName, type);
     }
   };
+}
+
+function buildFieldName(context: Object, propertyKey: string) {
+  return `${context.constructor.name}.${propertyKey}`;
 }
 
 // Decorator to mark field as array.
 export function isArray(context: Object, propertyKey: string) {
   const contextName = context.constructor.name;
-  DecoratorsTools.registerFieldArray(propertyKey, contextName);
+  const fieldName = buildFieldName(context, propertyKey);
+  DecoratorsTools.registerFieldArray(fieldName, contextName);
 }
 
-// Decorator for string field
+// Decorator for String field
 export function isString(description?: string) {
   return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
+    const fieldName = buildFieldName(context, propertyKey);
+
     DecoratorsTools.registerFieldType(
-      propertyKey,
+      fieldName,
       contextName,
       DATA_TYPES.STRING
     );
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -351,18 +377,19 @@ export function isString(description?: string) {
   };
 }
 
+// Decorator for Enum field
+// @param1 enumValues: string[] - array of possible values
+// @param2 description?: string - optional description
 export function isEnum(enumValues: string[], description?: string) {
   return (context: Object, propertyKey: string) => {
+    const fieldName = buildFieldName(context, propertyKey);
+
     const contextName = context.constructor.name;
-    DecoratorsTools.registerFieldType(
-      propertyKey,
-      contextName,
-      DATA_TYPES.ENUM
-    );
-    DecoratorsTools.registerFieldEnumData(propertyKey, enumValues);
+    DecoratorsTools.registerFieldType(fieldName, contextName, DATA_TYPES.ENUM);
+    DecoratorsTools.registerFieldEnumData(fieldName, enumValues);
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -370,18 +397,16 @@ export function isEnum(enumValues: string[], description?: string) {
   };
 }
 
+// Decorator for Character field
 export function isChar(enumValues: string[], description?: string) {
   return (context: Object, propertyKey: string) => {
     const contextName = context.constructor.name;
-    DecoratorsTools.registerFieldType(
-      propertyKey,
-      contextName,
-      DATA_TYPES.CHAR
-    );
-    DecoratorsTools.registerFieldEnumData(propertyKey, enumValues);
+    const fieldName = buildFieldName(context, propertyKey);
+
+    DecoratorsTools.registerFieldType(fieldName, contextName, DATA_TYPES.CHAR);
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -389,17 +414,16 @@ export function isChar(enumValues: string[], description?: string) {
   };
 }
 
+// Decorator for JSON field
 export function isJSON(description?: string) {
   return (context: Object, propertyKey: string) => {
     const contextName = context.constructor.name;
-    DecoratorsTools.registerFieldType(
-      propertyKey,
-      contextName,
-      DATA_TYPES.JSON
-    );
+    const fieldName = buildFieldName(context, propertyKey);
+
+    DecoratorsTools.registerFieldType(fieldName, contextName, DATA_TYPES.JSON);
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -407,17 +431,20 @@ export function isJSON(description?: string) {
   };
 }
 
+// Decorator for Boolean Field
 export function isBoolean(description?: string) {
   return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
+    const fieldName = buildFieldName(context, propertyKey);
+
     DecoratorsTools.registerFieldType(
-      propertyKey,
+      fieldName,
       contextName,
       DATA_TYPES.BOOLEAN
     );
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -425,17 +452,20 @@ export function isBoolean(description?: string) {
   };
 }
 
+// Decorator for Integer field
 export function isInteger(description?: string) {
   return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
+    const fieldName = buildFieldName(context, propertyKey);
+
     DecoratorsTools.registerFieldType(
-      propertyKey,
+      fieldName,
       contextName,
       DATA_TYPES.INTEGER
     );
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -443,17 +473,16 @@ export function isInteger(description?: string) {
   };
 }
 
+// Decorator for Float field
 export function isFloat(description?: string) {
   return function (context: Object, propertyKey: string): void {
     const contextName = context.constructor.name;
-    DecoratorsTools.registerFieldType(
-      propertyKey,
-      contextName,
-      DATA_TYPES.FLOAT
-    );
+    const fieldName = buildFieldName(context, propertyKey);
+
+    DecoratorsTools.registerFieldType(fieldName, contextName, DATA_TYPES.FLOAT);
     if (description) {
       DecoratorsTools.registerFieldDescription(
-        propertyKey,
+        fieldName,
         contextName,
         description
       );
@@ -461,21 +490,29 @@ export function isFloat(description?: string) {
   };
 }
 
+// Decorator to mark field as Optional
+// By default all fields are required.
 export function isOptional(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
-  DecoratorsTools.registerFieldOptional(propertyKey, contextName);
+  const fieldName = buildFieldName(context, propertyKey);
+
+  DecoratorsTools.registerFieldOptional(fieldName, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
   if (type) {
-    DecoratorsTools.registerFieldAutoType(propertyKey, contextName, type);
+    DecoratorsTools.registerFieldAutoType(fieldName, contextName, type);
   }
 }
 
+// Decorator to mark field as Required.
+// By default all fields are required (so this decorator is not necessary)
 export function isRequired(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
-  DecoratorsTools.registerFieldRequired(propertyKey, contextName);
+  const fieldName = buildFieldName(context, propertyKey);
+
+  DecoratorsTools.registerFieldRequired(fieldName, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
   if (type) {
-    DecoratorsTools.registerFieldAutoType(propertyKey, contextName, type);
+    DecoratorsTools.registerFieldAutoType(fieldName, contextName, type);
   }
 }
 

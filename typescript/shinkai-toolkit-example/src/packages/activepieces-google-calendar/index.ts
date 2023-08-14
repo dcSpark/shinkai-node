@@ -7,7 +7,7 @@ import {
   isString,
 } from '../../shinkai/Decortors';
 import {BaseTool, BaseInput, BaseOutput} from '../../shinkai/BaseTool';
-import {createQuickCalendarEvent} from './activepieces-original/google-calendar/src/lib/actions/create-quick-event';
+import {googleCalendar} from './activepieces-original/google-calendar/src/index';
 import {Context} from './@activespieces/pieces-framework';
 
 @input('ActivePiecesGoogleCalendar')
@@ -33,7 +33,7 @@ export class ActivePiecesGoogleCalendar extends BaseTool<
 
   async run(input: APGoogleCalendarInput): Promise<APGoogleCalendarOutput> {
     this.validate(input);
-    const _createQuickCalendarEvent = createQuickCalendarEvent;
+    const createQuickCalendarEvent = googleCalendar.actions[0];
 
     const setup: Context = {
       auth: {
@@ -47,7 +47,7 @@ export class ActivePiecesGoogleCalendar extends BaseTool<
       },
       webhookUrl: '',
     };
-    const response = await _createQuickCalendarEvent.run(setup);
+    const response = await createQuickCalendarEvent.run(setup);
     const out = new APGoogleCalendarOutput();
     out.response = JSON.stringify(response.body);
     return out;

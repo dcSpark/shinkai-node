@@ -1,14 +1,15 @@
 // import { createTrigger, OAuth2PropertyValue } from '@activepieces/pieces-framework';
+import {
+  OAuth2PropertyValue,
+  createTrigger,
+} from '../../../../../@activespieces/pieces-framework';
 // import { TriggerStrategy } from "@activepieces/pieces-framework";
+import {TriggerStrategy} from '../../../../../@activespieces/pieces-framework';
+
 import {googleCalendarCommon} from '../common';
 import {getLatestEvent, stopWatchEvent, watchEvent} from '../common/helper';
 import {GoogleWatchResponse} from '../common/types';
-import {googleCalendarAuth} from '../../';
-import {
-  OAuth2PropertyValue,
-  TriggerStrategy,
-  createTrigger,
-} from '../../../../../@activespieces/pieces-framework';
+import {googleCalendarAuth} from '../../auth';
 
 export const calendarEventChanged = createTrigger({
   // docs: https://developers.google.com/calendar/api/guides/push

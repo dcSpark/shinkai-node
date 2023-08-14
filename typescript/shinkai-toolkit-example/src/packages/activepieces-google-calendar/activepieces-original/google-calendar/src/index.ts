@@ -1,21 +1,10 @@
 // import { PieceAuth, createPiece } from '@activepieces/pieces-framework';
+import {createPiece} from '../../../@activespieces/pieces-framework';
+
 import {createQuickCalendarEvent} from './lib/actions/create-quick-event';
 import {calendarEventChanged} from './lib/triggers/calendar-event';
 import {createEvent} from './lib/actions/create-event';
-
-import {PieceAuth, createPiece} from '../../../@activespieces/pieces-framework';
-export const googleCalendarAuth = PieceAuth.OAuth2({
-  description: '',
-  displayName: 'Authentication',
-  authUrl: 'https://accounts.google.com/o/oauth2/auth',
-  tokenUrl: 'https://oauth2.googleapis.com/token',
-  required: true,
-  pkce: true,
-  scope: [
-    'https://www.googleapis.com/auth/calendar.events',
-    'https://www.googleapis.com/auth/calendar.readonly',
-  ],
-});
+import {googleCalendarAuth} from './auth';
 
 export const googleCalendar = createPiece({
   minimumSupportedRelease: '0.5.0',

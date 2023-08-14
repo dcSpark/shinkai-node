@@ -1,5 +1,14 @@
 // import { OAuth2PropertyValue } from "@activepieces/pieces-framework";
+import {OAuth2PropertyValue} from '../../../../../@activespieces/pieces-framework';
+
 // import { AuthenticationType, httpClient, HttpMethod, HttpRequest } from "@activepieces/pieces-common";
+import {
+  AuthenticationType,
+  HttpMethod,
+  HttpRequest,
+  httpClient,
+} from '../../../../../@activespieces/pieces-common';
+
 import {randomUUID} from 'crypto';
 import {googleCalendarCommon} from '.';
 import {
@@ -10,13 +19,7 @@ import {
   GoogleCalendarEvent,
   GoogleCalendarEventList,
 } from './types';
-import {OAuth2PropertyValue} from '../../../../../@activespieces/pieces-framework';
-import {
-  AuthenticationType,
-  HttpMethod,
-  HttpRequest,
-  httpClient,
-} from '../../../../../@activespieces/pieces-common';
+
 
 export async function stopWatchEvent(
   body: GoogleWatchResponse,

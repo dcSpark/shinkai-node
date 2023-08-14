@@ -36,7 +36,7 @@ export const createTrigger = (setup: {
   return setup;
 };
 
-export const createPiece = (setup: Object) => {
+export const createPiece = <T>(setup: T): T => {
   // console.log('createPiece', setup);
   return setup;
 };
