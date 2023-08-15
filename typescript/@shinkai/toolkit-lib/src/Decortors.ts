@@ -1,16 +1,9 @@
 import 'reflect-metadata';
-
-// import {ToolKit} from '../setup';
-import {
-  BaseInput,
-  BaseOutput,
-  BaseSetup,
-  BaseTool,
-  OAuthShinkai,
-} from './BaseTool';
 import Joi from 'joi';
 
-enum DATA_TYPES {
+import {BaseInput, BaseOutput, OAuthShinkai} from './BaseTool';
+
+export enum DATA_TYPES {
   BOOLEAN = 'BOOL',
   INTEGER = 'INT',
   FLOAT = 'FLOAT',
@@ -20,6 +13,7 @@ enum DATA_TYPES {
   JSON = 'JSON',
   ISODATE = 'ISODATE',
 }
+
 interface ShinkaiField {
   context?: string;
   type?: DATA_TYPES;
@@ -29,26 +23,29 @@ interface ShinkaiField {
   wrapperType?: 'none' | 'array';
 }
 
-export interface ShinkaiSetup {
-  'toolkit-name': string;
-  author: string;
-  version: string;
-  [key: string]: string | number | boolean;
+export abstract class ShinkaiSetup {
+  abstract 'toolkit-name': string;
+  abstract author: string;
+  abstract version: string;
+  abstract oauth?: OAuthShinkai | undefined;
+  abstract executionSetup?: Record<string, ShinkaiField> | undefined;
 }
 
 export class DecoratorsTools {
+  // ToolKit description
+  static toolkit: ShinkaiSetup;
+
   // Store ToolName: {name, description}
   static tools: Record<
     string,
     {
       name: string;
       description: string;
-      oauth?: OAuthShinkai;
     }
   > = {};
 
   // Store ToolName: [Input Name, Output Name, Setup Name]
-  static toolsInOut: Record<string, [string?, string?, string?]> = {};
+  static toolsInOut: Record<string, [string?, string?]> = {};
 
   // Store ToolName: InputClass
   static classMap: Record<string, typeof BaseInput> = {};
@@ -70,6 +67,7 @@ export class DecoratorsTools {
 
     const fieldNames: string[] = Object.keys(this.ebnf);
     fieldNames.forEach(fullFieldName => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const [prefix, fieldName] = fullFieldName.split('.');
       const fieldData = this.ebnf[fullFieldName];
 
@@ -150,6 +148,10 @@ export class DecoratorsTools {
   }
 
   static validate() {
+    if (!DecoratorsTools.toolkit) {
+      throw new Error('No toolkit description provided. Please add @isToolKit');
+    }
+
     const interfaces = Object.keys(DecoratorsTools.toolsInOut)
       .map(toolName => DecoratorsTools.toolsInOut[toolName])
       .flat();
@@ -180,28 +182,6 @@ Use @description('') to add a description.`
         );
       }
     });
-
-    Object.keys(DecoratorsTools.tools).forEach((toolName: string) => {
-      if (DecoratorsTools.tools[toolName].oauth) {
-        const setup = DecoratorsTools.toolsInOut[toolName][2];
-        if (!setup) {
-          throw new Error(`Tool "${toolName}" requires OAuth setup.
-Add BaseSetup Class for ${toolName} with a field called "x-shinkai-oauth"`);
-        }
-        const fieldNames: string[] = Object.keys(this.ebnf);
-        const oauthField = fieldNames.find(fieldName => {
-          const fieldData = this.ebnf[fieldName];
-          return (
-            fieldData.context === setup &&
-            fieldName === `${setup}.x-shinkai-oauth`
-          );
-        });
-        if (!oauthField) {
-          throw new Error(`Tool "${toolName}" requires OAuth setup.
-Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
-        }
-      }
-    });
   }
 
   static async start(): Promise<null> {
@@ -214,10 +194,11 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
     });
   }
 
-  static async emitConfig(setup: ShinkaiSetup): Promise<string> {
+  static async emitConfig(): Promise<string> {
     return new Promise(resolve => {
       setTimeout(() => {
-        const config = DecoratorsTools.generateConfig(setup);
+        // ShinkaiSetup
+        const config = DecoratorsTools.generateConfig();
         resolve(JSON.stringify(config, null, 2));
       }, 0);
     });
@@ -227,7 +208,7 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
     const op = field.isOptional ? '?' : '';
     const array = field.wrapperType === 'array';
     const buildBNF = (type: string) => {
-      return `${fieldName} ::= ${array ? `[${type} {, ${type}}]` : type}${op}`;
+      return `${array ? `[${type} {, ${type}}]` : type}${op}`;
     };
 
     switch (field.type) {
@@ -253,7 +234,8 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
     }
   }
 
-  static generateConfig(config: ShinkaiSetup) {
+  static generateConfig() {
+    const inputEBNF: string[] = [];
     const toolData = Object.keys(DecoratorsTools.tools).map(toolName => {
       const extract = (
         contextName: string | undefined,
@@ -268,8 +250,10 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
         return Object.keys(DecoratorsTools.ebnf)
           .filter(field => DecoratorsTools.ebnf[field].context === contextName)
           .map(field => {
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const [prefix, fieldName] = field.split('.'); // [input, field
             const f = DecoratorsTools.ebnf[field];
+            inputEBNF.push(`${fieldName} ::= ${f}`);
             return {
               name: fieldName,
               type: f.type,
@@ -277,30 +261,51 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
               isOptional: f.isOptional || false,
               wrapperType: f.wrapperType || 'none',
               enum: f.enum,
-              bnf: DecoratorsTools.generateBNF(fieldName, f),
+              ebnf: DecoratorsTools.generateBNF(fieldName, f),
             };
           });
       };
 
       const input = extract(DecoratorsTools.toolsInOut[toolName][0]);
       const output = extract(DecoratorsTools.toolsInOut[toolName][1]);
-      const setup = extract(DecoratorsTools.toolsInOut[toolName][2], true);
 
       return {
         name: toolName,
         description: DecoratorsTools.tools[toolName].description,
-        oauth: DecoratorsTools.tools[toolName].oauth,
         input,
         output,
-        setup,
-        inputBNF: `{ ${input
-          .map(i => '"' + i.name + '" : ' + i.name)
-          .join(',')} }
-          ${input.map(i => i.bnf).join('\n')}}`,
+        inputEBNF: inputEBNF.join('\n'),
       };
     });
+    const setup = JSON.parse(JSON.stringify(DecoratorsTools.toolkit));
+    // Setup setup vars & headers
+    if (setup.executionSetup) {
+      Object.keys(setup.executionSetup).forEach(key => {
+        const field = setup.executionSetup[key];
+        field.ebnf = DecoratorsTools.generateBNF(key, field);
+        const validHeader = key
+          .toLocaleLowerCase()
+          .replace(/[^a-z0-9_-]/g, '')
+          .replace(/_/g, '-');
+        field.header = `x-shinkai-${validHeader}`;
+      });
+    }
+    // Add oauth header.
+    if (DecoratorsTools.toolkit.oauth?.authUrl) {
+      if (!setup.executionSetup) setup.executionSetup = {};
+      setup.executionSetup['x-shinkai-oauth'] = {
+        type: DATA_TYPES.STRING,
+        description: DecoratorsTools.toolkit.oauth.description,
+        header: 'x-shinkai-oauth',
+      };
+      setup.executionSetup['x-shinkai-oauth'].ebnf =
+        DecoratorsTools.generateBNF(
+          'x-shinkai-oauth',
+          setup.executionSetup['x-shinkai-oauth']
+        );
+    }
     return {
-      ...config,
+      ...setup,
       tools: toolData,
     };
   }
@@ -358,21 +363,19 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
     DecoratorsTools.ebnf[key].description = description;
   }
 
-  static registerTool(
-    toolName: string,
-    description: string,
-    oauth?: OAuthShinkai
-  ) {
+  static registerToolKit(setup: ShinkaiSetup) {
+    DecoratorsTools.toolkit = setup;
+  }
+
+  static registerTool(toolName: string, description: string) {
     if (!DecoratorsTools.tools[toolName]) {
       DecoratorsTools.tools[toolName] = {
         name: toolName,
         description,
-        oauth: undefined,
       };
     }
     DecoratorsTools.tools[toolName].name = toolName;
     DecoratorsTools.tools[toolName].description = description;
-    DecoratorsTools.tools[toolName].oauth = oauth;
   }
 
   static registerClass(className: string, classRef: typeof BaseInput) {
@@ -388,9 +391,6 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
       DecoratorsTools.toolsInOut[toolName]
         ? DecoratorsTools.toolsInOut[toolName][1]
         : undefined,
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][2]
-        : undefined,
     ];
   }
 
@@ -403,36 +403,24 @@ Add a field named "x-shinkai-oauth" at "${setup}" for "${toolName}`);
         ? DecoratorsTools.toolsInOut[toolName][0]
         : undefined,
       inputOutputName,
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][2]
-        : undefined,
-    ];
-  }
-
-  static registerToolSetup(setupName: string, toolName: string) {
-    if (DecoratorsTools.toolsInOut[toolName]?.[2]) {
-      throw new Error(`Duplicated setup name: "${toolName}"`);
-    }
-    DecoratorsTools.toolsInOut[toolName] = [
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][0]
-        : undefined,
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][1]
-        : undefined,
-      setupName,
     ];
   }
 }
 
-// Decorator for main tool description
+// Decorator for toolkit description
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isToolKit(classDef: any) {
+  DecoratorsTools.registerToolKit(new classDef());
+}
+
+// Decorator for tool description
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isTool(classDef: any) {
   // Tool description is a non-static member.
   // TODO Find a way to make it static.
   //      abstract static is not allowed by TS.
   const tool = new classDef();
-  DecoratorsTools.registerTool(classDef.name, tool.description, tool.oauth);
+  DecoratorsTools.registerTool(classDef.name, tool.description);
 }
 
 // Decorator for input class
@@ -449,14 +437,6 @@ export function output(className: string) {
   return function (classDef: typeof BaseOutput) {
     const key = classDef.name;
     DecoratorsTools.registerToolOutput(key, className);
-  };
-}
-
-// Decorator for setup class
-export function setup(className: string) {
-  return function (classDef: typeof BaseSetup) {
-    const key = classDef.name;
-    DecoratorsTools.registerToolSetup(key, className);
   };
 }
 

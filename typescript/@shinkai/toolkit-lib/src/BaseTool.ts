@@ -22,7 +22,6 @@ export abstract class BaseTool<
   S extends BaseSetup = any
 > {
   abstract description: string;
-  oauth?: OAuthShinkai | undefined;
 
   abstract run(input: I, headers: S): Promise<O>;
   protected validate(input: I) {
