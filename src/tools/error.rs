@@ -8,6 +8,7 @@ pub enum ToolError {
     RocksDBError(RocksError),
     RegexError(regex::Error),
     FailedJSONParsing,
+    ParseError(String),
 }
 
 impl fmt::Display for ToolError {
@@ -16,6 +17,7 @@ impl fmt::Display for ToolError {
             ToolError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             ToolError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
             ToolError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
+            ToolError::ParseError(ref s) => write!(f, "Failed to parse {}", s),
         }
     }
 }
