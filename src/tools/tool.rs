@@ -15,7 +15,6 @@ pub struct JSTool {
     pub description: String,
     pub input_args: Vec<ToolArgument>,
     pub output_args: Vec<ToolArgument>,
-    pub auth: Option<ToolAuth>,
 }
 
 impl JSTool {
@@ -55,7 +54,6 @@ impl JSTool {
             description: description.to_string(),
             input_args,
             output_args,
-            auth: None,
         })
     }
 }
