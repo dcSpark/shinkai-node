@@ -1,16 +1,5 @@
-/* Internal Classes */
-import {DecoratorsTools} from '@shinkai/toolkit-lib';
-import {toolKitSetup} from './toolkitSetup';
-
-// This async function processes the decorators and
-// generates the tool descriptions and validators.
-if (process.env.EMIT_TOOLS) {
-  (async () => {
-    await DecoratorsTools.start();
-    const config = await DecoratorsTools.emitConfig(toolKitSetup);
-    console.log(config);
-  })();
-}
+/* Toolkit Defintion */
+export {ToolKitSetup} from './ToolKitSetup';
 
 /* Tools */
 export {isEven} from './packages/is-even';

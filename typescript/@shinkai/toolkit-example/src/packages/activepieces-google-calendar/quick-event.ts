@@ -3,7 +3,6 @@ import {
   output,
   input,
   isString,
-  setup,
   isOptional,
   isEnum,
   BaseTool,
@@ -37,22 +36,15 @@ class APGoogleCalendarOutput extends BaseOutput {
   response!: string;
 }
 
-@setup('GoogleCalendarQuickEvent')
-class APGoogleCalendarSetup extends BaseSetup {
-  @isString('OAuth Token.')
-  'x-shinkai-oauth'!: string;
-}
 @isTool
 export class GoogleCalendarQuickEvent extends BaseTool<
   APGoogleCalendarInput,
-  APGoogleCalendarOutput,
-  APGoogleCalendarSetup
+  APGoogleCalendarOutput
 > {
   description = 'Activepieces Create Quick Event at Google Calendar';
-  oauth = Object.assign({}, googleCalendar.auth, {cloudOAuth: 'activepieces'});
   async run(
     input: APGoogleCalendarInput,
-    headers: APGoogleCalendarSetup
+    headers: Record<string, string>
   ): Promise<APGoogleCalendarOutput> {
     this.validate(input);
     const createQuickCalendarEvent = googleCalendar.actions[0];
