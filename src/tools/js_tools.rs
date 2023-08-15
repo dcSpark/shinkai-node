@@ -12,9 +12,40 @@ pub struct JSTool {
 }
 
 impl JSTool {
-    fn run(&self, _input_json: JsonValue) -> Result<(), ToolError> {
+    pub fn run(&self, _input_json: JsonValue) -> Result<(), ToolError> {
         // Implement the functionality here
         Ok(())
+    }
+
+    /// Returns a string that includes all of the input arguments' EBNF definitions,
+    /// formatted such that the output specified is valid JSON structured as required
+    /// to execute the JSTool with the external js tool executor.
+    ///
+    /// If `add_arg_descriptions` == true, then includes the arg descriptions as comments.
+    pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
+        let mut ebnf_result = "{".to_string();
+        let mut ebnf_arg_definitions = String::new();
+
+        for input_arg in &self.input_args {
+            let name = &input_arg.name;
+            let ebnf = input_arg.labled_ebnf();
+
+            ebnf_result.push_str(&format!(r#""{}": {}, "#, name, name));
+
+            // Add descriptions to argument definitions if set to true
+            if add_arg_descriptions {
+                let description = &input_arg.description;
+                let arg_ebnf = format!("{} (* {} *)\n", ebnf, description);
+                ebnf_arg_definitions.push_str(&arg_ebnf);
+            } else {
+                let arg_ebnf = format!("{}\n", ebnf);
+                ebnf_arg_definitions.push_str(&arg_ebnf);
+            }
+        }
+
+        ebnf_result.push_str("}\n");
+        ebnf_result.push_str(&ebnf_arg_definitions);
+        ebnf_result
     }
 
     /// Parses a JSTool from a toolkit json

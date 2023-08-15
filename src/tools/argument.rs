@@ -32,4 +32,10 @@ impl ToolArgument {
             ebnf: ebnf.to_string(),
         })
     }
+
+    /// Returns the ebnf definition with the name of the argument prepended
+    /// properly in EBNF notation
+    pub fn labled_ebnf(&self) -> String {
+        format!("{} :== {}", self.name, self.ebnf)
+    }
 }
