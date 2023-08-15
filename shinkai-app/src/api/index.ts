@@ -6,6 +6,7 @@ import {
   pingAll,
   createRegistrationCode,
   registrationError,
+  receiveLastMessagesFromInbox,
 } from "../store/actions";
 import { ThunkAction } from "redux-thunk";
 import { Action } from "redux";
@@ -37,6 +38,43 @@ export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   }
 };
 
+export const getLastMessagesFromInbox = (
+  inbox: string,
+  count: number,
+  offset: string | undefined,
+  setupDetailsState: SetupDetailsState
+) => async (dispatch: AppDispatch) => {
+  try {
+    let sender_profile_name = setupDetailsState.profile + "/device/" + setupDetailsState.registration_name;
+    console.log("sender_profile_name:", sender_profile_name);
+
+    const messageStr = ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
+      setupDetailsState.myEncryptionSk,
+      setupDetailsState.myIdentitySk,
+      setupDetailsState.node_encryption_pk,
+      inbox,
+      count,
+      offset,
+      sender_profile_name,
+      setupDetailsState.shinkai_identity
+    );
+
+    const message = JSON.parse(messageStr);
+    console.log("Message:", message);
+
+    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+    const response = await axios.post(
+      `${apiEndpoint}/v1/last_messages_from_inbox`,
+      message
+    );
+
+    handleHttpError(response);
+    dispatch(receiveLastMessagesFromInbox(inbox, response.data.messages));
+  } catch (error) {
+    console.error("Error getting last messages from inbox:", error);
+  }
+};
+
 export const submitRequestRegistrationCode =
   (
     identity_permissions: string,
@@ -45,7 +83,8 @@ export const submitRequestRegistrationCode =
   ) =>
   async (dispatch: AppDispatch) => {
     try {
-      // TODO: refactor this
+      // TODO: refactor the profile name to be a constant
+      // maybe we should add ShinkaiName and InboxName to the wasm library
       let sender_profile_name = setupDetailsState.profile + "/device/" + setupDetailsState.registration_name;
       console.log("sender_profile_name:", sender_profile_name);
       const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(

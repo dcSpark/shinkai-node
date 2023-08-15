@@ -1,5 +1,5 @@
 import { SetupDetailsState } from './reducers';
-import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE } from './types';
+import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE, RECEIVE_LAST_MESSAGES_FROM_INBOX } from './types';
 
 export const getPublicKey = (publicKey: string) => ({
   type: GET_PUBLIC_KEY,
@@ -14,6 +14,11 @@ export const useRegistrationCode = (setupData: SetupDetailsState) => ({
 export const createRegistrationCode = (result: string) => ({
   type: CREATE_REGISTRATION_CODE,
   payload: result
+});
+
+export const receiveLastMessagesFromInbox = (inboxId: string, messages: any[]) => ({
+  type: RECEIVE_LAST_MESSAGES_FROM_INBOX,
+  payload: { inboxId, messages },
 });
 
 export const registrationError = (error: string) => ({

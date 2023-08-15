@@ -118,8 +118,20 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
-    // POST v1/last_messages?limit={number}&offset={key}
-    let get_last_messages = {
+    // TODO: Implement. Admin Only
+    // // POST v1/last_messages?limit={number}&offset={key}
+    // let get_last_messages = {
+    //     let node_commands_sender = node_commands_sender.clone();
+    //     warp::path!("v1" / "last_messages_from_inbox")
+    //         .and(warp::post())
+    //         .and(warp::body::json::<ShinkaiMessage>())
+    //         .and_then(move |message: ShinkaiMessage| {
+    //             get_last_messages_handler(node_commands_sender.clone(), message)
+    //         })
+    // };
+
+    // POST v1/last_messages_from_inbox?limit={number}&offset={key}
+    let get_last_messages_from_inbox = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "last_messages_from_inbox")
             .and(warp::post())
@@ -199,7 +211,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(identity_name_to_external_profile_data)
         .or(get_public_key)
         .or(connect)
-        .or(get_last_messages)
+        .or(get_last_messages_from_inbox)
         .or(get_last_unread_messages)
         .or(create_job)
         .or(mark_as_read_up_to)
@@ -222,7 +234,7 @@ async fn handle_node_command<T, U>(
 ) -> Result<impl warp::Reply, warp::reject::Rejection>
 where
     T: FnOnce(Sender<NodeCommand>, ShinkaiMessage, Sender<Result<U, APIError>>) -> NodeCommand,
-    U: Serialize, // Add this line
+    U: Serialize,
 {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender

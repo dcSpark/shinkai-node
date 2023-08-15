@@ -136,3 +136,27 @@ test('ShinkaiMessageBuilderWrapper should create a new request code registration
   expect(requestCodeRegistrationMessage).toBeTruthy();
   expect(typeof requestCodeRegistrationMessage).toBe('string');
 });
+
+test('ShinkaiMessageBuilderWrapper should get last messages from inbox', async () => {
+  const keys = await generateKeys();
+
+  const inbox = 'inbox::@@node.shinkai::true';
+  const count = 10;
+  const offset = 'offset_string';
+  const senderProfileName = 'sample_sender_profile_name';
+  const shinkaiIdentity = '@@my_node.shinkai';
+
+  const lastMessages = ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
+    keys.my_encryption_sk_string, 
+    keys.my_identity_sk_string, 
+    keys.receiver_public_key_string, 
+    inbox,
+    count,
+    offset,
+    senderProfileName,
+    shinkaiIdentity
+  );
+
+  expect(lastMessages).toBeTruthy();
+  expect(typeof lastMessages).toBe('string');
+});

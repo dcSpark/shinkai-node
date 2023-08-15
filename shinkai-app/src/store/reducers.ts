@@ -7,6 +7,7 @@ import {
   REGISTRATION_ERROR,
   CREATE_REGISTRATION_CODE,
   CLEAR_REGISTRATION_CODE,
+  RECEIVE_LAST_MESSAGES_FROM_INBOX,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -44,6 +45,9 @@ export interface RootState {
   pingResult: string;
   setupDetailsState: SetupDetailsState;
   error: string | null;
+  inboxes: {
+    [inboxId: string]: any[];
+  };
 }
 
 const initialState: RootState = {
@@ -53,6 +57,7 @@ const initialState: RootState = {
   setupDetailsState: setupInitialState,
   registrationCode: "",
   error: null,
+  inboxes: {},
 };
 
 const rootReducer = (state = initialState, action: Action): RootState => {
@@ -64,6 +69,15 @@ const rootReducer = (state = initialState, action: Action): RootState => {
         ...state,
         registrationStatus: true,
         setupDetailsState: action.payload,
+      };
+    case RECEIVE_LAST_MESSAGES_FROM_INBOX:
+      const { inboxId, messages } = action.payload;
+      return {
+        ...state,
+        inboxes: {
+          ...state.inboxes,
+          [inboxId]: messages,
+        },
       };
     case CREATE_REGISTRATION_CODE:
       return { ...state, registrationCode: action.payload };

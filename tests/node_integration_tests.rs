@@ -18,6 +18,7 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
+use shinkai_node::network::node_api::APIError;
 use shinkai_node::schemas::identity::{IdentityType, StandardIdentity};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -638,8 +639,8 @@ async fn registration_profile_node(
         }
 
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
-            async_channel::Sender<Vec<StandardIdentity>>,
-            async_channel::Receiver<Vec<StandardIdentity>>,
+            async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
+            async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
             .send(NodeCommand::APIGetAllSubidentities {
@@ -716,8 +717,8 @@ async fn try_re_register_profile_node(
     }
 
     let (res1_all_subidentities_sender, res1_all_subidentities_receiver): (
-        async_channel::Sender<Vec<StandardIdentity>>,
-        async_channel::Receiver<Vec<StandardIdentity>>,
+        async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
+        async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
     ) = async_channel::bounded(1);
     node_commands_sender
         .send(NodeCommand::APIGetAllSubidentities {
@@ -801,8 +802,8 @@ async fn api_registration_profile_node(
         }
 
         let (res_all_subidentities_sender, res_all_subidentities_receiver): (
-            async_channel::Sender<Vec<StandardIdentity>>,
-            async_channel::Receiver<Vec<StandardIdentity>>,
+            async_channel::Sender<Result<Vec<StandardIdentity>, APIError>>,
+            async_channel::Receiver<Result<Vec<StandardIdentity>, APIError>>,
         ) = async_channel::bounded(1);
         node_commands_sender
             .send(NodeCommand::APIGetAllSubidentities {

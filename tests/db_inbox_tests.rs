@@ -143,7 +143,7 @@ fn db_inbox() {
 
     println!("Inbox name: {}", inbox_name_value);
     let last_messages_inbox = shinkai_db
-        .get_last_messages_from_inbox(inbox_name_value.to_string(), 10)
+        .get_last_messages_from_inbox(inbox_name_value.to_string(), 10, None)
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 1);
     assert_eq!(
@@ -187,7 +187,7 @@ fn db_inbox() {
     }
 
     let last_messages_inbox = shinkai_db
-        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2)
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 2);
 
