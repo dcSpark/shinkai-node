@@ -1,12 +1,6 @@
 use crate::tools::argument::ToolArgument;
-use crate::tools::auth::ToolAuth;
 use crate::tools::error::ToolError;
 use serde_json::Value as JsonValue;
-
-pub enum Tool {
-    JSTool(JSTool),
-    RustTool(Box<dyn RustTool>),
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct JSTool {
@@ -55,69 +49,5 @@ impl JSTool {
             input_args,
             output_args,
         })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MessageSenderTool {}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VectorSearchTool {}
-
-pub trait RustTool {
-    fn name(&self) -> String;
-    fn description(&self) -> String;
-    fn run(&self, input_json: JsonValue) -> Result<(), ToolError>;
-    fn input_args(&self) -> Vec<ToolArgument>;
-    fn output_args(&self) -> Vec<ToolArgument>;
-}
-
-impl RustTool for MessageSenderTool {
-    fn name(&self) -> String {
-        "Message Sender".to_string()
-    }
-
-    fn description(&self) -> String {
-        "This is a tool for sending messages".to_string()
-    }
-
-    fn run(&self, _input_json: JsonValue) -> Result<(), ToolError> {
-        // Implement the functionality here
-        Ok(())
-    }
-
-    fn input_args(&self) -> Vec<ToolArgument> {
-        // Implement the functionality here
-        vec![]
-    }
-
-    fn output_args(&self) -> Vec<ToolArgument> {
-        // Implement the functionality here
-        vec![]
-    }
-}
-
-impl RustTool for VectorSearchTool {
-    fn name(&self) -> String {
-        "Vector Search".to_string()
-    }
-
-    fn description(&self) -> String {
-        "This is a tool for searching vectors".to_string()
-    }
-
-    fn run(&self, _input_json: JsonValue) -> Result<(), ToolError> {
-        // Implement the functionality here
-        Ok(())
-    }
-
-    fn input_args(&self) -> Vec<ToolArgument> {
-        // Implement the functionality here
-        vec![]
-    }
-
-    fn output_args(&self) -> Vec<ToolArgument> {
-        // Implement the functionality here
-        vec![]
     }
 }

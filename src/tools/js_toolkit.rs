@@ -1,12 +1,12 @@
 use crate::tools::argument::ToolArgument;
 use crate::tools::auth::ToolAuth;
 use crate::tools::error::ToolError;
-use crate::tools::tool::{JSTool, Tool};
+use crate::tools::js_tools::JSTool;
 use serde_json::Value as JsonValue;
 
 pub struct ToolKit {
     pub name: String,
-    pub tools: Vec<Tool>,
+    pub tools: Vec<JSTool>,
     pub auth: Option<ToolAuth>,
 }
 
@@ -24,7 +24,7 @@ impl ToolKit {
         let mut tools = Vec::new();
         for tool_json in tools_json {
             let tool = JSTool::from_toolkit_json(name, tool_json)?;
-            tools.push(Tool::JSTool(tool));
+            tools.push(tool);
         }
 
         Ok(Self {
