@@ -2,7 +2,7 @@
 
 Contents
 
-## shinkai-toolkit-buidler
+## @shinkai/toolkit-buidler
 
 To create and build a toolkit:
 ```
@@ -19,7 +19,7 @@ This creates a new folder called `MyToolName` with a base project template.
 
 The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
 
-## shinkai-toolkit-example
+## @shinkai/toolkit-example
 
 This is an DEMO toolkit that contains tools:
 * isEven: detect if a number is even or not 
@@ -33,11 +33,17 @@ npm run build
 The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
 
 
-## shinkai-toolkit-runner
+## @shinkai/toolkit-runner
 
 This is the program that executes compiled `packaged-shinkai-toolkit.js` 
 
 You have two options for using the runner, either as an executable or webserver.
+
+## @shinkai/toolkit-lib
+
+Internal core library for toolkits.
+
+Installation: `npm install --save @shinkai/toolkit-lib`
 
 ### As an executable:
 
