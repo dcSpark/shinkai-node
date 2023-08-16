@@ -69,6 +69,7 @@ impl Node {
                 })
             }
         };
+        println!("after decrypt_message_body_if_needed> msg: {:?}", msg);
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
@@ -108,6 +109,8 @@ impl Node {
         let subidentity_manager = self.identity_manager.lock().await;
         let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
+
+        println!("after find_by_identity_name> sender_subidentity: {:?}", sender_subidentity);
 
         // Check that the identity exists locally
         let sender_subidentity = match sender_subidentity.clone() {
@@ -168,24 +171,10 @@ impl Node {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
-        println!("has_inbox_access> inbox_name: {:?}", inbox_name);
         let has_creation_permission = inbox_name.has_creation_access(sender_shinkai_name);
-        let _ = match has_creation_permission {
-            Ok(true) => Ok(true),
-            Ok(false) => Err(NodeError {
-                message: format!(
-                    "Permission denied. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.get_value()
-                ),
-            }),
-            Err(e) => Err(NodeError {
-                message: format!(
-                    "Permission denied. You don't have enough permissions to access the inbox: {}. Error: {}",
-                    inbox_name.get_value(),
-                    e
-                ),
-            }),
-        };
+        if let Ok(true) = has_creation_permission {
+            return Ok(true);
+        }
 
         match sender_subidentity {
             Identity::Standard(std_identity) => {
@@ -231,6 +220,7 @@ impl Node {
         let inbox_name = last_messages_inbox_request.inbox;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
+        println!("offset: {:?}", offset);
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?

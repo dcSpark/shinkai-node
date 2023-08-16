@@ -7,6 +7,7 @@ import {
   createRegistrationCode,
   registrationError,
   receiveLastMessagesFromInbox,
+  addMessageToInbox,
 } from "../store/actions";
 import { ThunkAction } from "redux-thunk";
 import { Action } from "redux";
@@ -38,88 +39,174 @@ export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   }
 };
 
-export const sendTextMessage = (
-  sender: string,
-  sender_subidentity: string,
-  receiver: string,
-  receiver_subidentity: string,
-  text_message: string,
-  setupDetailsState: SetupDetailsState
-) => async (dispatch: AppDispatch) => {
-  try {
-    const messageStr = ShinkaiMessageBuilderWrapper.send_text_message(
-      setupDetailsState.myEncryptionSk,
-      setupDetailsState.myIdentitySk,
-      setupDetailsState.node_encryption_pk,
-      sender,
-      sender_subidentity,
-      receiver,
-      receiver_subidentity,
-      text_message
-    );
+export const sendTextMessage =
+  (
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+    receiver_subidentity: string,
+    text_message: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    console.log("sender: ", sender);
+    console.log("sender_subidentity: ", sender_subidentity);
+    console.log("receiver: ", receiver);
+    console.log("receiver_subidentity: ", receiver_subidentity);
+    console.log("text_message: ", text_message);
+    console.log("setupDetailsState: ", setupDetailsState);
 
-    const message = JSON.parse(messageStr);
-    console.log("Message:", message);
+    try {
+      const messageStr = ShinkaiMessageBuilderWrapper.send_text_message(
+        setupDetailsState.myEncryptionSk,
+        setupDetailsState.myIdentitySk,
+        setupDetailsState.node_encryption_pk,
+        sender,
+        sender_subidentity,
+        receiver,
+        receiver_subidentity,
+        text_message
+      );
 
-    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
-    const response = await axios.post(
-      `${apiEndpoint}/v1/send`,
-      message
-    );
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
 
-    handleHttpError(response);
-    
-    // extract inboxId from the message
-    const inboxId = message.body.internal_metadata.inbox;
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
-    // transform inboxId to base58
-    
+      handleHttpError(response);
+      const inboxId = message.body.internal_metadata.inbox;
+      dispatch(addMessageToInbox(inboxId, message));
+      return inboxId;
+    } catch (error) {
+      console.error("Error sending text message:", error);
+    }
+  };
 
-    // Dispatch action to add the message to the inbox
-    dispatch(receiveLastMessagesFromInbox(inboxId, [message]));
-    return inboxId;
-  } catch (error) {
-    console.error("Error sending text message:", error);
-  }
-};
+export const sendTextMessageWithInbox =
+  (
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+    text_message: string,
+    inbox_name: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      const messageStr =
+        ShinkaiMessageBuilderWrapper.send_text_message_with_inbox(
+          setupDetailsState.myEncryptionSk,
+          setupDetailsState.myIdentitySk,
+          setupDetailsState.node_encryption_pk,
+          sender,
+          sender_subidentity,
+          receiver,
+          "",
+          inbox_name,
+          text_message
+        );
 
-export const getLastMessagesFromInbox = (
-  inbox: string,
-  count: number,
-  offset: string | undefined,
-  setupDetailsState: SetupDetailsState
-) => async (dispatch: AppDispatch) => {
-  try {
-    let sender_profile_name = setupDetailsState.profile + "/device/" + setupDetailsState.registration_name;
-    console.log("sender_profile_name:", sender_profile_name);
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
 
-    const messageStr = ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
-      setupDetailsState.myEncryptionSk,
-      setupDetailsState.myIdentitySk,
-      setupDetailsState.node_encryption_pk,
-      inbox,
-      count,
-      offset,
-      sender_profile_name,
-      setupDetailsState.shinkai_identity
-    );
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
-    const message = JSON.parse(messageStr);
-    console.log("Message:", message);
+      handleHttpError(response);
+      const inboxId = message.body.internal_metadata.inbox;
+      dispatch(addMessageToInbox(inboxId, message));
+      return inboxId;
+    } catch (error) {
+      console.error("Error sending text message:", error);
+    }
+  };
 
-    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
-    const response = await axios.post(
-      `${apiEndpoint}/v1/last_messages_from_inbox`,
-      message
-    );
+export const getAllInboxesForProfile =
+  (
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+    target_shinkai_name_profile: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      let sender_profile_name =
+        setupDetailsState.profile +
+        "/device/" +
+        setupDetailsState.registration_name;
 
-    handleHttpError(response);
+      const messageStr =
+        ShinkaiMessageBuilderWrapper.get_all_inboxes_for_profile(
+          setupDetailsState.myEncryptionSk,
+          setupDetailsState.myIdentitySk,
+          setupDetailsState.node_encryption_pk,
+          sender,
+          sender_subidentity,
+          receiver,
+          target_shinkai_name_profile
+        );
 
-    dispatch(receiveLastMessagesFromInbox(inbox, response.data.messages));
-  } catch (error) {
-    console.error("Error getting last messages from inbox:", error);
-  }
-};
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/get_all_inboxes_for_profile`,
+        message
+      );
+
+      handleHttpError(response);
+      console.log("GetAllInboxesForProfile Response:", response.data);
+      dispatch(receiveAllInboxesForProfile(response.data));
+    } catch (error) {
+      console.error("Error getting all inboxes for profile:", error);
+    }
+  };
+
+export const getLastMessagesFromInbox =
+  (
+    inbox: string,
+    count: number,
+    lastKey: string | undefined,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      let sender_profile_name =
+        setupDetailsState.profile +
+        "/device/" +
+        setupDetailsState.registration_name;
+
+      const messageStr =
+        ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
+          setupDetailsState.myEncryptionSk,
+          setupDetailsState.myIdentitySk,
+          setupDetailsState.node_encryption_pk,
+          inbox,
+          count,
+          lastKey,
+          sender_profile_name,
+          setupDetailsState.shinkai_identity
+        );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/last_messages_from_inbox`,
+        message
+      );
+
+      handleHttpError(response);
+      console.log("GetLastMessagesFromInbox Response:", response.data);
+      dispatch(receiveLastMessagesFromInbox(inbox, response.data));
+    } catch (error) {
+      console.error("Error getting last messages from inbox:", error);
+    }
+  };
 
 export const submitRequestRegistrationCode =
   (
@@ -131,7 +218,10 @@ export const submitRequestRegistrationCode =
     try {
       // TODO: refactor the profile name to be a constant
       // maybe we should add ShinkaiName and InboxName to the wasm library
-      let sender_profile_name = setupDetailsState.profile + "/device/" + setupDetailsState.registration_name;
+      let sender_profile_name =
+        setupDetailsState.profile +
+        "/device/" +
+        setupDetailsState.registration_name;
       console.log("sender_profile_name:", sender_profile_name);
       const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(
         setupDetailsState.myEncryptionSk,

@@ -1,17 +1,17 @@
 import { EncryptionMethod, ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper as ShinkaiMessageWrapperWASM } from '../../pkg/shinkai_message_wasm.js';
-import { Body, ExternalMetadata } from '../../models/ShinkaiMessage';
+import { Body, ExternalMetadata, ShinkaiMessage } from '../../models/ShinkaiMessage';
 import { mapEncryptionMethod } from '../../utils/wasm_helpers.js';
 
 export class ShinkaiMessageWrapper {
   private wasmWrapper: ShinkaiMessageWrapperWASM;
 
-  constructor(body: Body, external_metadata: ExternalMetadata, encryption: EncryptionMethod) {
-    this.wasmWrapper = new ShinkaiMessageWrapperWASM(body, external_metadata, encryption);
+  constructor(message: ShinkaiMessage) {
+    this.wasmWrapper = new ShinkaiMessageWrapperWASM(message.body, message.external_metadata, mapEncryptionMethod(message.encryption));
   }
 
   static fromJsValue(j: any): ShinkaiMessageWrapper {
-    const wasmWrapper = ShinkaiMessageWrapperWASM.fromJsValue(j);
-    return new ShinkaiMessageWrapper(wasmWrapper.body, wasmWrapper.external_metadata, mapEncryptionMethod(wasmWrapper.encryption));
+    const message: ShinkaiMessage = j;
+    return new ShinkaiMessageWrapper(message);
   }
 
   to_jsvalue(): any {
@@ -22,9 +22,17 @@ export class ShinkaiMessageWrapper {
     return this.wasmWrapper.to_json_str();
   }
 
+  calculate_hash(): string {
+    return this.wasmWrapper.calculate_hash();
+  }
+
+  static time_now(): string {
+    return ShinkaiMessageWrapperWASM.generate_time_now();
+  }
+
   static from_json_str(s: string): ShinkaiMessageWrapper {
-    const wasmWrapper = ShinkaiMessageWrapperWASM.from_json_str(s);
-    return new ShinkaiMessageWrapper(wasmWrapper.body, wasmWrapper.external_metadata, mapEncryptionMethod(wasmWrapper.encryption));
+    const message: ShinkaiMessage = JSON.parse(s);
+    return new ShinkaiMessageWrapper(message);
   }
 
   get body(): Body {

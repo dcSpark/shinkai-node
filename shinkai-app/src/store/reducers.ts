@@ -9,6 +9,7 @@ import {
   CLEAR_REGISTRATION_CODE,
   RECEIVE_LAST_MESSAGES_FROM_INBOX,
   CLEAR_STORE,
+  ADD_MESSAGE_TO_INBOX,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -73,13 +74,24 @@ const rootReducer = (state = initialState, action: Action): RootState => {
       };
     case RECEIVE_LAST_MESSAGES_FROM_INBOX:
       const { inboxId, messages } = action.payload;
+      console.log("RECEIVE_LAST_MESSAGES_FROM_INBOX: ", inboxId, messages);
       return {
         ...state,
         inboxes: {
           ...state.inboxes,
-          [inboxId]: messages,
+          [inboxId]: [...(state.inboxes[inboxId] || []), ...messages],
         },
       };
+    case ADD_MESSAGE_TO_INBOX: {
+      const { inboxId, message } = action.payload;
+      return {
+        ...state,
+        inboxes: {
+          ...state.inboxes,
+          [inboxId]: [message, ...(state.inboxes[inboxId] || [])],
+        },
+      };
+    }
     case CREATE_REGISTRATION_CODE:
       return { ...state, registrationCode: action.payload };
     case REGISTRATION_ERROR:

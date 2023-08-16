@@ -97,6 +97,7 @@ impl IdentityManager {
     }
 
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
+        println!("add_device_subidentity > device: {}", device);
         self.local_identities.push(Identity::Device(device.clone()));
         Ok(())
     }
@@ -188,7 +189,6 @@ impl IdentityManager {
 
     pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
         self.local_identities.iter().find(|identity| {
-            println!("find_by_identity_name > identity: {:?}", identity);
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
                 Identity::Device(device) => device.full_identity_name == full_profile_name,

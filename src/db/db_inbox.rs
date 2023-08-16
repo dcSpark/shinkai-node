@@ -101,6 +101,7 @@ impl ShinkaiDB {
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:{}", time_key, hash_key);
+        println!("Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 

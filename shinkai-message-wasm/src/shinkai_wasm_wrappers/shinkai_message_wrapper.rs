@@ -1,4 +1,6 @@
 use crate::{shinkai_message::shinkai_message::{ShinkaiMessage, Body, ExternalMetadata}, shinkai_utils::encryption::{self, EncryptionMethod}};
+use chrono::Utc;
+use sha2::{Sha256, Digest};
 use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
 #[wasm_bindgen]
@@ -75,5 +77,21 @@ impl ShinkaiMessageWrapper {
     pub fn from_json_str(s: &str) -> Result<ShinkaiMessageWrapper, JsValue> {
         let inner: ShinkaiMessage = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(ShinkaiMessageWrapper { inner })
+    }
+
+    #[wasm_bindgen] 
+    pub fn calculate_hash(&self) -> String {
+        let mut hasher = Sha256::new();
+
+        hasher.update(format!("{:?}", self.inner));
+        let result = hasher.finalize();
+        format!("{:x}", result)
+    }
+
+    #[wasm_bindgen] 
+    pub fn generate_time_now() -> String {
+        let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
+        let scheduled_time = format!("{}{}", &timestamp[..17], &timestamp[17..20]);
+        scheduled_time
     }
 }
