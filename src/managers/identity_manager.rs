@@ -41,7 +41,6 @@ impl IdentityManager {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
-            db.debug_print_all_keys_for_profiles_identity_key();
             db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
                 .collect()
@@ -55,6 +54,12 @@ impl IdentityManager {
                 .map(Identity::Agent)
                 .collect::<Vec<_>>()
         };
+
+        {
+            let db = db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+            println!("identities_manager agents: {:?}", identities);
+        }
 
         identities.extend(agents);
 
@@ -179,17 +184,6 @@ impl IdentityManager {
     pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, rocksdb::Error> {
         let db = self.db.lock().await;
         db.get_all_agents()
-    }
-
-    pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
-        self.local_identities.iter().find(|identity| {
-            match identity {
-                Identity::Standard(identity) => identity.profile_signature_public_key.as_ref() == Some(key),
-                // TODO: fix this
-                Identity::Device(device) => device.profile_signature_public_key.as_ref() == Some(key),
-                Identity::Agent(_) => false, // Return false if the identity is an Agent
-            }
-        })
     }
 
     pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {

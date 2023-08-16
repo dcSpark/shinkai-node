@@ -5,6 +5,7 @@ export const REGISTRATION_ERROR = 'REGISTRATION_ERROR';
 export const PING_ALL = 'PING_ALL';
 export const CLEAR_REGISTRATION_CODE = 'CLEAR_REGISTRATION_CODE';
 export const RECEIVE_LAST_MESSAGES_FROM_INBOX = "RECEIVE_LAST_MESSAGES_FROM_INBOX";
+export const CLEAR_STORE = 'CLEAR_STORE';
 
 export interface Action {
     type: string;

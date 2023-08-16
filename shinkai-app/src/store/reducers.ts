@@ -8,6 +8,7 @@ import {
   CREATE_REGISTRATION_CODE,
   CLEAR_REGISTRATION_CODE,
   RECEIVE_LAST_MESSAGES_FROM_INBOX,
+  CLEAR_STORE,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -87,6 +88,9 @@ const rootReducer = (state = initialState, action: Action): RootState => {
       return { ...state, registrationCode: "" };
     case PING_ALL:
       return { ...state, pingResult: action.payload };
+    case CLEAR_STORE:
+      state = initialState;
+      return state;
     default:
       return state;
   }

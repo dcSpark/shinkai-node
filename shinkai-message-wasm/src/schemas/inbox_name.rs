@@ -110,6 +110,8 @@ impl InboxName {
     }
 
     pub fn has_creation_access(&self, identity_name: ShinkaiName) -> Result<bool, InboxNameError> {
+        println!("has_creation_access: {}", identity_name);
+        println!("self: {:?}", self);
         if let InboxName::RegularInbox { identities, .. } = self {
             for identity in identities {
                 if identity.contains(&identity_name) {

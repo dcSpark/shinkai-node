@@ -1,5 +1,5 @@
 import { SetupDetailsState } from './reducers';
-import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE, RECEIVE_LAST_MESSAGES_FROM_INBOX } from './types';
+import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE, RECEIVE_LAST_MESSAGES_FROM_INBOX, CLEAR_REGISTRATION_CODE, CLEAR_STORE } from './types';
 
 export const getPublicKey = (publicKey: string) => ({
   type: GET_PUBLIC_KEY,
@@ -31,6 +31,12 @@ export const pingAll = (result: string) => ({
   payload: result
 });
 
+export const clearStore = () => {
+  return {
+    type: CLEAR_STORE
+  }
+}
+
 export const clearRegistrationCode = () => ({
-  type: 'CLEAR_REGISTRATION_CODE'
+  type: CLEAR_REGISTRATION_CODE
 });

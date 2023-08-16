@@ -75,6 +75,7 @@ impl Node {
         Ok(())
     }
 
+    // TODO: if there is an error we should probably send a shinkai error message back to the sender
     pub async fn handle_send_onionized_message(&self, potentially_encrypted_msg: ShinkaiMessage) -> Result<(), Error> {
         // This command is used to send messages that are already signed and (potentially) encrypted
         eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
@@ -82,13 +83,14 @@ impl Node {
         let validation_result = self
             .validate_message(
                 potentially_encrypted_msg,
-                Some(MessageSchemaType::APIGetMessagesFromInboxRequest),
+                None,
             )
             .await;
         let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, api_error.message));
+                eprintln!("Error validating message: {}", api_error.message);
+                return Ok(());
             }
         };
         //
@@ -204,6 +206,26 @@ impl Node {
             Ok(messages) => messages,
             Err(e) => {
                 error!("Failed to get last messages from inbox: {}", e);
+                return Vec::new();
+            }
+        };
+
+        result
+    }
+
+    pub async fn internal_get_all_inboxes_for_profile(
+        &self,
+        profile_name: String,
+    ) -> Vec<String> {
+        let result = match self
+            .db
+            .lock()
+            .await
+            .get_inboxes_for_profile(profile_name)
+        {
+            Ok(inboxes) => inboxes,
+            Err(e) => {
+                error!("Failed to get inboxes for profile: {}", e);
                 return Vec::new();
             }
         };

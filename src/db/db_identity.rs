@@ -185,11 +185,7 @@ impl ShinkaiDB {
                         match device_item {
                             Ok((device_key, _device_value)) => {
                                 let device_key_str = String::from_utf8(device_key.to_vec()).unwrap();
-                                println!("device key: {}", device_key_str);
-                                println!("device value: {}", String::from_utf8(_device_value.to_vec()).unwrap());
-
                                 let device_shinkai_name = ShinkaiName::new(device_key_str.clone())?;
-                                println!("device_shinkai_name: {}", device_shinkai_name);
                                 let device_identity = self.get_device(device_shinkai_name)?;
                                 result.push(Identity::Device(device_identity));
                             }

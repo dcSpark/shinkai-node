@@ -30,6 +30,7 @@ import "@ionic/react/css/display.css";
 
 /* Theme variables */
 import "./theme/variables.css";
+import CreateChat from "./pages/CreateChat";
 
 setupIonicReact();
 
@@ -47,8 +48,9 @@ const App: React.FC = () => {
               <Route exact path="/home" component={Home} />
               <Route exact path="/admin-commands" component={AdminCommands} />
               <Route exact path="/create-job" component={CreateJob} />
+              <Route exact path="/create-chat" component={CreateChat} />
               <Route path="/chatlist" component={ChatList} />
-              <Route path="/chat/:id" component={Chat} />
+              <Route exact path="/chat/:id" component={Chat} />
               <Route path="/settings" component={Settings} />
               {!setupComplete ? (
                 <Redirect exact from="/" to="/connect" />

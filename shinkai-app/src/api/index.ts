@@ -38,6 +38,51 @@ export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   }
 };
 
+export const sendTextMessage = (
+  sender: string,
+  sender_subidentity: string,
+  receiver: string,
+  receiver_subidentity: string,
+  text_message: string,
+  setupDetailsState: SetupDetailsState
+) => async (dispatch: AppDispatch) => {
+  try {
+    const messageStr = ShinkaiMessageBuilderWrapper.send_text_message(
+      setupDetailsState.myEncryptionSk,
+      setupDetailsState.myIdentitySk,
+      setupDetailsState.node_encryption_pk,
+      sender,
+      sender_subidentity,
+      receiver,
+      receiver_subidentity,
+      text_message
+    );
+
+    const message = JSON.parse(messageStr);
+    console.log("Message:", message);
+
+    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+    const response = await axios.post(
+      `${apiEndpoint}/v1/send`,
+      message
+    );
+
+    handleHttpError(response);
+    
+    // extract inboxId from the message
+    const inboxId = message.body.internal_metadata.inbox;
+
+    // transform inboxId to base58
+    
+
+    // Dispatch action to add the message to the inbox
+    dispatch(receiveLastMessagesFromInbox(inboxId, [message]));
+    return inboxId;
+  } catch (error) {
+    console.error("Error sending text message:", error);
+  }
+};
+
 export const getLastMessagesFromInbox = (
   inbox: string,
   count: number,
@@ -69,6 +114,7 @@ export const getLastMessagesFromInbox = (
     );
 
     handleHttpError(response);
+
     dispatch(receiveLastMessagesFromInbox(inbox, response.data.messages));
   } catch (error) {
     console.error("Error getting last messages from inbox:", error);

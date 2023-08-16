@@ -7,7 +7,9 @@ use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobToolCall, IdentityPermissions, RegistrationCodeType};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, JobToolCall, RegistrationCodeType,
+};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -27,7 +29,7 @@ use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::identity::{StandardIdentity};
+use crate::schemas::identity::StandardIdentity;
 
 use super::node_api::APIError;
 
@@ -67,7 +69,9 @@ impl From<JobManagerError> for NodeError {
     fn from(error: JobManagerError) -> Self {
         // Here you need to decide how to convert a JobManagerError into a NodeError.
         // This is just an example, adjust it according to your needs.
-        NodeError { message: format!("JobManagerError occurred: {}", error) }
+        NodeError {
+            message: format!("JobManagerError occurred: {}", error),
+        }
     }
 }
 
@@ -123,6 +127,10 @@ pub enum NodeCommand {
     APIGetAllSubidentities {
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
     },
+    APIGetAllInboxesForProfile {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     APIGetLastMessagesFromInbox {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
@@ -136,7 +144,7 @@ pub enum NodeCommand {
     APIMarkAsReadUpTo {
         // inbox_name: String,
         // up_to_time: String,
-        msg: ShinkaiMessage, 
+        msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
     MarkAsReadUpTo {
@@ -260,7 +268,10 @@ impl Node {
 
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
+        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
+            eprintln!("Error: {:?}", e);
+            panic!("Failed to open database: {}", db_path)
+        });
         let db_arc = Arc::new(Mutex::new(db));
         let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
         {
@@ -324,46 +335,47 @@ impl Node {
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future);            
+            pin_mut!(ping_future, commands_future);
 
             select! {
-                        listen = listen_future => unreachable!(),
-                        ping = ping_future => self.ping_all().await?,
-                        // check_peers = check_peers_future => self.connect_new_peers().await?,
-                        command = commands_future => {
-                            match command {
-                                Some(NodeCommand::PingAll) => self.ping_all().await?,
-                                Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
-                                Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
-                                Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                                Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
-                                Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
-                                Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                                Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
-                                Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
-                                Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                                Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                                Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                                Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
-                                Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                                Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                                Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
-                                // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
-                                // API Endpoints
-                                Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
-                                Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
-                                Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
-                                Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
-                                Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
-                                Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
-                                // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?, 
-                                // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
-                                Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
-                                // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
-                                _ => break,
-                            }
+                    listen = listen_future => unreachable!(),
+                    ping = ping_future => self.ping_all().await?,
+                    // check_peers = check_peers_future => self.connect_new_peers().await?,
+                    command = commands_future => {
+                        match command {
+                            Some(NodeCommand::PingAll) => self.ping_all().await?,
+                            Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
+                            Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
+                            Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
+                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
+                            Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
+                            Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
+                            Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
+                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
+                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
+                            // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
+                            // API Endpoints
+                            Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
+                            Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
+                            Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
+                            Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
+                            Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
+                            Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
+                            // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
+                            // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
+                            Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
+                            // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
+                            Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
+                            _ => break,
                         }
-                };
+                    }
+            };
         }
         Ok(())
     }

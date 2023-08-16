@@ -72,6 +72,7 @@ impl Node {
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
+            println!("schema: {:?}", schema);
             if let Err(e) = ShinkaiMessageHandler::validate_message_schema(&msg, schema) {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -167,8 +168,9 @@ impl Node {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
+        println!("has_inbox_access> inbox_name: {:?}", inbox_name);
         let has_creation_permission = inbox_name.has_creation_access(sender_shinkai_name);
-        let result = match has_creation_permission {
+        let _ = match has_creation_permission {
             Ok(true) => Ok(true),
             Ok(false) => Err(NodeError {
                 message: format!(
@@ -749,6 +751,128 @@ impl Node {
         Ok(())
     }
 
+    pub async fn api_get_all_inboxes_for_profile(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender) = match validation_result {
+            Ok((msg, sender)) => (msg, sender),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile_requested = msg.body.unwrap().content;
+
+        // Check that the message is coming from someone with the right permissions to do this action
+        match sender {
+            Identity::Standard(std_identity) => {
+                // should be safe. previously checked in validate_message
+                let sender_profile_name = match std_identity.full_identity_name.get_profile_name() {
+                    Some(name) => name,
+                    None => {
+                        let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+                        return Ok(());
+                    }
+                };
+
+                if (std_identity.permission_type == IdentityPermissions::Admin)
+                    || (sender_profile_name == profile_requested)
+                {
+                    // Get all inboxes for the profile
+                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+
+                    // Send the result back
+                    if res.send(Ok(inboxes)).await.is_err() {
+                        let error = APIError {
+                            code: 500,
+                            error: "ChannelSendError".to_string(),
+                            message: "Failed to send data through the channel".to_string(),
+                        };
+                        let _ = res.send(Err(error)).await;
+                    }
+
+                    Ok(())
+                } else {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+
+                    return Ok(());
+                }
+            }
+            Identity::Device(std_device) => {
+                let sender_profile_name = std_device.full_identity_name.get_profile_name().unwrap();
+
+                if (std_device.permission_type == IdentityPermissions::Admin)
+                    || (sender_profile_name == profile_requested)
+                {
+                    // Get all inboxes for the profile
+                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+
+                    // Send the result back
+                    if res.send(Ok(inboxes)).await.is_err() {
+                        let error = APIError {
+                            code: 500,
+                            error: "ChannelSendError".to_string(),
+                            message: "Failed to send data through the channel".to_string(),
+                        };
+                        let _ = res.send(Err(error)).await;
+                    }
+
+                    Ok(())
+                } else {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        }
+    }
+
     pub async fn api_get_all_profiles(
         &self,
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
@@ -783,5 +907,4 @@ impl Node {
 
         Ok(())
     }
-
 }

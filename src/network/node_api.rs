@@ -152,6 +152,19 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // POST v1/get_all_inboxes_for_profile_handler
+    let get_all_inboxes_for_profile = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_all_inboxes_for_profile")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_all_inboxes_for_profile_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // get_all_inboxes_for_profile_handler
+
     // POST v1/create_job
     let create_job = {
         let node_commands_sender = node_commands_sender.clone();
@@ -211,6 +224,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(identity_name_to_external_profile_data)
         .or(get_public_key)
         .or(connect)
+        .or(get_all_inboxes_for_profile)
         .or(get_last_messages_from_inbox)
         .or(get_last_unread_messages)
         .or(create_job)
@@ -372,6 +386,23 @@ async fn get_last_unread_messages_from_inbox_handler(
     )
     .await
 }
+
+async fn get_all_inboxes_for_profile_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllInboxesForProfile {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+// Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
 
 async fn create_job_handler(
     node_commands_sender: Sender<NodeCommand>,

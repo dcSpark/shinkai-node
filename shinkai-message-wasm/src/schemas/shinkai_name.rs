@@ -114,7 +114,6 @@ impl ShinkaiName {
     }
 
     pub fn validate_name(raw_name: &str) -> Result<(), &'static str> {
-        println!("validating name: {}", raw_name);
         let parts: Vec<&str> = raw_name.split('/').collect();
 
         if !(parts.len() >= 1 && parts.len() <= 4) {

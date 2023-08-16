@@ -3,7 +3,7 @@ use prost::Message;
 use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{MessageSchemaType, IdentityPermissions};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
@@ -169,8 +169,8 @@ fn db_inbox() {
     );
     let message3 = generate_message_with_text(
         "Hello World 3".to_string(),
-        node1_encryption_sk,
-        node1_identity_sk,
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
@@ -255,7 +255,9 @@ fn db_inbox() {
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
 
-    shinkai_db.remove_permission(&inbox_name_value, &device1_subidentity).unwrap();
+    shinkai_db
+        .remove_permission(&inbox_name_value, &device1_subidentity)
+        .unwrap();
     assert!(!shinkai_db
         .has_permission(&inbox_name_value, &device1_subidentity, InboxPermission::Admin)
         .unwrap());
@@ -263,6 +265,36 @@ fn db_inbox() {
     let _ = shinkai_db
         .print_all_from_cf(format!("{}_perms", inbox_name_value).as_str())
         .unwrap();
+
+    let message4 = generate_message_with_text(
+        "Hello World 4".to_string(),
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
+        node1_subencryption_pk,
+        "other_inbox".to_string(),
+        node1_identity_name.to_string(),
+        "20230702T20533481348".to_string(),
+    );
+    let message5 = generate_message_with_text(
+        "Hello World 5".to_string(),
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
+        node1_subencryption_pk,
+        "yet_another_inbox".to_string(),
+        node1_identity_name.to_string(),
+        "20230702T20533481349".to_string(),
+    );
+    shinkai_db.unsafe_insert_inbox_message(&message4).unwrap();
+    shinkai_db.unsafe_insert_inbox_message(&message5).unwrap();
+
+    // Test get_inboxes_for_profile
+    let inboxes = shinkai_db
+        .get_inboxes_for_profile(node1_identity_name.to_string())
+        .unwrap();
+    assert_eq!(inboxes.len(), 3);
+    assert!(inboxes.contains(&inbox_name_value));
+    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false".to_string()));
+    assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false".to_string()));
 }
 
 #[test]
