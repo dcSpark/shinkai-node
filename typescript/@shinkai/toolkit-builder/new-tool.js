@@ -27,6 +27,31 @@ if (args.length !== 1 || !args[0].length) {
 }
 
 const toolName = args[0];
+
+if (toolName.match(/[^a-zA-Z_]/)) {
+  console.log('Tool name can only contain letters and underscores');
+  process.exit(1);
+}
+
+const typescryptKeywords = ['async', 'await', 'break', 'case', 'catch', 
+  'class', 'const', 'continue', 'debugger', 'default', 'delete', 'do', 'else',
+  'enum', 'export', 'extends', 'false', 'finally', 'for', 'function', 'if', 
+  'import', 'in', 'instanceof', 'new', 'namespace', 'null', 'return', 'super',
+  'switch', 'this', 'throw', 'true', 'try', 'typeof', 'var', 'void', 'while',
+  'with'];
+
+if (typescryptKeywords.includes(toolName)) {
+  console.log(`Tool name cannot be a resvered TypeScript keyword: ${toolName}`, typescryptKeywords);
+  process.exit(1);
+}
+
+const shinkaiKeywords = ['test'];
+
+if (shinkaiKeywords.includes(toolName)) {
+  console.log(`Tool name cannot be a reserved Shinkai keyword: ${toolName}`, shinkaiKeywords);
+  process.exit(1);
+}
+
 const targetFolder = `./${toolName}`;
 
 // Create folder
@@ -59,13 +84,17 @@ const replaceContents = (filePath, searchValue, replaceValue) => {
 const toolIndex = path.join(toolName, 'src', 'packages', toolName.toLowerCase(), 'index.ts');
 replaceContents(toolIndex, 'Sample', toolName);
 
+// Replace Package.json
+const packageJson = path.join(toolName, 'package.json');
+replaceContents(packageJson, 'sample', toolName.toLocaleLowerCase());
+
 // Replace Exports
 const toolExports = path.join(toolName, 'src', 'Registry.ts');
 replaceContents(toolExports, 'Sample', toolName);
 replaceContents(toolExports, 'sample', toolName.toLowerCase());
 
 // Replace Tests
-const tests = path.join(toolName, 'test', 'isInteger.test.js');
+const tests = path.join(toolName, 'test', 'sample.test.js');
 replaceContents(tests, 'Sample', toolName);
 replaceContents(tests, 'sample', toolName.toLowerCase());
 

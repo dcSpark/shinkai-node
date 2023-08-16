@@ -1,8 +1,8 @@
 {
-  "name": "shinkai-tools",
+  "name": "sample",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/packaged-shinkai-toolkit.js",
   "scripts": {
     "test": "tsc && jest",
     "lint": "gts lint",
@@ -19,12 +19,12 @@
     "gts": "^3.1.1",
     "jest": "^29.6.2",
     "ts-loader": "^9.4.4",
+    "ts-node": "^10.9.1",
     "typescript": "^5.1.6",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "axios": "^1.4.0",
-    "reflect-metadata": "^0.1.13"
+    "@shinkai/toolkit-lib": "file:../toolkit-lib"
   }
 }

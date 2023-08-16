@@ -12,20 +12,23 @@ export class ToolKitSetup extends ShinkaiSetup {
     cloudOAuth: 'activepieces',
   });
 
-  // Register Auth & Keys
-  executionSetup = {
-    API_KEY: {
+  executionSetup = [
+    // Register Auth & Keys
+    {
+      name: 'API_KEY',
       description: 'Some Optional API Key',
       type: DATA_TYPES.STRING,
       isOptional: true,
     },
-    API_SECRET: {
+    {
+      name: 'API_SECRET',
       description: 'Api Secret key',
       type: DATA_TYPES.STRING,
     },
-    BASE_URL: {
+    {
+      name: 'BASE_URL',
       description: 'Base URL for api',
       type: DATA_TYPES.STRING,
     },
-  };
+  ];
 }

@@ -1,19 +1,18 @@
 import {
   isTool,
-  output,
-  input,
+  isOutput,
+  isInput,
   isString,
   isOptional,
   isEnum,
   BaseTool,
   BaseInput,
   BaseOutput,
-  BaseSetup,
 } from '@shinkai/toolkit-lib';
 import {googleCalendar} from '../../lib/google-calendar/src/index';
 import {Context} from '@activepieces/pieces-framework';
 
-@input('GoogleCalendarQuickEvent')
+@isInput('GoogleCalendarQuickEvent')
 class APGoogleCalendarInput extends BaseInput {
   @isString('Calendar ID. Primary calendar used if not specified')
   @isOptional
@@ -30,7 +29,7 @@ class APGoogleCalendarInput extends BaseInput {
   send_updates = 'none';
 }
 
-@output('GoogleCalendarQuickEvent')
+@isOutput('GoogleCalendarQuickEvent')
 class APGoogleCalendarOutput extends BaseOutput {
   @isString('Network Response')
   response!: string;
@@ -57,7 +56,7 @@ export class GoogleCalendarQuickEvent extends BaseTool<
         calendar_id: input.calendar_id,
         text: input.text,
         send_updates: input.send_updates,
-      }
+      },
     };
     const response = await createQuickCalendarEvent.run(setup);
     const out = new APGoogleCalendarOutput();

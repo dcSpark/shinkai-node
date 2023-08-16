@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "tsc && jest",
+    "test": "webpack && jest",
     "lint": "gts lint",
     "clean": "gts clean && rm -rf dist",
     "compile": "webpack",
@@ -19,14 +19,15 @@
     "gts": "^3.1.1",
     "jest": "^29.6.2",
     "ts-loader": "^9.4.4",
+    "ts-node": "^10.9.1",
     "tsconfig-paths-webpack-plugin": "^4.1.0",
     "typescript": "^5.1.6",
     "webpack": "^5.88.2",
-    "webpack-cli": "^5.1.4",
-    "@shinkai/toolkit-lib": "file:../toolkit-lib"
+    "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "axios": "^1.4.0",
-    "dayjs": "^1.11.9"
+    "dayjs": "^1.11.9",
+    "@shinkai/toolkit-lib": "file:../toolkit-lib"
   }
 }

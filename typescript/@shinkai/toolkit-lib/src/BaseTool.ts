@@ -1,35 +1,25 @@
 import Joi from 'joi';
-import {DecoratorsTools} from './Decortors';
+import {DecoratorsTools} from './DecortorsTools';
 
 export abstract class BaseInput {}
 export abstract class BaseOutput {}
-export abstract class BaseSetup {}
 
-export interface OAuthShinkai {
-  authUrl: string;
-  tokenUrl: string;
-  required: boolean;
-  pkce?: boolean | undefined;
-  scope?: string[] | undefined;
-  description?: string | undefined;
-  cloudOAuth?: string | undefined;
-  displayName?: string | undefined;
-}
-export abstract class BaseTool<
-  I extends BaseInput,
-  O extends BaseOutput,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  S extends BaseSetup = any
-> {
+export abstract class BaseTool<I extends BaseInput, O extends BaseOutput> {
   abstract description: string;
 
-  abstract run(input: I, headers: S): Promise<O>;
-  protected validate(input: I) {
-    const validator: Joi.ObjectSchema = DecoratorsTools.getInputValidator(
+  abstract run(input: I, headers?: Record<string, string>): Promise<O>;
+  protected async validate(input: I): Promise<void> {
+    const validator: Joi.ObjectSchema = await DecoratorsTools.getInputValidator(
       this.constructor.name
     );
-    // console.log('validate', input, 'for', this.constructor.name, validator);
-    const {value, error} = validator.validate(input);
+    const {error} = validator.validate(input);
+    if (error) {
+      throw new Error(String(error));
+    }
+  }
+  protected async processHeaders(headers: Record<string, string>) {
+    const validator = await DecoratorsTools.getHeadersValidator();
+    const {error} = validator.validate(headers);
     if (error) {
       throw new Error(String(error));
     }

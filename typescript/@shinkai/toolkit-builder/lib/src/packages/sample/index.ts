@@ -1,22 +1,27 @@
 import {
   isTool,
-  output,
-  input,
-  isBoolean,
+  isInput,
+  isOutput,
+  isEnum,
   isInteger,
-} from '../../shinkai/Decortors';
-import {BaseTool, BaseInput, BaseOutput} from '../../shinkai/BaseTool';
+  BaseTool, 
+  BaseInput, 
+  BaseOutput,
+} from '@shinkai/toolkit-lib';
 
-@input('Sample')
+@isInput('Sample')
 class SampleInput extends BaseInput {
-  @isInteger('Integer number to check if is even.')
+  @isInteger('Number to check if greater than, lower than or equal than.')
   number!: number;
+
+  @isInteger('Number to compare with.')
+  numberToCompare!: number;
 }
 
-@output('Sample')
+@isOutput('Sample')
 class SampleOutput extends BaseOutput {
-  @isBoolean('Example: check if value is integer.')
-  isInteger!: boolean;
+  @isEnum(['GT', 'LT', 'EQ'], 'Result of the comparison.')
+  comparison!: string;
 }
 
 @isTool
@@ -27,9 +32,14 @@ export class Sample extends BaseTool<SampleInput, SampleOutput> {
     this.validate(input);
 
     const out = new SampleOutput();
-    const convertedToNumber = parseInt(String(input.number), 10);
-    // Allow "2" or 2
-    out.isInteger = String(convertedToNumber) === String(input.number); 
+    if (input.number > input.numberToCompare) {
+      out.comparison = 'GT';
+    } else if (input.number < input.numberToCompare) {
+      out.comparison = 'LT';
+    } else {
+      out.comparison = 'EQ';
+    }
+    
     return out;
   }
 }
