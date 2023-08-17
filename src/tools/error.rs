@@ -39,10 +39,10 @@ impl From<regex::Error> for ToolError {
 impl From<SerdeError> for ToolError {
     fn from(error: SerdeError) -> Self {
         match error.classify() {
-            serde_json::error::Category::Io => ToolError::FailedJSONParsing,
-            serde_json::error::Category::Syntax => ToolError::FailedJSONParsing,
-            serde_json::error::Category::Data => ToolError::FailedJSONParsing,
-            serde_json::error::Category::Eof => ToolError::FailedJSONParsing,
+            serde_json::error::Category::Io => ToolError::ParseError(error.to_string()),
+            serde_json::error::Category::Syntax => ToolError::ParseError(error.to_string()),
+            serde_json::error::Category::Data => ToolError::ParseError(error.to_string()),
+            serde_json::error::Category::Eof => ToolError::ParseError(error.to_string()),
         }
     }
 }

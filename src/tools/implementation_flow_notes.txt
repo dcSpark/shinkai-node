@@ -1,0 +1,33 @@
+Rust node receives JS blob
+Rust node calls tool executor to extract the toolkit json
+Check installed toolkit list if toolkit exists
+If it doesn't continue
+If it does exist and same version then fail
+If it does exist and diff version. delete all data of old toolkit (except header values) in the database
+Implement install toolkit which saves in the db:
+    - the toolkit name to the toolkit list
+    - save the JSToolkit struct in the db under the name
+When activating the toolkit we check the header defs in the toolkit and see if all of them are initialized with values in the database.
+If yes, then run the toolkit validate headers function. If it fails clear all header values in DB and request user to set header values. If success, then continue.
+If no headers, then request the user to set headers in frontend, and then set them in the DB.
+Once headers set and header validation passes we move forward to saving the tools into the tool router. The value of the data chunk will be the tool name, and the metadata will hold the rest of the tool data in its hashmap.
+7. Installation complete
+
+
+
+
+
+Usage:
+User submits a task
+We do a vector search using the tool router to find the top 10 tools potentially useful to the LLM and give it a list as X. Name: Description
+The LLM chooses one by number in the list.
+We use the name to fetch the rest of the tool data, then we get the input EBNF of the tool and relay that back to the job as a new message (more to be though through here on specific prompts)
+LLM outputs JSON required to use the given tools.
+We take the tool name + JSON, read the tool toolkit name, then fetch the toolkit from the DB.
+From the toolkit we fetch the header values from the DB.
+Now we send all of this to the JS executor and get a response back.
+Data sent inside of the body of the request to the executor as json body:
+tool: tool name string
+source: jsblob as string
+input: json string (what the LLM generated based on the EBNF definition)
+And the headers should be filled with the header values from the DB for this toolkit.
