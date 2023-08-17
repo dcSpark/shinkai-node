@@ -5,5 +5,4 @@ export {ToolKitSetup} from './ToolKitSetup';
 export {DecoratorsTools} from '@shinkai/toolkit-lib';
 
 /* Tools */
-export {CompareNumbers} from './packages/compare-numbers';
-export {isEven} from './packages/is-even';
+export {SMTP} from './packages/smtp';

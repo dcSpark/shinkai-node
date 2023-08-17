@@ -28,12 +28,21 @@ export async function execMode(source: string, tool: string, input: string, head
           console.log(JSON.stringify({ error: 'Tool "${tool}" not found' }));
           return;
         }
+        const toolkit = new tools.ToolKitSetup;
         const tool = new tools['${tool}'];
-        const input = new tools.DecoratorsTools.classMap['${tool}']();
-        const headers = {};
-        Object.assign(input, ${input || '{}'});
-        Object.assign(headers, ${headers || '{}'});
-        const response = await tool.run(input, headers);
+
+        const rawHeaders = {};
+        Object.assign(rawHeaders, ${headers || '{}'});
+        const headers = await toolkit.processRawHeaderValues(rawHeaders);
+
+        const rawInput = {};
+        Object.assign(rawInput, ${input || '{}'});
+        const inputData = await tool.validateInputs(rawInput);
+        const inputObject = new tools.DecoratorsTools.classMap['${tool}']();
+        Object.assign(inputObject, inputData);
+
+        const response = await tool.run(inputObject, headers);
+
         console.log(JSON.stringify(response));
       } catch (e) {
         console.log(JSON.stringify({ error: e.message }));
@@ -49,11 +58,10 @@ export async function validate(source: string, headers: string): Promise<any> {
   setTimeout(() => {
     (async () => {
       try {
-
         const toolkit = new tools.ToolKitSetup;
-        const headers = {};
-        Object.assign(headers, ${headers || '{}'});
-        const response = await toolkit.validateHeaders(headers);
+        const rawHeaders = {};
+        Object.assign(rawHeaders, ${headers || '{}'});
+        const response = await toolkit.validateHeaders(rawHeaders);
         console.log(JSON.stringify(response));
       } catch (e) {
         console.log(JSON.stringify({ error: e.message }));

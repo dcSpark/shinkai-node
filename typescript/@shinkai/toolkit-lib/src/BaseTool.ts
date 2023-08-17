@@ -7,21 +7,16 @@ export abstract class BaseOutput {}
 export abstract class BaseTool<I extends BaseInput, O extends BaseOutput> {
   abstract description: string;
 
-  abstract run(input: I, headers?: Record<string, string>): Promise<O>;
-  protected async validate(input: I): Promise<void> {
+  abstract run(input: I, headers: Record<string, string>): Promise<O>;
+
+  public async validateInputs(input: I): Promise<I> {
     const validator: Joi.ObjectSchema = await DecoratorsTools.getInputValidator(
       this.constructor.name
     );
-    const {error} = validator.validate(input);
-    if (error) {
-      throw new Error(String(error));
+    const inputValidation = validator.validate(input);
+    if (inputValidation.error) {
+      throw new Error(String(inputValidation.error));
     }
-  }
-  protected async processHeaders(headers: Record<string, string>) {
-    const validator = await DecoratorsTools.getHeadersValidator();
-    const {error} = validator.validate(headers);
-    if (error) {
-      throw new Error(String(error));
-    }
+    return inputValidation.value;
   }
 }

@@ -2,12 +2,8 @@ import 'reflect-metadata';
 import Joi from 'joi';
 
 import {BaseInput} from './BaseTool';
-import {
-  DATA_TYPES,
-  ShinkaiFieldIO,
-  ShinkaiFieldHeader,
-  ShinkaiSetup,
-} from './types';
+import {DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader} from './types';
+import {ShinkaiSetup} from './ShinkaiSetup';
 
 /**
  * This class is used to:
@@ -46,6 +42,12 @@ export class DecoratorsTools {
   // Store header JoiSchema Validator
   private static headerValidator: Joi.ObjectSchema = Joi.object();
 
+  // Store header x-shinkai-* transformer
+  private static headerTransformer: Record<
+    string,
+    (input: string) => Record<string, any>
+  > = {};
+
   // Store ClassName.FieldName : {type, description ...}
   private static ebnf: Record<string, ShinkaiFieldIO> = {};
 
@@ -71,9 +73,15 @@ export class DecoratorsTools {
     return validator;
   }
 
-  public static async getHeadersValidator(): Promise<Joi.ObjectSchema> {
+  public static async getHeadersValidator(): Promise<{
+    validator: Joi.ObjectSchema;
+    transformer: Record<string, (input: string) => any>;
+  }> {
     await DecoratorsTools.waitForLib();
-    return DecoratorsTools.headerValidator;
+    return {
+      validator: DecoratorsTools.headerValidator,
+      transformer: DecoratorsTools.headerTransformer,
+    };
   }
 
   // Main function to generate validators in runtime.
@@ -91,9 +99,9 @@ export class DecoratorsTools {
 2. Verify that Tool is imported through /registry.js and not directly from the /package/tool)'`);
       }
     }
-
     await DecoratorsTools.validate();
     await DecoratorsTools.generateValidator();
+    await DecoratorsTools.generateHeaderValidator();
 
     DecoratorsTools.isLibReady = true;
   }
@@ -103,6 +111,133 @@ export class DecoratorsTools {
     await DecoratorsTools.waitForLib();
     const config = DecoratorsTools.generateConfig();
     return JSON.stringify(config, null, 2);
+  }
+
+  private static buildFieldJoiValidator(
+    type: DATA_TYPES,
+    required: boolean,
+    isArray: boolean,
+    enumList: string[]
+  ) {
+    switch (type) {
+      case DATA_TYPES.BOOLEAN: {
+        const val = required ? Joi.boolean().required() : Joi.boolean();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.INTEGER: {
+        const val = required
+          ? Joi.number().integer().required()
+          : Joi.number().integer();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.FLOAT: {
+        const val = required ? Joi.number().required() : Joi.number();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.STRING: {
+        const val = required ? Joi.string().required() : Joi.string();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.ENUM: {
+        if (!enumList) throw new Error('Enum list is requried.');
+        const val = required
+          ? Joi.string()
+              .valid(...enumList)
+              .required()
+          : Joi.string().valid(...enumList);
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.CHAR: {
+        const val = required
+          ? Joi.string().length(1).required()
+          : Joi.string().length(1);
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.JSON: {
+        const val = required ? Joi.object().required() : Joi.object();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      case DATA_TYPES.ISODATE: {
+        const val = required ? Joi.date().iso().required() : Joi.date().iso();
+        return isArray ? Joi.array().items(val) : val;
+      }
+
+      default:
+        throw new Error(`Unknown type ${type}`);
+    }
+  }
+
+  private static async generateHeaderValidator() {
+    const joiObjects: Record<string, Joi.AnySchema> = {};
+    const fields = DecoratorsTools.toolkit.executionSetup || [];
+    fields.forEach((field: ShinkaiFieldHeader) => {
+      const header = DecoratorsTools.fieldNameToHeaderName(field.name);
+      switch (field.type) {
+        case DATA_TYPES.CHAR:
+        case DATA_TYPES.ENUM:
+        case DATA_TYPES.OAUTH:
+        case DATA_TYPES.STRING: {
+          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+            [header]: input,
+            [field.name]: input,
+          });
+          break;
+        }
+        case DATA_TYPES.BOOLEAN: {
+          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+            [header]: input === 'true' ? true : input === 'false' ? false : '?',
+            [field.name]:
+              input === 'true' ? true : input === 'false' ? false : '?',
+          });
+          break;
+        }
+        case DATA_TYPES.INTEGER:
+        case DATA_TYPES.FLOAT: {
+          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+            [header]: +input,
+            [field.name]: +input,
+          });
+          break;
+        }
+        case DATA_TYPES.JSON: {
+          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+            [header]: JSON.parse(input),
+            [field.name]: JSON.parse(input),
+          });
+          break;
+        }
+        case DATA_TYPES.ISODATE: {
+          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+            [header]: new Date(input).toISOString(),
+            [field.name]: new Date(input).toISOString(),
+          });
+          break;
+        }
+
+        default:
+          throw new Error('Unknown type');
+      }
+    });
+
+    fields.forEach((field: ShinkaiFieldHeader) => {
+      const header = DecoratorsTools.fieldNameToHeaderName(field.name);
+      const validator = DecoratorsTools.buildFieldJoiValidator(
+        field.type!,
+        !field.isOptional,
+        field.wrapperType === 'array',
+        field.enum || []
+      );
+      joiObjects[field.name] = validator;
+      joiObjects[header] = validator;
+    });
+    DecoratorsTools.headerValidator = Joi.object(joiObjects);
   }
 
   private static async generateValidator() {
@@ -132,56 +267,12 @@ export class DecoratorsTools {
       }
 
       // Generate the Joi validation for each field
-      const required = !fieldData.isOptional;
-      switch (fieldData.type) {
-        case DATA_TYPES.BOOLEAN:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.boolean().required()
-            : Joi.boolean();
-          break;
-        case DATA_TYPES.INTEGER:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.number().integer().required()
-            : Joi.number().integer();
-          break;
-        case DATA_TYPES.FLOAT:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.number().required()
-            : Joi.number();
-          break;
-        case DATA_TYPES.STRING:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.string().required()
-            : Joi.string();
-          break;
-        case DATA_TYPES.ENUM:
-          {
-            const enm = fieldData.enum as string[];
-            joiObjects[toolName][fieldName] = required
-              ? Joi.string()
-                  .valid(...enm)
-                  .required()
-              : Joi.string().valid(...enm);
-          }
-          break;
-        case DATA_TYPES.CHAR:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.string().length(1).required()
-            : Joi.string().length(1);
-          break;
-        case DATA_TYPES.JSON:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.object().required()
-            : Joi.object();
-          break;
-        case DATA_TYPES.ISODATE:
-          joiObjects[toolName][fieldName] = required
-            ? Joi.date().iso().required()
-            : Joi.date().iso();
-          break;
-        default:
-          throw new Error(`Unknown type ${fieldData.type}`);
-      }
+      joiObjects[toolName][fieldName] = DecoratorsTools.buildFieldJoiValidator(
+        fieldData.type!,
+        !fieldData.isOptional,
+        fieldData.wrapperType === 'array',
+        fieldData.enum || []
+      );
     });
 
     // Build the Input Object Validators
@@ -253,6 +344,14 @@ Use @description('') to add a description.`
     }
   }
 
+  public static fieldNameToHeaderName(fieldName: string) {
+    const validHeader = fieldName
+      .toLocaleLowerCase()
+      .replace(/[^a-z0-9_-]/g, '')
+      .replace(/_/g, '-');
+    return `x-shinkai-${validHeader}`;
+  }
+
   private static generateExecutionSetupFields() {
     const setup: typeof DecoratorsTools.toolkit = JSON.parse(
       JSON.stringify(DecoratorsTools.toolkit)
@@ -261,11 +360,7 @@ Use @description('') to add a description.`
     if (!setup.executionSetup) return {};
 
     setup.executionSetup.forEach((field: ShinkaiFieldHeader) => {
-      const validHeader = field.name
-        .toLocaleLowerCase()
-        .replace(/[^a-z0-9_-]/g, '')
-        .replace(/_/g, '-');
-      field.header = `x-shinkai-${validHeader}`;
+      field.header = DecoratorsTools.fieldNameToHeaderName(field.name);
       if (field.oauth) {
         field.type = DATA_TYPES.OAUTH;
         field.description = field.description || field.oauth.description;

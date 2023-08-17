@@ -26,9 +26,9 @@ export class isEven extends BaseTool<isEvenInput, isEvenOutput> {
   description = 'Check if a number is even';
 
   async run(input: isEvenInput): Promise<isEvenOutput> {
-    await this.validate(input);
-
     const isEven = (input.number || 0) % 2 === 0;
-    return {isEven} as any;
+    const out = new isEvenOutput();
+    out.isEven = isEven;
+    return out;
   }
 }

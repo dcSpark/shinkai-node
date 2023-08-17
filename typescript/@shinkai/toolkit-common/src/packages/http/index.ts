@@ -42,8 +42,6 @@ export class HTTP extends BaseTool<HTTPInput, HTTPOutput> {
   description = 'Fetch content from URL';
 
   async run(input: HTTPInput): Promise<HTTPOutput> {
-    this.validate(input);
-
     const config = {
       method: input.method,
       url: input.url,

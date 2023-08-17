@@ -30,8 +30,6 @@ export class CompareNumbers extends BaseTool<CompareInput, CompareOutput> {
     'Check if number is greater than, lower than or equal to another number.';
 
   async run(input: CompareInput): Promise<CompareOutput> {
-    await this.validate(input);
-
     const out = new CompareOutput();
     if (input.number > input.numberToCompare) {
       out.comparison = 'GT';

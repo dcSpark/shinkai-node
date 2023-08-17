@@ -46,7 +46,6 @@ export class GoogleCalendarQuickEvent extends BaseTool<
     input: APGoogleCalendarInput,
     headers: Record<string, string>
   ): Promise<APGoogleCalendarOutput> {
-    this.validate(input);
     const createQuickCalendarEvent = googleCalendar.actions[0];
 
     const setup: Context = {
