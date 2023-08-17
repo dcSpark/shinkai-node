@@ -182,7 +182,7 @@ pub trait Resource {
         // Calculate the top similarity score
         let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
 
-        // Now use the new function to find the range of acceptable similarity scores
+        // Find the range of acceptable similarity scores
         self.vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
     }
 
@@ -214,7 +214,7 @@ pub trait Resource {
     /// the most similar data chunks.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
-        let scores = self._vector_search_score_results(query, num_of_results);
+        let scores = query.score_similarities(self.chunk_embeddings(), num_of_results);
 
         // Fetch the RetrievedDataChunk matching the most similar embeddings
         let mut chunks: Vec<RetrievedDataChunk> = vec![];
@@ -231,51 +231,6 @@ pub trait Resource {
         chunks
     }
 
-    /// Performs a vector search on the embeddings, and returns the properly ordered
-    /// score results as a list of tuples (score, id).
-    fn _vector_search_score_results(&self, query: Embedding, num_of_results: u64) -> Vec<(f32, String)> {
-        let num_of_results = num_of_results as usize;
-
-        // Calculate the similarity scores for all chunk embeddings and skip any that
-        // are NaN
-        let scores: Vec<(NotNan<f32>, String)> = self
-            .chunk_embeddings()
-            .iter()
-            .filter_map(|embedding| {
-                let similarity = query.cosine_similarity(embedding);
-                match NotNan::new(similarity) {
-                    Ok(not_nan_similarity) => Some((not_nan_similarity, embedding.id.clone())),
-                    Err(_) => None, // Skip this embedding if similarity is NaN
-                }
-            })
-            .collect();
-
-        // Use a binary heap to more efficiently order the scores to get most similar
-        let mut heap = BinaryHeap::with_capacity(num_of_results);
-        for score in scores {
-            if heap.len() < num_of_results {
-                heap.push(Reverse(score));
-            } else if let Some(least_similar_score) = heap.peek() {
-                if least_similar_score.0 .0 < score.0 {
-                    heap.pop();
-                    heap.push(Reverse(score));
-                }
-            }
-        }
-
-        // Create a Vec to hold the reversed results
-        let mut results: Vec<(f32, String)> = Vec::new();
-
-        while let Some(Reverse((similarity, id))) = heap.pop() {
-            results.push((similarity.into_inner(), id));
-        }
-
-        // Reverse the order of the scores so that the highest score is first
-        results.reverse();
-
-        results
-    }
-
     /// Performs a syntactic vector search using a query embedding and a list of data tag names
     /// and returns the most similar data chunks.
     fn syntactic_vector_search(
@@ -284,34 +239,29 @@ pub trait Resource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedDataChunk> {
-        // TODO: Replace this with a temporal KV Resource or otherwise which is more suited for
-        //       arbitrary non-ordered IDs.
-        // Create a temporal Document resource to perform vector search on matching tagged data chunks
-        let mut temp_doc = DocumentResource::new_empty("", None, None, "");
-
-        // Fetch all data chunks with matching data tags and add them into temp doc
+        // Fetch all data chunks with matching data tags
+        let mut matching_data_tag_embeddings = vec![];
         for name in data_tag_names {
             println!("\nData tag name: {}", name);
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
                 println!("Matching data tag chunk ids: {:?}", ids);
                 if !ids.is_empty() {
                     for id in ids {
-                        if let Ok(data_chunk) = self.get_data_chunk(id.to_string()) {
-                            if let Ok(embedding) = self.get_chunk_embedding(&id) {
-                                println!("Appending data chunk/embedding");
-                                temp_doc._manual_append_data_chunk_and_embedding(data_chunk, &embedding);
-                            }
+                        if let Ok(embedding) = self.get_chunk_embedding(&id) {
+                            println!("Appending embedding");
+                            matching_data_tag_embeddings.push(embedding.clone());
                         }
                     }
                 }
             }
         }
         // Acquires similarity score of the embeddings within the temp doc
-        let scores = temp_doc._vector_search_score_results(query, num_of_results);
+        // let scores = temp_doc._vector_search_score_results(query, num_of_results);
+        let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
         // Manually fetches the correct data chunks in the temp doc via iterative fetching
         let mut results: Vec<RetrievedDataChunk> = vec![];
         for (score, id) in scores {
-            if let Ok(chunk) = temp_doc._get_data_chunk_iterative(id) {
+            if let Ok(chunk) = self.get_data_chunk(id) {
                 results.push(RetrievedDataChunk {
                     chunk: chunk.clone(),
                     score,
