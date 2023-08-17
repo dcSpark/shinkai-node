@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import {DecoratorsTools} from './DecortorsTools';
+import {DecoratorsTools} from './DecoratorsTools';
 
 export abstract class BaseInput {}
 export abstract class BaseOutput {}

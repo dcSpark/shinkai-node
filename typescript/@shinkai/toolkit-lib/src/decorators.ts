@@ -1,7 +1,7 @@
 // Decorator for toolkit description
 
 import {BaseInput, BaseOutput} from './BaseTool';
-import {DecoratorsTools} from './DecortorsTools';
+import {DecoratorsTools} from './DecoratorsTools';
 import {DATA_TYPES} from './types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

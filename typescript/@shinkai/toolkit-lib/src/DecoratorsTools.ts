@@ -2,7 +2,12 @@ import 'reflect-metadata';
 import Joi from 'joi';
 
 import {BaseInput} from './BaseTool';
-import {DATA_TYPES, ShinkaiField, ShinkaiSetup} from './types';
+import {
+  DATA_TYPES,
+  ShinkaiFieldIO,
+  ShinkaiFieldHeader,
+  ShinkaiSetup,
+} from './types';
 
 /**
  * This class is used to:
@@ -42,15 +47,23 @@ export class DecoratorsTools {
   private static headerValidator: Joi.ObjectSchema = Joi.object();
 
   // Store ClassName.FieldName : {type, description ...}
-  private static ebnf: Record<string, ShinkaiField> = {};
+  private static ebnf: Record<string, ShinkaiFieldIO> = {};
+
+  private static isLibReady = false;
+
+  public static async waitForLib() {
+    const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
+
+    while (!DecoratorsTools.isLibReady) {
+      await wait(1);
+    }
+  }
 
   public static async getInputValidator(
     toolName: string
   ): Promise<Joi.ObjectSchema> {
-    // If not found, wait until end of event loop.
-    if (!DecoratorsTools.validators[toolName]) {
-      await wait(0);
-    }
+    await DecoratorsTools.waitForLib();
+
     const validator = DecoratorsTools.validators[toolName];
     if (!validator) {
       throw new Error(`No validator for ${toolName}`);
@@ -59,31 +72,40 @@ export class DecoratorsTools {
   }
 
   public static async getHeadersValidator(): Promise<Joi.ObjectSchema> {
-    // If not found, wait until end of event loop.
-    if (!DecoratorsTools.headerValidator) {
-      await wait(0);
-    }
+    await DecoratorsTools.waitForLib();
     return DecoratorsTools.headerValidator;
   }
 
   // Main function to generate validators in runtime.
-  public static start() {
-    DecoratorsTools.validate();
-    DecoratorsTools.generateValidator();
+  public static async start() {
+    const wait = (ms: number) =>
+      new Promise(resolve => setTimeout(() => resolve(null), ms));
+
+    let maxRetries = 100;
+    while (!DecoratorsTools.toolkit) {
+      await wait(10);
+      maxRetries -= 1;
+      if (maxRetries === 0) {
+        throw new Error(`No toolkit description provided.
+1. Verify that @isToolKit is used. 
+2. Verify that Tool is imported through /registry.js and not directly from the /package/tool)'`);
+      }
+    }
+
+    await DecoratorsTools.validate();
+    await DecoratorsTools.generateValidator();
+
+    DecoratorsTools.isLibReady = true;
   }
 
   // Emit the toolkit config.
   public static async emitConfig(): Promise<string> {
-    return new Promise(resolve => {
-      setTimeout(() => {
-        // ShinkaiSetup
-        const config = DecoratorsTools.generateConfig();
-        resolve(JSON.stringify(config, null, 2));
-      }, 0);
-    });
+    await DecoratorsTools.waitForLib();
+    const config = DecoratorsTools.generateConfig();
+    return JSON.stringify(config, null, 2);
   }
 
-  private static generateValidator() {
+  private static async generateValidator() {
     const joiObjects: Record<string, Record<string, Joi.AnySchema>> = {};
 
     const fieldNames: string[] = Object.keys(this.ebnf);
@@ -168,11 +190,7 @@ export class DecoratorsTools {
     });
   }
 
-  private static validate() {
-    if (!DecoratorsTools.toolkit) {
-      throw new Error('No toolkit description provided. Please add @isToolKit');
-    }
-
+  private static async validate() {
     const interfaces = Object.keys(DecoratorsTools.toolsInOut)
       .map(toolName => DecoratorsTools.toolsInOut[toolName])
       .flat();
@@ -205,7 +223,7 @@ Use @description('') to add a description.`
     });
   }
 
-  private static generateBNF(fieldName: string, field: ShinkaiField) {
+  private static generateBNF(fieldName: string, field: ShinkaiFieldIO) {
     const op = field.isOptional ? '?' : '';
     const array = field.wrapperType === 'array';
     const buildBNF = (type: string) => {
@@ -242,29 +260,17 @@ Use @description('') to add a description.`
     // Setup setup vars & headers
     if (!setup.executionSetup) return {};
 
-    setup.executionSetup.forEach((field: ShinkaiField) => {
-      field.ebnf = DecoratorsTools.generateBNF(field.name, field);
+    setup.executionSetup.forEach((field: ShinkaiFieldHeader) => {
       const validHeader = field.name
         .toLocaleLowerCase()
         .replace(/[^a-z0-9_-]/g, '')
         .replace(/_/g, '-');
       field.header = `x-shinkai-${validHeader}`;
+      if (field.oauth) {
+        field.type = DATA_TYPES.OAUTH;
+        field.description = field.description || field.oauth.description;
+      }
     });
-
-    // Add oauth header.
-    if (DecoratorsTools.toolkit.oauth?.authUrl) {
-      if (!setup.executionSetup) setup.executionSetup = [];
-
-      const field: ShinkaiField = {
-        name: 'OAUTH',
-        type: DATA_TYPES.STRING,
-        description: DecoratorsTools.toolkit.oauth.description,
-        header: 'x-shinkai-oauth',
-      };
-      field.ebnf = DecoratorsTools.generateBNF('x-shinkai-oauth', field);
-
-      setup.executionSetup.push(field);
-    }
     return setup.executionSetup;
   }
 
@@ -419,5 +425,3 @@ Use @description('') to add a description.`
     ];
   }
 }
-
-const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));

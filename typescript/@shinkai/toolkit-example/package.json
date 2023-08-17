@@ -1,5 +1,5 @@
 {
-  "name": "sample",
+  "name": "@shikai/toolkit_example",
   "version": "1.0.0",
   "description": "",
   "main": "dist/packaged-shinkai-toolkit.js",
@@ -25,6 +25,6 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "@shinkai/toolkit-lib": "file:../../toolkit-lib"
+    "@shinkai/toolkit-lib": "file:../toolkit-lib"
   }
 }

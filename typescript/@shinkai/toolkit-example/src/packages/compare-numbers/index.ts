@@ -9,31 +9,30 @@ import {
   BaseOutput,
 } from '@shinkai/toolkit-lib';
 
-@isInput('Sample')
-class SampleInput extends BaseInput {
-  @isInteger('Number to check if is greater than, lower than or equal than.')
+@isInput('CompareNumbers')
+class CompareInput extends BaseInput {
+  @isInteger('Number to check if greater than, lower than or equal than.')
   number!: number;
 
   @isInteger('Number to compare with.')
   numberToCompare!: number;
 }
 
-@isOutput('Sample')
-class SampleOutput extends BaseOutput {
+@isOutput('CompareNumbers')
+class CompareOutput extends BaseOutput {
   @isEnum(['GT', 'LT', 'EQ'], 'Result of the comparison.')
   comparison!: string;
 }
 
 @isTool
-export class Sample extends BaseTool<SampleInput, SampleOutput> {
+export class CompareNumbers extends BaseTool<CompareInput, CompareOutput> {
   description =
     'Check if number is greater than, lower than or equal to another number.';
 
-  async run(input: SampleInput): Promise<SampleOutput> {
+  async run(input: CompareInput): Promise<CompareOutput> {
     await this.validate(input);
 
-    const out = new SampleOutput();
-
+    const out = new CompareOutput();
     if (input.number > input.numberToCompare) {
       out.comparison = 'GT';
     } else if (input.number < input.numberToCompare) {

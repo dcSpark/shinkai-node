@@ -8,7 +8,7 @@ export function httpMode(port: number) {
   const app = express();
   app.use(bodyParser.json({limit: '50mb'}));
 
-  app.post('/config', async (req: any, res: any) => {
+  app.post('/config', async (req: express.Request<{}, {}, {source: string}>, res: express.Response) => {
     if (!req.body.source) return res.status(400).json({ error: 'Missing source' });
 
     const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(/0./, '')}.js`;

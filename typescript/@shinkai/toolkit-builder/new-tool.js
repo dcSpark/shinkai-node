@@ -87,6 +87,8 @@ replaceContents(toolIndex, 'Sample', toolName);
 // Replace Package.json
 const packageJson = path.join(toolName, 'package.json');
 replaceContents(packageJson, 'sample', toolName.toLocaleLowerCase());
+// TODO REPLACE WITH @shinkai/toolkit-lib
+replaceContents(packageJson, 'file:../../toolkit-lib', 'file:../toolkit-lib');
 
 // Replace Exports
 const toolExports = path.join(toolName, 'src', 'Registry.ts');

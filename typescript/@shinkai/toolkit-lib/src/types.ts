@@ -7,26 +7,45 @@ export enum DATA_TYPES {
   CHAR = 'CHAR',
   JSON = 'JSON',
   ISODATE = 'ISODATE',
+  // Special type for oauth headers
+  OAUTH = 'OAUTH',
 }
 
-export interface ShinkaiField {
+interface ShinkaiField {
   name: string;
-  context?: string;
   type?: DATA_TYPES;
   isOptional?: boolean;
   enum?: string[];
   description?: string;
   wrapperType?: 'none' | 'array';
+}
+
+export const SHINKAI_OAUTH = 'OAUTH';
+
+export interface ShinkaiFieldIO extends ShinkaiField {
+  context?: string;
   ebnf?: string;
+}
+
+export interface ShinkaiFieldHeader extends ShinkaiField {
   header?: string;
+  oauth?: OAuthShinkai | undefined;
 }
 
 export abstract class ShinkaiSetup {
   abstract 'toolkit-name': string;
   abstract author: string;
   abstract version: string;
-  abstract oauth?: OAuthShinkai | undefined;
-  abstract executionSetup?: ShinkaiField[] | undefined;
+
+  // List of fields that are required for the execution of the toolkit.
+  // e.g., API Keys, OAuth, URLS, etc.
+  executionSetup?: ShinkaiFieldHeader[] | undefined;
+
+  // Validate if header values are correct and valid.
+  // e.g., API key must have a valid format and active.
+  protected async validateHeaders(): Promise<boolean> {
+    return true;
+  }
 }
 
 export interface OAuthShinkai {

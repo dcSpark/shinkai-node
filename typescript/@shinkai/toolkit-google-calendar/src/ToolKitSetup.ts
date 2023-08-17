@@ -1,4 +1,9 @@
-import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
+import {
+  DATA_TYPES,
+  SHINKAI_OAUTH,
+  ShinkaiSetup,
+  isToolKit,
+} from '@shinkai/toolkit-lib';
 import {googleCalendar} from './lib/google-calendar/src';
 
 @isToolKit
@@ -7,12 +12,14 @@ export class ToolKitSetup extends ShinkaiSetup {
   author = 'local.shinkai';
   version = '0.0.1';
 
-  // Register OAuth
-  oauth = Object.assign({}, googleCalendar.auth, {
-    cloudOAuth: 'activepieces',
-  });
-
   executionSetup = [
+    // Register OAuth
+    {
+      name: SHINKAI_OAUTH,
+      oauth: Object.assign({}, googleCalendar.auth, {
+        cloudOAuth: 'activepieces',
+      }),
+    },
     // Register Auth & Keys
     {
       name: 'API_KEY',
