@@ -144,7 +144,7 @@ fn test_pdf_resource_save_to_db() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    shinkai_db.init_profile_resource_router().unwrap();
 
     // Save/fetch doc
     let resource: Box<dyn Resource> = Box::new(doc.clone());
@@ -192,7 +192,7 @@ fn test_multi_resource_db_vector_search() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    shinkai_db.init_profile_resource_router().unwrap();
 
     // Save resources to DB
     let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
@@ -291,7 +291,7 @@ fn test_db_syntactic_vector_search() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    shinkai_db.init_profile_resource_router().unwrap();
 
     // Save resources to DB
     let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;

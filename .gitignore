@@ -4,6 +4,7 @@ target/
 ./db_tests/
 ./*.json
 ./*.bin
+*.log
 /models/
 local-ai
 server
