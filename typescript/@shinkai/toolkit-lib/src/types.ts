@@ -13,7 +13,6 @@ export enum DATA_TYPES {
 
 interface ShinkaiField {
   name: string;
-  type?: DATA_TYPES;
   isOptional?: boolean;
   enum?: string[];
   description?: string;
@@ -25,11 +24,13 @@ export const SHINKAI_OAUTH = 'OAUTH';
 export interface ShinkaiFieldIO extends ShinkaiField {
   context?: string;
   ebnf?: string;
+  type?: DATA_TYPES;
 }
 
 export interface ShinkaiFieldHeader extends ShinkaiField {
   header?: string;
   oauth?: OAuthShinkai | undefined;
+  type?: DATA_TYPES.STRING | DATA_TYPES.OAUTH;
 }
 
 export abstract class ShinkaiSetup {
@@ -43,7 +44,10 @@ export abstract class ShinkaiSetup {
 
   // Validate if header values are correct and valid.
   // e.g., API key must have a valid format and active.
-  protected async validateHeaders(): Promise<boolean> {
+  public async validateHeaders(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    headers: Record<string, string>
+  ): Promise<boolean> {
     return true;
   }
 }

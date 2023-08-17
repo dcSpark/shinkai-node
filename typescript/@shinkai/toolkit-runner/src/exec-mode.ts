@@ -43,6 +43,26 @@ export async function execMode(source: string, tool: string, input: string, head
   `;
   return await runScript(src);
 }
+export async function validate(source: string, headers: string): Promise<any> {
+  const src = `
+  const tools = require('${source}'); 
+  setTimeout(() => {
+    (async () => {
+      try {
+
+        const toolkit = new tools.ToolKitSetup;
+        const headers = {};
+        Object.assign(headers, ${headers || '{}'});
+        const response = await toolkit.validateHeaders(headers);
+        console.log(JSON.stringify(response));
+      } catch (e) {
+        console.log(JSON.stringify({ error: e.message }));
+      }
+    })();
+  }, 0);
+  `;
+  return await runScript(src);
+}
 
 export async function execModeConfig(source: string): Promise<any> {
   const src = `

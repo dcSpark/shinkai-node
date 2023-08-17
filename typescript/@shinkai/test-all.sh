@@ -22,3 +22,7 @@ cd toolkit-runner \
 && npm run test
 cd ..
 
+cd toolkit-common \
+&& npm ci \
+&& npm run test
+cd ..

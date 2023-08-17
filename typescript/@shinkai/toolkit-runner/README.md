@@ -7,14 +7,16 @@ node build/runner.js -h
 Usage: runner [options]
 
 Options:
-  -e, --exec-mode            Execution mode: exec
-  -w, --http-mode            Execution mode: http
-  -c, --get-config           For exec-mode, extract the config from the source file
-  -s, --source <string>      For exec-mode, path to the source file
-  -t, --tool <string>        For exec-mode, name of the tool to execute
-  -i, --input <json-string>  For exec-mode, input data as a JSON string
-  -p, --port <number>        For http-modem, port to listen to (default: 3000)
-  -h, --help                 display help for command
+  -e, --exec-mode              Execution mode: exec
+  -w, --http-mode              Execution mode: http
+  -s, --source <string>        For exec-mode, path to the source file
+  -c, --get-config             For exec-mode, extract the config from the source file
+  -v, --validate               For exec-mode, validate the headers
+  -t, --tool <string>          For exec-mode, name of the tool to execute
+  -i, --input <json-string>    For exec-mode, input data as a JSON string
+  -x, --headers <json-string>  For exec-mode, headers as a JSON string
+  -p, --port <number>          For http-mode, port to listen to (default: 3000)
+  -h, --help                   display help for command
 ```
 
 ## Exec Mode
