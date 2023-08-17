@@ -25,7 +25,7 @@ impl ShinkaiDB {
         // Retrieve the handle for the "Resources" column family
         let cf = self.get_cf_handle(Topic::Resources)?;
 
-        // Insert the message into the "Resources" column family
+        // Insert into the "Resources" column family
         self.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), bytes, profile)?;
 
         Ok(())
@@ -49,7 +49,7 @@ impl ShinkaiDB {
         // Retrieve the handle for the "Resources" column family
         let cf = self.get_cf_handle(Topic::Resources)?;
 
-        // Insert the message into the "Resources" column family
+        // Insert into the "Resources" column family
         self.put_cf_pb(cf, &resource.db_key(), bytes, profile)?;
 
         Ok(())
@@ -102,21 +102,21 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Box<dyn Resource>, ShinkaiDBError> {
         self.get_resource(
-            resource_pointer.db_key.clone(),
+            &resource_pointer.db_key.clone(),
             &resource_pointer.resource_type,
             profile,
         )
     }
 
     /// Fetches the Resource from the DB
-    pub fn get_resource<K: AsRef<[u8]>>(
+    pub fn get_resource(
         &self,
-        key: K,
+        key: &str,
         resource_type: &ResourceType,
         profile: &ShinkaiName,
     ) -> Result<Box<dyn Resource>, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, key)?;
+        let bytes = self.get_cf_pb(Topic::Resources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a Resource implementing struct
@@ -129,13 +129,9 @@ impl ShinkaiDB {
     }
 
     /// Fetches a DocumentResource from the DB
-    pub fn get_document<K: AsRef<[u8]>>(
-        &self,
-        key: K,
-        profile: &ShinkaiName,
-    ) -> Result<DocumentResource, ShinkaiDBError> {
+    pub fn get_document(&self, key: &str, profile: &ShinkaiName) -> Result<DocumentResource, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, key)?;
+        let bytes = self.get_cf_pb(Topic::Resources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a Resource implementing struct
@@ -145,7 +141,7 @@ impl ShinkaiDB {
     /// Fetches the Global Resource Router from  the DB
     pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, ResourceRouter::profile_router_db_key())?;
+        let bytes = self.get_cf_pb(Topic::Resources, &ResourceRouter::profile_router_db_key(), profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a DocumentResource object
@@ -306,7 +302,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
         }
 
         Ok(resources)
@@ -325,7 +321,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
         }
 
         Ok(resources)
@@ -344,7 +340,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_document(res_pointer.db_key, profile)?);
+            resources.push(self.get_document(&res_pointer.db_key, profile)?);
         }
 
         Ok(resources)
