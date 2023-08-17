@@ -84,3 +84,79 @@ test('ShinkaiMessageBuilderWrapper should set body content correctly', async () 
   expect(message).toContain('Hello world!');
 });
 
+test('ShinkaiMessageBuilderWrapper should create a use code registration message', async () => {
+  const keys = await generateKeys();
+
+  const registrationCode = 'sample_registration_code';
+  const identityType = 'profile';
+  const permissionType = 'admin';
+  const registrationName = 'sample_registration_name';
+  const shinkaiIdentity = '@@my_node.shinkai';
+
+  const codeRegistrationMessage = ShinkaiMessageBuilderWrapper.use_code_registration(
+    keys.my_encryption_sk_string, 
+    keys.my_identity_sk_string, 
+    keys.receiver_public_key_string, 
+    registrationCode,
+    identityType,
+    permissionType,
+    registrationName,
+    '', // sender_profile_name: it doesn't exist yet in the Node
+    shinkaiIdentity
+  );
+
+  expect(codeRegistrationMessage).toBeTruthy();
+  expect(typeof codeRegistrationMessage).toBe('string');
+});
+
+test('ShinkaiMessageBuilderWrapper should create a new request code registration message', async () => {
+  const keys = await generateKeys();
+
+  const messageBuilder = new ShinkaiMessageBuilderWrapper(
+    keys.my_encryption_sk_string, 
+    keys.my_identity_sk_string, 
+    keys.receiver_public_key_string
+  );
+
+  const permissionType = 'admin';
+  const codeType = 'profile';
+  const senderProfileName = 'sample_sender_profile_name';
+  const shinkaiIdentity = '@@my_node.shinkai';
+
+  const requestCodeRegistrationMessage = ShinkaiMessageBuilderWrapper.request_code_registration(
+    keys.my_encryption_sk_string, 
+    keys.my_identity_sk_string, 
+    keys.receiver_public_key_string, 
+    permissionType,
+    codeType,
+    senderProfileName,
+    shinkaiIdentity
+  );
+
+  expect(requestCodeRegistrationMessage).toBeTruthy();
+  expect(typeof requestCodeRegistrationMessage).toBe('string');
+});
+
+test('ShinkaiMessageBuilderWrapper should get last messages from inbox', async () => {
+  const keys = await generateKeys();
+
+  const inbox = 'inbox::@@node.shinkai::true';
+  const count = 10;
+  const offset = 'offset_string';
+  const senderProfileName = 'sample_sender_profile_name';
+  const shinkaiIdentity = '@@my_node.shinkai';
+
+  const lastMessages = ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
+    keys.my_encryption_sk_string, 
+    keys.my_identity_sk_string, 
+    keys.receiver_public_key_string, 
+    inbox,
+    count,
+    offset,
+    senderProfileName,
+    shinkaiIdentity
+  );
+
+  expect(lastMessages).toBeTruthy();
+  expect(typeof lastMessages).toBe('string');
+});

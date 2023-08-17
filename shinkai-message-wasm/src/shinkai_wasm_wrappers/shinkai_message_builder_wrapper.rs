@@ -1,5 +1,9 @@
+use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
-use crate::shinkai_message::shinkai_message_schemas::{JobCreation, JobMessage, JobScope};
+use crate::shinkai_message::shinkai_message_schemas::{
+    APIGetMessagesFromInboxRequest, IdentityPermissions, JobCreation, JobMessage, JobScope, RegistrationCodeRequest,
+    RegistrationCodeType, APIReadUpToTimeRequest,
+};
 use crate::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
     string_to_encryption_static_key,
@@ -17,7 +21,7 @@ use crate::{
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use js_sys::Uint8Array;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -104,13 +108,33 @@ impl ShinkaiMessageBuilderWrapper {
         &mut self,
         sender_subidentity: String,
         recipient_subidentity: String,
+        encryption: JsValue,
+    ) -> Result<(), JsValue> {
+        let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
+
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, encryption);
+            self.inner = Some(inner);
+            Ok(())
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn internal_metadata_with_inbox(
+        &mut self,
+        sender_subidentity: String,
+        recipient_subidentity: String,
         inbox: String,
         encryption: JsValue,
     ) -> Result<(), JsValue> {
         let encryption = convert_jsvalue_to_encryptionmethod(encryption)?;
 
         if let Some(mut inner) = self.inner.take() {
-            inner = inner.internal_metadata(sender_subidentity, recipient_subidentity, inbox, encryption);
+            inner = inner.internal_metadata_with_inbox(sender_subidentity, recipient_subidentity, inbox, encryption);
             self.inner = Some(inner);
             Ok(())
         } else {
@@ -299,27 +323,55 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn code_registration(
+    pub fn request_code_registration(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        permissions: String,
+        code_type: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let permissions =
+            IdentityPermissions::from_str(&permissions).ok_or_else(|| JsValue::from_str("Invalid permissions"))?;
+        let code_type = RegistrationCodeType::deserialize(serde_json::Value::String(code_type))
+            .map_err(|_| JsValue::from_str("Invalid code type"))?;
+        let registration_code_request = RegistrationCodeRequest { permissions, code_type };
+        let data = registration_code_request.to_json_str()?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            data,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::CreateRegistrationCode.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn use_code_registration(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
         code: String,
         identity_type: String,
         permission_type: String,
-        sender: ProfileName,
+        registration_name: String,
+        sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
-        let my_subidentity_encryption_sk = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
-        let my_subidentity_signature_sk = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
-        let receiver_public_key = string_to_encryption_public_key(&receiver_public_key)?;
+        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
+        let my_subidentity_signature_sk_type = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
-            profile_name: sender.clone(),
+            registration_name: registration_name.clone(),
             identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
             encryption_pk: other.clone(),
             identity_type,
@@ -328,22 +380,139 @@ impl ShinkaiMessageBuilderWrapper {
 
         let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let my_subidentity_encryption_sk_str = encryption_secret_key_to_string(my_subidentity_encryption_sk);
-        let my_subidentity_signature_sk_str = signature_secret_key_to_string(my_subidentity_signature_sk);
-        let receiver_public_key_str = encryption_public_key_to_string(receiver_public_key);
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::TextContent.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn get_last_messages_from_inbox(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
+            inbox: inbox_name,
+            count,
+            offset,
+        };
+
+        let body =
+            serde_json::to_string(&get_last_messages_from_inbox).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn get_last_unread_messages_from_inbox(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        count: usize,
+        offset: Option<String>,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
+            inbox: inbox_name,
+            count,
+            offset,
+        };
+
+        let body = serde_json::to_string(&get_last_unread_messages_from_inbox)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn read_up_to_time(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        up_to_time: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let read_up_to_time = APIReadUpToTimeRequest { inbox_name, up_to_time };
+
+        let body = serde_json::to_string(&read_up_to_time).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::APIReadUpToTimeRequest.to_str().to_string(),
+        )
+    }
+
+    pub fn create_custom_shinkai_message_to_node(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        data: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+        schema: String,
+    ) -> Result<String, JsValue> {
+        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
 
         let mut builder = ShinkaiMessageBuilderWrapper::new(
-            my_subidentity_encryption_sk_str,
-            my_subidentity_signature_sk_str,
-            receiver_public_key_str,
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
         )?;
         let body_encryption = JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str());
         let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
-        let _ = builder.body(body);
-        let _ = builder.body_encryption(body_encryption);
-        let _ = builder.internal_metadata(sender, "".to_string(), "".to_string(), internal_encryption);
-        let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
+        let schema_jsvalue = JsValue::from_str(&schema);
 
+        let _ = builder.body(data);
+        let _ = builder.body_encryption(body_encryption);
+        let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
+        let _ = builder.internal_metadata_with_schema(
+            sender_profile_name,
+            "".to_string(),
+            "".to_string(),
+            schema_jsvalue,
+            internal_encryption,
+        );
         builder.build_to_string()
     }
 
@@ -414,6 +583,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
+        let job_id_clone = job_id.clone();
         let job_message = JobMessage { job_id, content };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
@@ -421,11 +591,15 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
+        let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?
+            .get_value();
+
         let _ = builder.body(body);
         let _ = builder.internal_metadata_with_schema(
             "".to_string(),
             receiver_subidentity.clone(),
-            "".to_string(),
+            inbox,
             JsValue::from_str("JobMessageSchema"),
             JsValue::from_str("None"),
         );

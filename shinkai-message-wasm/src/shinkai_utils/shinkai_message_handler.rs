@@ -6,7 +6,15 @@ use sha2::{Digest, Sha256};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message}, shinkai_message::{shinkai_message::{ShinkaiMessage, Body}}};
+use crate::{
+    shinkai_message::{shinkai_message::{Body, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType},
+    shinkai_utils::{
+        encryption::{encrypt_body, EncryptionMethod},
+        signatures::sign_message,
+    },
+};
+
+use super::encryption::{string_to_encryption_public_key, decrypt_body_message};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -26,7 +34,7 @@ impl ShinkaiMessageHandler {
     pub fn decode_body(encoded: Vec<u8>) -> Body {
         bincode::deserialize(&encoded[..]).unwrap()
     }
-    
+
     pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
         bincode::serialize(&message).unwrap()
     }
@@ -38,19 +46,19 @@ impl ShinkaiMessageHandler {
     pub fn encode_body_result(body: Body) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(&body)
     }
-    
+
     pub fn decode_body_result(encoded: Vec<u8>) -> Result<Body, bincode::Error> {
         bincode::deserialize(&encoded[..])
     }
-    
+
     pub fn encode_message_result(message: ShinkaiMessage) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(&message)
     }
-    
+
     pub fn decode_message_result(encoded: Vec<u8>) -> Result<ShinkaiMessage, bincode::Error> {
         bincode::deserialize(&encoded[..])
     }
-    
+
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
         let message_json = serde_json::to_string_pretty(&message);
         message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
@@ -98,6 +106,36 @@ impl ShinkaiMessageHandler {
 
         msg_to_encrypt.body = Some(new_body);
         msg_to_encrypt
+    }
+
+    pub fn decrypt_message_body_if_needed(
+        potentially_encrypted_msg: ShinkaiMessage,
+        encryption_secret_key: &EncryptionStaticKey,
+    ) -> Result<ShinkaiMessage, std::io::Error> {
+        if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg) {
+            let sender_encryption_pk_string = potentially_encrypted_msg
+                .external_metadata
+                .clone()
+                .unwrap()
+                .other;
+            let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+
+            let decrypted_msg = decrypt_body_message(
+                &potentially_encrypted_msg,
+                encryption_secret_key,
+                &sender_encryption_pk,
+            );
+
+            match decrypted_msg {
+                Ok(msg) => Ok(msg),
+                Err(e) => Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Decryption error: {}", e),
+                )),
+            }
+        } else {
+            Ok(potentially_encrypted_msg)
+        }
     }
 
     pub fn re_sign_message(message: ShinkaiMessage, signature_sk: SignatureStaticKey) -> ShinkaiMessage {
@@ -154,6 +192,35 @@ impl ShinkaiMessageHandler {
             EncryptionStatus::NotCurrentlyEncrypted
         }
     }
+
+    pub fn validate_message_schema(
+        msg: &ShinkaiMessage,
+        schema: MessageSchemaType,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(body) = &msg.body {
+            if let Some(internal_metadata) = &body.internal_metadata {
+                if internal_metadata.message_schema_type != schema {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Invalid message schema type",
+                    )));
+                }
+            } else {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Missing internal metadata",
+                )));
+            }
+        } else {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Missing message body",
+            )));
+        }
+        Ok(())
+    }
+
+
 }
 
 #[cfg(test)]
@@ -177,7 +244,7 @@ mod tests {
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
+            .internal_metadata("".to_string(), "".to_string(), content_encryption)
             .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
             .build();
 

@@ -1,4 +1,4 @@
-// src/app/store.ts
+// src/store/main.ts
 import { configureStore } from '@reduxjs/toolkit';
 import chatReducer from '../features/chat/chatSlice';
 

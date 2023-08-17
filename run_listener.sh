@@ -9,5 +9,7 @@ export ENCRYPTION_SECRET_KEY="FZ97ouxTGpNnmyyfSBxgC2FGHTpvo7mM7LWoMut6gEYx"
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node1.shinkai"
 export RUST_LOG=warn,error,info,debug
+export STARTING_NUM_QR_PROFILES="1"
+export STARTING_NUM_QR_DEVICES="1"
 
 cargo run

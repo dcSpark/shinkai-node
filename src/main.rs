@@ -2,29 +2,24 @@
 use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
+use crate::utils::cli::cli_handle_create_message;
 use crate::utils::environment::fetch_node_environment;
 use crate::utils::keys::generate_or_load_keys;
-use anyhow::Error;
+use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use log::{info, warn};
 use network::Node;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
-use shinkai_message_wasm::ShinkaiMessageWrapper;
-use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use std::env;
-use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
@@ -77,84 +72,10 @@ fn main() {
         encryption_public_key_to_string(node_keys.encryption_public_key.clone())
     );
 
+    // CLI
     if args.create_message {
-        let node2_encryption_pk_str = args
-            .receiver_encryption_pk
-            .expect("receiver_encryption_pk argument is required for create_message");
-        let recipient = args
-            .recipient
-            .expect("recipient argument is required for create_message");
-        let sender_subidentity = args.sender_subidentity.unwrap_or("".to_string());
-        let receiver_subidentity = args.receiver_subidentity.unwrap_or("".to_string());
-        let inbox = args.inbox.unwrap_or("".to_string());
-        let body_content = args.body_content.unwrap_or("body content".to_string());
-        let other = args.other.unwrap_or("".to_string());
-        let node2_encryption_pk = string_to_encryption_public_key(node2_encryption_pk_str.as_str()).unwrap();
-
-        println!("Creating message for recipient: {}", recipient);
-        println!("identity_secret_key: {}", identity_secret_key_string);
-        println!("receiver_encryption_pk: {}", node2_encryption_pk_str);
-
-        if let Some(code) = args.code_registration {
-            // Call the `code_registration` function
-            let message = ShinkaiMessageBuilder::code_registration(
-                node_keys.encryption_secret_key,
-                node_keys.identity_secret_key,
-                node2_encryption_pk,
-                code.to_string(),
-                "device".to_string(),
-                "global".to_string(),
-                global_identity_name.to_string().clone(),
-                recipient.to_string(),
-            )
-            .expect("Failed to create message with code registration");
-
-            println!(
-                "Message's signature: {}",
-                message.clone().external_metadata.unwrap().signature
-            );
-
-            // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message);
-
-            match message_json {
-                Ok(json) => println!("{}", json),
-                Err(e) => println!("Error creating JSON: {}", e),
-            }
-            return;
-        } else if args.create_message {
-            // Use your key generation and ShinkaiMessageBuilder code here
-            let message = ShinkaiMessageBuilder::new(
-                node_keys.encryption_secret_key,
-                node_keys.identity_secret_key,
-                node2_encryption_pk,
-            )
-            .body(body_content.to_string())
-            .body_encryption(EncryptionMethod::None)
-            .message_schema_type(MessageSchemaType::Empty)
-            .internal_metadata(
-                sender_subidentity.to_string(),
-                receiver_subidentity.to_string(),
-                inbox.to_string(),
-                EncryptionMethod::None,
-            )
-            .external_metadata(recipient.to_string(), global_identity_name.to_string().clone())
-            .build();
-
-            println!(
-                "Message's signature: {}",
-                message.clone().unwrap().external_metadata.unwrap().signature
-            );
-
-            // Serialize the wrapper into JSON and print to stdout
-            let message_json = serde_json::to_string_pretty(&message);
-
-            match message_json {
-                Ok(json) => println!("{}", json),
-                Err(e) => println!("Error creating JSON: {}", e),
-            }
-            return;
-        }
+        cli_handle_create_message(args, &node_keys, &global_identity_name);
+        return;
     }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
@@ -189,13 +110,7 @@ fn main() {
 
     // Run the API server and node in separate tasks
     rt.block_on(async {
-        // API Server task
-        let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
-        });
-
         // Node task
-        // TODO: this needs redo after node refactoring
         let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
             if let Ok(_) = env::var("CONNECT_PK") {
                 tokio::spawn(async move { connect_node.lock().await.start().await.unwrap() })
@@ -206,6 +121,18 @@ fn main() {
         } else {
             tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
         };
+
+        // Check if the node is ready
+        if !node.lock().await.is_node_ready().await {
+            println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
+
+            let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
+        }
+
+        // API Server task
+        let api_server = tokio::spawn(async move {
+            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
+        });
 
         let _ = tokio::try_join!(api_server, node_task);
     });

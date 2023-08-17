@@ -4,18 +4,19 @@ use std::error::Error;
 
 use bs58::decode;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
-use chacha20poly1305::ChaCha20Poly1305; use js_sys::Uint8Array;
+use chacha20poly1305::ChaCha20Poly1305;
+use js_sys::Uint8Array;
 // Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 use super::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
@@ -34,12 +35,17 @@ impl EncryptionMethod {
 
     pub fn from_str(s: &str) -> EncryptionMethod {
         match s {
-            "DiffieHellmanChaChaPoly1305" | "default" => {
-                EncryptionMethod::DiffieHellmanChaChaPoly1305
-            }
+            "DiffieHellmanChaChaPoly1305" | "default" => EncryptionMethod::DiffieHellmanChaChaPoly1305,
             _ => EncryptionMethod::None,
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: String) -> Result<String, JsValue> {
+    let my_encryption_sk_type = string_to_encryption_static_key(&encryption_sk)?;
+    let my_encryption_pk = x25519_dalek::PublicKey::from(&my_encryption_sk_type);
+    Ok(encryption_public_key_to_string(my_encryption_pk))
 }
 
 pub fn encryption_secret_key_to_jsvalue(secret: &StaticSecret) -> JsValue {
@@ -250,7 +256,7 @@ pub fn decrypt_body_message(
     match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
-            
+
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
             hasher.update(shared_secret.as_bytes());
@@ -271,8 +277,7 @@ pub fn decrypt_body_message(
                 .map_err(|_| DecryptionError::new("Decryption failure!"))?;
 
             // Convert the decrypted bytes back into a Body
-            let decrypted_body =
-                ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
+            let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
 
             decrypted_message.body = Some(decrypted_body);
         }

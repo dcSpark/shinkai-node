@@ -2,14 +2,15 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::agent_serialization::SerializedAgent;
 use crate::managers::IdentityManager;
 use crate::schemas::identity::{
-    DeviceIdentity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, Options};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use serde_json::to_vec;
 use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{RegistrationCodeType, IdentityPermissions};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -38,12 +39,6 @@ impl RegistrationCodeStatus {
             Self::Used => b"used",
         }
     }
-}
-
-#[derive(PartialEq, Debug, Serialize, Deserialize)]
-pub enum RegistrationCodeType {
-    Device(String),
-    Profile,
 }
 
 #[derive(PartialEq, Debug)]
@@ -162,19 +157,18 @@ impl ShinkaiDB {
         match code_info.code_type {
             RegistrationCodeType::Profile => {
                 let current_identity_name =
-                match ShinkaiName::from_node_and_profile(node_name.to_string(), new_name.to_lowercase()) {
-                    Ok(name) => name,
-                    Err(_) => {
-                        return Err(ShinkaiDBError::InvalidIdentityName(format!(
-                            "{}/{}",
-                            node_name, new_name
-                        )))
-                    }
-                };
+                    match ShinkaiName::from_node_and_profile(node_name.to_string(), new_name.to_lowercase()) {
+                        Ok(name) => name,
+                        Err(_) => {
+                            return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                                "{}/{}",
+                                node_name, new_name
+                            )))
+                        }
+                    };
 
                 match self.get_profile(current_identity_name.clone())? {
                     None => {
-                        println!("current identity name: {}", current_identity_name);
                         let (node_encryption_public_key, node_signature_public_key) =
                             self.get_local_node_keys(current_identity_name)?;
                         let full_identity_name =
@@ -200,7 +194,6 @@ impl ShinkaiDB {
                             permission_type: code_info.permission.clone(),
                         };
 
-                        println!("profile: {}", profile);
                         self.insert_profile(profile)?;
                     }
                     Some(_) => {
@@ -211,8 +204,61 @@ impl ShinkaiDB {
             }
             RegistrationCodeType::Device(profile_name) => {
                 println!("profile name: {}", profile_name);
+
                 let current_identity_name =
-                match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
+                    match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
+                        Ok(name) => name,
+                        Err(_) => {
+                            return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                                "{}/{}",
+                                node_name, new_name
+                            )))
+                        }
+                    };
+
+                println!("current identity name: {}", current_identity_name);
+                let profile = match self.get_profile(current_identity_name.clone())? {
+                    None if profile_name == "main" => {
+                        // Create main profile
+                        let (node_encryption_public_key, node_signature_public_key) =
+                            self.get_local_node_keys(current_identity_name)?;
+
+                        let full_identity_name = match ShinkaiName::from_node_and_profile(node_name.to_string(), "main".to_string())
+                        {
+                            Ok(name) => name,
+                            Err(_) => return Err(ShinkaiDBError::InvalidIdentityName(format!("{}/main", node_name))),
+                        };
+
+                        let main_profile = StandardIdentity {
+                            full_identity_name,
+                            addr: None,
+                            node_encryption_public_key,
+                            node_signature_public_key,
+                            profile_encryption_public_key: Some(string_to_encryption_public_key(
+                                encryption_public_key,
+                            )?),
+                            profile_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                            identity_type: StandardIdentityType::Profile,
+                            permission_type: IdentityPermissions::Admin,
+                        };
+
+                        println!("main profile: {}", main_profile);
+                        self.insert_profile(main_profile.clone())?;
+                        main_profile
+                    }
+                    None => {
+                        // send error. profile not found
+                        return Err(ShinkaiDBError::ProfileNotFound(current_identity_name.to_string()));
+                    }
+                    Some(existing_profile) => existing_profile,
+                };
+
+                let full_identity_name = match ShinkaiName::from_node_and_profile_and_type_and_name(
+                    node_name.to_string(),
+                    profile_name.to_string(),
+                    ShinkaiSubidentityType::Device,
+                    new_name.to_string(),
+                ) {
                     Ok(name) => name,
                     Err(_) => {
                         return Err(ShinkaiDBError::InvalidIdentityName(format!(
@@ -222,39 +268,18 @@ impl ShinkaiDB {
                     }
                 };
 
-                println!("current identity name: {}", current_identity_name);
+                let device = DeviceIdentity {
+                    full_identity_name,
+                    node_encryption_public_key: profile.node_encryption_public_key,
+                    node_signature_public_key: profile.node_signature_public_key,
+                    profile_encryption_public_key: profile.profile_encryption_public_key,
+                    profile_signature_public_key: profile.profile_signature_public_key,
+                    device_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                    permission_type: code_info.permission,
+                };
 
-                match self.get_profile(current_identity_name.clone())? {
-                    None => {
-                        // send error. profile not found
-                        return Err(ShinkaiDBError::ProfileNotFound(current_identity_name.to_string()));
-                    }
-                    Some(profile) => {
-                        let full_identity_name =
-                            match ShinkaiName::from_node_and_profile_and_type_and_name(node_name.to_string(), profile_name.to_string(), ShinkaiSubidentityType::Device, new_name.to_string()) {
-                                Ok(name) => name,
-                                Err(_) => {
-                                    return Err(ShinkaiDBError::InvalidIdentityName(format!(
-                                        "{}/{}",
-                                        node_name, new_name
-                                    )))
-                                }
-                            };
-
-                        let device = DeviceIdentity {
-                            full_identity_name,
-                            node_encryption_public_key: profile.node_encryption_public_key,
-                            node_signature_public_key: profile.node_signature_public_key,
-                            profile_encryption_public_key: profile.profile_encryption_public_key,
-                            profile_signature_public_key: profile.profile_signature_public_key,
-                            device_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
-                            permission_type: code_info.permission,
-                        };
-
-                        println!("device: {:?}", device);
-                        self.add_device_to_profile(device)?;
-                    }
-                }
+                println!("device: {}", device);
+                self.add_device_to_profile(device)?;
             }
         }
 
@@ -299,11 +324,7 @@ impl ShinkaiDB {
         let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
         let signature_pk_string = signature_public_key_to_string(signature_pk);
 
-        batch.put_cf(
-            cf_node_encryption,
-            &node_name,
-            encryption_pk_string.as_bytes(),
-        );
+        batch.put_cf(cf_node_encryption, &node_name, encryption_pk_string.as_bytes());
         batch.put_cf(cf_node_identity, &node_name, signature_pk_string.as_bytes());
 
         self.db.write(batch)?;

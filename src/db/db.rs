@@ -1,5 +1,9 @@
+use std::path::Path;
+
 use rocksdb::{ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
-use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler};
+use shinkai_message_wasm::{
+    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
+};
 
 use super::db_errors::ShinkaiDBError;
 
@@ -55,48 +59,97 @@ pub struct ShinkaiDB {
 
 impl ShinkaiDB {
     pub fn new(db_path: &str) -> Result<Self, Error> {
-        let cf_names = vec![
-            Topic::Inbox.as_str(),
-            Topic::Peers.as_str(),
-            Topic::ProfilesEncryptionKey.as_str(),
-            Topic::ProfilesIdentityKey.as_str(),
-            Topic::Devices.as_str(),
-            Topic::DevicesPermissions.as_str(),
-            Topic::ScheduledMessage.as_str(),
-            Topic::AllMessages.as_str(),
-            Topic::AllMessagesTimeKeyed.as_str(),
-            Topic::OneTimeRegistrationCodes.as_str(),
-            Topic::ProfilesIdentityType.as_str(),
-            Topic::ProfilesPermission.as_str(),
-            Topic::ExternalNodeIdentityKey.as_str(),
-            Topic::ExternalNodeEncryptionKey.as_str(),
-            Topic::AllJobsTimeKeyed.as_str(),
-            Topic::Resources.as_str(),
-            Topic::Agents.as_str(),
-        ];
-
-        let mut cfs = vec![];
-        for cf_name in &cf_names {
-            // Create Options for ColumnFamily
-            let mut cf_opts = Options::default();
-            cf_opts.create_if_missing(true);
-            cf_opts.create_missing_column_families(true);
-
-            // Create ColumnFamilyDescriptor for each ColumnFamily
-            let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
-            cfs.push(cf_desc);
-        }
-
         let mut db_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
+    
+        let cf_names = if Path::new(db_path).exists() {
+            // If the database file exists, get the list of column families from the database
+            DB::list_cf(&db_opts, db_path)?
+        } else {
+            // If the database file does not exist, use the default list of column families
+            vec![
+                Topic::Inbox.as_str().to_string(),
+                Topic::Peers.as_str().to_string(),
+                Topic::ProfilesEncryptionKey.as_str().to_string(),
+                Topic::ProfilesIdentityKey.as_str().to_string(),
+                Topic::Devices.as_str().to_string(),
+                Topic::DevicesPermissions.as_str().to_string(),
+                Topic::ScheduledMessage.as_str().to_string(),
+                Topic::AllMessages.as_str().to_string(),
+                Topic::AllMessagesTimeKeyed.as_str().to_string(),
+                Topic::OneTimeRegistrationCodes.as_str().to_string(),
+                Topic::ProfilesIdentityType.as_str().to_string(),
+                Topic::ProfilesPermission.as_str().to_string(),
+                Topic::ExternalNodeIdentityKey.as_str().to_string(),
+                Topic::ExternalNodeEncryptionKey.as_str().to_string(),
+                Topic::AllJobsTimeKeyed.as_str().to_string(),
+                Topic::Resources.as_str().to_string(),
+                Topic::Agents.as_str().to_string(),
+            ]
+        };
+    
+        let mut cfs = vec![];
+        for cf_name in &cf_names {
+            let mut cf_opts = Options::default();
+            cf_opts.create_if_missing(true);
+            cf_opts.create_missing_column_families(true);
+    
+            let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
+            cfs.push(cf_desc);
+        }
+    
         let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
-
+    
         Ok(ShinkaiDB {
             db,
             path: db_path.to_string(),
         })
     }
+    
+    // pub fn new(db_path: &str) -> Result<Self, Error> {
+    //     let cf_names = vec![
+    //         Topic::Inbox.as_str(),
+    //         Topic::Peers.as_str(),
+    //         Topic::ProfilesEncryptionKey.as_str(),
+    //         Topic::ProfilesIdentityKey.as_str(),
+    //         Topic::Devices.as_str(),
+    //         Topic::DevicesPermissions.as_str(),
+    //         Topic::ScheduledMessage.as_str(),
+    //         Topic::AllMessages.as_str(),
+    //         Topic::AllMessagesTimeKeyed.as_str(),
+    //         Topic::OneTimeRegistrationCodes.as_str(),
+    //         Topic::ProfilesIdentityType.as_str(),
+    //         Topic::ProfilesPermission.as_str(),
+    //         Topic::ExternalNodeIdentityKey.as_str(),
+    //         Topic::ExternalNodeEncryptionKey.as_str(),
+    //         Topic::AllJobsTimeKeyed.as_str(),
+    //         Topic::Resources.as_str(),
+    //         Topic::Agents.as_str(),
+    //     ];
+
+    //     let mut cfs = vec![];
+    //     for cf_name in &cf_names {
+    //         // Create Options for ColumnFamily
+    //         let mut cf_opts = Options::default();
+    //         cf_opts.create_if_missing(true);
+    //         cf_opts.create_missing_column_families(true);
+
+    //         // Create ColumnFamilyDescriptor for each ColumnFamily
+    //         let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
+    //         cfs.push(cf_desc);
+    //     }
+
+    //     let mut db_opts = Options::default();
+    //     db_opts.create_if_missing(true);
+    //     db_opts.create_missing_column_families(true);
+    //     let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
+
+    //     Ok(ShinkaiDB {
+    //         db,
+    //         path: db_path.to_string(),
+    //     })
+    // }
 
     /// Fetches the ColumnFamily handle.
     pub fn get_cf_handle(&self, topic: Topic) -> Result<&ColumnFamily, ShinkaiDBError> {
