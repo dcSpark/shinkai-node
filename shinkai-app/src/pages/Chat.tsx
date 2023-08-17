@@ -60,6 +60,7 @@ const Chat: React.FC = () => {
     dispatch(
       getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
     );
+    
   }, [id, dispatch, setupDetailsState]);
 
   useEffect(() => {
@@ -136,7 +137,7 @@ const Chat: React.FC = () => {
               .reverse()
               .map((message, index) => (
                 <IonItem key={index}>
-                  <IonLabel>{JSON.stringify(message)}</IonLabel>
+                  <IonLabel><pre>{JSON.stringify(message, null, 2)}</pre></IonLabel>
                 </IonItem>
               ))}
         </IonList>

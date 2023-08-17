@@ -10,6 +10,7 @@ import {
   RECEIVE_LAST_MESSAGES_FROM_INBOX,
   CLEAR_STORE,
   ADD_MESSAGE_TO_INBOX,
+  RECEIVE_ALL_INBOXES_FOR_PROFILE,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -89,6 +90,32 @@ const rootReducer = (state = initialState, action: Action): RootState => {
         inboxes: {
           ...state.inboxes,
           [inboxId]: [message, ...(state.inboxes[inboxId] || [])],
+        },
+      };
+    }
+    case RECEIVE_ALL_INBOXES_FOR_PROFILE: {
+      const newInboxes = action.payload;
+      if (typeof newInboxes !== "object") {
+        console.error(
+          "Invalid payload for RECEIVE_ALL_INBOXES_FOR_PROFILE: ",
+          newInboxes
+        );
+        return state;
+      }
+      return {
+        ...state,
+        inboxes: {
+          ...state.inboxes,
+          ...Object.keys(newInboxes).reduce(
+            (result: { [key: string]: any[] }, key) => {
+              if (!state.inboxes[key]) {
+                console.log("value for key: ", newInboxes[key]);
+                result[newInboxes[key]] = [];
+              }
+              return result;
+            },
+            {}
+          ),
         },
       };
     }

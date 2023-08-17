@@ -8,14 +8,11 @@ import {
   registrationError,
   receiveLastMessagesFromInbox,
   addMessageToInbox,
+  receiveAllInboxesForProfile,
 } from "../store/actions";
-import { ThunkAction } from "redux-thunk";
-import { Action } from "redux";
-import { RootState } from "../store";
 import { AppThunk } from "../types";
 import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
 import { MergedSetupType } from "../pages/Connect";
-import { useSelector } from "react-redux";
 import { ApiConfig } from "./api_config";
 import { SetupDetailsState } from "../store/reducers";
 

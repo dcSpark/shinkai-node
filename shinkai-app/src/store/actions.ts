@@ -1,5 +1,5 @@
 import { SetupDetailsState } from './reducers';
-import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE, RECEIVE_LAST_MESSAGES_FROM_INBOX, CLEAR_REGISTRATION_CODE, CLEAR_STORE, ADD_MESSAGE_TO_INBOX } from './types';
+import { GET_PUBLIC_KEY, USE_REGISTRATION_CODE, PING_ALL, REGISTRATION_ERROR, CREATE_REGISTRATION_CODE, RECEIVE_LAST_MESSAGES_FROM_INBOX, CLEAR_REGISTRATION_CODE, CLEAR_STORE, ADD_MESSAGE_TO_INBOX, RECEIVE_ALL_INBOXES_FOR_PROFILE } from './types';
 
 export const getPublicKey = (publicKey: string) => ({
   type: GET_PUBLIC_KEY,
@@ -37,6 +37,10 @@ export const clearStore = () => {
   }
 };
 
+export const clearMessages = () => ({
+  type: 'CLEAR_MESSAGES'
+});
+
 export const addMessageToInbox = (inboxId: string, message: any) => ({
   type: ADD_MESSAGE_TO_INBOX,
   payload: { inboxId, message },
@@ -44,4 +48,9 @@ export const addMessageToInbox = (inboxId: string, message: any) => ({
 
 export const clearRegistrationCode = () => ({
   type: CLEAR_REGISTRATION_CODE
+});
+
+export const receiveAllInboxesForProfile = (inboxes: string[]) => ({
+  type: RECEIVE_ALL_INBOXES_FOR_PROFILE,
+  payload: inboxes
 });
