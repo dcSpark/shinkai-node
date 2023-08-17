@@ -27,6 +27,7 @@ mod managers;
 mod network;
 mod resources;
 mod schemas;
+mod tools;
 mod utils;
 
 fn initialize_runtime() -> Runtime {
