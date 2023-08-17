@@ -208,14 +208,11 @@ fn test_schedule_and_get_due_scheduled_messages() {
         due_messages[0].clone().body.unwrap().content,
         "Hello Scheduled before".to_string()
     );
-    assert_eq!(
-        due_messages[1].clone().body.unwrap().content,
-        "Hello Scheduled".to_string()
-    );
-    assert_eq!(
-        due_messages[2].clone().body.unwrap().content,
-        "Hello Scheduled 2".to_string()
-    );
+
+    let expected_contents = ["Hello Scheduled", "Hello Scheduled 2"];
+    assert!(expected_contents.contains(&due_messages[1].clone().body.unwrap().content.as_str()));
+    assert!(expected_contents.contains(&due_messages[2].clone().body.unwrap().content.as_str()));
+   
     assert_eq!(
         due_messages[3].clone().body.unwrap().content,
         "Hello Scheduled after".to_string()

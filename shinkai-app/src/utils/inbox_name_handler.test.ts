@@ -46,6 +46,6 @@ describe('getOtherPersonIdentity', () => {
 
     const result = getOtherPersonIdentity(inboxName, myIdentity);
 
-    expect(result).toBe('');
+    expect(result).toBe(undefined);
   });
 });

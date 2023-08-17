@@ -22,7 +22,7 @@ mod tests {
         schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
         shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
-            encryption::unsafe_deterministic_encryption_keypair,
+            encryption::{unsafe_deterministic_encryption_keypair, decrypt_body_message},
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
             utils::hash_string,
@@ -132,7 +132,7 @@ mod tests {
             buckets: vec![InboxName::new("inbox::@@node1.shinkai/test_name::false".to_string()).unwrap()],
             documents: vec!["document1".to_string(), "document2".to_string()],
         };
-        let shinkai_message_creation = ShinkaiMessageBuilder::job_creation(
+        let shinkai_message_creation_encrypted = ShinkaiMessageBuilder::job_creation(
             scope,
             node1_encryption_sk.clone(),
             clone_signature_secret_key(&node1_identity_sk),
@@ -142,6 +142,9 @@ mod tests {
             agent.id.clone(),
         )
         .unwrap();
+
+        let shinkai_message_creation = decrypt_body_message(&shinkai_message_creation_encrypted, &node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+        .expect("Failed to decrypt body content");
 
         // Process the JobCreationSchema message
         let mut job_created_id = String::new();
@@ -162,18 +165,22 @@ mod tests {
         // Second part of the test after job is created trilogy
         //
 
-        let shinkai_job_message = ShinkaiMessageBuilder::job_message(
+        let shinkai_job_message_encrypted = ShinkaiMessageBuilder::job_message(
             job_created_id.clone(),
             "hello?".to_string(),
-            node1_encryption_sk,
+            node1_encryption_sk.clone(),
             node1_identity_sk,
-            node1_encryption_pk,
+            node1_encryption_pk.clone(),
             node_profile_name.to_string().clone(),
             node_profile_name.to_string(),
             agent.id,
         )
         .unwrap();
 
+        let shinkai_job_message = decrypt_body_message(&shinkai_job_message_encrypted, &node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+        .expect("Failed to decrypt body content");
+
+        println!("shinkai_job_message: {:?}", shinkai_job_message);
         match job_manager.process_job_message(shinkai_job_message, None).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();

@@ -343,7 +343,7 @@ impl Node {
         let validation_result = self
             .validate_message(
                 potentially_encrypted_msg,
-                Some(MessageSchemaType::APIReadUpToTimeRequest),
+                Some(MessageSchemaType::CreateRegistrationCode),
             )
             .await;
         let (msg, sender) = match validation_result {
