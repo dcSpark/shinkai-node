@@ -1,4 +1,4 @@
-use rocksdb::{AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, DB};
+use rocksdb::{AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, WriteBatch, DB};
 use shinkai_message_wasm::{
     schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
@@ -49,6 +49,50 @@ impl Topic {
             Self::Resources => "resources",
             Self::Agents => "agents",
         }
+    }
+}
+
+/// A struct that wraps rocksdb::WriteBatch and offers the same
+/// base interface, however fully profile-bounded. In other words
+/// all puts add the profile name as a prefix to all keys.
+pub struct ProfileBoundWriteBatch {
+    write_batch: rocksdb::WriteBatch,
+    pub profile_name: String,
+}
+
+impl ProfileBoundWriteBatch {
+    pub fn new(profile: &ShinkaiName) -> Result<Self, ShinkaiDBError> {
+        // Also validates that the name includes a profile
+        let profile_name = ShinkaiDB::get_profile_name(profile)?;
+        // Create write batch
+        let write_batch = rocksdb::WriteBatch::default();
+        Ok(Self {
+            write_batch,
+            profile_name,
+        })
+    }
+
+    /// Saves the value inside of the key (profile-bound) at the provided column family.
+    pub fn put_cf_pb<V>(&mut self, cf: &impl AsColumnFamilyRef, key: &str, value: V)
+    where
+        V: AsRef<[u8]>,
+    {
+        let new_key = self.gen_pb_key(key);
+        self.write_batch.put_cf(cf, new_key, value);
+    }
+
+    /// Saves the value inside of the key (profile-bound) at the provided column family.
+    pub fn delete_cf_pb<V>(&mut self, cf: &impl AsColumnFamilyRef, key: &str, value: V)
+    where
+        V: AsRef<[u8]>,
+    {
+        let new_key = self.gen_pb_key(key);
+        self.write_batch.delete_cf(cf, new_key);
+    }
+
+    /// Given an input key, generates the profile bound key using the internal profile.
+    pub fn gen_pb_key(&self, key: &str) -> String {
+        ShinkaiDB::generate_profile_bound_key_from_str(key, &self.profile_name)
     }
 }
 
@@ -173,7 +217,7 @@ impl ShinkaiDB {
     /// In practice this means the profile name is prepended to the supplied key before
     /// performing the fetch.
     pub fn get_cf_pb(&self, topic: Topic, key: &str, profile: &ShinkaiName) -> Result<Vec<u8>, ShinkaiDBError> {
-        let new_key = self.generate_profile_bound_key(key, profile)?;
+        let new_key = ShinkaiDB::generate_profile_bound_key(key, profile)?;
         self.get_cf(topic, new_key)
     }
 
@@ -199,17 +243,38 @@ impl ShinkaiDB {
     where
         V: AsRef<[u8]>,
     {
-        let new_key = self.generate_profile_bound_key(key, profile)?;
+        let new_key = ShinkaiDB::generate_profile_bound_key(key, profile)?;
         self.put_cf(cf, new_key, value)
     }
 
-    /// Prepends the profile name to the provided key to make it "profile aware"
-    fn generate_profile_bound_key(&self, key: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
-        let mut prof_name = profile
-            .get_profile_name()
-            .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)?;
+    /// Saves the WriteBatch to the database
+    pub fn write(&self, batch: WriteBatch) -> Result<(), ShinkaiDBError> {
+        Ok(self.db.write(batch)?)
+    }
+
+    /// Profile-bound saves the WriteBatch to the database
+    pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
+        self.write(pb_batch.write_batch)
+    }
+
+    /// Prepends the profile name to the provided key to make it "profile bound"
+    pub fn generate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
+        let mut prof_name = ShinkaiDB::get_profile_name(profile)?;
+        Ok(Self::generate_profile_bound_key_from_str(key, &prof_name))
+    }
+
+    /// Prepends the profile name to the provided key to make it "profile bound"
+    pub fn generate_profile_bound_key_from_str(key: &str, profile_name: &str) -> String {
+        let mut prof_name = profile_name.to_string();
         prof_name.push_str(key);
-        Ok(prof_name)
+        prof_name
+    }
+
+    /// Extracts the profile name with ShinkaiDBError wrapping
+    pub fn get_profile_name(profile: &ShinkaiName) -> Result<String, ShinkaiDBError> {
+        profile
+            .get_profile_name()
+            .ok_or(ShinkaiDBError::ShinkaiNameLacksProfile)
     }
 
     pub fn insert_peer(&self, key: &str, address: &str) -> Result<(), Error> {
