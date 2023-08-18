@@ -42,3 +42,9 @@ cd toolkit-common \
 && npm run test
 pwd
 cd ..
+
+cd toolkit-gmail \
+&& npm ci \
+&& npm run test
+pwd
+cd ..
