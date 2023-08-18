@@ -53,3 +53,13 @@ docker run --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm
 # Run tests shinkai-message-wasm wasm-pack tests
 docker run --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
 ```
+
+### Shinkai App tests
+
+You need to compile the wasm library from `shinkai-message-wasm` and copy the resulting `pkg` to `shinkai-app/src/pkg` (if a folder already exists you should delete first). Then you will be able to run the tests inside `shinkai-app`
+
+```
+npm run test.unit
+```
+
+
