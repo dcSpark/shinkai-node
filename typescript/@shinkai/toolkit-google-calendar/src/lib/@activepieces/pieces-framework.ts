@@ -1,7 +1,11 @@
 import {OAuthShinkai} from '@shinkai/toolkit-lib';
+import {
+  SHINKAI_AP_HEADERS,
+  SHINKAI_AP_INPUT,
+} from './shinkai-activepieces-interface';
 
 export const createAction = (setup: {
-  auth: AuthTypeData;
+  auth: AuthTypeData | Record<string, any>;
   name: string;
   displayName: string;
   description: string;
@@ -13,10 +17,8 @@ export const createAction = (setup: {
 };
 
 export type Context = {
-  auth: {
-    access_token: string;
-  };
-  propsValue: Record<string, any>;
+  auth: SHINKAI_AP_HEADERS;
+  propsValue: SHINKAI_AP_INPUT;
   webhookUrl?: string;
   store?: {
     put: <T>(x: string, y: T) => Promise<void>;
@@ -52,6 +54,18 @@ export class PieceAuth {
     // console.log('OAuth2', setup);
     return setup;
   }
+
+  public static SecretText(setup: {displayName: string; required: boolean}) {
+    // console.log('Checkbox', setup);
+  }
+
+  public static CustomAuth(setup: {
+    displayName: string;
+    required: boolean;
+    props: Record<string, any>;
+  }) {
+    return setup;
+  }
 }
 
 export enum TriggerStrategy {
@@ -62,6 +76,18 @@ export enum TriggerStrategy {
 export type OAuth2PropertyValue = any;
 
 export class Property {
+  public static Array(setup: {displayName: string; required: boolean}) {
+    // console.log('Array', setup);
+  }
+
+  public static Checkbox(setup: {
+    displayName: string;
+    required: boolean;
+    defaultValue: boolean;
+  }) {
+    // console.log('Checkbox', setup);
+  }
+
   public static ShortText(setup: {
     displayName: string;
     required: boolean;

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+cd toolkit-lib \
+&& npm ci \
+&& npm run test
+cd ..
+
 cd toolkit-builder/lib \
 && npm run compile \
 && npm i \

@@ -1,18 +1,18 @@
-import {DecoratorsTools} from './DecoratorsTools';
+import {ShinkaiTookitLib} from './ShinkaiTookitLib';
 
 export * from './decorators';
 export * from './BaseTool';
 export * from './types';
-export * from './DecoratorsTools';
+export * from './ShinkaiTookitLib';
 export * from './ShinkaiSetup';
 
 // This async function processes the decorators and
 // generates the tool descriptions and validators.
 // Run at end of eventloop, after all user decorators are parsed.
-DecoratorsTools.start();
+ShinkaiTookitLib.start();
 (async () => {
   if (process.env.EMIT_TOOLS) {
-    const config = await DecoratorsTools.emitConfig();
+    const config = await ShinkaiTookitLib.emitConfig();
     console.log(config);
   }
 })();

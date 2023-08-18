@@ -5,6 +5,7 @@ import {BaseInput} from './BaseTool';
 import {DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader} from './types';
 import {ShinkaiSetup} from './ShinkaiSetup';
 
+const DEBUG = !!process.env.DEBUG_TOOLKIT;
 /**
  * This class is used to:
  *  1. Process the decorators
@@ -17,7 +18,7 @@ import {ShinkaiSetup} from './ShinkaiSetup';
  * all is loaded. To do so, setTimeout(F, 0) can be used
  * to ensure this condition.
  */
-export class DecoratorsTools {
+export class ShinkaiTookitLib {
   // ToolKit description
   static toolkit: ShinkaiSetup;
 
@@ -34,7 +35,7 @@ export class DecoratorsTools {
   private static toolsInOut: Record<string, [string?, string?]> = {};
 
   // Store ToolName: InputClass
-  private static classMap: Record<string, typeof BaseInput> = {};
+  private static inputClass: Record<string, typeof BaseInput> = {};
 
   // Store ToolName: Input JoiSchema Validator
   private static validators: Record<string, Joi.ObjectSchema> = {};
@@ -56,7 +57,7 @@ export class DecoratorsTools {
   public static async waitForLib() {
     const wait = (ms = 0) => new Promise(resolve => setTimeout(resolve, ms));
 
-    while (!DecoratorsTools.isLibReady) {
+    while (!ShinkaiTookitLib.isLibReady) {
       await wait(1);
     }
   }
@@ -64,9 +65,9 @@ export class DecoratorsTools {
   public static async getInputValidator(
     toolName: string
   ): Promise<Joi.ObjectSchema> {
-    await DecoratorsTools.waitForLib();
+    await ShinkaiTookitLib.waitForLib();
 
-    const validator = DecoratorsTools.validators[toolName];
+    const validator = ShinkaiTookitLib.validators[toolName];
     if (!validator) {
       throw new Error(`No validator for ${toolName}`);
     }
@@ -77,10 +78,10 @@ export class DecoratorsTools {
     validator: Joi.ObjectSchema;
     transformer: Record<string, (input: string) => any>;
   }> {
-    await DecoratorsTools.waitForLib();
+    await ShinkaiTookitLib.waitForLib();
     return {
-      validator: DecoratorsTools.headerValidator,
-      transformer: DecoratorsTools.headerTransformer,
+      validator: ShinkaiTookitLib.headerValidator,
+      transformer: ShinkaiTookitLib.headerTransformer,
     };
   }
 
@@ -90,7 +91,7 @@ export class DecoratorsTools {
       new Promise(resolve => setTimeout(() => resolve(null), ms));
 
     let maxRetries = 100;
-    while (!DecoratorsTools.toolkit) {
+    while (!ShinkaiTookitLib.toolkit) {
       await wait(10);
       maxRetries -= 1;
       if (maxRetries === 0) {
@@ -99,17 +100,25 @@ export class DecoratorsTools {
 2. Verify that Tool is imported through /registry.js and not directly from the /package/tool)'`);
       }
     }
-    await DecoratorsTools.validate();
-    await DecoratorsTools.generateValidator();
-    await DecoratorsTools.generateHeaderValidator();
+    try {
+      await ShinkaiTookitLib.validate();
+      await ShinkaiTookitLib.generateValidator();
+      await ShinkaiTookitLib.generateHeaderValidator();
+    } catch (e) {
+      console.log('Error at lib autosetup', e);
+      throw e;
+    }
 
-    DecoratorsTools.isLibReady = true;
+    if (DEBUG) {
+      console.log('ShinkaiTookitLib: Toolkit ready');
+    }
+    ShinkaiTookitLib.isLibReady = true;
   }
 
   // Emit the toolkit config.
   public static async emitConfig(): Promise<string> {
-    await DecoratorsTools.waitForLib();
-    const config = DecoratorsTools.generateConfig();
+    await ShinkaiTookitLib.waitForLib();
+    const config = ShinkaiTookitLib.generateConfig();
     return JSON.stringify(config, null, 2);
   }
 
@@ -137,6 +146,7 @@ export class DecoratorsTools {
         return isArray ? Joi.array().items(val) : val;
       }
 
+      case DATA_TYPES.OAUTH:
       case DATA_TYPES.STRING: {
         const val = required ? Joi.string().required() : Joi.string();
         return isArray ? Joi.array().items(val) : val;
@@ -176,22 +186,23 @@ export class DecoratorsTools {
 
   private static async generateHeaderValidator() {
     const joiObjects: Record<string, Joi.AnySchema> = {};
-    const fields = DecoratorsTools.toolkit.executionSetup || [];
+    const fields = ShinkaiTookitLib.toolkit.executionSetup || [];
     fields.forEach((field: ShinkaiFieldHeader) => {
-      const header = DecoratorsTools.fieldNameToHeaderName(field.name);
+      const header = ShinkaiTookitLib.fieldNameToHeaderName(field.name);
+      if (field.oauth) field.type = DATA_TYPES.OAUTH;
       switch (field.type) {
         case DATA_TYPES.CHAR:
         case DATA_TYPES.ENUM:
         case DATA_TYPES.OAUTH:
         case DATA_TYPES.STRING: {
-          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+          ShinkaiTookitLib.headerTransformer[header] = (input: string) => ({
             [header]: input,
             [field.name]: input,
           });
           break;
         }
         case DATA_TYPES.BOOLEAN: {
-          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+          ShinkaiTookitLib.headerTransformer[header] = (input: string) => ({
             [header]: input === 'true' ? true : input === 'false' ? false : '?',
             [field.name]:
               input === 'true' ? true : input === 'false' ? false : '?',
@@ -200,21 +211,21 @@ export class DecoratorsTools {
         }
         case DATA_TYPES.INTEGER:
         case DATA_TYPES.FLOAT: {
-          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+          ShinkaiTookitLib.headerTransformer[header] = (input: string) => ({
             [header]: +input,
             [field.name]: +input,
           });
           break;
         }
         case DATA_TYPES.JSON: {
-          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+          ShinkaiTookitLib.headerTransformer[header] = (input: string) => ({
             [header]: JSON.parse(input),
             [field.name]: JSON.parse(input),
           });
           break;
         }
         case DATA_TYPES.ISODATE: {
-          DecoratorsTools.headerTransformer[header] = (input: string) => ({
+          ShinkaiTookitLib.headerTransformer[header] = (input: string) => ({
             [header]: new Date(input).toISOString(),
             [field.name]: new Date(input).toISOString(),
           });
@@ -222,13 +233,13 @@ export class DecoratorsTools {
         }
 
         default:
-          throw new Error('Unknown type');
+          throw new Error(`Unknown type ${JSON.stringify(field)}`);
       }
     });
 
     fields.forEach((field: ShinkaiFieldHeader) => {
-      const header = DecoratorsTools.fieldNameToHeaderName(field.name);
-      const validator = DecoratorsTools.buildFieldJoiValidator(
+      const header = ShinkaiTookitLib.fieldNameToHeaderName(field.name);
+      const validator = ShinkaiTookitLib.buildFieldJoiValidator(
         field.type!,
         !field.isOptional,
         field.wrapperType === 'array',
@@ -237,7 +248,7 @@ export class DecoratorsTools {
       joiObjects[field.name] = validator;
       joiObjects[header] = validator;
     });
-    DecoratorsTools.headerValidator = Joi.object(joiObjects);
+    ShinkaiTookitLib.headerValidator = Joi.object(joiObjects);
   }
 
   private static async generateValidator() {
@@ -251,8 +262,8 @@ export class DecoratorsTools {
 
       // From the input, find the tool name.
       let toolName = '';
-      Object.keys(DecoratorsTools.toolsInOut).forEach(toolName_ => {
-        const inputName = DecoratorsTools.toolsInOut[toolName_][0];
+      Object.keys(ShinkaiTookitLib.toolsInOut).forEach(toolName_ => {
+        const inputName = ShinkaiTookitLib.toolsInOut[toolName_][0];
         if (inputName === fieldData.context) {
           toolName = toolName_;
           if (!joiObjects[toolName]) {
@@ -267,7 +278,7 @@ export class DecoratorsTools {
       }
 
       // Generate the Joi validation for each field
-      joiObjects[toolName][fieldName] = DecoratorsTools.buildFieldJoiValidator(
+      joiObjects[toolName][fieldName] = ShinkaiTookitLib.buildFieldJoiValidator(
         fieldData.type!,
         !fieldData.isOptional,
         fieldData.wrapperType === 'array',
@@ -276,14 +287,16 @@ export class DecoratorsTools {
     });
 
     // Build the Input Object Validators
-    Object.keys(DecoratorsTools.classMap).forEach(className => {
-      DecoratorsTools.validators[className] = Joi.object(joiObjects[className]);
+    Object.keys(ShinkaiTookitLib.inputClass).forEach(className => {
+      ShinkaiTookitLib.validators[className] = Joi.object(
+        joiObjects[className]
+      );
     });
   }
 
   private static async validate() {
-    const interfaces = Object.keys(DecoratorsTools.toolsInOut)
-      .map(toolName => DecoratorsTools.toolsInOut[toolName])
+    const interfaces = Object.keys(ShinkaiTookitLib.toolsInOut)
+      .map(toolName => ShinkaiTookitLib.toolsInOut[toolName])
       .flat();
 
     const fieldNames: string[] = Object.keys(this.ebnf);
@@ -329,6 +342,7 @@ Use @description('') to add a description.`
         return buildBNF('(-?[0-9]+)');
       case DATA_TYPES.FLOAT:
         return buildBNF('(-?[0-9]+(.[0-9]+)?)');
+      case DATA_TYPES.OAUTH:
       case DATA_TYPES.STRING:
         return buildBNF('([a-zA-Z0-9_]+)');
       case DATA_TYPES.ENUM:
@@ -339,6 +353,8 @@ Use @description('') to add a description.`
         return buildBNF('([a-zA-Z0-9_])');
       case DATA_TYPES.JSON:
         return buildBNF('(( "{" .* "}" ) | ( "[" .* "]" ))');
+      case DATA_TYPES.ISODATE:
+        return buildBNF('([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]+:[0-9]+Z)');
       default:
         throw new Error('Unknown type ' + field.type);
     }
@@ -353,14 +369,14 @@ Use @description('') to add a description.`
   }
 
   private static generateExecutionSetupFields() {
-    const setup: typeof DecoratorsTools.toolkit = JSON.parse(
-      JSON.stringify(DecoratorsTools.toolkit)
+    const setup: typeof ShinkaiTookitLib.toolkit = JSON.parse(
+      JSON.stringify(ShinkaiTookitLib.toolkit)
     );
     // Setup setup vars & headers
     if (!setup.executionSetup) return {};
 
     setup.executionSetup.forEach((field: ShinkaiFieldHeader) => {
-      field.header = DecoratorsTools.fieldNameToHeaderName(field.name);
+      field.header = ShinkaiTookitLib.fieldNameToHeaderName(field.name);
       if (field.oauth) {
         field.type = DATA_TYPES.OAUTH;
         field.description = field.description || field.oauth.description;
@@ -371,7 +387,7 @@ Use @description('') to add a description.`
 
   private static generateConfig() {
     const inputEBNF: string[] = [];
-    const toolData = Object.keys(DecoratorsTools.tools).map(toolName => {
+    const toolData = Object.keys(ShinkaiTookitLib.tools).map(toolName => {
       const extract = (
         contextName: string | undefined,
         allowUndefined = false
@@ -382,14 +398,14 @@ Use @description('') to add a description.`
           }
           throw new Error('No context name provided');
         }
-        return Object.keys(DecoratorsTools.ebnf)
-          .filter(field => DecoratorsTools.ebnf[field].context === contextName)
+        return Object.keys(ShinkaiTookitLib.ebnf)
+          .filter(field => ShinkaiTookitLib.ebnf[field].context === contextName)
           .map(field => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const [prefix, fieldName] = field.split('.'); // [input, field
-            const f = DecoratorsTools.ebnf[field];
+            const f = ShinkaiTookitLib.ebnf[field];
             inputEBNF.push(
-              `${fieldName} ::= ${DecoratorsTools.generateBNF(fieldName, f)}`
+              `${fieldName} ::= ${ShinkaiTookitLib.generateBNF(fieldName, f)}`
             );
             return {
               name: fieldName,
@@ -398,17 +414,17 @@ Use @description('') to add a description.`
               isOptional: f.isOptional || false,
               wrapperType: f.wrapperType || 'none',
               enum: f.enum,
-              ebnf: DecoratorsTools.generateBNF(fieldName, f),
+              ebnf: ShinkaiTookitLib.generateBNF(fieldName, f),
             };
           });
       };
 
-      const input = extract(DecoratorsTools.toolsInOut[toolName][0]);
-      const output = extract(DecoratorsTools.toolsInOut[toolName][1]);
+      const input = extract(ShinkaiTookitLib.toolsInOut[toolName][0]);
+      const output = extract(ShinkaiTookitLib.toolsInOut[toolName][1]);
 
       return {
         name: toolName,
-        description: DecoratorsTools.tools[toolName].description,
+        description: ShinkaiTookitLib.tools[toolName].description,
         input,
         output,
         inputEBNF: inputEBNF.join('\n'),
@@ -416,16 +432,16 @@ Use @description('') to add a description.`
     });
 
     return {
-      ...DecoratorsTools.toolkit,
-      executionSetup: DecoratorsTools.generateExecutionSetupFields(),
+      ...ShinkaiTookitLib.toolkit,
+      executionSetup: ShinkaiTookitLib.generateExecutionSetupFields(),
       tools: toolData,
     };
   }
 
   /* Function for decorators to register data */
   static registerField(key: string, contextName: string) {
-    if (!DecoratorsTools.ebnf[key]) {
-      DecoratorsTools.ebnf[key] = {
+    if (!ShinkaiTookitLib.ebnf[key]) {
+      ShinkaiTookitLib.ebnf[key] = {
         name: key,
         context: contextName,
       };
@@ -437,35 +453,35 @@ Use @description('') to add a description.`
     contextName: string,
     type: DATA_TYPES
   ) {
-    DecoratorsTools.registerField(key, contextName);
+    ShinkaiTookitLib.registerField(key, contextName);
     // Do not override type if already set
-    if (!DecoratorsTools.ebnf[key].type) {
-      DecoratorsTools.ebnf[key].type = type;
+    if (!ShinkaiTookitLib.ebnf[key].type) {
+      ShinkaiTookitLib.ebnf[key].type = type;
     }
   }
 
   static registerFieldArray(key: string, contextName: string) {
-    DecoratorsTools.registerField(key, contextName);
-    DecoratorsTools.ebnf[key].wrapperType = 'array';
+    ShinkaiTookitLib.registerField(key, contextName);
+    ShinkaiTookitLib.ebnf[key].wrapperType = 'array';
   }
 
   static registerFieldType(key: string, contextName: string, type: DATA_TYPES) {
-    DecoratorsTools.registerField(key, contextName);
-    DecoratorsTools.ebnf[key].type = type;
+    ShinkaiTookitLib.registerField(key, contextName);
+    ShinkaiTookitLib.ebnf[key].type = type;
   }
 
   static registerFieldEnumData(key: string, enumValues: string[]) {
-    DecoratorsTools.ebnf[key].enum = enumValues;
+    ShinkaiTookitLib.ebnf[key].enum = enumValues;
   }
 
   static registerFieldOptional(key: string, contextName: string) {
-    DecoratorsTools.registerField(key, contextName);
-    DecoratorsTools.ebnf[key].isOptional = true;
+    ShinkaiTookitLib.registerField(key, contextName);
+    ShinkaiTookitLib.ebnf[key].isOptional = true;
   }
 
   static registerFieldRequired(key: string, contextName: string) {
-    DecoratorsTools.registerField(key, contextName);
-    DecoratorsTools.ebnf[key].isOptional = false;
+    ShinkaiTookitLib.registerField(key, contextName);
+    ShinkaiTookitLib.ebnf[key].isOptional = false;
   }
 
   static registerFieldDescription(
@@ -473,48 +489,65 @@ Use @description('') to add a description.`
     contextName: string,
     description: string
   ) {
-    DecoratorsTools.registerField(key, contextName);
-    DecoratorsTools.ebnf[key].description = description;
+    ShinkaiTookitLib.registerField(key, contextName);
+    ShinkaiTookitLib.ebnf[key].description = description;
   }
 
   static registerToolKit(setup: ShinkaiSetup) {
-    DecoratorsTools.toolkit = setup;
+    if (DEBUG) {
+      console.log(`Registering toolkit: ${setup['toolkit-name']}`);
+    }
+    ShinkaiTookitLib.toolkit = setup;
   }
 
   static registerTool(toolName: string, description: string) {
-    if (!DecoratorsTools.tools[toolName]) {
-      DecoratorsTools.tools[toolName] = {
-        name: toolName,
-        description,
-      };
+    if (ShinkaiTookitLib.tools[toolName]) {
+      throw new Error(`Duplicated tool name: "${toolName}"`);
     }
-    DecoratorsTools.tools[toolName].name = toolName;
-    DecoratorsTools.tools[toolName].description = description;
+    if (DEBUG) {
+      console.log(`Registering tool: ${toolName}`);
+    }
+    ShinkaiTookitLib.tools[toolName] = {
+      name: toolName,
+      description,
+    };
   }
 
-  static registerClass(className: string, classRef: typeof BaseInput) {
-    DecoratorsTools.classMap[className] = classRef;
+  static registerInputClass(className: string, classRef: typeof BaseInput) {
+    if (ShinkaiTookitLib.inputClass[className]) {
+      throw new Error(`Duplicated input class name: "${className}"`);
+    }
+    if (DEBUG) {
+      console.log(`Registering input class: ${className}`);
+    }
+    ShinkaiTookitLib.inputClass[className] = classRef;
   }
 
   static registerToolInput(inputOutputName: string, toolName: string) {
-    if (DecoratorsTools.toolsInOut[toolName]?.[0]) {
+    if (ShinkaiTookitLib.toolsInOut[toolName]?.[0]) {
       throw new Error(`Duplicated input name: "${toolName}"`);
     }
-    DecoratorsTools.toolsInOut[toolName] = [
+    if (DEBUG) {
+      console.log(`Registering input: ${inputOutputName} for ${toolName}`);
+    }
+    ShinkaiTookitLib.toolsInOut[toolName] = [
       inputOutputName,
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][1]
+      ShinkaiTookitLib.toolsInOut[toolName]
+        ? ShinkaiTookitLib.toolsInOut[toolName][1]
         : undefined,
     ];
   }
 
   static registerToolOutput(inputOutputName: string, toolName: string) {
-    if (DecoratorsTools.toolsInOut[toolName]?.[1]) {
+    if (ShinkaiTookitLib.toolsInOut[toolName]?.[1]) {
       throw new Error(`Duplicated output name: "${toolName}"`);
     }
-    DecoratorsTools.toolsInOut[toolName] = [
-      DecoratorsTools.toolsInOut[toolName]
-        ? DecoratorsTools.toolsInOut[toolName][0]
+    if (DEBUG) {
+      console.log(`Registering output: ${inputOutputName} for ${toolName}`);
+    }
+    ShinkaiTookitLib.toolsInOut[toolName] = [
+      ShinkaiTookitLib.toolsInOut[toolName]
+        ? ShinkaiTookitLib.toolsInOut[toolName][0]
         : undefined,
       inputOutputName,
     ];

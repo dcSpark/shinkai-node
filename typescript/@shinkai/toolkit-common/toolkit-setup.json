@@ -1,0 +1,63 @@
+{
+  "toolkit-name": "@shinkai/toolkit-common",
+  "author": "shinkai-dev",
+  "version": "0.0.1",
+  "executionSetup": {},
+  "tools": [
+    {
+      "name": "HTTP",
+      "description": "Fetch content from URL",
+      "input": [
+        {
+          "name": "url",
+          "type": "STRING",
+          "description": "URL to fetch",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        },
+        {
+          "name": "method",
+          "type": "ENUM",
+          "description": "HTTP method to use",
+          "isOptional": true,
+          "wrapperType": "none",
+          "enum": [
+            "get",
+            "post",
+            "put",
+            "delete"
+          ],
+          "ebnf": "(\"get\" | \"post\" | \"put\" | \"delete\")?"
+        },
+        {
+          "name": "headers",
+          "type": "JSON",
+          "description": "HTTP headers to send",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "(( \"{\" .* \"}\" ) | ( \"[\" .* \"]\" ))?"
+        },
+        {
+          "name": "data",
+          "type": "JSON",
+          "description": "HTTP body to send",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "(( \"{\" .* \"}\" ) | ( \"[\" .* \"]\" ))?"
+        }
+      ],
+      "output": [
+        {
+          "name": "response",
+          "type": "STRING",
+          "description": "Response body",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        }
+      ],
+      "inputEBNF": "url ::= ([a-zA-Z0-9_]+)\nmethod ::= (\"get\" | \"post\" | \"put\" | \"delete\")?\nheaders ::= (( \"{\" .* \"}\" ) | ( \"[\" .* \"]\" ))?\ndata ::= (( \"{\" .* \"}\" ) | ( \"[\" .* \"]\" ))?\nresponse ::= ([a-zA-Z0-9_]+)"
+    }
+  ]
+}

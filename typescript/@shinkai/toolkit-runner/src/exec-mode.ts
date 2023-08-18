@@ -38,7 +38,7 @@ export async function execMode(source: string, tool: string, input: string, head
         const rawInput = {};
         Object.assign(rawInput, ${input || '{}'});
         const inputData = await tool.validateInputs(rawInput);
-        const inputObject = new tools.DecoratorsTools.classMap['${tool}']();
+        const inputObject = new tools.ShinkaiTookitLib.inputClass['${tool}']();
         Object.assign(inputObject, inputData);
 
         const response = await tool.run(inputObject, headers);

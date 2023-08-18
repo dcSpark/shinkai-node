@@ -7,6 +7,7 @@ db_tests/
 !package-lock.json
 !tsconfig.json
 !.eslintrc.json
+!toolkit-setup.json
 *.bin
 local-ai
 server

@@ -2,7 +2,7 @@
 export {ToolKitSetup} from './ToolKitSetup';
 
 /* Required for executor for introspection */
-export {DecoratorsTools} from '@shinkai/toolkit-lib';
+export {ShinkaiTookitLib} from '@shinkai/toolkit-lib';
 
 /* Tools */
 export {HTTP} from './packages/http';

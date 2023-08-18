@@ -1,4 +1,4 @@
-import {DecoratorsTools} from './DecoratorsTools';
+import {ShinkaiTookitLib} from './ShinkaiTookitLib';
 import {ShinkaiFieldHeader} from './types';
 
 export abstract class ShinkaiSetup {
@@ -21,10 +21,10 @@ export abstract class ShinkaiSetup {
   }
 
   public async processRawHeaderValues(rawHeader: Record<string, string>) {
-    const v = await DecoratorsTools.getHeadersValidator();
+    const v = await ShinkaiTookitLib.getHeadersValidator();
     const headers = {};
     Object.keys(rawHeader).forEach((key: string) => {
-      const headerName = DecoratorsTools.fieldNameToHeaderName(key);
+      const headerName = ShinkaiTookitLib.fieldNameToHeaderName(key);
       if (!v.transformer[headerName]) {
         throw new Error(`Header ${headerName} not found`);
       }

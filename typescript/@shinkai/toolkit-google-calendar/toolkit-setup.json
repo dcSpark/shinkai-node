@@ -1,0 +1,74 @@
+{
+  "toolkit-name": "@shinkai/toolkit-google-calendar",
+  "author": "shinkai-dev",
+  "version": "0.0.1",
+  "executionSetup": [
+    {
+      "name": "OAUTH",
+      "oauth": {
+        "description": "",
+        "displayName": "Authentication",
+        "authUrl": "https://accounts.google.com/o/oauth2/auth",
+        "tokenUrl": "https://oauth2.googleapis.com/token",
+        "required": true,
+        "pkce": true,
+        "scope": [
+          "https://www.googleapis.com/auth/calendar.events",
+          "https://www.googleapis.com/auth/calendar.readonly"
+        ],
+        "cloudOAuth": "activepieces"
+      },
+      "type": "OAUTH",
+      "header": "x-shinkai-oauth",
+      "description": ""
+    }
+  ],
+  "tools": [
+    {
+      "name": "GoogleCalendarQuickEvent",
+      "description": "Activepieces Create Quick Event at Google Calendar",
+      "input": [
+        {
+          "name": "calendar_id",
+          "type": "STRING",
+          "description": "Calendar ID. Primary calendar used if not specified",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)?"
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "description": "Summary: The text describing the event to be created",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        },
+        {
+          "name": "send_updates",
+          "type": "ENUM",
+          "description": "Send Updates: Guests who should receive notifications about the creation of the new event.",
+          "isOptional": true,
+          "wrapperType": "none",
+          "enum": [
+            "all",
+            "externalOnly",
+            "none"
+          ],
+          "ebnf": "(\"all\" | \"externalOnly\" | \"none\")?"
+        }
+      ],
+      "output": [
+        {
+          "name": "response",
+          "type": "STRING",
+          "description": "Network Response",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        }
+      ],
+      "inputEBNF": "calendar_id ::= ([a-zA-Z0-9_]+)?\ntext ::= ([a-zA-Z0-9_]+)\nsend_updates ::= (\"all\" | \"externalOnly\" | \"none\")?\nresponse ::= ([a-zA-Z0-9_]+)"
+    }
+  ]
+}

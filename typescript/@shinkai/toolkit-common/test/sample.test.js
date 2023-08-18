@@ -1,8 +1,8 @@
-const {HTTP, DecoratorsTools} = require('./../build/registry');
+const {HTTP, ShinkaiTookitLib} = require('./../build/registry');
 
 describe('HTTP Test', () => {
   test('Check fetch from URL', async () => {
-    await DecoratorsTools.waitForLib();
+    await ShinkaiTookitLib.waitForLib();
     const x = {
       url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRjBOL2YIe8UOCD-ssFgRuemzGY-SO-j5llsDP7HYzNwaWyg5g2Ou5DzojNtQfTVwmcw4wMbjlOhE2N/pub?gid=0&single=true&output=csv',
       method: 'get',

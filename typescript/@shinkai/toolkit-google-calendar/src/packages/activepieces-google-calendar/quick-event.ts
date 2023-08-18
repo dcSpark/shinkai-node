@@ -27,7 +27,7 @@ class APGoogleCalendarInput extends BaseInput {
     'Send Updates: Guests who should receive notifications about the creation of the new event.'
   )
   @isOptional
-  send_updates = 'none';
+  send_updates: 'none' | 'all' | 'externalOnly' = 'none';
 }
 
 @isOutput('GoogleCalendarQuickEvent')

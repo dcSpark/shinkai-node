@@ -1,9 +1,9 @@
-const {isEven, DecoratorsTools} = require('./../build/registry');
+const {isEven, ShinkaiTookitLib} = require('./../build/registry');
 
 describe('Is Even test', () => {
 
   test('2 is even', async () => {
-    await DecoratorsTools.waitForLib();
+    await ShinkaiTookitLib.waitForLib();
 
     const x = {number:2};
     const result = await new isEven().run(x);
@@ -11,7 +11,7 @@ describe('Is Even test', () => {
   });
 
   test('3 is not even', async () => {
-    await DecoratorsTools.waitForLib();
+    await ShinkaiTookitLib.waitForLib();
 
     const x = {number:3};
     const result = await new isEven().run(x);

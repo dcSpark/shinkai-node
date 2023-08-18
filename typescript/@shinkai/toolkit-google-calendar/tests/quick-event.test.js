@@ -1,12 +1,12 @@
-const {DecoratorsTools, GoogleCalendarQuickEvent} = require('./../dist/packaged-shinkai-toolkit');
+const {ShinkaiTookitLib, GoogleCalendarQuickEvent} = require('./../dist/packaged-shinkai-toolkit');
 
 describe('CreateQuick Event Test', () => {
   test('check object', async () => {
-    // await DecoratorsTools.waitForLib();
-    const config = await DecoratorsTools.emitConfig();
+    // await ShinkaiTookitLib.waitForLib();
+    const config = await ShinkaiTookitLib.emitConfig();
     
     expect(JSON.parse(config).tools[0].name).toEqual(
-      new GoogleCalendarQuickEvent().name
+      (new GoogleCalendarQuickEvent()).constructor.name
     );
   });
 });
