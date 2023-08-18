@@ -197,18 +197,7 @@ impl ShinkaiDB {
             retrieved_chunks.extend(results);
         }
 
-        // Sort retrieved_chunks in descending order of score.
-        // TODO: In the future use a binary heap like in the resource
-        // vector_search(). Not as important here due to less chunks.
-        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Only return the top num_of_results
-        let num_of_results = num_of_results as usize;
-        if retrieved_chunks.len() > num_of_results {
-            retrieved_chunks.truncate(num_of_results);
-        }
-
-        Ok(retrieved_chunks)
+        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding.
@@ -231,18 +220,7 @@ impl ShinkaiDB {
             retrieved_chunks.extend(results);
         }
 
-        // Sort retrieved_chunks in descending order of score.
-        // TODO: In the future use a binary heap like in the resource
-        // vector_search(). Not as important here due to less chunks.
-        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Only return the top num_of_results
-        let num_of_results = num_of_results as usize;
-        if retrieved_chunks.len() > num_of_results {
-            retrieved_chunks.truncate(num_of_results);
-        }
-
-        Ok(retrieved_chunks)
+        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding,
@@ -295,12 +273,8 @@ impl ShinkaiDB {
             retrieved_chunks.extend(results);
         }
 
-        // Sort retrieved_chunks in descending order of score.
-        // TODO: In the future use a binary heap like in the resource
-        // vector_search(). Not as important here due to less chunks.
-        retrieved_chunks.sort_unstable_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-        let top_chunk = retrieved_chunks
+        let top_ret_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, 1);
+        let top_chunk = top_ret_chunks
             .get(0)
             .ok_or(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))?;
 

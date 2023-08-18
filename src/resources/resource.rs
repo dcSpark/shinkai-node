@@ -51,6 +51,36 @@ pub struct RetrievedDataChunk {
     pub resource_pointer: ResourcePointer,
 }
 
+impl RetrievedDataChunk {
+    /// Sorts the list of RetrievedDataChunks based on their scores.
+    /// Uses a binary heap for efficiency, returns num_results of highest scored.
+    pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {
+        // Create a HashMap to store the RetrievedDataChunk instances by their id
+        let mut data_chunks: HashMap<String, RetrievedDataChunk> = HashMap::new();
+
+        // Map the retrieved_data to a vector of tuples (NotNan<f32>, id)
+        let scores: Vec<(NotNan<f32>, String)> = retrieved_data
+            .into_iter()
+            .map(|data_chunk| {
+                let id = data_chunk.chunk.id.clone();
+                data_chunks.insert(id.clone(), data_chunk.clone());
+                (NotNan::new(data_chunks[&id].score).unwrap(), id)
+            })
+            .collect();
+
+        // Use the bin_heap_order_scores function to sort the scores
+        let sorted_scores = Embedding::bin_heap_order_scores(scores, num_results as usize);
+
+        // Map the sorted_scores back to a vector of RetrievedDataChunk
+        let sorted_data: Vec<RetrievedDataChunk> = sorted_scores
+            .into_iter()
+            .map(|(_, id)| data_chunks[&id].clone())
+            .collect();
+
+        sorted_data
+    }
+}
+
 /// Represents a data chunk with an id, data, and optional metadata.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataChunk {

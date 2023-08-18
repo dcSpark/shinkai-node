@@ -72,6 +72,16 @@ impl Embedding {
             .collect();
 
         // Use a binary heap to more efficiently order the scores to get most similar
+        let results = Self::bin_heap_order_scores(scores, num_of_results);
+
+        results
+    }
+
+    /// Order scores using a binary heap and return the most similar scores
+    pub fn bin_heap_order_scores<G>(scores: Vec<(NotNan<f32>, G)>, num_of_results: usize) -> Vec<(f32, G)>
+    where
+        G: Clone + Ord,
+    {
         let mut heap = BinaryHeap::with_capacity(num_of_results);
         for score in scores {
             if heap.len() < num_of_results {
@@ -85,7 +95,7 @@ impl Embedding {
         }
 
         // Create a Vec to hold the reversed results
-        let mut results: Vec<(f32, String)> = Vec::new();
+        let mut results: Vec<(f32, G)> = Vec::new();
 
         while let Some(Reverse((similarity, id))) = heap.pop() {
             results.push((similarity.into_inner(), id));
