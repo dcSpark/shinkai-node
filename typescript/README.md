@@ -65,7 +65,6 @@ node build/runner.js -w
 
 Trigger executing a tool inside of a toolkit via network request:
 ```
-curl localhost:3000/exec -H "Content-Type: application/json" -d '{ {"tool":"isEven","input":{"number":2},"source":"<FILE CONTENTS>" }'`
-
+curl localhost:3000/exec -H "Content-Type: application/json" -d '{"tool":"isEven","input":{"number":2},"source":"<FILE CONTENTS>" }'
 # replace <FILE CONTENTS> with content of your given `packaged-shinkai-toolkit.js`
 ```

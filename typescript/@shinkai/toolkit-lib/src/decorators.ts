@@ -3,6 +3,7 @@
 import {BaseInput, BaseOutput} from './BaseTool';
 import {ShinkaiTookitLib} from './ShinkaiTookitLib';
 import {DATA_TYPES} from './types';
+import 'reflect-metadata'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isToolKit(classDef: any) {
@@ -192,7 +193,11 @@ export function isFloat(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(fieldName, contextName, DATA_TYPES.FLOAT);
+    ShinkaiTookitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.FLOAT
+    );
     if (description) {
       ShinkaiTookitLib.registerFieldDescription(
         fieldName,

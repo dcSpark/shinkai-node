@@ -46,6 +46,7 @@ export class ShinkaiTookitLib {
   // Store header x-shinkai-* transformer
   private static headerTransformer: Record<
     string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (input: string) => Record<string, any>
   > = {};
 
@@ -76,6 +77,7 @@ export class ShinkaiTookitLib {
 
   public static async getHeadersValidator(): Promise<{
     validator: Joi.ObjectSchema;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     transformer: Record<string, (input: string) => any>;
   }> {
     await ShinkaiTookitLib.waitForLib();
