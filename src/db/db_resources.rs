@@ -9,26 +9,38 @@ use crate::resources::router::{ResourcePointer, ResourceRouter};
 use serde_json::{from_str, to_string};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
+use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
 
 impl ShinkaiDB {
-    /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the global router.
+    /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the profile resource router.
     fn save_profile_resource_router(
         &self,
         router: &ResourceRouter,
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
-        // Convert JSON to bytes for storage
-        let json = router.to_json()?;
-        let bytes = json.as_bytes();
-
-        // Retrieve the handle for the "Resources" column family
-        let cf = self.get_cf_handle(Topic::Resources)?;
+        let (bytes, cf) = self._prepare_profile_resource_router(router, profile)?;
 
         // Insert into the "Resources" column family
         self.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), bytes, profile)?;
 
         Ok(())
+    }
+
+    /// Prepares the `ResourceRouter` for saving into the ShinkaiDB as the profile resource router.
+    fn _prepare_profile_resource_router(
+        &self,
+        router: &ResourceRouter,
+        profile: &ShinkaiName,
+    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
+        // Convert JSON to bytes for storage
+        let json = router.to_json()?;
+        let bytes = json.as_bytes().to_vec(); // Clone the bytes here
+
+        // Retrieve the handle for the "Resources" column family
+        let cf = self.get_cf_handle(Topic::Resources)?;
+
+        Ok((bytes, cf))
     }
 
     /// Saves the `Resource` into the ShinkaiDB in the resources topic as a JSON
@@ -37,22 +49,34 @@ impl ShinkaiDB {
     /// Note this is only to be used internally, as this does not add a resource
     /// pointer in the global ResourceRouter. Adding the pointer is required for any
     /// resource being saved and is implemented in `.save_resources`.
-    fn save_resource_pointerless(
+    fn _save_resource_pointerless(
         &self,
         resource: &Box<dyn Resource>,
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_resource_pointerless(resource, profile)?;
+
+        // Insert into the "Resources" column family
+        self.put_cf_pb(cf, &resource.db_key(), &bytes, profile)?;
+
+        Ok(())
+    }
+
+    /// Prepares the `Resource` for saving into the ShinkaiDB in the resources topic as a JSON
+    /// string. Note this is only to be used internally.
+    fn _prepare_resource_pointerless(
+        &self,
+        resource: &Box<dyn Resource>,
+        profile: &ShinkaiName,
+    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
         // Convert Resource JSON to bytes for storage
         let json = resource.to_json()?;
-        let bytes = json.as_bytes();
+        let bytes = json.as_bytes().to_vec();
 
         // Retrieve the handle for the "Resources" column family
         let cf = self.get_cf_handle(Topic::Resources)?;
 
-        // Insert into the "Resources" column family
-        self.put_cf_pb(cf, &resource.db_key(), bytes, profile)?;
-
-        Ok(())
+        Ok((bytes, cf))
     }
 
     /// Saves the `Resource` into the ShinkaiDB. This updates the
@@ -65,7 +89,7 @@ impl ShinkaiDB {
     }
 
     /// Saves the list of `Resource`s into the ShinkaiDB. This updates the
-    /// Global ResourceRouter with the resource pointers as well.
+    /// Profile ResourceRouter with the resource pointers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
@@ -77,20 +101,21 @@ impl ShinkaiDB {
         // Get the resource router
         let mut router = self.get_profile_resource_router(profile)?;
 
-        // TODO: Batch saving the resource and the router together
-        // to guarantee atomicity and coherence of router.
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for resource in resources {
-            println!("saving resource");
-            // Save the JSON of the resources in the DB
-            self.save_resource_pointerless(&resource, profile)?;
-            // Add the pointer to the router, saving the router
-            // to the DB on each iteration
+            // Adds the JSON of the resource to the batch
+            let (bytes, cf) = self._prepare_resource_pointerless(&resource, profile)?;
+            pb_batch.put_cf_pb(cf, &resource.db_key(), &bytes);
+
+            // Add the pointer to the router, then putting the router
+            // into the batch
             let pointer = resource.get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
-            self.save_profile_resource_router(&router, profile)?;
+            let (bytes, cf) = self._prepare_profile_resource_router(&router, profile)?;
+            pb_batch.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), &bytes);
         }
 
-        // Add logic here for dealing with the resource router
+        self.write_pb(pb_batch)?;
 
         Ok(())
     }
