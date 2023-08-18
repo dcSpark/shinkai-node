@@ -41,6 +41,7 @@ pub enum ShinkaiDBError {
     InvalidProfileName(String),
     InvalidIdentityName(String),
     DeviceNameNonExistent(String),
+    ShinkaiNameLacksProfile,
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -57,6 +58,11 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
             ShinkaiDBError::MessageNotFound => write!(f, "Message not found"),
             ShinkaiDBError::SomeError(e) => write!(f, "Some error: {}", e),
+            ShinkaiDBError::ShinkaiNameLacksProfile => write!(
+                f,
+                "Provided ShinkaiName does not specify a profile which is required for DB action.",
+            ),
+
             ShinkaiDBError::ProfileNameNonExistent(e) => {
                 write!(f, "Profile name does not exist: {}", e)
             }

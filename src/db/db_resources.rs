@@ -7,23 +7,40 @@ use crate::resources::resource::{Resource, ResourceType};
 use crate::resources::resource_errors::ResourceError;
 use crate::resources::router::{ResourcePointer, ResourceRouter};
 use serde_json::{from_str, to_string};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
+use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
 
 impl ShinkaiDB {
-    /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the global router.
-    fn save_global_resource_router(&self, router: &ResourceRouter) -> Result<(), ShinkaiDBError> {
+    /// Saves the supplied `ResourceRouter` into the ShinkaiDB as the profile resource router.
+    fn save_profile_resource_router(
+        &self,
+        router: &ResourceRouter,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_profile_resource_router(router, profile)?;
+
+        // Insert into the "Resources" column family
+        self.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), bytes, profile)?;
+
+        Ok(())
+    }
+
+    /// Prepares the `ResourceRouter` for saving into the ShinkaiDB as the profile resource router.
+    fn _prepare_profile_resource_router(
+        &self,
+        router: &ResourceRouter,
+        profile: &ShinkaiName,
+    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
         // Convert JSON to bytes for storage
         let json = router.to_json()?;
-        let bytes = json.as_bytes();
+        let bytes = json.as_bytes().to_vec(); // Clone the bytes here
 
         // Retrieve the handle for the "Resources" column family
         let cf = self.get_cf_handle(Topic::Resources)?;
 
-        // Insert the message into the "Resources" column family
-        self.db.put_cf(cf, ResourceRouter::global_router_db_key(), bytes)?;
-
-        Ok(())
+        Ok((bytes, cf))
     }
 
     /// Saves the `Resource` into the ShinkaiDB in the resources topic as a JSON
@@ -32,18 +49,34 @@ impl ShinkaiDB {
     /// Note this is only to be used internally, as this does not add a resource
     /// pointer in the global ResourceRouter. Adding the pointer is required for any
     /// resource being saved and is implemented in `.save_resources`.
-    fn save_resource_pointerless(&self, resource: &Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
+    fn _save_resource_pointerless(
+        &self,
+        resource: &Box<dyn Resource>,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_resource_pointerless(resource, profile)?;
+
+        // Insert into the "Resources" column family
+        self.put_cf_pb(cf, &resource.db_key(), &bytes, profile)?;
+
+        Ok(())
+    }
+
+    /// Prepares the `Resource` for saving into the ShinkaiDB in the resources topic as a JSON
+    /// string. Note this is only to be used internally.
+    fn _prepare_resource_pointerless(
+        &self,
+        resource: &Box<dyn Resource>,
+        profile: &ShinkaiName,
+    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
         // Convert Resource JSON to bytes for storage
         let json = resource.to_json()?;
-        let bytes = json.as_bytes();
+        let bytes = json.as_bytes().to_vec();
 
         // Retrieve the handle for the "Resources" column family
         let cf = self.get_cf_handle(Topic::Resources)?;
 
-        // Insert the message into the "Resources" column family
-        self.db.put_cf(cf, resource.db_key(), bytes)?;
-
-        Ok(())
+        Ok((bytes, cf))
     }
 
     /// Saves the `Resource` into the ShinkaiDB. This updates the
@@ -51,33 +84,38 @@ impl ShinkaiDB {
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
-    pub fn save_resource(&self, resource: Box<dyn Resource>) -> Result<(), ShinkaiDBError> {
-        self.save_resources(vec![resource])
+    pub fn save_resource(&self, resource: Box<dyn Resource>, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        self.save_resources(vec![resource], profile)
     }
 
     /// Saves the list of `Resource`s into the ShinkaiDB. This updates the
-    /// Global ResourceRouter with the resource pointers as well.
+    /// Profile ResourceRouter with the resource pointers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
-    pub fn save_resources(&self, resources: Vec<Box<dyn Resource>>) -> Result<(), ShinkaiDBError> {
+    pub fn save_resources(
+        &self,
+        resources: Vec<Box<dyn Resource>>,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
         // Get the resource router
-        let mut router = self.get_global_resource_router()?;
+        let mut router = self.get_profile_resource_router(profile)?;
 
-        // TODO: Batch saving the resource and the router together
-        // to guarantee atomicity and coherence of router.
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for resource in resources {
-            println!("saving resource");
-            // Save the JSON of the resources in the DB
-            self.save_resource_pointerless(&resource)?;
-            // Add the pointer to the router, saving the router
-            // to the DB on each iteration
+            // Adds the JSON of the resource to the batch
+            let (bytes, cf) = self._prepare_resource_pointerless(&resource, profile)?;
+            pb_batch.put_cf_pb(cf, &resource.db_key(), &bytes);
+
+            // Add the pointer to the router, then putting the router
+            // into the batch
             let pointer = resource.get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
-            self.save_global_resource_router(&router)?;
+            let (bytes, cf) = self._prepare_profile_resource_router(&router, profile)?;
+            pb_batch.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), &bytes);
         }
 
-        // Add logic here for dealing with the resource router
+        self.write_pb(pb_batch)?;
 
         Ok(())
     }
@@ -86,18 +124,24 @@ impl ShinkaiDB {
     pub fn get_resource_by_pointer(
         &self,
         resource_pointer: &ResourcePointer,
+        profile: &ShinkaiName,
     ) -> Result<Box<dyn Resource>, ShinkaiDBError> {
-        self.get_resource(resource_pointer.db_key.clone(), &resource_pointer.resource_type)
+        self.get_resource(
+            &resource_pointer.db_key.clone(),
+            &resource_pointer.resource_type,
+            profile,
+        )
     }
 
     /// Fetches the Resource from the DB
-    pub fn get_resource<K: AsRef<[u8]>>(
+    pub fn get_resource(
         &self,
-        key: K,
+        key: &str,
         resource_type: &ResourceType,
+        profile: &ShinkaiName,
     ) -> Result<Box<dyn Resource>, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, key)?;
+        let bytes = self.get_cf_pb(Topic::Resources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a Resource implementing struct
@@ -110,9 +154,9 @@ impl ShinkaiDB {
     }
 
     /// Fetches a DocumentResource from the DB
-    pub fn get_document<K: AsRef<[u8]>>(&self, key: K) -> Result<DocumentResource, ShinkaiDBError> {
+    pub fn get_document(&self, key: &str, profile: &ShinkaiName) -> Result<DocumentResource, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, key)?;
+        let bytes = self.get_cf_pb(Topic::Resources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a Resource implementing struct
@@ -120,9 +164,9 @@ impl ShinkaiDB {
     }
 
     /// Fetches the Global Resource Router from  the DB
-    pub fn get_global_resource_router(&self) -> Result<ResourceRouter, ShinkaiDBError> {
+    pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf(Topic::Resources, ResourceRouter::global_router_db_key())?;
+        let bytes = self.get_cf_pb(Topic::Resources, &ResourceRouter::profile_router_db_key(), profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a DocumentResource object
@@ -141,8 +185,10 @@ impl ShinkaiDB {
         num_of_resources: u64,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
+        profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names)?;
+        let resources =
+            self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names, profile)?;
 
         let mut retrieved_chunks = Vec::new();
         for resource in resources {
@@ -175,8 +221,9 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_resources: u64,
         num_of_results: u64,
+        profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.vector_search_resources(query.clone(), num_of_resources)?;
+        let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
 
         let mut retrieved_chunks = Vec::new();
         for resource in resources {
@@ -209,14 +256,15 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_resources: u64,
         tolerance_range: f32,
+        profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let retrieved_chunks = self.vector_search_data(query.clone(), num_of_resources, 1)?;
+        let retrieved_chunks = self.vector_search_data(query.clone(), num_of_resources, 1, profile)?;
         let top_chunk = &retrieved_chunks
             .get(0)
             .ok_or(ShinkaiDBError::ResourceError(ResourceError::ResourceEmpty))?;
 
         // Fetch the chunks that fit in the tolerance range
-        let resources = self.vector_search_resources(query.clone(), num_of_resources)?;
+        let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
         let mut final_chunks = Vec::new();
         for resource in resources {
             let results =
@@ -237,8 +285,9 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_docs: u64,
         proximity_window: u64,
+        profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let docs = self.vector_search_docs(query.clone(), num_of_docs)?;
+        let docs = self.vector_search_docs(query.clone(), num_of_docs, profile)?;
 
         let mut retrieved_chunks = Vec::new();
         for doc in &docs {
@@ -271,13 +320,14 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_resources: u64,
         data_tag_names: &Vec<String>,
+        profile: &ShinkaiName,
     ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
-        let router = self.get_global_resource_router()?;
+        let router = self.get_profile_resource_router(profile)?;
         let resource_pointers = router.syntactic_vector_search(query, num_of_resources, data_tag_names);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type))?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
         }
 
         Ok(resources)
@@ -289,13 +339,14 @@ impl ShinkaiDB {
         &self,
         query: Embedding,
         num_of_resources: u64,
+        profile: &ShinkaiName,
     ) -> Result<Vec<Box<dyn Resource>>, ShinkaiDBError> {
-        let router = self.get_global_resource_router()?;
+        let router = self.get_profile_resource_router(profile)?;
         let resource_pointers = router.vector_search(query, num_of_resources);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(res_pointer.db_key, &(res_pointer.resource_type))?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
         }
 
         Ok(resources)
@@ -307,23 +358,24 @@ impl ShinkaiDB {
         &self,
         query: Embedding,
         num_of_docs: u64,
+        profile: &ShinkaiName,
     ) -> Result<Vec<DocumentResource>, ShinkaiDBError> {
-        let router = self.get_global_resource_router()?;
+        let router = self.get_profile_resource_router(profile)?;
         let resource_pointers = router.vector_search(query, num_of_docs);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_document(res_pointer.db_key)?);
+            resources.push(self.get_document(&res_pointer.db_key, profile)?);
         }
 
         Ok(resources)
     }
 
     /// Creates a global resource router if one does not exist in the DB.
-    pub fn init_global_resource_router(&self) -> Result<(), ShinkaiDBError> {
-        if let Err(_) = self.get_global_resource_router() {
+    pub fn init_profile_resource_router(&self, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        if let Err(_) = self.get_profile_resource_router(profile) {
             let router = ResourceRouter::new();
-            self.save_global_resource_router(&router)?;
+            self.save_profile_resource_router(&router, profile)?;
         }
         Ok(())
     }

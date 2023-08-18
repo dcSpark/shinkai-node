@@ -81,11 +81,11 @@ impl ResourceRouter {
         }
     }
 
-    /// A hard-coded DB key for the global resource router in Topic::Resources.
+    /// A hard-coded DB key for the Profile Resource router in Topic::Resources.
     /// No other resource is allowed to use this db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn global_router_db_key() -> String {
-        "global_resource_router".to_string()
+    pub fn profile_router_db_key() -> String {
+        "profile_resource_router".to_string()
     }
 
     /// Performs a syntactic vector search using a query embedding and list of data tag names.

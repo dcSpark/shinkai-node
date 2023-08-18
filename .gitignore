@@ -2,8 +2,10 @@ target/
 .env
 ./db/
 ./db_tests/
+db_tests/
 ./*.json
 ./*.bin
+*.log
 /models/
 local-ai
 server
