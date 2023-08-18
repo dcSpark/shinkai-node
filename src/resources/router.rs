@@ -84,7 +84,7 @@ impl ResourceRouter {
     /// A hard-coded DB key for the Profile Resource router in Topic::Resources.
     /// No other resource is allowed to use this db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn profile_router_db_key() -> String {
+    pub fn db_key() -> String {
         "profile_resource_router".to_string()
     }
 

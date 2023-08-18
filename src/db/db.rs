@@ -26,6 +26,7 @@ pub enum Topic {
     AllJobsTimeKeyed,
     Resources,
     Agents,
+    Toolkits,
 }
 
 impl Topic {
@@ -48,6 +49,7 @@ impl Topic {
             Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
             Self::Resources => "resources",
             Self::Agents => "agents",
+            Self::Toolkits => "toolkits",
         }
     }
 }
@@ -130,6 +132,7 @@ impl ShinkaiDB {
                 Topic::AllJobsTimeKeyed.as_str().to_string(),
                 Topic::Resources.as_str().to_string(),
                 Topic::Agents.as_str().to_string(),
+                Topic::Toolkits.as_str().to_string(),
             ]
         };
 
@@ -150,50 +153,6 @@ impl ShinkaiDB {
             path: db_path.to_string(),
         })
     }
-
-    // pub fn new(db_path: &str) -> Result<Self, Error> {
-    //     let cf_names = vec![
-    //         Topic::Inbox.as_str(),
-    //         Topic::Peers.as_str(),
-    //         Topic::ProfilesEncryptionKey.as_str(),
-    //         Topic::ProfilesIdentityKey.as_str(),
-    //         Topic::Devices.as_str(),
-    //         Topic::DevicesPermissions.as_str(),
-    //         Topic::ScheduledMessage.as_str(),
-    //         Topic::AllMessages.as_str(),
-    //         Topic::AllMessagesTimeKeyed.as_str(),
-    //         Topic::OneTimeRegistrationCodes.as_str(),
-    //         Topic::ProfilesIdentityType.as_str(),
-    //         Topic::ProfilesPermission.as_str(),
-    //         Topic::ExternalNodeIdentityKey.as_str(),
-    //         Topic::ExternalNodeEncryptionKey.as_str(),
-    //         Topic::AllJobsTimeKeyed.as_str(),
-    //         Topic::Resources.as_str(),
-    //         Topic::Agents.as_str(),
-    //     ];
-
-    //     let mut cfs = vec![];
-    //     for cf_name in &cf_names {
-    //         // Create Options for ColumnFamily
-    //         let mut cf_opts = Options::default();
-    //         cf_opts.create_if_missing(true);
-    //         cf_opts.create_missing_column_families(true);
-
-    //         // Create ColumnFamilyDescriptor for each ColumnFamily
-    //         let cf_desc = ColumnFamilyDescriptor::new(cf_name.to_string(), cf_opts);
-    //         cfs.push(cf_desc);
-    //     }
-
-    //     let mut db_opts = Options::default();
-    //     db_opts.create_if_missing(true);
-    //     db_opts.create_missing_column_families(true);
-    //     let db = DB::open_cf_descriptors(&db_opts, db_path, cfs)?;
-
-    //     Ok(ShinkaiDB {
-    //         db,
-    //         path: db_path.to_string(),
-    //     })
-    // }
 
     /// Fetches the ColumnFamily handle.
     pub fn get_cf_handle(&self, topic: Topic) -> Result<&ColumnFamily, ShinkaiDBError> {
@@ -303,7 +262,7 @@ impl ShinkaiDB {
         Ok(result)
     }
 
-    // we are using a composite_key to avoid the problem that two messages could had
+    // We are using a composite_key to avoid the problem that two messages could had
     // been generated at the same time adding the hash of the message to the
     // key, we can ensure that the key is unique the key is composed by the time
     // the message was generated and the hash of the message so the key is in

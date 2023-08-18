@@ -1,4 +1,4 @@
-use crate::resources::resource_errors::ResourceError;
+use crate::{resources::resource_errors::ResourceError, tools::error::ToolError};
 use core::fmt;
 use shinkai_message_wasm::schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError};
 use std::{io, str::Utf8Error};
@@ -42,6 +42,7 @@ pub enum ShinkaiDBError {
     InvalidIdentityName(String),
     DeviceNameNonExistent(String),
     ShinkaiNameLacksProfile,
+    ToolError(ToolError),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -92,6 +93,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::FailedFetchingValue => write!(f, "Failed fetching value. Likely invalid CF or key."),
             ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
             ShinkaiDBError::BincodeError(e) => write!(f, "Bincode error: {}", e),
+            ShinkaiDBError::ToolError(e) => write!(f, "Tool error: {}", e),
             ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
             ShinkaiDBError::ProfileNotFound(e) => write!(f, "Profile not found: {}", e),
             ShinkaiDBError::DeviceIdentityAlreadyExists(e) => write!(f, "Device identity already exists: {}", e),
@@ -158,6 +160,12 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::InvalidPermissionsType, ShinkaiDBError::InvalidPermissionsType) => true,
             _ => false,
         }
+    }
+}
+
+impl From<ToolError> for ShinkaiDBError {
+    fn from(err: ToolError) -> ShinkaiDBError {
+        ShinkaiDBError::ToolError(err)
     }
 }
 

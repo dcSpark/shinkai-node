@@ -9,6 +9,8 @@ pub enum ToolError {
     RegexError(regex::Error),
     FailedJSONParsing,
     ParseError(String),
+    ToolkitNotFound,
+    ToolkitVersionAlreadyInstalled,
 }
 
 impl fmt::Display for ToolError {
@@ -18,6 +20,10 @@ impl fmt::Display for ToolError {
             ToolError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
             ToolError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             ToolError::ParseError(ref s) => write!(f, "Failed to parse {}", s),
+            ToolError::ToolkitNotFound => write!(f, "Toolkit was not found."),
+            ToolError::ToolkitVersionAlreadyInstalled => {
+                write!(f, "Toolkit with the same version is already installed.")
+            }
         }
     }
 }

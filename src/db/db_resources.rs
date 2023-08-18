@@ -1,6 +1,5 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::document::DocumentResource;
-use crate::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::resources::embeddings::Embedding;
 use crate::resources::resource::RetrievedDataChunk;
 use crate::resources::resource::{Resource, ResourceType};
@@ -22,7 +21,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_profile_resource_router(router, profile)?;
 
         // Insert into the "Resources" column family
-        self.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), bytes, profile)?;
+        self.put_cf_pb(cf, &ResourceRouter::db_key(), bytes, profile)?;
 
         Ok(())
     }
@@ -112,7 +111,7 @@ impl ShinkaiDB {
             let pointer = resource.get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router, profile)?;
-            pb_batch.put_cf_pb(cf, &ResourceRouter::profile_router_db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &ResourceRouter::db_key(), &bytes);
         }
 
         self.write_pb(pb_batch)?;
@@ -166,7 +165,7 @@ impl ShinkaiDB {
     /// Fetches the Global Resource Router from  the DB
     pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<ResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf_pb(Topic::Resources, &ResourceRouter::profile_router_db_key(), profile)?;
+        let bytes = self.get_cf_pb(Topic::Resources, &ResourceRouter::db_key(), profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a DocumentResource object
@@ -345,7 +344,7 @@ impl ShinkaiDB {
         Ok(resources)
     }
 
-    /// Creates a global resource router if one does not exist in the DB.
+    /// Creates a profile resource router if one does not exist in the DB.
     pub fn init_profile_resource_router(&self, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         if let Err(_) = self.get_profile_resource_router(profile) {
             let router = ResourceRouter::new();
