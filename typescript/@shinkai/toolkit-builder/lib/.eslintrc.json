@@ -5,5 +5,5 @@
     "@typescript-eslint/no-unused-vars": 0,
     "no-unpublished-require.md": 0
   },
-  "ignorePatterns": "**/*.test.js"
+  "ignorePatterns": ["**/*.test.js"]
 }

@@ -1,4 +1,8 @@
 {
+  "extends": "./node_modules/gts/tsconfig-google.json",
+  "include": [
+    "src/**/*.ts",
+  ],
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig to read more about this file */
 

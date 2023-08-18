@@ -100,9 +100,10 @@ const tests = path.join(toolName, 'test', 'sample.test.js');
 replaceContents(tests, 'Sample', toolName);
 replaceContents(tests, 'sample', toolName.toLowerCase());
 
-// Remove gitignore ignore package-lock.json
+// Remove gitignore ignore package-lock.json and dist
 const gitignore = path.join(toolName, '.gitignore');
 replaceContents(gitignore, 'package-lock.json', '');
+replaceContents(gitignore, 'dist/', '')
 
 console.log(`
 ✅ New tool ${toolName} created in ${targetFolder}

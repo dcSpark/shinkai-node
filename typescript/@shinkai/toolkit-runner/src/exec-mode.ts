@@ -3,22 +3,30 @@ const util = require('node:util');
 const exec = util.promisify(require('node:child_process').exec);
 const fs = require('fs/promises');
 
-async function runScript(src: string, env: string = '') {
+async function runScript(src: string, env = ''): Promise<string> {
   // Create a temporal file for execution.
-  const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(/0./, '')}.js`;
+  const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
+    /0./,
+    ''
+  )}.js`;
   await fs.writeFile(path, src, 'utf8');
-  const { error, stdout, stderr } = await exec(`${env} node ${path}`);
+  const {error, stdout, stderr} = await exec(`${env} node ${path}`);
   await fs.unlink(path);
 
   if (error || stderr) {
-    return { stdout, error, stderr};
+    return JSON.stringify({stdout, error, stderr});
   }
 
   return stdout;
 }
 
 // Exec mode run once
-export async function execMode(source: string, tool: string, input: string, headers: string): Promise<any> {
+export async function execMode(
+  source: string,
+  tool: string,
+  input: string,
+  headers: string
+): Promise<string> {
   const src = `
   const tools = require('${source}'); 
   setTimeout(() => {
@@ -52,7 +60,10 @@ export async function execMode(source: string, tool: string, input: string, head
   `;
   return await runScript(src);
 }
-export async function validate(source: string, headers: string): Promise<any> {
+export async function validate(
+  source: string,
+  headers: string
+): Promise<string> {
   const src = `
   const tools = require('${source}'); 
   setTimeout(() => {
@@ -72,7 +83,7 @@ export async function validate(source: string, headers: string): Promise<any> {
   return await runScript(src);
 }
 
-export async function execModeConfig(source: string): Promise<any> {
+export async function execModeConfig(source: string): Promise<string> {
   const src = `
     const tools = require('${source}');
   `;

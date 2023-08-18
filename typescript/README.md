@@ -1,8 +1,24 @@
 # Shinkai-Node: Typescript
 
-Contents
+## Summary 
 
-## @shinkai/toolkit-buidler
+The @shinkai namespace contains:
+
+* Toolkits
+  * `@shinkai/toolkit-common`
+  * `@shinkai/toolkit-smtp`
+  * `@shinkai/toolkit-gmail`
+  * `@shinkai/toolkit-goolge-calendar`
+* Example Toolkit
+  * `@shinkai/toolkit-example`
+* Runner - Executor
+  * `@shinkai/toolkit-runner`
+* Libraries
+  * `@shinkai/toolkit-lib`
+  * `@shinkai/builder`
+  
+# @shinkai/toolkit-buidler
+This tool scaffolds a new toolkit.
 
 To create and build a toolkit:
 ```
@@ -17,35 +33,30 @@ npm run test
 
 This creates a new folder called `MyToolName` with a base project template.
 
-The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
+The compiled toolkit is located at `./MyToolName/dist/packaged-shinkai-toolkit.js`
 
-## @shinkai/toolkit-example
+# @shinkai/toolkit-example
 
-This is an DEMO toolkit that contains tools:
-* isEven: detect if a number is even or not 
-* HTTP: perform a http request
+This is a DEMO toolkit that contains tools:
+* isEven: detect if a number is even or not. 
+* isInteger: detect if a number is an integer or not.
 
 ```
 cd shinkai-toolkit-example
 npm ci
 npm run build
 ```
-The compiled toolkit is located at `dist/packaged-shinkai-toolkit.js`
+The compiled toolkit is located at `@shinkai/toolkit-example/dist/packaged-shinkai-toolkit.js`
 
 
-## @shinkai/toolkit-runner
+# @shinkai/toolkit-runner
 
 This is the program that executes compiled `packaged-shinkai-toolkit.js` 
 
-You have two options for using the runner, either as an executable or webserver.
+You have two options for using the runner, either as an executable or web server.
+More information at `@shinkai/toolkit-runner/README.md`
 
-## @shinkai/toolkit-lib
-
-Internal core library for toolkits.
-
-Installation: `npm install --save @shinkai/toolkit-lib`
-
-### As an executable:
+## As an executable:
 
 ```
 cd shinkai-toolkit-runner
@@ -54,7 +65,7 @@ npm run build
 node build/runner.js -e -s ../shinkai-toolkit-example/dist/packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'
 ```
 
-### As a webserver
+## As a webserver
 
 ```
 cd shinkai-toolkit-runner
@@ -68,3 +79,24 @@ Trigger executing a tool inside of a toolkit via network request:
 curl localhost:3000/exec -H "Content-Type: application/json" -d '{"tool":"isEven","input":{"number":2},"source":"<FILE CONTENTS>" }'
 # replace <FILE CONTENTS> with content of your given `packaged-shinkai-toolkit.js`
 ```
+
+# @shinkai/toolkit-lib
+
+Internal core library for toolkits.
+
+Installation: `npm install --save @shinkai/toolkit-lib`
+This library provides introspection and interfaces.
+
+# @shinkai/toolkit-*
+
+## `@shinkai/toolkit-common`
+Implementation of common tools such as HTTP-fetch.
+
+## `@shinkai/toolkit-smtp`
+Send emails via SMTP
+
+## `@shinkai/toolkit-gmail`
+Send emails via Gmail (Requires OAuth)
+
+## `@shinkai/toolkit-goolge-calendar`
+Create events in Google-Calendar (Requires OAuth)
