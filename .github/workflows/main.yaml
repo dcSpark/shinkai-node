@@ -13,7 +13,10 @@ jobs:
         run: docker build -t testing_image -f .github/Dockerfile .
 
       - name: Run tests main cargo tests
-        run: docker run --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
+        run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
+
+      - name: Remove image
+        run: docker rmi testing_image
 
   test-wasm:
     runs-on: self-hosted
@@ -28,4 +31,22 @@ jobs:
         run: docker run --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm
 
       - name: Run tests shinkai-message-wasm wasm-pack tests
-        run: docker run --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
+        run: docker run --rm --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm
+
+      - name: Remove image
+        run: docker rmi testing_image_wasm
+
+  test-shinkai-app:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Build testing image - shinkai-app
+        run: docker build -t testing_image_shinkai_app -f .github/Dockerfile.shinkai-app .
+
+      - name: Run tests shinkai-app unit tests
+        run: docker run --rm --entrypoint /entrypoints/run-app-unit-tests.sh testing_image_shinkai_app
+
+      - name: Remove image
+        run: docker rmi testing_image_shinkai_app
