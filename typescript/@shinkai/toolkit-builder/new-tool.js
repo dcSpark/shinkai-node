@@ -91,7 +91,7 @@ replaceContents(packageJson, 'sample', toolName.toLocaleLowerCase());
 replaceContents(packageJson, 'file:../../toolkit-lib', 'file:../toolkit-lib');
 
 // Replace Exports
-const toolExports = path.join(toolName, 'src', 'Registry.ts');
+const toolExports = path.join(toolName, 'src', 'registry.ts');
 replaceContents(toolExports, 'Sample', toolName);
 replaceContents(toolExports, 'sample', toolName.toLowerCase());
 

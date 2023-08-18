@@ -133,6 +133,8 @@ export class ShinkaiTookitLib {
     switch (type) {
       case DATA_TYPES.BOOLEAN: {
         const val = required ? Joi.boolean().required() : Joi.boolean();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
@@ -140,17 +142,23 @@ export class ShinkaiTookitLib {
         const val = required
           ? Joi.number().integer().required()
           : Joi.number().integer();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
       case DATA_TYPES.FLOAT: {
         const val = required ? Joi.number().required() : Joi.number();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
       case DATA_TYPES.OAUTH:
       case DATA_TYPES.STRING: {
         const val = required ? Joi.string().required() : Joi.string();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
@@ -161,6 +169,8 @@ export class ShinkaiTookitLib {
               .valid(...enumList)
               .required()
           : Joi.string().valid(...enumList);
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
@@ -168,16 +178,22 @@ export class ShinkaiTookitLib {
         const val = required
           ? Joi.string().length(1).required()
           : Joi.string().length(1);
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
       case DATA_TYPES.JSON: {
         const val = required ? Joi.object().required() : Joi.object();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 
       case DATA_TYPES.ISODATE: {
         const val = required ? Joi.date().iso().required() : Joi.date().iso();
+        if (required && isArray)
+          return Joi.array().min(1).items(val).required();
         return isArray ? Joi.array().items(val) : val;
       }
 

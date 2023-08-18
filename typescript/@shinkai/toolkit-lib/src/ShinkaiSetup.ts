@@ -24,11 +24,10 @@ export abstract class ShinkaiSetup {
     const v = await ShinkaiTookitLib.getHeadersValidator();
     const headers = {};
     Object.keys(rawHeader).forEach((key: string) => {
-      const headerName = ShinkaiTookitLib.fieldNameToHeaderName(key);
-      if (!v.transformer[headerName]) {
-        throw new Error(`Header ${headerName} not found`);
+      if (!v.transformer[key]) {
+        throw new Error(`Header ${key} not found`);
       }
-      Object.assign(headers, v.transformer[headerName](rawHeader[key]));
+      Object.assign(headers, v.transformer[key](rawHeader[key]));
     });
     const headerValidation = v.validator.validate(headers);
     if (headerValidation.error) {

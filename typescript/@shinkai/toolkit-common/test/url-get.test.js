@@ -11,4 +11,4 @@ describe('HTTP Test', () => {
     const response = result.response.replace(/[^a-z0-9,]/g, '');
     expect(response).toEqual(`this,1is,2a,3sample,4file,5`);
   });
-});
+}, 15000);

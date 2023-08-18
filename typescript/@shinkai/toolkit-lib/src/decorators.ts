@@ -3,7 +3,7 @@
 import {BaseInput, BaseOutput} from './BaseTool';
 import {ShinkaiTookitLib} from './ShinkaiTookitLib';
 import {DATA_TYPES} from './types';
-import 'reflect-metadata'
+import 'reflect-metadata';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isToolKit(classDef: any) {

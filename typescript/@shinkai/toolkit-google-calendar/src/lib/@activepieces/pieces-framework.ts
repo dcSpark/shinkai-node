@@ -4,6 +4,10 @@ import {
   SHINKAI_AP_INPUT,
 } from './shinkai-activepieces-interface';
 
+export interface PiecePropValueSchema<T> {
+  a?: 1;
+}
+
 export const createAction = (setup: {
   auth: AuthTypeData | Record<string, any>;
   name: string;
@@ -11,6 +15,7 @@ export const createAction = (setup: {
   description: string;
   props: Record<string, any>;
   run: (context: Context) => Promise<any>;
+  sampleData?: any;
 }) => {
   // console.log('createAction', setup);
   return setup;
@@ -36,6 +41,7 @@ export const createTrigger = (setup: {
   type: TriggerStrategy;
   onEnable: (context: Context) => Promise<any>;
   onDisable: (context: Context) => Promise<any>;
+  test?: (context: Context) => Promise<any>;
   run: (context: Context) => Promise<any>;
 }) => {
   // console.log('createTrigger', setup);
@@ -70,75 +76,65 @@ export class PieceAuth {
 
 export enum TriggerStrategy {
   WEBHOOK = 'WEBHOOK',
+  POLLING = 'POLLING',
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type OAuth2PropertyValue = any;
 
+interface PropertySetup<T> {
+  displayName: string;
+  required: boolean;
+  description?: string;
+  defaultValue?: T | string;
+  refreshers?: string[];
+}
+
+interface PropertyOptions<T> {
+  disabled?: boolean;
+  options: {
+    disabled?: boolean;
+    label: string;
+    value: T;
+  }[];
+}
+
+interface PropertyOptionsSetup<T> extends PropertySetup<T> {
+  options:
+    | PropertyOptions<T>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    | ((input: Record<string, any>) => Promise<PropertyOptions<T>>);
+}
+
 export class Property {
-  public static Array(setup: {displayName: string; required: boolean}) {
+  public static Array(setup: PropertySetup<any>) {
     // console.log('Array', setup);
   }
 
-  public static Checkbox(setup: {
-    displayName: string;
-    required: boolean;
-    defaultValue: boolean;
-  }) {
+  public static File(setup: PropertySetup<string>) {
+    // console.log('File', setup);
+  }
+
+  public static Checkbox(setup: PropertySetup<boolean>) {
     // console.log('Checkbox', setup);
   }
 
-  public static ShortText(setup: {
-    displayName: string;
-    required: boolean;
-    description?: string;
-  }) {
+  public static ShortText(setup: PropertySetup<string>) {
     // console.log('ShortText', setup);
   }
-  public static DateTime(setup: {
-    displayName: string;
-    required: boolean;
-    description?: string;
-  }) {
+  public static DateTime(setup: PropertySetup<Date>) {
     // console.log('DateTime', setup);
   }
 
-  public static LongText(setup: {
-    displayName: string;
-    required: boolean;
-    description?: string;
-  }) {
+  public static LongText(setup: PropertySetup<string>) {
     // console.log('LongText', setup);
   }
 
-  public static Dropdown<T>(setup: {
-    displayName: string;
-    required: boolean;
-    refreshers: any[];
-    description?: string;
-    options: (input: Record<string, any>) => Promise<{
-      disabled: boolean;
-      options: {
-        label: string;
-        value: T;
-      }[];
-    }>;
-  }) {
+  public static Dropdown<T>(setup: PropertyOptionsSetup<T>) {
     // console.log('Dropdown', setup);
   }
 
-  public static StaticDropdown<T>(setup: {
-    displayName: string;
-    required: boolean;
-    description?: string;
-    options: {
-      disabled: boolean;
-      options: {
-        label: string;
-        value: T;
-      }[];
-    };
-  }) {
+  public static StaticDropdown<T>(setup: PropertyOptionsSetup<T>) {
     // console.log('StaticDropdown', setup);
   }
 }
