@@ -1,16 +1,19 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_wasm::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
+use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
-use shinkai_message_wasm::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+};
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::{Node};
+use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
-
 
 #[test]
 fn setup() {
@@ -31,16 +34,12 @@ fn tcp_node_test() {
         let (node1_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
 
         let (node2_identity_sk, node2_identity_pk) = unsafe_deterministic_signature_keypair(1);
-        let (node2_encryption_sk, _) = unsafe_deterministic_encryption_keypair(1);
+        let (node2_encryption_sk, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
-        let (node1_commands_sender, node1_commands_receiver): (
-            Sender<NodeCommand>,
-            Receiver<NodeCommand>,
-        ) = bounded(100);
-        let (node2_commands_sender, node2_commands_receiver): (
-            Sender<NodeCommand>,
-            Receiver<NodeCommand>,
-        ) = bounded(100);
+        let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
+            bounded(100);
+        let (node2_commands_sender, node2_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
+            bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name.clone()));
@@ -50,8 +49,8 @@ fn tcp_node_test() {
         let mut node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
-            node1_identity_sk,
-            node1_encryption_sk,
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_sk.clone(),
             0,
             node1_commands_receiver,
             node1_db_path,
@@ -61,8 +60,8 @@ fn tcp_node_test() {
         let mut node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
-            node2_identity_sk,
-            node2_encryption_sk,
+            clone_signature_secret_key(&node2_identity_sk),
+            node2_encryption_sk.clone(),
             0,
             node2_commands_receiver,
             node2_db_path,
@@ -120,11 +119,7 @@ fn tcp_node_test() {
             println!("Node 1 last messages: {:?}", node1_last_messages);
             println!("Node 2 last messages: {:?}", node2_last_messages);
 
-            assert_eq!(
-                node1_last_messages.len(),
-                3,
-                "Node 1 (listening) should have 3 message"
-            );
+            assert_eq!(node1_last_messages.len(), 3, "Node 1 (listening) should have 3 message");
             assert_eq!(
                 node2_last_messages.len(),
                 3,
@@ -137,21 +132,11 @@ fn tcp_node_test() {
                 true,
             );
             assert_eq!(
-                node1_last_messages[1]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .sender
-                    == node1_identity_name.to_string(),
+                node1_last_messages[1].external_metadata.as_ref().unwrap().sender == node1_identity_name.to_string(),
                 true
             );
             assert_eq!(
-                node1_last_messages[1]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .recipient
-                    == node2_identity_name.clone(),
+                node1_last_messages[1].external_metadata.as_ref().unwrap().recipient == node2_identity_name.clone(),
                 true
             );
 
@@ -161,21 +146,11 @@ fn tcp_node_test() {
                 true
             );
             assert_eq!(
-                node2_last_messages[0]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .sender
-                    == node2_identity_name.clone(),
+                node2_last_messages[0].external_metadata.as_ref().unwrap().sender == node2_identity_name.clone(),
                 true
             );
             assert_eq!(
-                node2_last_messages[0]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .recipient
-                    == node1_identity_name.clone(),
+                node2_last_messages[0].external_metadata.as_ref().unwrap().recipient == node1_identity_name.clone(),
                 true
             );
             assert_eq!(
@@ -183,21 +158,11 @@ fn tcp_node_test() {
                 true
             );
             assert_eq!(
-                node2_last_messages[2]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .sender
-                    == node2_identity_name.clone(),
+                node2_last_messages[2].external_metadata.as_ref().unwrap().sender == node2_identity_name.clone(),
                 true
             );
             assert_eq!(
-                node2_last_messages[2]
-                    .external_metadata
-                    .as_ref()
-                    .unwrap()
-                    .recipient
-                    == node1_identity_name.clone(),
+                node2_last_messages[2].external_metadata.as_ref().unwrap().recipient == node1_identity_name.clone(),
                 true
             );
 
@@ -215,13 +180,52 @@ fn tcp_node_test() {
                 ShinkaiMessageHandler::calculate_hash(&node2_last_messages[2])
             );
 
-            // {
-            //     let shinkai_message = node1_last_messages[0].clone();
-            //     let message_wrapper = ShinkaiMessageWrapper::from(&shinkai_message);
-            //     let message_json = serde_json::to_string_pretty(&message_wrapper)
-            //         .expect("Failed to serialize message to JSON");
-            //     println!("Last message from Node 1: {}", message_json);
-            // }
+            // big file test
+            let message_content = std::iter::repeat("a").take(2048).collect::<String>();
+
+            // let message_content = "hola".to_string();
+
+            // println!("content: {:?}", message_content);
+            let unchanged_message = ShinkaiMessageBuilder::new(
+                node1_encryption_sk.clone(),
+                clone_signature_secret_key(&node1_identity_sk),
+                node2_encryption_pk,
+            )
+            .body(message_content.clone())
+            .no_body_encryption()
+            .message_schema_type(MessageSchemaType::TextContent)
+            .internal_metadata(
+                "".to_string(),
+                "".to_string(),
+                EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            )
+            .external_metadata_with_other(
+                node2_identity_name.to_string().clone(),
+                node1_identity_name.to_string().clone(),
+                "".to_string(),
+            )
+            .build()
+            .unwrap();
+
+            println!("unchanged_message: {:?}", unchanged_message);
+
+            node1_commands_sender
+                .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
+            // Get Node2 messages
+            let (res2_sender, res2_receiver) = async_channel::bounded(1);
+            node2_commands_sender
+                .send(NodeCommand::FetchLastMessages {
+                    limit: 5,
+                    res: res2_sender,
+                })
+                .await
+                .unwrap();
+            let node2_last_messages = res2_receiver.recv().await.unwrap();
+            println!("Node 2 last messages: {:?}", node2_last_messages);
         });
 
         // Wait for all tasks to complete

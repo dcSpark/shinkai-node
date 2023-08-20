@@ -116,7 +116,7 @@ impl ShinkaiDB {
         let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
-        let new_code = bs58::encode(random_bytes).into_string();
+        let new_code = hex::encode(random_bytes);
 
         let cf = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
 
@@ -320,7 +320,7 @@ impl ShinkaiDB {
 
         let mut batch = rocksdb::WriteBatch::default();
 
-        // Convert public keys to bs58 encoded strings
+        // Convert public keys to hex encoded strings
         let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
         let signature_pk_string = signature_public_key_to_string(signature_pk);
 

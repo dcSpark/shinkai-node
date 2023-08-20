@@ -406,38 +406,58 @@ impl Node {
             let node_profile_name_clone = self.node_profile_name.clone();
 
             tokio::spawn(async move {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    match socket.read(&mut buffer).await {
-                        Ok(0) => {
-                            // reading 0 bytes signifies the client has closed the connection
-                            return;
-                        }
-                        Ok(n) => {
-                            // println!("{} > TCP: Received message.", addr);
-                            println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
-                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                            let _ = Node::handle_message(
-                                addr,
-                                destination_socket.clone(),
-                                &buffer[..n],
-                                node_profile_name_clone.clone().get_node_name(),
-                                clone_static_secret_key(&encryption_secret_key_clone),
-                                clone_signature_secret_key(&identity_secret_key_clone),
-                                db.clone(),
-                                identity_manager.clone(),
-                            )
-                            .await;
-                            if let Err(e) = socket.flush().await {
-                                eprintln!("Failed to flush the socket: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("{} > TCP: Failed to read from socket; err = {:?}", addr, e);
-                            return;
-                        }
-                    }
+                let mut buffer = Vec::new();
+                socket.read_to_end(&mut buffer).await.unwrap();
+
+                let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                let _ = Node::handle_message(
+                    addr,
+                    destination_socket.clone(),
+                    &buffer,
+                    node_profile_name_clone.clone().get_node_name(),
+                    clone_static_secret_key(&encryption_secret_key_clone),
+                    clone_signature_secret_key(&identity_secret_key_clone),
+                    db.clone(),
+                    identity_manager.clone(),
+                )
+                .await;
+                if let Err(e) = socket.flush().await {
+                    eprintln!("Failed to flush the socket: {}", e);
                 }
+
+                // Previous implementation
+                // let mut buffer = [0u8; BUFFER_SIZE];
+                // loop {
+                //     match socket.read(&mut buffer).await {
+                //         Ok(0) => {
+                //             // reading 0 bytes signifies the client has closed the connection
+                //             return;
+                //         }
+                //         Ok(n) => {
+                //             // println!("{} > TCP: Received message.", addr);
+                //             println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
+                //             let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                //             let _ = Node::handle_message(
+                //                 addr,
+                //                 destination_socket.clone(),
+                //                 &buffer[..n],
+                //                 node_profile_name_clone.clone().get_node_name(),
+                //                 clone_static_secret_key(&encryption_secret_key_clone),
+                //                 clone_signature_secret_key(&identity_secret_key_clone),
+                //                 db.clone(),
+                //                 identity_manager.clone(),
+                //             )
+                //             .await;
+                //             if let Err(e) = socket.flush().await {
+                //                 eprintln!("Failed to flush the socket: {}", e);
+                //             }
+                //         }
+                //         Err(e) => {
+                //             eprintln!("{} > TCP: Failed to read from socket; err = {:?}", addr, e);
+                //             return;
+                //         }
+                //     }
+                // }
             });
         }
     }
@@ -452,14 +472,6 @@ impl Node {
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
-
-    // pub async fn get_encryption_public_key(
-    //     &self,
-    //     identity_public_key: String,
-    // ) -> Result<String, ShinkaiDBError> {
-    //     let db = self.db.lock().await;
-    //     db.get_encryption_public_key(&identity_public_key)
-    // }
 
     // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {

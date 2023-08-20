@@ -53,12 +53,12 @@ pub fn clone_signature_secret_key(original: &SecretKey) -> SecretKey {
 
 pub fn signature_secret_key_to_string(secret_key: SecretKey) -> String {
     let bytes = secret_key.as_bytes();
-    bs58::encode(bytes).into_string()
+    hex::encode(bytes)
 }
 
 pub fn signature_public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.as_bytes();
-    bs58::encode(bytes).into_string()
+    hex::encode(bytes)
 }
 
 pub fn signature_public_key_to_string_ref(public_key: &PublicKey) -> String {
@@ -66,7 +66,7 @@ pub fn signature_public_key_to_string_ref(public_key: &PublicKey) -> String {
 }
 
 pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SecretKey, &'static str> {
-    match bs58::decode(encoded_key).into_vec() {
+    match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == ed25519_dalek::SECRET_KEY_LENGTH {
                 SecretKey::from_bytes(&bytes).map_err(|_| "Failed to create SecretKey from bytes")
@@ -74,12 +74,12 @@ pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SecretKey, &'
                 Err("Decoded string length does not match SecretKey length")
             }
         }
-        Err(_) => Err("Failed to decode bs58 string"),
+        Err(_) => Err("Failed to decode hex string"),
     }
 }
 
 pub fn string_to_signature_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
-    match bs58::decode(encoded_key).into_vec() {
+    match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == ed25519_dalek::PUBLIC_KEY_LENGTH {
                 PublicKey::from_bytes(&bytes).map_err(|_| "Failed to create PublicKey from bytes")
@@ -87,7 +87,7 @@ pub fn string_to_signature_public_key(encoded_key: &str) -> Result<PublicKey, &'
                 Err("Decoded string length does not match PublicKey length")
             }
         }
-        Err(_) => Err("Failed to decode bs58 string"),
+        Err(_) => Err("Failed to decode hex string"),
     }
 }
 
@@ -95,7 +95,7 @@ pub fn hash_signature_public_key(public_key: &PublicKey) -> String {
     let mut hasher = Sha256::new();
     hasher.update(public_key.as_bytes());
     let hash = hasher.finalize();
-    bs58::encode(hash).into_string()
+    hex::encode(hash)
 }
 
 pub fn sign_message(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
@@ -121,7 +121,7 @@ pub fn sign_message(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
     };
 
     let signature = keypair.sign(message_hash.as_slice());
-    bs58::encode(signature.to_bytes()).into_string()
+    hex::encode(signature.to_bytes())
 }
 
 pub fn verify_signature(
@@ -139,7 +139,7 @@ pub fn verify_signature(
     };
 
     // Decode the base58 signature to bytes
-    let signature_bytes = bs58::decode(base58_signature).into_vec()?;
+    let signature_bytes = hex::decode(base58_signature)?;
 
     // Convert the bytes to Signature
     let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes)?;

@@ -667,6 +667,36 @@ async fn registration_profile_node(
             ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
             "Node has the right subidentity"
         );
+
+        // Big ass message sent from node1 main to node2 main
+        // It tests that the protocol can handle big messages above the previous 2048 bytes
+        {
+             let message_content = std::iter::repeat("n").take(10_000_000).collect::<String>();
+
+             // let message_content = "hola".to_string();
+ 
+             // println!("content: {:?}", message_content);
+             let unchanged_message = ShinkaiMessageBuilder::new(
+                 node1_encryption_sk.clone(),
+                 clone_signature_secret_key(&node1_identity_sk),
+                 node2_encryption_pk,
+             )
+             .body(message_content.clone())
+             .no_body_encryption()
+             .message_schema_type(MessageSchemaType::TextContent)
+             .internal_metadata(
+                 "".to_string(),
+                 "".to_string(),
+                 EncryptionMethod::DiffieHellmanChaChaPoly1305,
+             )
+             .external_metadata_with_other(
+                 node2_identity_name.to_string().clone(),
+                 node1_identity_name.to_string().clone(),
+                 "".to_string(),
+             )
+             .build()
+             .unwrap();
+        }
     }
 }
 
