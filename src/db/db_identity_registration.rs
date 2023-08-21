@@ -286,14 +286,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_code_info(
-        &self,
-        cf_codes: &rocksdb::ColumnFamily,
-        registration_code: &str,
-    ) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
+    pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
+        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
         match self.db.get_cf(cf_codes, registration_code)? {
             Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
-            None => return Err(ShinkaiDBError::CodeNonExistent),
+            None => Err(ShinkaiDBError::CodeNonExistent),
         }
     }
 

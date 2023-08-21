@@ -88,6 +88,11 @@ impl IdentityManager {
             eprintln!("YAY! first profile added!");
             self.is_ready = true;
         }
+
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         Ok(())
     }
 
@@ -99,6 +104,11 @@ impl IdentityManager {
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
         println!("add_device_subidentity > device: {}", device);
         self.local_identities.push(Identity::Device(device.clone()));
+
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         Ok(())
     }
 
@@ -109,6 +119,11 @@ impl IdentityManager {
     }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
+
         let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
 
         // If the node name matches local node, search in self.identities
@@ -149,7 +164,16 @@ impl IdentityManager {
         db.get_agent(agent_id).ok().flatten()
     }
 
+    // Primarily for testing
+    pub fn get_all_subidentities_devices_and_agents(&self) -> Vec<Identity> {
+        self.local_identities.clone()
+    }
+
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
 
@@ -179,6 +203,7 @@ impl IdentityManager {
     }
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
+        println!("identities_manager identities: {:?}", self.local_identities); 
         self.local_identities.clone()
     }
 
@@ -188,6 +213,7 @@ impl IdentityManager {
     }
 
     pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+        println!("identities_manager identities: {:?}", self.local_identities); 
         self.local_identities.iter().find(|identity| {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
