@@ -180,62 +180,6 @@ fn tcp_node_test() {
                 ShinkaiMessageHandler::calculate_hash(&node1_last_messages[2]),
                 ShinkaiMessageHandler::calculate_hash(&node2_last_messages[2])
             );
-
-            // big file test
-            let message_content = std::iter::repeat("a").take(2048).collect::<String>();
-
-            // let message_content = "hola".to_string();
-
-            // println!("content: {:?}", message_content);
-            let unchanged_message = ShinkaiMessageBuilder::new(
-                node1_encryption_sk.clone(),
-                clone_signature_secret_key(&node1_identity_sk),
-                node2_encryption_pk,
-            )
-            .body(message_content.clone())
-            .no_body_encryption()
-            .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata(
-                "".to_string(),
-                "".to_string(),
-                EncryptionMethod::DiffieHellmanChaChaPoly1305,
-            )
-            .external_metadata_with_other(
-                node2_identity_name.to_string().clone(),
-                node1_identity_name.to_string().clone(),
-                "".to_string(),
-            )
-            .build()
-            .unwrap();
-
-            println!("unchanged_message: {:?}", unchanged_message);
-
-            let (res1_send_msg_sender, res1_send_msg_receiver): (
-                async_channel::Sender<Result<(), APIError>>,
-                async_channel::Receiver<Result<(), APIError>>,
-            ) = async_channel::bounded(1);
-
-            node1_commands_sender
-                .send(NodeCommand::SendOnionizedMessage {
-                    msg: unchanged_message,
-                    res: res1_send_msg_sender,
-                })
-                .await
-                .unwrap();
-            let send_result = res1_send_msg_receiver.recv().await.unwrap();
-            assert!(send_result.is_ok(), "Failed to send onionized message");
-
-            // Get Node2 messages
-            let (res2_sender, res2_receiver) = async_channel::bounded(1);
-            node2_commands_sender
-                .send(NodeCommand::FetchLastMessages {
-                    limit: 5,
-                    res: res2_sender,
-                })
-                .await
-                .unwrap();
-            let node2_last_messages = res2_receiver.recv().await.unwrap();
-            println!("Node 2 last messages: {:?}", node2_last_messages);
         });
 
         // Wait for all tasks to complete

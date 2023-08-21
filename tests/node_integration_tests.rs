@@ -563,7 +563,7 @@ fn subidentity_registration() {
                 );
 
                 // Check that the content is encrypted
-                println!("Message to check: {:?}", message_to_check.clone());
+                eprintln!("Message to check: {:?}", message_to_check.clone());
                 assert_eq!(
                     ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
                     true,
