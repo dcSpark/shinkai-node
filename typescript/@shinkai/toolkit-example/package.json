@@ -9,8 +9,8 @@
     "clean": "gts clean && rm -rf dist",
     "compile": "webpack",
     "fix": "gts fix",
-    "tools": "EMIT_TOOLS=1 npx ts-node src/registry.ts > toolkit-setup.json && cat toolkit-setup.json",
-    "build": "npm run compile && npm run tools"
+    "toolkit-json": "EMIT_TOOLS=1 npx ts-node src/registry.ts > toolkit-setup.json && cat toolkit-setup.json",
+    "build": "npm run compile && npm run toolkit-json"
   },
   "author": "",
   "license": "ISC",

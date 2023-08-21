@@ -1,14 +1,42 @@
-# Shinkai-Tools-Example
+# Shinkai-Toolkit
 
-Shinkai-Tools-Example collection of example tools for Shinkai-Node.
+## Building & Testing
 
-## Generate Tools Definition
+### Compile 
+This command generates the complete packaged output toolkit in `./dist/packaged-shinkai-toolkit.js`
 
-From source: `npm run tools`  
-or  
-From compiled code: `EMIT_TOOLS=1 node dist/packaged-shinkai-toolkit.js`
+```bash
+npm run compile
+```
 
-Example:
+Note, before submitting the packaged toolkit anywhere, we recommend renaming the file to include your toolkit name.
+
+### Test
+
+To test the toolkit you can run:
+
+```bash
+npm run test
+```
+
+
+### Generate Toolkit JSON
+
+Generate the Toolkit JSON which holds all relevant definitions for running the toolkit. Your compiled toolkit includues the JSON internally (which the Shinkai node extracts itself), so this is mainly for testing/verifying everything is in order.
+
+You can either run it from the source code using npm:
+```bash
+npm run toolkit-json
+```
+
+Or extract it from the packaged toolkit:
+
+```bash
+EMIT_TOOLS=1 node dist/packaged-shinkai-toolkit.js
+```
+
+#### Output Example
+
 ```json
 
 {
@@ -42,13 +70,15 @@ Example:
 }
 ```
 
-## Available Decorators
-### Interfaces
+## Development
+
+### Available Decorators
+#### Interfaces
   `@isTool` : Define tool
   `@output(string)` : Define input for tool 
   `@input(string)` : Define output for tool
 
-### Input/Output Fields
+#### Input/Output Fields
   `@isOptional` : Field is optional (undefined)  
   `@isRequired` : Field is required  
   `@description(string)` : Annotate field description    
@@ -62,20 +92,8 @@ Example:
   `@isEnum(string[], string?)` : Field is ENUM. First field for valid values. Allows optional description.
   `@isArray` : Mark type as Array.  
   
-NOTE: string, number, boolean types can be infered. e.g., 
+NOTE: string, number, boolean types can be inferred. e.g., 
 ```
 @description('Weight in KG')
 weight: number
 ```
-## Compile Output
-`npm run compile`
-
-This command generates the complete source in `./dist/packaged-shinkai-toolkit.js`
-
-## Test
-`npm run test`
-
-
-
-
-
