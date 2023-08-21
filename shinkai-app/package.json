@@ -28,7 +28,6 @@
     "@yudiel/react-qr-scanner": "^1.1.10",
     "@zxing/browser": "^0.1.4",
     "axios": "^1.4.0",
-    "bs58": "^5.0.0",
     "curve25519-js": "^0.0.4",
     "ionicons": "^7.0.0",
     "jsbi": "^4.3.0",
