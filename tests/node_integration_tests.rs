@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
+use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
@@ -19,7 +20,7 @@ use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityType, StandardIdentity};
+use shinkai_node::schemas::identity::{Identity, IdentityType, StandardIdentity};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -41,7 +42,8 @@ fn subidentity_registration() {
     rt.block_on(async {
         let node1_identity_name = "@@node1.shinkai";
         let node2_identity_name = "@@node2.shinkai";
-        let node1_subidentity_name = "main_profile_node1";
+        let node1_subidentity_name = "main";
+        let node1_device_name = "node1_device";
         let node2_subidentity_name = "main_profile_node2";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -131,7 +133,7 @@ fn subidentity_registration() {
             "Node 2 subidentity sk: {:?}",
             signature_secret_key_to_string(clone_signature_secret_key(&node2_subidentity_sk))
         );
-        println!(
+        eprintln!(
             "Node 2 subidentity pk: {:?}",
             signature_public_key_to_string(node2_subidentity_pk)
         );
@@ -157,32 +159,42 @@ fn subidentity_registration() {
         eprintln!("Starting nodes");
         // Start node1 and node2
         let node1_handler = tokio::spawn(async move {
-            println!("\n\n");
-            println!("Starting node 1");
+            eprintln!("\n\n");
+            eprintln!("Starting node 1");
             let _ = node1.await.start().await;
         });
 
         let node2_handler = tokio::spawn(async move {
-            println!("\n\n");
-            println!("Starting node 2");
+            eprintln!("\n\n");
+            eprintln!("Starting node 2");
             let _ = node2.await.start().await;
         });
 
         let interactions_handler = tokio::spawn(async move {
-            println!("Starting interactions");
-            println!("Registration of Subidentities");
+            eprintln!("Starting interactions");
+            eprintln!("Registration of Subidentities");
 
             // Register a Profile in Node1 and verifies it
             {
                 eprintln!("Register a Profile in Node1 and verifies it");
-                registration_profile_node(
+                // registration_profile_node(
+                //     node1_commands_sender.clone(),
+                //     node1_subidentity_name,
+                //     node1_identity_name,
+                //     node1_subencryption_sk_clone.clone(),
+                //     node1_encryption_pk,
+                //     clone_signature_secret_key(&node1_subidentity_sk),
+                //     1,
+                // )
+                // .await;
+                api_registration_device_node(
                     node1_commands_sender.clone(),
                     node1_subidentity_name,
                     node1_identity_name,
                     node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
                     clone_signature_secret_key(&node1_subidentity_sk),
-                    1,
+                    node1_device_name,
                 )
                 .await;
             }
@@ -391,7 +403,7 @@ fn subidentity_registration() {
                 )
                 .await;
 
-                println!("Sending message from Node 1 subidentity to Node 1 subidentity 2");
+                eprintln!("Sending message from Node 1 subidentity to Node 1 subidentity 2");
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
                 let unchanged_message = ShinkaiMessageBuilder::new(
@@ -470,6 +482,8 @@ fn subidentity_registration() {
                     node1_subidentity_name_2.to_string(),
                     "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right recipient."
                 );
+
+                // Check that identity exists in identity manager
             }
 
             // Send message from Node 1 subidentity to Node 2 subidentity
@@ -527,7 +541,9 @@ fn subidentity_registration() {
                             .unwrap();
                         let node2_last_messages = res2_receiver.recv().await.unwrap();
 
-                        if node2_last_messages[0].body.clone().unwrap().content == unchanged_message.body.clone().unwrap().content {
+                        if node2_last_messages[0].body.clone().unwrap().content
+                            == unchanged_message.body.clone().unwrap().content
+                        {
                             break;
                         }
 
@@ -691,6 +707,32 @@ async fn registration_profile_node(
             ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
             "Node has the right subidentity"
         );
+
+        // use GetAllSubidentitiesDevicesAndAgents to check if the subidentity is registered
+        let (res_all_subidentities_devices_and_agents_sender, res_all_subidentities_devices_and_agents_receiver): (
+            async_channel::Sender<Result<Vec<Identity>, APIError>>,
+            async_channel::Receiver<Result<Vec<Identity>, APIError>>,
+        ) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+                res_all_subidentities_devices_and_agents_sender,
+            ))
+            .await
+            .unwrap();
+        let node2_all_subidentities_devices_and_agents = res_all_subidentities_devices_and_agents_receiver
+            .recv()
+            .await
+            .unwrap()
+            .unwrap();
+
+        eprintln!(
+            "{}",
+            format!(
+                "{} subidentity: {:?}",
+                node_profile_name,
+                node2_all_subidentities_devices_and_agents[0].get_full_identity_name()
+            )
+        );
     }
 }
 
@@ -784,12 +826,12 @@ async fn api_registration_profile_node(
             node_encryption_pk.clone(),
             permissions,
             code_type,
-            "main_profile_node1".to_string().clone(),
+            "main".to_string().clone(),
             node_identity_name.to_string().clone(),
         )
         .expect("Failed to create registration message");
 
-        println!("Msg: {:?}", msg);
+        eprintln!("Msg: {:?}", msg);
 
         let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
         node_commands_sender
@@ -799,9 +841,15 @@ async fn api_registration_profile_node(
             })
             .await
             .unwrap();
-        let node_registration_code = res_registraton_receiver.recv().await.unwrap();
+        let node_registration_code = match res_registraton_receiver.recv().await {
+            Ok(code) => code,
+            Err(e) => {
+                eprintln!("Error receiving node registration code: {:?}", e);
+                panic!("Error receiving node registration code: {:?}", e);
+            }
+        };
 
-        println!("node_registration_code: {:?}", node_registration_code);
+        eprintln!("node_registration_code: {:?}", node_registration_code);
 
         let code_message = ShinkaiMessageBuilder::use_code_registration(
             subidentity_encryption_sk.clone(),
@@ -865,6 +913,94 @@ async fn api_registration_profile_node(
         assert_eq!(
             node2_all_subidentities[identities_number - 1].full_identity_name,
             ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
+            "Node has the right subidentity"
+        );
+    }
+}
+
+async fn api_registration_device_node(
+    node_commands_sender: Sender<NodeCommand>,
+    node_profile_name: &str,
+    node_identity_name: &str,
+    subidentity_encryption_sk: EncryptionStaticKey,
+    node_encryption_pk: EncryptionPublicKey,
+    subidentity_signature_sk: SignatureStaticKey,
+    profile_name_with_device: &str,
+) {
+    {
+        let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::LocalCreateRegistrationCode {
+                permissions: IdentityPermissions::Admin,
+                code_type: RegistrationCodeType::Device("main".to_string()),
+                res: res_registration_sender,
+            })
+            .await
+            .unwrap();
+        let node_registration_code = res_registraton_receiver.recv().await.unwrap();
+
+        let code_message = ShinkaiMessageBuilder::use_code_registration(
+            subidentity_encryption_sk.clone(),
+            clone_signature_secret_key(&subidentity_signature_sk),
+            node_encryption_pk,
+            node_registration_code.to_string(),
+            IdentityType::Device.to_string(),
+            IdentityPermissions::Admin.to_string(),
+            profile_name_with_device.to_string().clone(),
+            "".to_string(),
+            node_identity_name.to_string(),
+        )
+        .unwrap();
+
+        eprintln!("code_message: {:?}", code_message);
+
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);
+
+        eprintln!("node_commands_sender: {:?}", node_commands_sender);
+        eprintln!("res_use_registration_sender: {:?}", res_use_registration_sender);
+        node_commands_sender
+            .send(NodeCommand::APIUseRegistrationCode {
+                msg: code_message,
+                res: res_use_registration_sender,
+            })
+            .await
+            .unwrap();
+        let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
+        eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
+        match node2_use_registration_code {
+            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Err(e) => panic!("Registration code error: {:?}", e),
+        }
+
+        // tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let (res_all_subidentities_sender, res_all_subidentities_receiver): (
+            async_channel::Sender<Result<Vec<Identity>, APIError>>,
+            async_channel::Receiver<Result<Vec<Identity>, APIError>>,
+        ) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+                res_all_subidentities_sender,
+            ))
+            .await
+            .unwrap();
+        let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
+        eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
+
+        assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
+        eprintln!(
+            "{}",
+            format!(
+                "{} subidentity: {:?}",
+                node_profile_name,
+                node2_all_subidentities[0].get_full_identity_name()
+            )
+        );
+        assert_eq!(
+            node2_all_subidentities[1].get_full_identity_name(),
+            format!("{}/main/device/{}", node_identity_name, profile_name_with_device),
             "Node has the right subidentity"
         );
     }

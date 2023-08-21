@@ -7,7 +7,7 @@ use crate::{
         node_message_handlers::{ping_pong, PingPong},
     },
     schemas::{
-        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
+        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
     },
 };
@@ -20,7 +20,7 @@ use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{
         inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
+        shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
@@ -595,6 +595,10 @@ impl Node {
         let registration_code: RegistrationCode = serde_json::from_str(&content).map_err(|e| NodeError {
             message: format!("Failed to deserialize the content: {}", e),
         })?;
+        println!(
+            "handle_registration_code_usage> registration_code: {:?}",
+            registration_code
+        );
 
         // Extract values from the ShinkaiMessage
         let code = registration_code.code;
@@ -611,6 +615,7 @@ impl Node {
         println!("handle_registration_code_usage> code: {:?}", code);
         println!("identity_type: {:?}", identity_type);
         println!("registration name: {}", registration_name);
+        println!("permission_type: {:?}", permission_type);
 
         let db = self.db.lock().await;
         // TODO: remove this
@@ -618,7 +623,7 @@ impl Node {
         db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
-                &code,
+                &code.clone(),
                 self.node_profile_name.get_node_name().as_str(),
                 registration_name.as_str(),
                 &identity_pk,
@@ -688,15 +693,54 @@ impl Node {
                         }
                     }
                     IdentityType::Device => {
+                        // use get_code_info to get the profile name
+                        let db = self.db.lock().await;
+                        let code_info = db.get_registration_code_info(code.clone().as_str()).unwrap();
+                        let profile_name = match code_info.code_type {
+                            RegistrationCodeType::Device(profile_name) => profile_name,
+                            _ => return Err(Box::new(ShinkaiDBError::InvalidData)),
+                        };
+                        std::mem::drop(db);
+
+                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+
+                        // Check if the profile exists in the identity_manager
+                        {
+                            let mut identity_manager = self.identity_manager.lock().await;
+                            let profile_identity_name = ShinkaiName::from_node_and_profile(
+                                self.node_profile_name.get_node_name(),
+                                profile_name.clone(),
+                            )
+                            .unwrap();
+                            if identity_manager
+                                .find_by_identity_name(profile_identity_name.clone())
+                                .is_none()
+                            {
+                                // If the profile doesn't exist, create and add it
+                                let profile_identity = StandardIdentity {
+                                    full_identity_name: profile_identity_name.clone(),
+                                    addr: None,
+                                    profile_encryption_public_key: Some(encryption_pk_obj),
+                                    profile_signature_public_key: Some(signature_pk_obj),
+                                    node_encryption_public_key: self.encryption_public_key.clone(),
+                                    node_signature_public_key: self.identity_public_key.clone(),
+                                    identity_type: StandardIdentityType::Profile,
+                                    permission_type: IdentityPermissions::Admin,
+                                };
+                                identity_manager.add_profile_subidentity(profile_identity).await?;
+                            }
+                        }
+
                         // Logic for handling device identity
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
-                        let full_identity_name = ShinkaiName::from_node_and_profile(
+                        let full_identity_name = ShinkaiName::from_node_and_profile_and_type_and_name(
                             self.node_profile_name.get_node_name(),
+                            profile_name,
+                            ShinkaiSubidentityType::Device,
                             registration_name.clone(),
                         )
                         .unwrap();
-                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
 
                         let device_identity = DeviceIdentity {
                             full_identity_name,
