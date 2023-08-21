@@ -1,6 +1,17 @@
 # Shinkai Tool Runner
 
-This tool can be run as an HTTP server or as an executable.
+The Shinkai Tool Runner can be used as either an HTTP server (production) or as an executable (for testing).
+
+## Compilation
+
+Before using the runner you first need to build it:
+
+```
+npm i
+npm run build
+```
+
+## Exec Mode
 
 ```
 node build/runner.js -h
@@ -19,154 +30,138 @@ Options:
   -h, --help                   display help for command
 ```
 
-## Exec Mode
+### Executing A Tool
 
-### Execute Tool:
+**IMPORTANT** This will execute ANY provided source code on your local machine. Thus please ensure that you only run toolkits from known trusted sources (unless you are on a sandboxed machine).
 
-This is the standard execution for testing tools.  
-**IMPORTANT** This will execute ANY provided source code, please run only code from known sources.  
-This is intended for unit testing and development.
+This method is intended for unit testing and development.
 
-`-e -s <source>`
+```
+node build/runner.js -e -s packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'
+```
 
-EXAMPLE:
+Response:
 
-`node runner.js -e -s packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'`
-> `{"isEven":true}`
+```
+> {"isEven":true}
+```
 
-### Validate Setup:
+### Validate Toolkit Headers
 
-This will execute the internal `validateHeaders()` function that validates that API keys are OK and are accepted by the required services.  
-`-e -s <source> -v`
+You can execute the toolkit's internal `validateHeaders()` function which validates that the provided API keys (or other headers) are accepted by the required services and work.
 
-EXAMPLE:
+```
+node build/runner.js -e -v -s packaged-shinkai-toolkit.js -x '{ "x-shinkai-my-header": "my-api-key" }'
+```
 
-`node runner.js -e -s packaged-shinkai-toolkit.js -x '{ "x-shinkai-my-header": "TEST" }'`
-> `true`
+Response:
 
-### Generate Toolkit Interface:
-`-e -s <source> -c`
+```
+> true
+```
 
-EXAMPLE:
+### Generate Toolkit JSON:
 
-`node runner.js -e -s packaged-shinkai-toolkit.js -c`  
+You can generate the Toolkit JSON from the packaged toolkit using the following:
 
+```
+node build/runner.js -e -s packaged-shinkai-toolkit.js -c
+```
+
+Response:
+
+```
 > `{
-  "toolkit-name": "@shinkai/toolkit-example",
-  "author": "shinkai-dev",
-  "version": "0.0.1",
-  "executionSetup": {},
-  "tools": [
-    {
-      "name": "CompareNumbers",
-      "description": "Check if number is greater than, lower than or equal to another number.",
-      "input": [
-        {
-          "name": "number",
-          "type": "INT",
-          "description": "Number to check if greater than, lower than or equal than.",
-          "isOptional": false,
-          "wrapperType": "none",
-          "ebnf": "(-?[0-9]+)"
-        },
-        {
-          "name": "numberToCompare",
-          "type": "INT",
-          "description": "Number to compare with.",
-          "isOptional": false,
-          "wrapperType": "none",
-          "ebnf": "(-?[0-9]+)"
-        }
-      ],
-      "output": [
-        {
-          "name": "comparison",
-          "type": "ENUM",
-          "description": "Result of the comparison.",
-          "isOptional": false,
-          "wrapperType": "none",
-          "enum": [
-            "GT",
-            "LT",
-            "EQ"
-          ],
-          "ebnf": "(\"GT\" | \"LT\" | \"EQ\")"
-        }
-      ],
-      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")"
-    },
-    {
-      "name": "isEven",
-      "description": "Check if a number is even",
-      "input": [
-        {
-          "name": "number",
-          "type": "INT",
-          "description": "Integer number to check if is even.",
-          "isOptional": false,
-          "wrapperType": "none",
-          "ebnf": "(-?[0-9]+)"
-        }
-      ],
-      "output": [
-        {
-          "name": "isEven",
-          "type": "BOOL",
-          "description": "Result of the check. True if the number is even.",
-          "isOptional": false,
-          "wrapperType": "none",
-          "ebnf": "(\"true\"|\"false\")"
-        }
-      ],
-      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")\nnumber ::= (-?[0-9]+)\nisEven ::= (\"true\"|\"false\")"
-    }
-  ]
-}
-`
+> "toolkit-name": "@shinkai/toolkit-example",
+> "author": "shinkai-dev",
+> "version": "0.0.1",
+> "executionSetup": {},
+> ...
+> }
+```
 
-## Http Mode
+## Webserver Mode (HTTP)
 
-### Run server
-`node runner.js -w`  
+In webserver mode, the toolkit runner offers applications (like the Shinkai node or otherwise) the ability to easily execute tools by providing all data through HTTP requests.
 
-**IMPORTANT**: This is a simple server, meant to run in trusted networks as it executes custom code.
+Of note, the runner in webserver mode is meant to run sandboxed and not be publicly accessible as it executes whatever code is within the toolkit. Be careful, when using the runner outside of the Shinkai node in production.
 
-### Request Tool Execution
-POST `json` @ /exec   
+To start the runner in webserver mode on port 3000, simply do:
 
-JSON Fields:
-* `tool`: Tool Name e.g., isEven
-* `input`: Tool Input Data: e.g., { "number": 2 }
-* `source`: Full JS blob e.g., "(() => { // webpackBootstrrap\n var \_\_webpack_modules__ = ({..."
+```
+node build/runner.js -w -p 3000
+```
 
-Headers:
-* `x-shinkai-*`: Custom Fields
+### Tool Execution - POST `/exec`
 
-EXAMPLE:
+This endpoint runs the `tool`, from the provided `source` JS packaged toolkit, using the given `input` json, with the supplied headers.
 
-`localhost:3000/exec -H "Content-Type: application/json" -d @run-is-even.json`
-> `{"isEven":true}`
+#### JSON Data Fields:
 
-### Request Validate Setup
-POST `json` @ /validate
-JSON Fields
-* `source` : Full JS blob e.g., "(() => { // webpackBootstrrap\n var \_\_webpack_modules__ = ({..."
+- `tool`: Tool Name e.g., `"isEven"`
+- `input`: Tool Input Data JSON: e.g., `{ "number": 2 }`
+- `source`: Full Packaged Toolkit JS string e.g., `"(() => { // webpackBootstrrap\n var \_\_webpack_modules\_\_ = ({..."`
 
-Headers:
-* `x-shinkai-*`: Custom Fields
+#### Headers:
 
-EXAMPLE:
+- `x-shinkai-*`: Custom Fields
 
-`localhost:3000/validate -H "Content-Type: application/json" -d @run-is-even.json`
-> `true`
+#### Example Request
 
-### Request Tool Interface
-POST `json` @ /config  
-JSON Fields:
-* `source`: Full JS blob e.g., "(() => { // webpackBootstrrap\n var \_\_webpack_modules__ = ({..."
+```
+curl localhost:3000/exec -H "Content-Type: application/json" -d @run-is-even.json
+```
 
-EXAMPLE:
+Response:
 
-`curl localhost:3000/config -H "Content-Type: application/json" -d @run-is-even.json`
-> `{"toolkit-name":"Shinkai Toolkit","author":"local.shinkai","version":"0.0.1","tools":[{"name":"isEven","description":"Check if a number is even","input":[{"name":"number","type":"INT","description":"Integer number to check if is even.","isOptional":false,"wrapperType":"none"}],"output":[{"name":"isEven","type":"BOOL","description":"Result of the check. True if the number is even.","isOptional":false,"wrapperType":"none"}]}]}`
+```
+> {"isEven":true}
+```
 
+### Validate Toolkit Headers - POST `/validate`
+
+Executes the toolkit's internal `validateHeaders()` function which validates that the provided API keys (or other headers) are accepted by the required services and work.
+
+#### JSON Data Fields:
+
+- `source` : Full Packaged Toolkit JS string e.g., `"(() => { // webpackBootstrrap\n var \_\_webpack_modules\_\_ = ({..."`
+
+#### Headers:
+
+- `x-shinkai-*`: Custom Fields
+
+#### Example Request
+
+```
+curl localhost:3000/validate -H "Content-Type: application/json" -d @validate.json
+```
+
+Response:
+
+```
+> true
+```
+
+### Generate Toolkit JSON - POST `/toolkit_json`
+
+#### JSON Data Fields:
+
+- `source` : Full Packaged Toolkit JS string e.g., `"(() => { // webpackBootstrrap\n var \_\_webpack_modules\_\_ = ({..."`
+
+#### Example Request
+
+```
+curl localhost:3000/config -H "Content-Type: application/json" -d @run-is-even.json
+```
+
+Response:
+
+```
+> `{
+> "toolkit-name": "@shinkai/toolkit-example",
+> "author": "shinkai-dev",
+> "version": "0.0.1",
+> "executionSetup": {},
+> ...
+> }
+```
