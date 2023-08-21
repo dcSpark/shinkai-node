@@ -17,8 +17,8 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 };
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::Node;
 use shinkai_node::network::node_api::APIError;
+use shinkai_node::network::Node;
 use shinkai_node::schemas::identity::{IdentityType, StandardIdentity};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -244,16 +244,21 @@ fn subidentity_registration() {
                 eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
-                    async_channel::Sender<NodeCommand>,
-                    async_channel::Receiver<NodeCommand>,
+                    async_channel::Sender<Result<(), APIError>>,
+                    async_channel::Receiver<Result<(), APIError>>,
                 ) = async_channel::bounded(1);
 
                 node2_commands_sender
-                    .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                    .send(NodeCommand::SendOnionizedMessage {
+                        msg: unchanged_message,
+                        res: res_send_msg_sender,
+                    })
                     .await
                     .unwrap();
 
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                let send_result = res_send_msg_receiver.recv().await.unwrap();
+                assert!(send_result.is_ok(), "Failed to send onionized message");
+                tokio::time::sleep(Duration::from_secs(1)).await;
 
                 // Get Node2 messages
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -412,13 +417,19 @@ fn subidentity_registration() {
                 eprintln!("unchanged_message node 1 sub to node 1 sub 2: {:?}", unchanged_message);
 
                 let (res1_send_msg_sender, res1_send_msg_receiver): (
-                    async_channel::Sender<Vec<StandardIdentity>>,
-                    async_channel::Receiver<Vec<StandardIdentity>>,
+                    async_channel::Sender<Result<(), APIError>>,
+                    async_channel::Receiver<Result<(), APIError>>,
                 ) = async_channel::bounded(1);
                 node1_commands_sender
-                    .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                    .send(NodeCommand::SendOnionizedMessage {
+                        msg: unchanged_message,
+                        res: res1_send_msg_sender,
+                    })
                     .await
                     .unwrap();
+
+                let send_result = res1_send_msg_receiver.recv().await.unwrap();
+                assert!(send_result.is_ok(), "Failed to send onionized message");
 
                 let (res1_sender, res1_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -463,9 +474,9 @@ fn subidentity_registration() {
 
             // Send message from Node 1 subidentity to Node 2 subidentity
             {
-                println!("Final trick. Sending message from Node 1 subidentity to Node 2 subidentity");
-                let message_content =
-                    "test encrypted body content from node1 subidentity to node2 subidentity".to_string();
+                eprintln!("Final trick. Sending a fat message from Node 1 subidentity to Node 2 subidentity");
+                // let message_content = "test encrypted body content from node1 subidentity to node2 subidentity".to_string();
+                let message_content = std::iter::repeat("hola-").take(100_000).collect::<String>();
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node1_subencryption_sk,
                     clone_signature_secret_key(&node1_subidentity_sk),
@@ -489,16 +500,40 @@ fn subidentity_registration() {
                 eprintln!("unchanged_message node 1 sub to node 2 sub: {:?}", unchanged_message);
 
                 let (res1_send_msg_sender, res1_send_msg_receiver): (
-                    async_channel::Sender<NodeCommand>,
-                    async_channel::Receiver<NodeCommand>,
+                    async_channel::Sender<Result<(), APIError>>,
+                    async_channel::Receiver<Result<(), APIError>>,
                 ) = async_channel::bounded(1);
 
                 node1_commands_sender
-                    .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                    .send(NodeCommand::SendOnionizedMessage {
+                        msg: unchanged_message.clone(),
+                        res: res1_send_msg_sender,
+                    })
                     .await
                     .unwrap();
 
-                tokio::time::sleep(Duration::from_secs(2)).await;
+                let send_result = res1_send_msg_receiver.recv().await.unwrap();
+                assert!(send_result.is_ok(), "Failed to send onionized message");
+
+                {
+                    for _ in 0..20 {
+                        let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                        node2_commands_sender
+                            .send(NodeCommand::FetchLastMessages {
+                                limit: 1,
+                                res: res2_sender,
+                            })
+                            .await
+                            .unwrap();
+                        let node2_last_messages = res2_receiver.recv().await.unwrap();
+
+                        if node2_last_messages[0].body.clone().unwrap().content == unchanged_message.body.clone().unwrap().content {
+                            break;
+                        }
+
+                        tokio::time::sleep(Duration::from_millis(500)).await;
+                    }
+                }
 
                 // Get Node2 messages
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -510,17 +545,6 @@ fn subidentity_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap();
-
-                // Get Node1 messages
-                let (res1_sender, res1_receiver) = async_channel::bounded(1);
-                node1_commands_sender
-                    .send(NodeCommand::FetchLastMessages {
-                        limit: 2,
-                        res: res1_sender,
-                    })
-                    .await
-                    .unwrap();
-                let node1_last_messages = res1_receiver.recv().await.unwrap();
 
                 // println!("\n\n");
                 // println!("\n***********\n");
@@ -539,7 +563,7 @@ fn subidentity_registration() {
                 );
 
                 // Check that the content is encrypted
-                // println!("Message to check: {:?}", message_to_check_body_unencrypted.clone());
+                println!("Message to check: {:?}", message_to_check.clone());
                 assert_eq!(
                     ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
                     true,
@@ -667,36 +691,6 @@ async fn registration_profile_node(
             ShinkaiName::from_node_and_profile(node_identity_name.to_string(), node_profile_name.to_string()).unwrap(),
             "Node has the right subidentity"
         );
-
-        // Big ass message sent from node1 main to node2 main
-        // It tests that the protocol can handle big messages above the previous 2048 bytes
-        {
-             let message_content = std::iter::repeat("n").take(10_000_000).collect::<String>();
-
-             // let message_content = "hola".to_string();
- 
-             // println!("content: {:?}", message_content);
-             let unchanged_message = ShinkaiMessageBuilder::new(
-                 node1_encryption_sk.clone(),
-                 clone_signature_secret_key(&node1_identity_sk),
-                 node2_encryption_pk,
-             )
-             .body(message_content.clone())
-             .no_body_encryption()
-             .message_schema_type(MessageSchemaType::TextContent)
-             .internal_metadata(
-                 "".to_string(),
-                 "".to_string(),
-                 EncryptionMethod::DiffieHellmanChaChaPoly1305,
-             )
-             .external_metadata_with_other(
-                 node2_identity_name.to_string().clone(),
-                 node1_identity_name.to_string().clone(),
-                 "".to_string(),
-             )
-             .build()
-             .unwrap();
-        }
     }
 }
 
@@ -743,11 +737,13 @@ async fn try_re_register_profile_node(
     let node1_use_registration_code = res1_use_registraton_receiver.recv().await.unwrap();
     match node1_use_registration_code {
         Ok(_) => panic!("Registration passed. It shouldn't! Profile should already exists"),
-        Err(e) => {
-            match e {
-                APIError { code: 400, error: _, message } if message == "Failed to add device subidentity: Profile name already exists" => (),
-                _ => panic!("Registration code error: {:?}", e),
-            }
+        Err(e) => match e {
+            APIError {
+                code: 400,
+                error: _,
+                message,
+            } if message == "Failed to add device subidentity: Profile name already exists" => (),
+            _ => panic!("Registration code error: {:?}", e),
         },
     }
 
@@ -762,7 +758,11 @@ async fn try_re_register_profile_node(
         .await
         .unwrap();
     let node1_all_subidentities = res1_all_subidentities_receiver.recv().await.unwrap();
-    assert_eq!(node1_all_subidentities.unwrap().len(), 1, "Node still has 1 subidentity");
+    assert_eq!(
+        node1_all_subidentities.unwrap().len(),
+        1,
+        "Node still has 1 subidentity"
+    );
 }
 
 async fn api_registration_profile_node(

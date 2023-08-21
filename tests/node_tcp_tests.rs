@@ -8,6 +8,7 @@ use shinkai_message_wasm::shinkai_utils::signatures::{
 };
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
@@ -209,11 +210,20 @@ fn tcp_node_test() {
 
             println!("unchanged_message: {:?}", unchanged_message);
 
+            let (res1_send_msg_sender, res1_send_msg_receiver): (
+                async_channel::Sender<Result<(), APIError>>,
+                async_channel::Receiver<Result<(), APIError>>,
+            ) = async_channel::bounded(1);
+
             node1_commands_sender
-                .send(NodeCommand::SendOnionizedMessage { msg: unchanged_message })
+                .send(NodeCommand::SendOnionizedMessage {
+                    msg: unchanged_message,
+                    res: res1_send_msg_sender,
+                })
                 .await
                 .unwrap();
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            let send_result = res1_send_msg_receiver.recv().await.unwrap();
+            assert!(send_result.is_ok(), "Failed to send onionized message");
 
             // Get Node2 messages
             let (res2_sender, res2_receiver) = async_channel::bounded(1);

@@ -283,10 +283,22 @@ async fn send_msg_handler(
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
+    let (res_send_msg_sender, res_send_msg_receiver): (
+        async_channel::Sender<Result<(), APIError>>,
+        async_channel::Receiver<Result<(), APIError>>,
+    ) = async_channel::bounded(1);
     node_commands_sender
-        .send(NodeCommand::SendOnionizedMessage { msg: message })
+        .send(NodeCommand::SendOnionizedMessage {
+            msg: message,
+            res: res_send_msg_sender,
+        })
         .await
         .map_err(|_| warp::reject::reject())?;
+    let send_result = res_send_msg_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    if send_result.is_err() {
+        return Err(warp::reject::reject());
+    }
+
     let resp = warp::reply::json(&"Message sent successfully");
     Ok(resp)
 }
