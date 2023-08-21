@@ -23,11 +23,17 @@ import { useSetup } from "../hooks/usetSetup";
 
 const AdminCommands: React.FC = () => {
   useSetup();
-  const setupDetailsState = useSelector((state: RootState) => state.setupDetailsState);
+  const setupDetailsState = useSelector(
+    (state: RootState) => state.setupDetailsState
+  );
   const [showCodeRegistrationActionSheet, setShowCodeRegistrationActionSheet] =
     useState(false);
   const [showCodeRegistrationModal, setCodeRegistrationShowModal] =
     useState(false);
+  const [showIdentityTypeActionSheet, setShowIdentityTypeActionSheet] =
+    useState(false);
+  const [identityType, setIdentityType] = useState("");
+  const [profileName, setProfileName] = useState("");
   const dispatch = useDispatch();
   const registrationCode = useSelector(
     (state: RootState) => state.registrationCode
@@ -45,7 +51,7 @@ const AdminCommands: React.FC = () => {
     console.log(`Command selected: ${command}`);
 
     if (command === "Create Registration Code") {
-      setShowCodeRegistrationActionSheet(true);
+      setShowIdentityTypeActionSheet(true);
     }
   };
 
@@ -53,15 +59,51 @@ const AdminCommands: React.FC = () => {
     navigator.clipboard.writeText(registrationCode);
   };
 
+  const handleIdentityTypeClick = (type: string) => {
+    setIdentityType(type);
+    setShowIdentityTypeActionSheet(false);
+    if (type === "device") {
+      // Prompt the user to enter a profile name when "Device" is selected
+      const profile = prompt("Please enter a profile name");
+      setProfileName(profile || "");
+    }
+    if (type !== "Cancel") {
+      setShowCodeRegistrationActionSheet(true);
+    }
+  };
+
   const handleIdentityClick = async (permissionsType: string) => {
-    let identityType = "profile"; // TODO: add the option for device as well, which requires to ask for a valid profile name
-    await dispatch(submitRequestRegistrationCode(permissionsType, identityType, setupDetailsState));
-    setCodeRegistrationShowModal(true); // Show the modal after the registration code is created
+    let finalCodeType = identityType;
+    if (identityType === "device") {
+      // Serialize permissionsType as "device:PROFILE_NAME" when "Device" is selected
+      finalCodeType = `device:${profileName}`;
+    }
+    await dispatch(submitRequestRegistrationCode(permissionsType, finalCodeType, setupDetailsState));
+    setCodeRegistrationShowModal(true);
     return true;
   };
 
   return (
     <>
+      <IonActionSheet
+        isOpen={showIdentityTypeActionSheet}
+        onDidDismiss={() => setShowIdentityTypeActionSheet(false)}
+        buttons={[
+          {
+            text: "Profile",
+            handler: () => handleIdentityTypeClick("profile"),
+          },
+          {
+            text: "Device",
+            handler: () => handleIdentityTypeClick("device"),
+          },
+          {
+            text: "Cancel",
+            role: "cancel",
+            handler: () => handleIdentityTypeClick("Cancel"),
+          },
+        ]}
+      />
       <IonActionSheet
         isOpen={showCodeRegistrationActionSheet}
         onDidDismiss={() => setShowCodeRegistrationActionSheet(false)}

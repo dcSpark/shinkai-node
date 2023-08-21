@@ -310,7 +310,7 @@ impl<'de> Deserialize<'de> for RegistrationCodeType {
         let parts: Vec<&str> = s.split(':').collect();
         match parts.get(0) {
             Some(&"device") => {
-                let device_name = parts.get(1).unwrap_or(&"default");
+                let device_name = parts.get(1).unwrap_or(&"main");
                 Ok(RegistrationCodeType::Device(device_name.to_string()))
             },
             Some(&"profile") => Ok(RegistrationCodeType::Profile),

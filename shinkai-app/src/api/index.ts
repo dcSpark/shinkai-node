@@ -220,6 +220,8 @@ export const submitRequestRegistrationCode =
         "/device/" +
         setupDetailsState.registration_name;
       console.log("sender_profile_name:", sender_profile_name);
+      console.log("identity_permissions:", identity_permissions);
+      console.log("code_type:", code_type);
       const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(
         setupDetailsState.myEncryptionSk,
         setupDetailsState.myIdentitySk,
@@ -263,7 +265,10 @@ export const submitRegistrationCode =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("Message:", message);
+      console.log("submitRegistrationCode registration_name: ", setupData.registration_name);
+      console.log("submitRegistrationCode identity_type: ", setupData.identity_type);
+      console.log("submitRegistrationCode permission_type: ", setupData.permission_type);
+      console.log("submitRegistrationCode Message:", message);
 
       // Use node_address from setupData for API endpoint
       let response = await axios.post(
