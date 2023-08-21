@@ -19,7 +19,8 @@ jobs:
         run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image:${SHORT_SHA}
+        if: always()
+        run: docker rmi testing_image:${SHORT_SHA} || true
 
   test-wasm:
     runs-on: self-hosted
@@ -40,7 +41,8 @@ jobs:
         run: docker run --rm --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image_wasm:${SHORT_SHA}
+        if: always()
+        run: docker rmi testing_image_wasm:${SHORT_SHA} || true
 
 
   test-shinkai-app:
@@ -59,4 +61,5 @@ jobs:
         run: docker run --rm --entrypoint /entrypoints/run-app-unit-tests.sh testing_image_shinkai_app:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image_shinkai_app:${SHORT_SHA}
+        if: always()
+        run: docker rmi testing_image_shinkai_app:${SHORT_SHA} || true
