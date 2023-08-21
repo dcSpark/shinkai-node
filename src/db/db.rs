@@ -24,7 +24,7 @@ pub enum Topic {
     ExternalNodeIdentityKey,
     ExternalNodeEncryptionKey,
     AllJobsTimeKeyed,
-    Resources,
+    VectorResources,
     Agents,
     Toolkits,
 }
@@ -47,7 +47,7 @@ impl Topic {
             Self::ExternalNodeIdentityKey => "external_node_identity_key",
             Self::ExternalNodeEncryptionKey => "external_node_encryption_key",
             Self::AllJobsTimeKeyed => "all_jobs_time_keyed",
-            Self::Resources => "resources",
+            Self::VectorResources => "resources",
             Self::Agents => "agents",
             Self::Toolkits => "toolkits",
         }
@@ -130,7 +130,7 @@ impl ShinkaiDB {
                 Topic::ExternalNodeIdentityKey.as_str().to_string(),
                 Topic::ExternalNodeEncryptionKey.as_str().to_string(),
                 Topic::AllJobsTimeKeyed.as_str().to_string(),
-                Topic::Resources.as_str().to_string(),
+                Topic::VectorResources.as_str().to_string(),
                 Topic::Agents.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
             ]

@@ -3,13 +3,13 @@ use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
 use crate::resources::model_type::*;
-use crate::resources::resource::*;
+use crate::resources::vector_resource::*;
 use crate::resources::resource_errors::*;
 use serde_json;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentResource {
+pub struct DocumentVectorResource {
     name: String,
     description: Option<String>,
     source: Option<String>,
@@ -22,7 +22,7 @@ pub struct DocumentResource {
     data_tag_index: DataTagIndex,
 }
 
-impl Resource for DocumentResource {
+impl VectorResource for DocumentVectorResource {
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
     }
@@ -51,16 +51,16 @@ impl Resource for DocumentResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> ResourceType {
-        ResourceType::Document
+    fn resource_type(&self) -> VectorResourceType {
+        VectorResourceType::Document
     }
 
     fn chunk_embeddings(&self) -> &Vec<Embedding> {
         &self.chunk_embeddings
     }
 
-    fn to_json(&self) -> Result<String, ResourceError> {
-        serde_json::to_string(self).map_err(|_| ResourceError::FailedJSONParsing)
+    fn to_json(&self) -> Result<String, VectorResourceError> {
+        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
@@ -72,18 +72,18 @@ impl Resource for DocumentResource {
     }
 
     /// Efficiently retrieves a data chunk given its id by fetching it via index.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError> {
-        let id = id.parse::<u64>().map_err(|_| ResourceError::InvalidChunkId)?;
+    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, VectorResourceError> {
+        let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidChunkId)?;
         if id == 0 || id > self.chunk_count {
-            return Err(ResourceError::InvalidChunkId);
+            return Err(VectorResourceError::InvalidChunkId);
         }
-        let index = id.checked_sub(1).ok_or(ResourceError::InvalidChunkId)? as usize;
+        let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
         Ok(&self.data_chunks[index])
     }
 }
 
-impl DocumentResource {
-    /// * `resource_id` - For DocumentResources this should be a Sha256 hash as a String
+impl DocumentVectorResource {
+    /// * `resource_id` - For DocumentVectorResources this should be a Sha256 hash as a String
     ///  from the bytes of the original data.
     pub fn new(
         name: &str,
@@ -95,7 +95,7 @@ impl DocumentResource {
         data_chunks: Vec<DataChunk>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
-        DocumentResource {
+        DocumentVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source.map(String::from),
@@ -109,9 +109,9 @@ impl DocumentResource {
         }
     }
 
-    /// Initializes an empty `DocumentResource` with empty defaults.
+    /// Initializes an empty `DocumentVectorResource` with empty defaults.
     pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
-        DocumentResource::new(
+        DocumentVectorResource::new(
             name,
             desc,
             source,
@@ -130,14 +130,14 @@ impl DocumentResource {
         &self,
         query: Embedding,
         proximity_window: u64,
-    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+    ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
         let search_results = self.vector_search(query, 1);
-        let most_similar_chunk = search_results.first().ok_or(ResourceError::ResourceEmpty)?;
+        let most_similar_chunk = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk
             .id
             .parse::<u64>()
-            .map_err(|_| ResourceError::InvalidChunkId)?;
+            .map_err(|_| VectorResourceError::InvalidChunkId)?;
 
         // Get Start/End ids
         let start_id = if most_similar_id >= proximity_window {
@@ -175,7 +175,7 @@ impl DocumentResource {
         &self,
         metadata_key: &str,
         metadata_value: &str,
-    ) -> Result<Vec<RetrievedDataChunk>, ResourceError> {
+    ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
         let mut matching_chunks = Vec::new();
 
         for chunk in &self.data_chunks {
@@ -191,7 +191,7 @@ impl DocumentResource {
         }
 
         if matching_chunks.is_empty() {
-            return Err(ResourceError::NoChunkFound);
+            return Err(VectorResourceError::NoChunkFound);
         }
 
         Ok(matching_chunks)
@@ -240,7 +240,7 @@ impl DocumentResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
-    ) -> Result<DataChunk, ResourceError> {
+    ) -> Result<DataChunk, VectorResourceError> {
         // Validate which tags will be saved with the new data
         let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
@@ -256,10 +256,10 @@ impl DocumentResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
-    ) -> Result<DataChunk, ResourceError> {
+    ) -> Result<DataChunk, VectorResourceError> {
         // Id + index
         if id > self.chunk_count {
-            return Err(ResourceError::InvalidChunkId);
+            return Err(VectorResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
 
@@ -281,7 +281,7 @@ impl DocumentResource {
 
     /// Pops and returns the last data chunk and associated embedding
     /// and updates the data tags index.
-    pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), ResourceError> {
+    pub fn pop_data(&mut self) -> Result<(DataChunk, Embedding), VectorResourceError> {
         let popped_chunk = self.data_chunks.pop();
         let popped_embedding = self.chunk_embeddings.pop();
 
@@ -292,13 +292,13 @@ impl DocumentResource {
                 self.chunk_count -= 1;
                 Ok((chunk, embedding))
             }
-            _ => Err(ResourceError::ResourceEmpty),
+            _ => Err(VectorResourceError::VectorResourceEmpty),
         }
     }
 
     /// Deletes a data chunk and associated embedding from the resource
     /// and updates the data tags index.
-    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), ResourceError> {
+    pub fn delete_data(&mut self, id: u64) -> Result<(DataChunk, Embedding), VectorResourceError> {
         let deleted_chunk = self.delete_data_chunk(id)?;
         self.data_tag_index.remove_chunk(&deleted_chunk);
 
@@ -314,9 +314,9 @@ impl DocumentResource {
     }
 
     /// Internal data chunk deletion
-    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, ResourceError> {
+    fn delete_data_chunk(&mut self, id: u64) -> Result<DataChunk, VectorResourceError> {
         if id > self.chunk_count {
-            return Err(ResourceError::InvalidChunkId);
+            return Err(VectorResourceError::InvalidChunkId);
         }
         let index = (id - 1) as usize;
         let removed_chunk = self.data_chunks.remove(index);
@@ -334,15 +334,15 @@ impl DocumentResource {
         self.data_chunks.push(data_chunk);
     }
 
-    pub fn from_json(json: &str) -> Result<Self, ResourceError> {
-        serde_json::from_str(json).map_err(|_| ResourceError::FailedJSONParsing)
+    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
     }
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
     }
 
-    /// Parses a list of strings filled with text into a Document Resource,
+    /// Parses a list of strings filled with text into a Document VectorResource,
     /// extracting keywords, and generating embeddings using the supplied
     /// embedding generator.
     ///
@@ -357,9 +357,9 @@ impl DocumentResource {
         source: Option<&str>,
         resource_id: &str,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
-    ) -> Result<DocumentResource, ResourceError> {
+    ) -> Result<DocumentVectorResource, VectorResourceError> {
         // Create doc resource and initial setup
-        let mut doc = DocumentResource::new_empty(name, desc, source, resource_id);
+        let mut doc = DocumentVectorResource::new_empty(name, desc, source, resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Parse the pdf into grouped text blocks
@@ -389,7 +389,7 @@ impl DocumentResource {
         Ok(doc)
     }
 
-    /// Parses a PDF from a buffer into a Document Resource, automatically
+    /// Parses a PDF from a buffer into a Document VectorResource, automatically
     /// separating sentences + performing text parsing, as well as
     /// generating embeddings using the supplied embedding generator.
     pub fn parse_pdf(
@@ -400,11 +400,11 @@ impl DocumentResource {
         desc: Option<&str>,
         source: Option<&str>,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
-    ) -> Result<DocumentResource, ResourceError> {
+    ) -> Result<DocumentVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
         let resource_id = FileParser::generate_data_hash(buffer);
-        DocumentResource::parse_text(
+        DocumentVectorResource::parse_text(
             grouped_text_list,
             generator,
             name,
