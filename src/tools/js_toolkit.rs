@@ -60,6 +60,7 @@ pub struct JSToolkitInfo {
     pub author: String,
     pub version: String,
     pub activated: bool,
+    pub headers_set: bool,
 }
 
 impl JSToolkitInfo {
@@ -86,7 +87,8 @@ impl From<&JSToolkit> for JSToolkitInfo {
             name: toolkit.name.clone(),
             author: toolkit.author.clone(),
             version: toolkit.version.clone(),
-            activated: false,
+            activated: toolkit.activated,
+            headers_set: toolkit.headers_set,
         }
     }
 }
@@ -103,12 +105,24 @@ pub struct JSToolkit {
     pub header_definitions: Vec<HeaderDefinition>,
     pub author: String,
     pub version: String,
+    activated: bool,
+    headers_set: bool,
 }
 
 impl JSToolkit {
     /// The DB Key where this JSToolkit is stored
     pub fn db_key(&self) -> String {
         Self::db_key_from_name(&self.name)
+    }
+
+    // Returns activated bool
+    pub fn activated(&self) -> bool {
+        self.activated
+    }
+
+    // Returns headers_set bool
+    pub fn headers_set(&self) -> bool {
+        self.headers_set
     }
 
     /// Given a toolkit name, generates the database key where the JSToolkit
@@ -164,6 +178,8 @@ impl JSToolkit {
             header_definitions: header_defs,
             author: author.to_string(),
             version: version.to_string(),
+            activated: false,
+            headers_set: false,
         })
     }
 

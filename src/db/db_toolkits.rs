@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::tools::error::ToolError;
@@ -54,9 +56,50 @@ impl ShinkaiDB {
         Ok(toolkit_map)
     }
 
-    /// Uninstalls a JSToolkit based on its name, and removes it from the profile-wide Installed Toolkit List.
+    /// Uninstalls (and deactivates) a JSToolkit based on its name, and removes it from the profile-wide Installed Toolkit List.
     /// Note, any Toolkit headers (ie. API keys) will not be removed, and will stay in the DB.
     fn uninstall_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // 1. Deactivate
+        // 2. Delete toolkit itself from db
+        // 3. Delete toolkit from toolkit map
+        Ok(())
+    }
+
+    /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter. Of note,
+    /// this function validates the toolkit headers values are available in DB (or errors), thus after installing
+    /// a toolkit they must be set before calling activate.
+    fn activate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // 1. Check if toolkit is inactive and headers are set, or error
+        // 2. Validate that the headers work with the toolkit validation function
+        // 3. Propagate the internal tools to the ToolRouter
+        // 4. Set toolkit/info to active == true
+
+        // ...
+        Ok(())
+    }
+
+    /// Deactivates a JSToolkit, removes its tools from the ToolRouter
+    fn deactivate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // 1. Check if toolkit is active or error
+        // 2. Delete all of the toolkit's tools from the ToolRouter
+        // 3. Set toolkit/info to active
+        // ...
+
+        Ok(())
+    }
+
+    /// Sets the toolkit's header values to be used when a tool in the toolkit is executed.
+    /// Of note, this replaces any previous header values if the KV pair is provided in the input hashmap.
+    fn set_toolkit_header_values(
+        &self,
+        toolkit_name: &str,
+        profile: &ShinkaiName,
+        header_values: &HashMap<String, String>,
+    ) -> Result<(), ShinkaiDBError> {
+        // 1. Validate that all of the header_values keys match the definitions in the toolkit
+        // 2. Test the header values by using them with the validation function in the TS executor
+        // 3. Save the header values in the DB using the toolkit name + header name as the key
+
         // ...
         Ok(())
     }
