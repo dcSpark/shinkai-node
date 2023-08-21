@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
@@ -227,9 +225,7 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn build(&self) -> Result<ShinkaiMessage, &'static str> {
-        let start = Instant::now();
         let mut new_self = self.clone();
-        println!("Time elapsed for cloning: {:?}", start.elapsed());
     
         if new_self.internal_metadata.is_none() {
             return Err("Internal metadata is required");
@@ -243,7 +239,6 @@ impl ShinkaiMessageBuilder {
             return Err("Encryption should not be set on both body and internal metadata simultaneously");
         }
     
-        let start = Instant::now();
         if let Some(internal_metadata) = &mut new_self.internal_metadata {
             if internal_metadata.inbox.is_empty() {
                 if let Some(external_metadata) = &new_self.external_metadata {
@@ -266,9 +261,7 @@ impl ShinkaiMessageBuilder {
                 }
             }
         }
-        println!("Time elapsed for internal metadata processing: {:?}", start.elapsed());
     
-        let start = Instant::now();
         if let Some(mut body) = new_self.body {
             let body_content = body.content.clone();
             let internal_metadata_clone = new_self.internal_metadata.clone();
@@ -296,9 +289,7 @@ impl ShinkaiMessageBuilder {
                 println!("No internal_metadata");
                 body_content
             };
-            println!("Time elapsed for body content processing: {:?}", start.elapsed());
     
-            let start = Instant::now();
             if new_content != body.content.clone() {
                 if let Some(mut internal_metadata) = internal_metadata_clone {
                     internal_metadata.message_schema_type = MessageSchemaType::Empty;
@@ -309,7 +300,6 @@ impl ShinkaiMessageBuilder {
             // if self.encryption is not None
             let new_body = if new_self.encryption != encryption_method_none {
                 let serialized_body = ShinkaiMessageHandler::encode_body(body.clone());
-                println!("Time elapsed for serialized body: {:?}", start.elapsed());
                 let encrypted_body = encrypt_body(
                     &serialized_body,
                     &new_self.my_encryption_secret_key,
@@ -330,11 +320,8 @@ impl ShinkaiMessageBuilder {
                     internal_metadata: body.internal_metadata,
                 }
             };
-            println!("Time elapsed for body encryption: {:?}", start.elapsed());
     
-            let start = Instant::now();
             let mut external_metadata = new_self.external_metadata.clone().ok_or("Missing external metadata")?;
-            println!("Time elapsed for external_metadata clone: {:?}", start.elapsed());
 
             let unsigned_msg = ShinkaiMessage {
                 body: Some(new_body.clone()),
@@ -342,7 +329,6 @@ impl ShinkaiMessageBuilder {
                 external_metadata: new_self.external_metadata,
             };
             let signature = sign_message(&new_self.my_signature_secret_key, unsigned_msg);
-            println!("Time elapsed for signing: {:?}", start.elapsed());
     
             external_metadata.signature = signature;
     
@@ -351,7 +337,6 @@ impl ShinkaiMessageBuilder {
                 encryption: new_self.encryption.clone(),
                 external_metadata: Some(external_metadata),
             };
-            println!("Time elapsed for message signing: {:?}", start.elapsed());
     
             Ok(signed_msg)
         } else {
