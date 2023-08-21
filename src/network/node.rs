@@ -29,12 +29,9 @@ use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::identity::StandardIdentity;
+use crate::schemas::identity::{Identity, StandardIdentity};
 
 use super::node_api::APIError;
-
-// Buffer size in bytes.
-const BUFFER_SIZE: usize = 2024;
 
 #[derive(Debug)]
 pub struct NodeError {
@@ -83,6 +80,7 @@ pub enum NodeCommand {
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
+        res: async_channel::Sender<Result<(), APIError>>,
     },
     // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
@@ -127,6 +125,7 @@ pub enum NodeCommand {
     APIGetAllSubidentities {
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
     },
+    GetAllSubidentitiesDevicesAndAgents(Sender<Result<Vec<Identity>, APIError>>),
     APIGetAllInboxesForProfile {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
@@ -347,9 +346,10 @@ impl Node {
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
                             Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
+                            Some(NodeCommand::SendOnionizedMessage { msg, res }) => self.api_handle_send_onionized_message(msg, res).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
+                            Some(NodeCommand::GetAllSubidentitiesDevicesAndAgents(res)) => self.local_get_all_subidentities_devices_and_agents(res).await,
                             Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
                             Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
                             Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
@@ -406,37 +406,23 @@ impl Node {
             let node_profile_name_clone = self.node_profile_name.clone();
 
             tokio::spawn(async move {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    match socket.read(&mut buffer).await {
-                        Ok(0) => {
-                            // reading 0 bytes signifies the client has closed the connection
-                            return;
-                        }
-                        Ok(n) => {
-                            // println!("{} > TCP: Received message.", addr);
-                            println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
-                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                            let _ = Node::handle_message(
-                                addr,
-                                destination_socket.clone(),
-                                &buffer[..n],
-                                node_profile_name_clone.clone().get_node_name(),
-                                clone_static_secret_key(&encryption_secret_key_clone),
-                                clone_signature_secret_key(&identity_secret_key_clone),
-                                db.clone(),
-                                identity_manager.clone(),
-                            )
-                            .await;
-                            if let Err(e) = socket.flush().await {
-                                eprintln!("Failed to flush the socket: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("{} > TCP: Failed to read from socket; err = {:?}", addr, e);
-                            return;
-                        }
-                    }
+                let mut buffer = Vec::new();
+                socket.read_to_end(&mut buffer).await.unwrap();
+
+                let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                let _ = Node::handle_message(
+                    addr,
+                    destination_socket.clone(),
+                    &buffer,
+                    node_profile_name_clone.clone().get_node_name(),
+                    clone_static_secret_key(&encryption_secret_key_clone),
+                    clone_signature_secret_key(&identity_secret_key_clone),
+                    db.clone(),
+                    identity_manager.clone(),
+                )
+                .await;
+                if let Err(e) = socket.flush().await {
+                    eprintln!("Failed to flush the socket: {}", e);
                 }
             });
         }
@@ -452,14 +438,6 @@ impl Node {
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
-
-    // pub async fn get_encryption_public_key(
-    //     &self,
-    //     identity_public_key: String,
-    // ) -> Result<String, ShinkaiDBError> {
-    //     let db = self.db.lock().await;
-    //     db.get_encryption_public_key(&identity_public_key)
-    // }
 
     // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
@@ -594,6 +572,7 @@ impl Node {
         }
 
         // TODO: add identity to this fn so we can check for permissions
+        println!("save_to_db> message_to_save: {:?}", message_to_save.clone());
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),

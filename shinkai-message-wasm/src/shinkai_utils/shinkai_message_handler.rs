@@ -362,7 +362,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
 
         assert_eq!(decoded_message.encryption, EncryptionMethod::None);
@@ -392,7 +392,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
         assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 

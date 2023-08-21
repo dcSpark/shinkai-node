@@ -51,7 +51,6 @@ pub enum InboxName {
 
 impl InboxName {
     pub fn new(inbox_name: String) -> Result<Self, InboxNameError> {
-        println!("inbox_name: {}", inbox_name);
         let parts: Vec<&str> = inbox_name.split("::").collect();
         if parts.len() < 3 || parts.len() > 101 {
             return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
@@ -81,8 +80,13 @@ impl InboxName {
                 identities,
             })
         } else if parts[0] == "job_inbox" {
+            if is_e2e {
+                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+            }
             let unique_id = parts[1].to_string();
-
+            if unique_id.is_empty() {
+                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+            }
             Ok(InboxName::JobInbox {
                 value: inbox_name,
                 unique_id,
@@ -169,7 +173,6 @@ impl InboxName {
             inbox_name_separator,
             is_e2e
         );
-        eprintln!("inbox_name: {}", inbox_name);
         InboxName::new(inbox_name)
     }
 
@@ -267,7 +270,6 @@ mod tests {
             "jobinbox::unique_id_2::false",
             "job_inbox::::false",
             "inbox::unique_id_1::false",
-            // add other invalid examples here...
         ];
 
         for name in &invalid_names {

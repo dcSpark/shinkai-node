@@ -116,7 +116,7 @@ impl ShinkaiDB {
         let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
-        let new_code = bs58::encode(random_bytes).into_string();
+        let new_code = hex::encode(random_bytes);
 
         let cf = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
 
@@ -286,14 +286,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_code_info(
-        &self,
-        cf_codes: &rocksdb::ColumnFamily,
-        registration_code: &str,
-    ) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
+    pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
+        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
         match self.db.get_cf(cf_codes, registration_code)? {
             Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
-            None => return Err(ShinkaiDBError::CodeNonExistent),
+            None => Err(ShinkaiDBError::CodeNonExistent),
         }
     }
 
@@ -320,7 +317,7 @@ impl ShinkaiDB {
 
         let mut batch = rocksdb::WriteBatch::default();
 
-        // Convert public keys to bs58 encoded strings
+        // Convert public keys to hex encoded strings
         let encryption_pk_string = encryption_public_key_to_string(encryption_pk);
         let signature_pk_string = signature_public_key_to_string(signature_pk);
 
