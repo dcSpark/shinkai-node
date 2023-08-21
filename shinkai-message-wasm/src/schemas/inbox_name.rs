@@ -81,8 +81,13 @@ impl InboxName {
                 identities,
             })
         } else if parts[0] == "job_inbox" {
+            if is_e2e {
+                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+            }
             let unique_id = parts[1].to_string();
-
+            if unique_id.is_empty() {
+                return Err(InboxNameError::InvalidFormat(inbox_name.clone()));
+            }
             Ok(InboxName::JobInbox {
                 value: inbox_name,
                 unique_id,
@@ -267,7 +272,6 @@ mod tests {
             "jobinbox::unique_id_2::false",
             "job_inbox::::false",
             "inbox::unique_id_1::false",
-            // add other invalid examples here...
         ];
 
         for name in &invalid_names {

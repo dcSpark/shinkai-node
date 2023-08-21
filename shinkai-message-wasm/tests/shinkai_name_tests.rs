@@ -138,15 +138,15 @@ mod tests {
         let alice = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
         let alice_profile = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
         let alice_agent = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
-        let alice_device = ShinkaiName::new("@@alice.shinkai/profileName/device".to_string()).unwrap();
+        let alice_device = ShinkaiName::new("@@alice.shinkai/profileName/device/myDevice".to_string()).unwrap();
 
         assert!(alice.contains(&alice_profile));
         assert!(alice.contains(&alice_agent));
         assert!(alice_profile.contains(&alice_agent));
         assert!(alice_profile.contains(&alice_profile));
+        assert!(alice_profile.contains(&alice_device));
 
         assert!(!alice_profile.contains(&alice));
-        assert!(!alice_profile.contains(&alice_device));
         assert!(!alice_device.contains(&alice_profile));
     }
 
@@ -155,14 +155,13 @@ mod tests {
         let alice = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
         let bob = ShinkaiName::new("@@bob.shinkai".to_string()).unwrap();
         let alice_profile = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
-        let alice_agent = ShinkaiName::new("@@alice.shinkai/profileName/agent".to_string()).unwrap();
+        let alice_agent = ShinkaiName::new("@@alice.shinkai/profileName/agent/bobsGPT".to_string()).unwrap();
         let bob_agent = ShinkaiName::new("@@bob.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
 
         assert!(!alice.contains(&bob));
         assert!(!bob.contains(&alice));
         assert!(!alice_profile.contains(&bob));
         assert!(!bob.contains(&alice_profile));
-        assert!(!alice.contains(&alice_agent));
-        assert!(!bob.contains(&bob_agent));
+        assert!(!alice_agent.contains(&bob_agent));
     }
 }

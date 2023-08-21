@@ -45,11 +45,9 @@ impl fmt::Display for ShinkaiNameError {
             ShinkaiNameError::MissingBody(message) => {
                 write!(f, "Missing body in ShinkaiMessage: {}", message)
             }
-            ShinkaiNameError::MissingInternalMetadata(message) => write!(
-                f,
-                "Missing internal metadata in ShinkaiMessage: {}",
-                message
-            ),
+            ShinkaiNameError::MissingInternalMetadata(message) => {
+                write!(f, "Missing internal metadata in ShinkaiMessage: {}", message)
+            }
             ShinkaiNameError::MetadataMissing => write!(f, "Metadata missing"),
             ShinkaiNameError::MessageBodyMissing => write!(f, "Message body missing"),
             ShinkaiNameError::InvalidGroupFormat(message) => {
@@ -96,8 +94,8 @@ impl ShinkaiName {
 
         Ok(Self {
             full_name: raw_name.to_lowercase(),
-            node_name,
-            profile_name,
+            node_name: node_name.to_lowercase(),
+            profile_name: profile_name.map(|s| s.to_lowercase()),
             subidentity_type,
             subidentity_name,
         })
@@ -309,11 +307,11 @@ impl ShinkaiName {
     pub fn contains(&self, other: &ShinkaiName) -> bool {
         let self_parts: Vec<&str> = self.full_name.split('/').collect();
         let other_parts: Vec<&str> = other.full_name.split('/').collect();
-    
+
         if self_parts.len() > other_parts.len() {
             return false;
         }
-    
+
         self_parts
             .iter()
             .zip(other_parts.iter())
