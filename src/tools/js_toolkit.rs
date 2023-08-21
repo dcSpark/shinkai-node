@@ -3,12 +3,100 @@ use crate::tools::js_toolkit_headers::HeaderDefinition;
 use crate::tools::js_tools::JSTool;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+
+/// A hashmap that holds the toolkit infos for all installed `JSToolKit`s
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct InstalledJSToolkitMap {
+    toolkits_info: HashMap<String, JSToolkitInfo>,
+}
+
+impl InstalledJSToolkitMap {
+    pub fn new() -> Self {
+        Self {
+            toolkits_info: HashMap::new(),
+        }
+    }
+
+    /// DB Key For the Installed JS Toolkits Map
+    pub fn db_key() -> String {
+        "installed_js_toolkit_map".to_string()
+    }
+
+    pub fn add_toolkit_info(&mut self, js_toolkit_info: &JSToolkitInfo) {
+        self.toolkits_info
+            .insert(js_toolkit_info.name.clone(), js_toolkit_info.clone());
+    }
+
+    pub fn get_toolkit_info(&self, name: &str) -> Result<&JSToolkitInfo, ToolError> {
+        self.toolkits_info.get(name).ok_or(ToolError::ToolkitNotFound)
+    }
+
+    pub fn remove_toolkit_info(&mut self, name: &str) -> Result<(), ToolError> {
+        self.toolkits_info.remove(name).ok_or(ToolError::ToolkitNotFound)?;
+        Ok(())
+    }
+
+    pub fn get_all_toolkit_infos(&self) -> Vec<&JSToolkitInfo> {
+        self.toolkits_info.values().collect()
+    }
+
+    /// Convert to json
+    pub fn to_json(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    /// Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ToolError> {
+        let deserialized: Self = serde_json::from_str(json)?;
+        Ok(deserialized)
+    }
+}
+
+/// A basic struct that holds information about an installed JSToolkit
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JSToolkitInfo {
+    pub name: String,
+    pub author: String,
+    pub version: String,
+    pub activated: bool,
+    pub headers_set: bool,
+}
+
+impl JSToolkitInfo {
+    /// The DB Key where the corresponding whole JSToolkit is stored
+    pub fn db_key(&self) -> String {
+        JSToolkit::db_key_from_name(&self.name)
+    }
+
+    /// Convert to json
+    pub fn to_json(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    /// Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ToolError> {
+        let deserialized: Self = serde_json::from_str(json)?;
+        Ok(deserialized)
+    }
+}
+
+impl From<&JSToolkit> for JSToolkitInfo {
+    fn from(toolkit: &JSToolkit) -> Self {
+        Self {
+            name: toolkit.name.clone(),
+            author: toolkit.author.clone(),
+            version: toolkit.version.clone(),
+            activated: toolkit.activated,
+            headers_set: toolkit.headers_set,
+        }
+    }
+}
 
 /// A JS Toolkit with the packed JS code and tool/header definitions.
 /// Of note, to use a tool within a JSToolkit the actual header values need
 /// to be fetched from the DB, as they are stored separately (due to header
 /// initialization being after the toolkit itself gets installed).
-///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JSToolkit {
     pub name: String,
@@ -17,9 +105,34 @@ pub struct JSToolkit {
     pub header_definitions: Vec<HeaderDefinition>,
     pub author: String,
     pub version: String,
+    activated: bool,
+    headers_set: bool,
 }
 
 impl JSToolkit {
+    /// The DB Key where this JSToolkit is stored
+    pub fn db_key(&self) -> String {
+        Self::db_key_from_name(&self.name)
+    }
+
+    // Returns activated bool
+    pub fn activated(&self) -> bool {
+        self.activated
+    }
+
+    // Returns headers_set bool
+    pub fn headers_set(&self) -> bool {
+        self.headers_set
+    }
+
+    /// Given a toolkit name, generates the database key where the JSToolkit
+    /// is stored in Topic::Toolkits
+    pub fn db_key_from_name(js_toolkit_name: &str) -> String {
+        let mut key = "js_toolkit".to_string();
+        key.push_str(js_toolkit_name);
+        key
+    }
+
     pub fn from_toolkit_json(json: &str, js_code: &str) -> Result<Self, ToolError> {
         let parsed_json: JsonValue = serde_json::from_str(json)?;
 
@@ -65,7 +178,20 @@ impl JSToolkit {
             header_definitions: header_defs,
             author: author.to_string(),
             version: version.to_string(),
+            activated: false,
+            headers_set: false,
         })
+    }
+
+    /// Convert to json
+    pub fn to_json(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    /// Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ToolError> {
+        let deserialized: Self = serde_json::from_str(json)?;
+        Ok(deserialized)
     }
 }
 
