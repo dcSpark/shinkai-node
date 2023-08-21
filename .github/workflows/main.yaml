@@ -13,13 +13,13 @@ jobs:
         run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
 
       - name: Build testing image
-        run: docker build -t testing_image_${SHORT_SHA} -f .github/Dockerfile .
+        run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
 
       - name: Run tests main cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image_${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image_${SHORT_SHA}
+        run: docker rmi testing_image:${SHORT_SHA}
 
   test-wasm:
     runs-on: self-hosted
@@ -31,16 +31,16 @@ jobs:
         run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
 
       - name: Build testing image - shinkai-message-wasm
-        run: docker build -t testing_image_wasm_${SHORT_SHA} -f .github/Dockerfile.wasm .
+        run: docker build -t testing_image_wasm:${SHORT_SHA} -f .github/Dockerfile.wasm .
 
       - name: Run tests shinkai-message-wasm cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm_${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Run tests shinkai-message-wasm wasm-pack tests
-        run: docker run --rm --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm_${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image_wasm_${SHORT_SHA}
+        run: docker rmi testing_image_wasm:${SHORT_SHA}
 
 
   test-shinkai-app:
@@ -53,10 +53,10 @@ jobs:
         run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
 
       - name: Build testing image - shinkai-app
-        run: docker build -t testing_image_shinkai_app_${SHORT_SHA} -f .github/Dockerfile.shinkai-app .
+        run: docker build -t testing_image_shinkai_app:${SHORT_SHA} -f .github/Dockerfile.shinkai-app .
 
       - name: Run tests shinkai-app unit tests
-        run: docker run --rm --entrypoint /entrypoints/run-app-unit-tests.sh testing_image_shinkai_app_${SHORT_SHA}
+        run: docker run --rm --entrypoint /entrypoints/run-app-unit-tests.sh testing_image_shinkai_app:${SHORT_SHA}
 
       - name: Remove image
-        run: docker rmi testing_image_shinkai_app_${SHORT_SHA}
+        run: docker rmi testing_image_shinkai_app:${SHORT_SHA}
