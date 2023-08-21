@@ -10,7 +10,7 @@ pub enum ToolError {
     FailedJSONParsing,
     ParseError(String),
     ToolkitNotFound,
-    ToolkitVersionAlreadyInstalled,
+    ToolkitVersionAlreadyInstalled(String, String),
 }
 
 impl fmt::Display for ToolError {
@@ -21,8 +21,8 @@ impl fmt::Display for ToolError {
             ToolError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
             ToolError::ParseError(ref s) => write!(f, "Failed to parse {}", s),
             ToolError::ToolkitNotFound => write!(f, "Toolkit was not found."),
-            ToolError::ToolkitVersionAlreadyInstalled => {
-                write!(f, "Toolkit with the same version is already installed.")
+            ToolError::ToolkitVersionAlreadyInstalled(ref s, ref e) => {
+                write!(f, "Toolkit with the same version is already installed: {} {}", s, e)
             }
         }
     }
