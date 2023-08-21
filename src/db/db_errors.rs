@@ -1,4 +1,4 @@
-use crate::{resources::resource_errors::ResourceError, tools::error::ToolError};
+use crate::{resources::resource_errors::VectorResourceError, tools::error::ToolError};
 use core::fmt;
 use shinkai_message_wasm::schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError};
 use std::{io, str::Utf8Error};
@@ -26,7 +26,7 @@ pub enum ShinkaiDBError {
     JsonSerializationError(serde_json::Error),
     DataConversionError(String),
     DataNotFound,
-    ResourceError(ResourceError),
+    VectorResourceError(VectorResourceError),
     FailedFetchingCF,
     FailedFetchingValue,
     BincodeError(bincode::Error),
@@ -91,7 +91,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::DataNotFound => write!(f, "Data not found"),
             ShinkaiDBError::FailedFetchingCF => write!(f, "Failed fetching Column Family"),
             ShinkaiDBError::FailedFetchingValue => write!(f, "Failed fetching value. Likely invalid CF or key."),
-            ShinkaiDBError::ResourceError(e) => write!(f, "{}", e),
+            ShinkaiDBError::VectorResourceError(e) => write!(f, "{}", e),
             ShinkaiDBError::BincodeError(e) => write!(f, "Bincode error: {}", e),
             ShinkaiDBError::ToolError(e) => write!(f, "Tool error: {}", e),
             ShinkaiDBError::InboxNameError(e) => write!(f, "Inbox name error: {}", e),
@@ -109,7 +109,7 @@ impl std::error::Error for ShinkaiDBError {
             ShinkaiDBError::DecodeError(e) => Some(e),
             ShinkaiDBError::JsonSerializationError(e) => Some(e),
             ShinkaiDBError::IOError(e) => Some(e),
-            ShinkaiDBError::ResourceError(e) => Some(e),
+            ShinkaiDBError::VectorResourceError(e) => Some(e),
             ShinkaiDBError::BincodeError(e) => Some(e),
             ShinkaiDBError::InboxNameError(e) => Some(e),
             _ => None,
@@ -153,7 +153,7 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::DataNotFound, ShinkaiDBError::DataNotFound) => true,
             (ShinkaiDBError::FailedFetchingCF, ShinkaiDBError::FailedFetchingCF) => true,
             (ShinkaiDBError::FailedFetchingValue, ShinkaiDBError::FailedFetchingValue) => true,
-            (ShinkaiDBError::ResourceError(e1), ShinkaiDBError::ResourceError(e2)) => e1 == e2, // assuming ResourceError implements PartialEq
+            (ShinkaiDBError::VectorResourceError(e1), ShinkaiDBError::VectorResourceError(e2)) => e1 == e2, // assuming VectorResourceError implements PartialEq
             (ShinkaiDBError::BincodeError(e1), ShinkaiDBError::BincodeError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::InboxNameError(e1), ShinkaiDBError::InboxNameError(e2)) => e1 == e2, // assuming InboxNameError implements PartialEq
             (ShinkaiDBError::ProfileNotFound(msg1), ShinkaiDBError::ProfileNotFound(msg2)) => msg1 == msg2,
@@ -169,9 +169,9 @@ impl From<ToolError> for ShinkaiDBError {
     }
 }
 
-impl From<ResourceError> for ShinkaiDBError {
-    fn from(err: ResourceError) -> ShinkaiDBError {
-        ShinkaiDBError::ResourceError(err)
+impl From<VectorResourceError> for ShinkaiDBError {
+    fn from(err: VectorResourceError) -> ShinkaiDBError {
+        ShinkaiDBError::VectorResourceError(err)
     }
 }
 

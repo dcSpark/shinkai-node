@@ -1,9 +1,9 @@
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::resources::document::DocumentResource;
+use shinkai_node::resources::document::DocumentVectorResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_node::resources::resource::Resource;
-use shinkai_node::resources::resource_errors::ResourceError;
+use shinkai_node::resources::resource_errors::VectorResourceError;
+use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::resources::{bert_cpp::BertCPPProcess, data_tags::DataTag};
 use std::fs;
 use std::path::Path;
@@ -17,15 +17,15 @@ fn default_test_profile() -> ShinkaiName {
     ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap()
 }
 
-fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentResource {
+fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
     // Read the pdf from file into a buffer
     let buffer = std::fs::read("files/shinkai_intro.pdf")
-        .map_err(|_| ResourceError::FailedPDFParsing)
+        .map_err(|_| VectorResourceError::FailedPDFParsing)
         .unwrap();
 
-    // Generate DocumentResource
+    // Generate DocumentVectorResource
     let desc = "An initial introduction to the Shinkai Network.";
-    let doc = DocumentResource::parse_pdf(
+    let doc = DocumentVectorResource::parse_pdf(
         &buffer,
         100,
         generator,
@@ -57,7 +57,7 @@ fn test_manual_document_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let mut doc = DocumentResource::new_empty(
+    let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         Some("animalwildlife.com"),
@@ -79,7 +79,7 @@ fn test_manual_document_resource_vector_search() {
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
-    let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+    let deserialized_doc: DocumentVectorResource = DocumentVectorResource::from_json(&json).unwrap();
     assert_eq!(doc, deserialized_doc);
 
     // Testing vector search works
@@ -108,7 +108,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
-    let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+    let deserialized_doc: DocumentVectorResource = DocumentVectorResource::from_json(&json).unwrap();
     assert_eq!(doc, deserialized_doc);
 
     // Testing vector search works
@@ -153,7 +153,7 @@ fn test_pdf_resource_save_to_db() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save/fetch doc
-    let resource: Box<dyn Resource> = Box::new(doc.clone());
+    let resource: Box<dyn VectorResource> = Box::new(doc.clone());
     shinkai_db.save_resource(resource, &profile).unwrap();
     let fetched_doc = shinkai_db.get_document(&doc.db_key(), &profile).unwrap();
 
@@ -167,7 +167,7 @@ fn test_multi_resource_db_vector_search() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Create a doc
-    let mut doc = DocumentResource::new_empty(
+    let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         Some("animalwildlife.com"),
@@ -202,8 +202,8 @@ fn test_multi_resource_db_vector_search() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
-    let resource2 = Box::new(doc2.clone()) as Box<dyn Resource>;
+    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
+    let resource2 = Box::new(doc2.clone()) as Box<dyn VectorResource>;
     shinkai_db.save_resources(vec![resource1, resource2], &profile).unwrap();
 
     // Animal resource vector search
@@ -306,7 +306,7 @@ fn test_db_syntactic_vector_search() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
+    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
     shinkai_db.save_resources(vec![resource1], &profile).unwrap();
 
     println!("Doc data tag index: {:?}", doc.data_tag_index());
