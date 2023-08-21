@@ -67,3 +67,4 @@ jobs:
       - name: Remove image
         if: always()
         run: docker rmi testing_image_shinkai_app:${SHORT_SHA} || true
+
