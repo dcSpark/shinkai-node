@@ -10,6 +10,7 @@ import {
   IonItem,
   IonList,
   IonPage,
+  IonText,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
@@ -22,6 +23,7 @@ import { useEffect, useState } from "react";
 import { ApiConfig } from "../api/api_config";
 import { clearStore } from "../store/actions";
 import { getAllInboxesForProfile } from "../api";
+import Avatar from "../components/ui/Avatar";
 
 const Home: React.FC = () => {
   const { setupDetailsState } = useSelector((state: RootState) => state);
@@ -107,15 +109,8 @@ const Home: React.FC = () => {
                   history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
                 }}
               >
-                <IonAvatar slot="start" className="bg-white w-10 h-10">
-                  <img
-                    className="w-full h-full"
-                    src="https://ionicframework.com/docs/img/demos/avatar.svg"
-                    alt="Shinkai"
-                  />
-                </IonAvatar>
-
-                {JSON.stringify(position)}
+                <Avatar />
+                <IonText className="ml-4">{JSON.stringify(position)}</IonText>
               </IonItem>
             ))}
           </IonList>

@@ -4,11 +4,13 @@ import {
   IonButtons,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonPage,
+  IonText,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
@@ -28,6 +30,27 @@ import {
 } from "../utils/inbox_name_handler";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { calculateMessageHash } from "../utils/shinkai_message_handler";
+import Avatar from "../components/ui/Avatar";
+import { cn } from "../theme/lib/utils";
+import { send } from "ionicons/icons";
+
+const parseDate = (dateString: string) => {
+  const formattedDateString =
+    dateString.slice(0, 4) +
+    "-" +
+    dateString.slice(4, 6) +
+    "-" +
+    dateString.slice(6, 8) +
+    "T" +
+    dateString.slice(9, 11) +
+    ":" +
+    dateString.slice(11, 13) +
+    ":" +
+    dateString.slice(13, 15) +
+    "Z";
+
+  return new Date(Date.parse(formattedDateString));
+};
 
 const Chat: React.FC = () => {
   console.log("Loading Chat.tsx");
@@ -35,7 +58,7 @@ const Chat: React.FC = () => {
 
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetailsState,
   );
 
   const { id } = useParams<{ id: string }>();
@@ -46,19 +69,19 @@ const Chat: React.FC = () => {
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   const reduxMessages = useSelector(
-    (state: RootState) => state.inboxes[deserializedId]
+    (state: RootState) => state.inboxes[deserializedId],
   );
 
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const otherPersonIdentity = getOtherPersonIdentity(
     deserializedId,
-    setupDetailsState.shinkai_identity
+    setupDetailsState.shinkai_identity,
   );
 
   useEffect(() => {
     dispatch(
-      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
+      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState),
     );
   }, [id, dispatch, setupDetailsState]);
 
@@ -109,68 +132,99 @@ const Chat: React.FC = () => {
         receiver,
         inputMessage,
         deserializedId,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
     setInputMessage("");
   };
 
   return (
     <IonPage>
-      <IonHeader>
+      <IonHeader className="shadow">
         <IonToolbar>
           <IonButtons slot="start">
             <IonBackButton defaultHref="/home" />
           </IonButtons>
-          <IonTitle>Chat: {otherPersonIdentity}</IonTitle>
+          <div className="flex gap-4 px-4">
+            <IonTitle className="w-auto text-accent text-center">
+              {otherPersonIdentity}
+            </IonTitle>
+            <Avatar />
+          </div>
         </IonToolbar>
       </IonHeader>
-      <IonContent fullscreen>
-        {hasMoreMessages && (
-          <IonButton
-            onClick={() =>
-              dispatch(
-                getLastMessagesFromInbox(
-                  deserializedId,
-                  10,
-                  lastKey,
-                  setupDetailsState,
-                  true
+      <IonContent fullscreen className="bg-neutral-50">
+        <div className="container mx-auto">
+          {hasMoreMessages && (
+            <IonButton
+              onClick={() =>
+                dispatch(
+                  getLastMessagesFromInbox(
+                    deserializedId,
+                    10,
+                    lastKey,
+                    setupDetailsState,
+                    true,
+                  ),
                 )
-              )
-            }
+              }
+            >
+              Load More
+            </IonButton>
+          )}
+          <IonList className="flex flex-col gap-5 pt-6">
+            {messages &&
+              messages
+                .slice()
+                .reverse()
+                .map((message, index) => (
+                  <IonItem key={index} lines="none">
+                    <div
+                      className={cn(
+                        "flex flex-col gap-1 max-w-[300px]",
+
+                        true && "ml-auto",
+                      )}
+                    >
+                      <IonLabel
+                        className={
+                          "rounded-xl bg-slate-50 shadow px-3 py-2 text-accent "
+                        }
+                      >
+                        {message?.body?.content}
+                      </IonLabel>
+                      {message?.external_metadata?.scheduled_time && (
+                        <IonText className="text-muted">
+                          {parseDate(
+                            message.external_metadata.scheduled_time,
+                          ).toLocaleString()}
+                        </IonText>
+                      )}
+                    </div>
+                  </IonItem>
+                ))}
+          </IonList>
+          <form
+            className="flex gap-8 px-5 fixed bottom-0 left-0 right-0  pb-10 container"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (inputMessage.trim() !== "") {
+                sendMessage();
+              }
+            }}
           >
-            Load More
-          </IonButton>
-        )}
-        <IonList>
-          {messages &&
-            messages
-              .slice()
-              .reverse()
-              .map((message, index) => (
-                <IonItem key={index}>
-                  <IonLabel>
-                    <pre>{JSON.stringify(message, null, 2)}</pre>
-                  </IonLabel>
-                </IonItem>
-              ))}
-        </IonList>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (inputMessage.trim() !== "") {
-              sendMessage();
-            }
-          }}
-        >
-          <IonInput
-            value={inputMessage}
-            onIonChange={(e) => setInputMessage(e.detail.value!)}
-          ></IonInput>
-          <IonButton onClick={sendMessage}>Send</IonButton>
-        </form>
-        <div ref={bottomChatRef} />
+            <IonInput
+              value={inputMessage}
+              placeholder="Type a message..."
+              shape="round"
+              onIonChange={(e) => setInputMessage(e.detail.value!)}
+            ></IonInput>
+            <IonButton onClick={sendMessage} aria-label="Send Message">
+              <IonIcon size="large" icon={send} />
+            </IonButton>
+          </form>
+          <div ref={bottomChatRef} />
+        </div>
       </IonContent>
     </IonPage>
   );

@@ -30,6 +30,7 @@ import { QRSetupData } from "../models/QRSetupData";
 import { SetupDetailsState } from "../store/reducers";
 import { InputCustomEvent } from "@ionic/core/dist/types/components/input/input-interface";
 import { cn } from "../theme/lib/utils";
+import Button from "../components/ui/Button";
 
 export type MergedSetupType = SetupDetailsState & QRSetupData;
 
@@ -260,31 +261,5 @@ function Input({
         aria-label={label}
       />
     </IonItem>
-  );
-}
-
-function Button({
-  onClick,
-  disabled,
-  children,
-  className,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <IonButton
-      className={cn(
-        "w-full",
-        "[--border-radius:16px] [--box-shadow:none]",
-        className,
-      )}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </IonButton>
   );
 }
