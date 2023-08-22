@@ -1,0 +1,31 @@
+{
+  "name": "sample",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/packaged-shinkai-toolkit.js",
+  "scripts": {
+    "test": "tsc && jest",
+    "lint": "gts lint",
+    "clean": "gts clean && rm -rf dist",
+    "compile": "webpack",
+    "fix": "gts fix",
+    "toolkit-json": "EMIT_TOOLS=1 npx ts-node src/registry.ts > toolkit-setup.json && cat toolkit-setup.json",
+    "build": "npm run compile && npm run toolkit-json"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.4.5",
+    "gts": "^3.1.1",
+    "jest": "^29.6.2",
+    "terser-webpack-plugin": "^5.3.9",
+    "ts-loader": "^9.4.4",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.1.6",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "@shinkai/toolkit-lib": "file:../../toolkit-lib"
+  }
+}

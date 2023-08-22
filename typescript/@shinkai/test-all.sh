@@ -1,0 +1,55 @@
+#!/bin/bash
+
+cd toolkit-lib \
+&& npm ci \
+&& npm run test
+cd ..
+
+cd toolkit-executor \
+&& npm ci \
+&& npm run test
+pwd
+cd ..
+
+cd toolkit-builder/lib \
+&& npm i \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..
+cd ..
+
+cd toolkit-smtp \
+&& npm ci \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..
+
+cd toolkit-example \
+&& npm ci \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..
+
+cd toolkit-google-calendar \
+&& npm ci \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..
+
+cd toolkit-web \
+&& npm ci \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..
+
+cd toolkit-gmail \
+&& npm ci \
+&& npm run compile \
+&& npm run test
+pwd
+cd ..

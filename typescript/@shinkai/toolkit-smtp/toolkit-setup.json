@@ -1,0 +1,112 @@
+{
+  "toolkit-name": "@shinkai/toolkit-smtp",
+  "author": "shinakai-dev",
+  "version": "0.0.1",
+  "executionSetup": [
+    {
+      "name": "HOST",
+      "type": "STRING",
+      "description": "SMTP HOST e.g., smtp.gmail.com",
+      "header": "x-shinkai-host"
+    },
+    {
+      "name": "PORT",
+      "type": "INT",
+      "description": "SMTP PORT. e.g., 587",
+      "header": "x-shinkai-port"
+    },
+    {
+      "name": "EMAIL",
+      "type": "STRING",
+      "description": "SMTP email address",
+      "header": "x-shinkai-email"
+    },
+    {
+      "name": "PASSWORD",
+      "type": "STRING",
+      "description": "SMTP password",
+      "header": "x-shinkai-password"
+    },
+    {
+      "name": "TLS",
+      "type": "BOOL",
+      "description": "Use TLS",
+      "header": "x-shinkai-tls"
+    }
+  ],
+  "tools": [
+    {
+      "name": "SMTP",
+      "description": "Send email through smtp connection.",
+      "input": [
+        {
+          "name": "from",
+          "type": "STRING",
+          "description": "From email address",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        },
+        {
+          "name": "to",
+          "type": "STRING",
+          "description": "TO email address",
+          "isOptional": false,
+          "wrapperType": "array",
+          "ebnf": "[([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]"
+        },
+        {
+          "name": "cc",
+          "type": "STRING",
+          "description": "CC email address",
+          "isOptional": true,
+          "wrapperType": "array",
+          "ebnf": "[([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]?"
+        },
+        {
+          "name": "replyTo",
+          "type": "STRING",
+          "description": "Reply to email address",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)?"
+        },
+        {
+          "name": "bcc",
+          "type": "STRING",
+          "description": "BCC email address",
+          "isOptional": true,
+          "wrapperType": "array",
+          "ebnf": "[([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]?"
+        },
+        {
+          "name": "subject",
+          "type": "STRING",
+          "description": "Email subject",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        },
+        {
+          "name": "body",
+          "type": "STRING",
+          "description": "Email body",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        }
+      ],
+      "output": [
+        {
+          "name": "result",
+          "type": "STRING",
+          "description": "SMTP result",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        }
+      ],
+      "inputEBNF": "from ::= ([a-zA-Z0-9_]+)\nto ::= [([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]\ncc ::= [([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]?\nreplyTo ::= ([a-zA-Z0-9_]+)?\nbcc ::= [([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]?\nsubject ::= ([a-zA-Z0-9_]+)\nbody ::= ([a-zA-Z0-9_]+)\nresult ::= ([a-zA-Z0-9_]+)"
+    }
+  ]
+}
