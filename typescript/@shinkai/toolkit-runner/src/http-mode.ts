@@ -118,16 +118,3 @@ const runWithSource = async <T>(
   return data;
 };
 
-// const runWithSource = async <T>(
-//   source: string,
-//   callback: (path: string) => Promise<T>
-// ): Promise<T> => {
-//   const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
-//     /0./,
-//     ''
-//   )}.js`;
-//   await fs.writeFile(path, source, 'utf8');
-//   const data = await callback(path);
-//   await fs.unlink(path);
-//   return data;
-// };

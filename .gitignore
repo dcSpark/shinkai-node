@@ -15,3 +15,5 @@ embeddings
 bert.cpp/
 bert-cpp-server
 a.out
+packaged-shinkai-toolkit.js
+shinkai-toolkit-executor.js
