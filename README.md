@@ -2,7 +2,9 @@
 
 ## Dependencies
 
-For MuPDF you will need to install the following:
+### MuPDF
+
+Linux:
 
 ```
 sudo apt install mupdf libfontconfig1-dev gcc g++
@@ -14,7 +16,9 @@ Mac:
 brew install mupdf fontconfig
 ```
 
-And make sure you have gcc/g++ as your default compilers:
+### GCC Compiler Setup
+
+Make sure you have gcc/g++ as your default compilers:
 
 ```
 export CC=gcc
@@ -23,17 +27,34 @@ export CXX=g++
 
 ## Tests
 
-Note: You must run tests from the root directory of this repo.
+Note: You must run these tests from the root directory of this repo.
 
-- Use `cargo test -- --test-threads=1` to ensure all tests pass. This runs tests in sequence rather than in parallel.
+### Testing All Sub-projects Locally
 
-- Use `cargo test tcp_node_test -- --nocapture --test-threads=1` to run one test and send output to console. Useful for debugging.
+Simply run the following command to run tests for all projects:
 
+```
+sh scripts/test_all_subprojects.sh
+```
 
+### Test Shinkai Rust Node Only
 
-## Running tests locally
+Simply use the following to run all rust node tests:
 
-### Main tests
+```
+cargo test -- --test-threads=1
+```
+
+For running a specific test (useful for debugging) you can use:
+
+```
+cargo test tcp_node_test -- --nocapture --test-threads=1
+```
+
+### Running Dockerized Tests
+
+#### Main tests
+
 ```
 # Build testing image
 docker build -t testing_image -f .github/Dockerfile .
@@ -42,7 +63,8 @@ docker build -t testing_image -f .github/Dockerfile .
 docker run --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image
 ```
 
-### WASM tests
+#### WASM tests
+
 ```
 # Build testing image - shinkai-message-wasm
 docker build -t testing_image_wasm -f .github/Dockerfile.wasm .
