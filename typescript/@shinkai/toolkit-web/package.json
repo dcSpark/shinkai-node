@@ -1,5 +1,5 @@
 {
-  "name": "@shinkai/toolkit-common",
+  "name": "@shinkai/toolkit-web",
   "version": "1.0.0",
   "description": "",
   "main": "dist/packaged-shinkai-toolkit.js",

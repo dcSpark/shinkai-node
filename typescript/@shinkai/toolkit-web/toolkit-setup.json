@@ -1,5 +1,5 @@
 {
-  "toolkit-name": "@shinkai/toolkit-common",
+  "toolkit-name": "@shinkai/toolkit-web",
   "author": "shinkai-dev",
   "version": "0.0.1",
   "executionSetup": {},
@@ -22,12 +22,7 @@
           "description": "HTTP method to use",
           "isOptional": true,
           "wrapperType": "none",
-          "enum": [
-            "get",
-            "post",
-            "put",
-            "delete"
-          ],
+          "enum": ["get", "post", "put", "delete"],
           "ebnf": "(\"get\" | \"post\" | \"put\" | \"delete\")?"
         },
         {

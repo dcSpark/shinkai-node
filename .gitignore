@@ -17,3 +17,4 @@ bert-cpp-server
 a.out
 packaged-shinkai-toolkit.js
 shinkai-toolkit-executor.js
+tmp_*.js

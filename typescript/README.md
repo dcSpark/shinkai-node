@@ -5,7 +5,7 @@
 The @shinkai namespace contains:
 
 - Toolkits
-  - `@shinkai/toolkit-common`
+  - `@shinkai/toolkit-web`
   - `@shinkai/toolkit-smtp`
   - `@shinkai/toolkit-gmail`
   - `@shinkai/toolkit-goolge-calendar`
@@ -19,7 +19,7 @@ The @shinkai namespace contains:
 
 # @shinkai/toolkit-buidler
 
-This tool scaffolds a new toolkit.
+The builder scaffolds a new toolkit.
 
 To create and build a toolkit:
 
@@ -56,7 +56,7 @@ The compiled toolkit is located at `@shinkai/toolkit-example/dist/packaged-shink
 
 This is the program that executes compiled `packaged-shinkai-toolkit.js`
 
-You have two options for using the runner, either as an executable or web server.
+You have two options for using the executor, either as an executable or web server.
 More information at `@shinkai/toolkit-executor/README.md`
 
 ## As an executable:
@@ -93,9 +93,9 @@ This library provides introspection and interfaces.
 
 # @shinkai/toolkit-\*
 
-## `@shinkai/toolkit-common`
+## `@shinkai/toolkit-web`
 
-Implementation of common tools such as HTTP-fetch.
+Implementation of common web tools such as HTTP-fetch.
 
 ## `@shinkai/toolkit-smtp`
 

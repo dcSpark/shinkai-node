@@ -40,7 +40,7 @@ cd toolkit-google-calendar \
 pwd
 cd ..
 
-cd toolkit-common \
+cd toolkit-web \
 && npm ci \
 && npm run compile \
 && npm run test
