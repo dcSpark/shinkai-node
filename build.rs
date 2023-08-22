@@ -14,15 +14,22 @@ fn main() {
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
     prepare_bert_cpp();
 
-    // Local Embedding Generator model
-    let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
-    let model_filename = "models/pythia-160m-q4_0.bin";
-    download_file(model_url, model_filename, model_filename);
-
     // Remote Embedding Generator model (used via Bert.cpp server)
     let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
     let model_filename = "models/all-MiniLM-L12-v2.bin";
     download_file(model_url, model_filename, model_filename);
+
+    // Prepare toolkit executor and example toolkit to use with rust tests
+    let output = Command::new("sh")
+        .arg("./scripts/prepare_test_toolkit_runner.sh")
+        .output()
+        .expect("TS test toolkit building and preparation failed");
+
+
+    // Local Embedding Generator model (not used anymore, here in case for testing)
+    // let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
+    // let model_filename = "models/pythia-160m-q4_0.bin";
+    // download_file(model_url, model_filename, model_filename);
 }
 
 fn prepare_bert_cpp() {
