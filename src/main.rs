@@ -114,12 +114,14 @@ fn main() {
         // Node task
         let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
             if let Ok(_) = env::var("CONNECT_PK") {
+                eprintln!("CONNECT_ADDR and CONNECT_PK environment variables are set. Trying to connect to the node.");
                 tokio::spawn(async move { connect_node.lock().await.start().await.unwrap() })
             } else {
                 eprintln!("CONNECT_PK environment variable is not set.");
                 tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
             }
         } else {
+            eprintln!("CONNECT_ADDR environment variable is not set.");
             tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
         };
 

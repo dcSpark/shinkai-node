@@ -460,9 +460,6 @@ impl ShinkaiMessageBuilder {
         sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        println!("sender: {}", sender_profile_name.clone());
-        println!("receiver: {}", receiver.clone());
-
         let registration_code_request = RegistrationCodeRequest { permissions, code_type };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(

@@ -9,6 +9,7 @@ import {
   receiveLastMessagesFromInbox,
   addMessageToInbox,
   receiveAllInboxesForProfile,
+  receiveLoadMoreMessagesFromInbox,
 } from "../store/actions";
 import { AppThunk } from "../types";
 import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
@@ -167,7 +168,8 @@ export const getLastMessagesFromInbox =
     inbox: string,
     count: number,
     lastKey: string | undefined,
-    setupDetailsState: SetupDetailsState
+    setupDetailsState: SetupDetailsState,
+    previous: boolean = false
   ) =>
   async (dispatch: AppDispatch) => {
     try {
@@ -198,8 +200,14 @@ export const getLastMessagesFromInbox =
       );
 
       handleHttpError(response);
-      console.log("GetLastMessagesFromInbox Response:", response.data);
-      dispatch(receiveLastMessagesFromInbox(inbox, response.data));
+      let results = previous ? response.data.reverse() : response.data;
+      if (previous) {
+        console.log("receiveLoadMoreMessagesFromInbox Response:", results);
+        dispatch(receiveLoadMoreMessagesFromInbox(inbox, results));
+      } else {
+        console.log("receiveLastMessagesFromInbox Response:", results);
+        dispatch(receiveLastMessagesFromInbox(inbox, results));
+      }
     } catch (error) {
       console.error("Error getting last messages from inbox:", error);
     }
@@ -265,9 +273,18 @@ export const submitRegistrationCode =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("submitRegistrationCode registration_name: ", setupData.registration_name);
-      console.log("submitRegistrationCode identity_type: ", setupData.identity_type);
-      console.log("submitRegistrationCode permission_type: ", setupData.permission_type);
+      console.log(
+        "submitRegistrationCode registration_name: ",
+        setupData.registration_name
+      );
+      console.log(
+        "submitRegistrationCode identity_type: ",
+        setupData.identity_type
+      );
+      console.log(
+        "submitRegistrationCode permission_type: ",
+        setupData.permission_type
+      );
       console.log("submitRegistrationCode Message:", message);
 
       // Use node_address from setupData for API endpoint
