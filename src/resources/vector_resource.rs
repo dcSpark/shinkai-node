@@ -9,34 +9,34 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
 
-use super::document::DocumentResource;
-use super::router::ResourcePointer;
+use super::document::DocumentVectorResource;
+use super::router::VectorResourcePointer;
 
-/// Enum used for all Resources to specify their type
+/// Enum used for all VectorResources to specify their type
 /// when dealing with Trait objects.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum ResourceType {
+pub enum VectorResourceType {
     Document,
     KeyValue,
 }
 
-impl ResourceType {
+impl VectorResourceType {
     pub fn to_str(&self) -> &str {
         match self {
-            ResourceType::Document => "Document",
-            ResourceType::KeyValue => "KeyValue",
+            VectorResourceType::Document => "Document",
+            VectorResourceType::KeyValue => "KeyValue",
         }
     }
 }
 
-impl FromStr for ResourceType {
-    type Err = ResourceError;
+impl FromStr for VectorResourceType {
+    type Err = VectorResourceError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "Document" => Ok(ResourceType::Document),
-            "KeyValue" => Ok(ResourceType::KeyValue),
-            _ => Err(ResourceError::InvalidResourceType),
+            "Document" => Ok(VectorResourceType::Document),
+            "KeyValue" => Ok(VectorResourceType::KeyValue),
+            _ => Err(VectorResourceError::InvalidVectorResourceType),
         }
     }
 }
@@ -48,7 +48,37 @@ impl FromStr for ResourceType {
 pub struct RetrievedDataChunk {
     pub chunk: DataChunk,
     pub score: f32,
-    pub resource_pointer: ResourcePointer,
+    pub resource_pointer: VectorResourcePointer,
+}
+
+impl RetrievedDataChunk {
+    /// Sorts the list of RetrievedDataChunks based on their scores.
+    /// Uses a binary heap for efficiency, returns num_results of highest scored.
+    pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {
+        // Create a HashMap to store the RetrievedDataChunk instances by their id
+        let mut data_chunks: HashMap<String, RetrievedDataChunk> = HashMap::new();
+
+        // Map the retrieved_data to a vector of tuples (NotNan<f32>, id)
+        let scores: Vec<(NotNan<f32>, String)> = retrieved_data
+            .into_iter()
+            .map(|data_chunk| {
+                let id = data_chunk.chunk.id.clone();
+                data_chunks.insert(id.clone(), data_chunk.clone());
+                (NotNan::new(data_chunks[&id].score).unwrap(), id)
+            })
+            .collect();
+
+        // Use the bin_heap_order_scores function to sort the scores
+        let sorted_scores = Embedding::bin_heap_order_scores(scores, num_results as usize);
+
+        // Map the sorted_scores back to a vector of RetrievedDataChunk
+        let sorted_data: Vec<RetrievedDataChunk> = sorted_scores
+            .into_iter()
+            .map(|(_, id)| data_chunks[&id].clone())
+            .collect();
+
+        sorted_data
+    }
 }
 
 /// Represents a data chunk with an id, data, and optional metadata.
@@ -85,16 +115,16 @@ impl DataChunk {
     }
 }
 
-/// Represents a Resource which includes properties and operations related to
+/// Represents a VectorResource which includes properties and operations related to
 /// data chunks and embeddings.
-pub trait Resource {
+pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> Option<&str>;
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
-    fn resource_type(&self) -> ResourceType;
+    fn resource_type(&self) -> VectorResourceType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn chunk_embeddings(&self) -> &Vec<Embedding>; // Maybe convert into hashmap in the future for efficiency
@@ -102,24 +132,24 @@ pub trait Resource {
 
     // Note we cannot add from_json in the trait due to trait object limitations
     // with &self.
-    fn to_json(&self) -> Result<String, ResourceError>;
+    fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Retrieves a data chunk given its id.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, ResourceError>;
+    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, VectorResourceError>;
 
     /// Naively searches through all chunk embeddings in the resource
     /// to find one with a matching id
-    fn get_chunk_embedding(&self, id: &str) -> Result<Embedding, ResourceError> {
+    fn get_chunk_embedding(&self, id: &str) -> Result<Embedding, VectorResourceError> {
         for embedding in self.chunk_embeddings() {
             if embedding.id == id {
                 return Ok(embedding.clone());
             }
         }
-        Err(ResourceError::InvalidChunkId)
+        Err(VectorResourceError::InvalidChunkId)
     }
 
-    /// Returns a String representing the Key that this Resource
-    /// will be/is saved to in the Topic::Resources in the DB.
+    /// Returns a String representing the Key that this VectorResource
+    /// will be/is saved to in the Topic::VectorResources in the DB.
     /// The db key is: `{name}.{resource_id}`
     fn db_key(&self) -> String {
         let name = self.name().replace(" ", "_");
@@ -132,11 +162,11 @@ pub trait Resource {
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
-    ) -> Result<(), ResourceError> {
+    ) -> Result<(), VectorResourceError> {
         let formatted = self.resource_embedding_data_formatted(keywords);
         let new_embedding = generator
             .generate_embedding_with_id(&formatted, "RE")
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
@@ -277,15 +307,15 @@ pub trait Resource {
 
     /// Generates a pointer out of the resource. Of note this is required to get around
     /// the fact that this is a trait object.
-    fn get_resource_pointer(&self) -> ResourcePointer {
+    fn get_resource_pointer(&self) -> VectorResourcePointer {
         let db_key = self.db_key();
         let resource_type = self.resource_type();
-        let id = "1"; // This will be replaced when the ResourcePointer is added into a ResourceRouter instance
+        let id = "1"; // This will be replaced when the VectorResourcePointer is added into a VectorResourceRouter instance
         let embedding = self.resource_embedding().clone();
 
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
 
-        ResourcePointer::new(id, &db_key, resource_type, Some(embedding), tag_names)
+        VectorResourcePointer::new(id, &db_key, resource_type, Some(embedding), tag_names)
     }
 }

@@ -1,0 +1,102 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'shinkai_message_wasm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=shinkai_message_wasm"
+                ],
+                "filter": {
+                    "name": "shinkai_message_wasm",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'shinkai_message_wasm'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=shinkai_message_wasm",
+                    "--package=shinkai_message_wasm"
+                ],
+                "filter": {
+                    "name": "shinkai_message_wasm",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'shinkai_message_wasm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=shinkai_message_wasm",
+                    "--package=shinkai_message_wasm"
+                ],
+                "filter": {
+                    "name": "shinkai_message_wasm",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'shinkai_message_tests'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=shinkai_message_tests",
+                    "--package=shinkai_message_wasm"
+                ],
+                "filter": {
+                    "name": "shinkai_message_tests",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'shinkai_message_builder_tests'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=shinkai_message_builder_tests",
+                    "--package=shinkai_message_wasm"
+                ],
+                "filter": {
+                    "name": "shinkai_message_builder_tests",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

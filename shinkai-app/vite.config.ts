@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), legacy(), wasm()],
   test: {
+    watch: false,
     globals: true,
     environment: "jsdom",
     setupFiles: "./src/setupTests.ts",

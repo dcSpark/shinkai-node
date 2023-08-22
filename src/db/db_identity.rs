@@ -1,11 +1,11 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::schemas::identity::{
-    DeviceIdentity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
-};
+use crate::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use mupdf::device;
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -141,6 +141,67 @@ impl ShinkaiDB {
         Ok(result)
     }
 
+    pub fn get_all_profiles_and_devices(&self, my_node_identity: ShinkaiName) -> Result<Vec<Identity>, ShinkaiDBError> {
+        let my_node_identity_name = my_node_identity.get_node_name();
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
+        let cf_device = self.db.cf_handle(Topic::Devices.as_str()).unwrap();
+
+        let (node_encryption_public_key, node_signature_public_key) =
+            self.get_local_node_keys(my_node_identity.clone())?;
+
+        let mut result: Vec<Identity> = Vec::new();
+        let iter = self.db.iterator_cf(cf_identity, rocksdb::IteratorMode::Start);
+
+        for item in iter {
+            match item {
+                Ok((key, value)) => {
+                    let full_identity_name = String::from_utf8(key.to_vec()).unwrap();
+                    let subidentity_signature_public_key =
+                        string_to_signature_public_key(&String::from_utf8(value.to_vec()).unwrap())?;
+                    let subidentity_encryption_public_key =
+                        self.get_subidentity_encryption_public_key(&full_identity_name)?;
+                    let identity_type = self.get_identity_type(&full_identity_name)?;
+                    let permissions = self.get_permissions(&full_identity_name)?;
+
+                    let identity_name =
+                        ShinkaiName::from_node_and_profile(my_node_identity_name.clone(), full_identity_name.clone())?;
+
+                    let mut identity = Identity::Standard(StandardIdentity::new(
+                        identity_name,
+                        None,
+                        node_encryption_public_key.clone(),
+                        node_signature_public_key.clone(),
+                        Some(subidentity_encryption_public_key),
+                        Some(subidentity_signature_public_key),
+                        identity_type,
+                        permissions, // Added this line
+                    ));
+
+                    let mut device_iter = self.db.iterator_cf(cf_device, rocksdb::IteratorMode::Start);
+                    for device_item in device_iter {
+                        match device_item {
+                            Ok((device_key, _device_value)) => {
+                                let device_key_str = String::from_utf8(device_key.to_vec()).unwrap();
+                                let device_shinkai_name = ShinkaiName::new(device_key_str.clone())?;
+                                let device_identity = self.get_device(device_shinkai_name)?;
+                                result.push(Identity::Device(device_identity));
+                            }
+                            Err(e) => return Err(e.into()),
+                        }
+                    }
+
+                    result.push(identity);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        Ok(result)
+    }
+
     pub fn insert_profile(&self, identity: StandardIdentity) -> Result<(), ShinkaiDBError> {
         println!("identity.full_identity_name: {}", identity.full_identity_name);
         let profile_name =
@@ -201,7 +262,7 @@ impl ShinkaiDB {
             "insert_profile::identity.full_identity_name: {}",
             identity.full_identity_name
         );
-        self.print_all_keys_for_profiles_identity_key();
+        self.debug_print_all_keys_for_profiles_identity_key();
 
         Ok(())
     }
@@ -255,8 +316,7 @@ impl ShinkaiDB {
         }
     }
 
-    // TODO: delete me
-    pub fn print_all_keys_for_profiles_identity_key(&self) {
+    pub fn debug_print_all_keys_for_profiles_identity_key(&self) {
         // Get the column family handle for ProfilesIdentityKey
         let cf_identity = match self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()) {
             Some(handle) => handle,
@@ -279,6 +339,40 @@ impl ShinkaiDB {
                     // String::from_utf8_lossy if there's a possibility of invalid UTF-8
                     let key_str = String::from_utf8(key.to_vec()).unwrap();
                     println!("print_all_keys_for_profiles_identity_key> {}", key_str);
+                    self.print_all_devices_for_profile(&key_str);
+                }
+                Err(e) => {
+                    // Optionally handle the error, e.g., print it out
+                    eprintln!("Error reading from database: {}", e);
+                }
+            }
+        }
+    }
+
+    pub fn print_all_devices_for_profile(&self, profile_name: &str) {
+        // Get the column family handle for Devices
+        let cf_device = match self.db.cf_handle(Topic::Devices.as_str()) {
+            Some(handle) => handle,
+            None => {
+                eprintln!("Failed to get column family handle for Devices");
+                return;
+            }
+        };
+
+        // Create an iterator for the column family
+        let mut iter = self.db.iterator_cf(cf_device, rocksdb::IteratorMode::Start);
+
+        // Iterate over the keys in the column family and print them
+        for item in iter {
+            match item {
+                Ok((key, _value)) => {
+                    // Convert the key bytes to a string
+                    let key_str = String::from_utf8(key.to_vec()).unwrap();
+
+                    // Check if the key (device identity name) contains the profile name
+                    if key_str.contains(profile_name) {
+                        println!("print_all_devices_for_profile> {}", key_str);
+                    }
                 }
                 Err(e) => {
                     // Optionally handle the error, e.g., print it out
@@ -309,8 +403,14 @@ impl ShinkaiDB {
         let cf_device = self.db.cf_handle(Topic::Devices.as_str()).unwrap();
 
         // Check that the full device identity name doesn't already exist in the column
-        if self.db.get_cf(cf_device, &device.full_identity_name)?.is_some() {
-            return Err(ShinkaiDBError::DeviceIdentityAlreadyExists);
+        if self
+            .db
+            .get_cf(cf_device, &device.full_identity_name.to_string().as_bytes())?
+            .is_some()
+        {
+            return Err(ShinkaiDBError::DeviceIdentityAlreadyExists(
+                device.full_identity_name.to_string(),
+            ));
         }
 
         // Start write batch for atomic operation
@@ -326,7 +426,7 @@ impl ShinkaiDB {
         // Add the device information to the batch
         batch.put_cf(
             cf_device,
-            &device.full_identity_name,
+            &device.full_identity_name.to_string().as_bytes(),
             device_signature_public_key.as_bytes(),
         );
 
@@ -339,7 +439,7 @@ impl ShinkaiDB {
         // Add the device permission to the batch
         batch.put_cf(
             cf_device_permissions,
-            &device.full_identity_name,
+            &device.full_identity_name.to_string().as_bytes(),
             permission_str.as_bytes(),
         );
 
@@ -377,7 +477,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
-        self.print_all_keys_for_profiles_identity_key();
+        self.debug_print_all_keys_for_profiles_identity_key();
 
         let profile_name = full_identity_name
             .get_profile_name()
@@ -451,5 +551,92 @@ impl ShinkaiDB {
             identity_type,
             permission_type,
         }))
+    }
+
+    pub fn get_device(&self, full_identity_name: ShinkaiName) -> Result<DeviceIdentity, ShinkaiDBError> {
+        let device_name = full_identity_name.to_string();
+
+        let cf_device = self
+            .db
+            .cf_handle(Topic::Devices.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("Devices".to_string()))?;
+
+        let cf_permission = self
+            .db
+            .cf_handle(Topic::DevicesPermissions.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("DevicesPermissions".to_string()))?;
+
+        let device_signature_public_key_bytes = match self.db.get_cf(cf_device, device_name.clone())? {
+            Some(bytes) => bytes,
+            None => return Err(ShinkaiDBError::DeviceNameNonExistent(device_name.to_string())),
+        };
+
+        let permission_type_bytes = self
+            .db
+            .get_cf(cf_permission, device_name.clone())?
+            .ok_or(ShinkaiDBError::DeviceNameNonExistent(device_name.to_string()))?;
+
+        let device_signature_public_key_str = String::from_utf8(device_signature_public_key_bytes.to_vec())
+            .map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+        let permission_type_str =
+            String::from_utf8(permission_type_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+
+        let device_signature_public_key = string_to_signature_public_key(&device_signature_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+        let permission_type =
+            IdentityPermissions::from_str(&permission_type_str).ok_or(ShinkaiDBError::InvalidPermissionsType)?;
+
+        let (node_encryption_public_key, node_signature_public_key) =
+            self.get_local_node_keys(full_identity_name.clone())?;
+
+        Ok(DeviceIdentity {
+            full_identity_name,
+            node_encryption_public_key,
+            node_signature_public_key,
+            profile_encryption_public_key: None,
+            profile_signature_public_key: None,
+            device_signature_public_key: Some(device_signature_public_key),
+            permission_type,
+        })
+    }
+
+    // Utils
+    pub fn get_subidentity_encryption_public_key(
+        &self,
+        full_identity_name: &str,
+    ) -> Result<EncryptionPublicKey, ShinkaiDBError> {
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        match self.db.get_cf(cf_encryption, full_identity_name)? {
+            Some(value) => {
+                let key_string = String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+                string_to_encryption_public_key(&key_string).map_err(|_| ShinkaiDBError::PublicKeyParseError)
+            }
+            None => Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name.to_string())),
+        }
+    }
+
+    pub fn get_identity_type(&self, full_identity_name: &str) -> Result<StandardIdentityType, ShinkaiDBError> {
+        let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        match self.db.get_cf(cf_type, full_identity_name)? {
+            Some(value) => {
+                let identity_type_str = String::from_utf8(value.to_vec()).unwrap();
+                StandardIdentityType::to_enum(&identity_type_str).ok_or(ShinkaiDBError::InvalidIdentityType(format!(
+                    "Invalid identity type for: {}",
+                    identity_type_str
+                )))
+            }
+            None => Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name.to_string())),
+        }
+    }
+
+    pub fn get_permissions(&self, full_identity_name: &str) -> Result<IdentityPermissions, ShinkaiDBError> {
+        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
+        match self.db.get_cf(cf_permission, full_identity_name)? {
+            Some(value) => {
+                let permissions_str = String::from_utf8(value.to_vec()).unwrap();
+                IdentityPermissions::from_str(&permissions_str).ok_or(ShinkaiDBError::InvalidPermissionsType)
+            }
+            None => Err(ShinkaiDBError::ProfileNameNonExistent(full_identity_name.to_string())),
+        }
     }
 }

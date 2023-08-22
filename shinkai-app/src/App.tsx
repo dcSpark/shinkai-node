@@ -6,6 +6,8 @@ import Chat from "./pages/Chat";
 import ChatList from "./pages/ChatList";
 import Settings from "./pages/Settings";
 import Connect from "./pages/Connect";
+import CreateJob from "./pages/CreateJob";
+import AdminCommands from "./pages/AdminCommands";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./store";
@@ -28,11 +30,12 @@ import "@ionic/react/css/display.css";
 
 /* Theme variables */
 import "./theme/variables.css";
+import CreateChat from "./pages/CreateChat";
 
 setupIonicReact();
 
 const App: React.FC = () => {
-  const setupComplete = false; // localStorage.getItem("setupComplete") === "true";
+  const setupComplete = localStorage.getItem("setupComplete") === "true"; 
   console.log(`Setup complete: ${setupComplete}`);
 
   return (
@@ -43,8 +46,11 @@ const App: React.FC = () => {
             <IonRouterOutlet>
               <Route path="/connect" component={Connect} />
               <Route exact path="/home" component={Home} />
+              <Route exact path="/admin-commands" component={AdminCommands} />
+              <Route exact path="/create-job" component={CreateJob} />
+              <Route exact path="/create-chat" component={CreateChat} />
               <Route path="/chatlist" component={ChatList} />
-              <Route path="/chat/:id" component={Chat} />
+              <Route exact path="/chat/:id" component={Chat} />
               <Route path="/settings" component={Settings} />
               {!setupComplete ? (
                 <Redirect exact from="/" to="/connect" />

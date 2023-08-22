@@ -25,7 +25,7 @@ impl InboxPermission {
             1 => Ok(InboxPermission::Read),
             2 => Ok(InboxPermission::Write),
             3 => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiDBError::InvalidInboxPermission("Invalid permission string".to_string())),
+            _ => Err(ShinkaiDBError::InvalidInboxPermission(format!("Invalid permission string: {}", val).to_string())),
         }
     }
 }
@@ -48,7 +48,7 @@ impl FromStr for InboxPermission {
             "Read" => Ok(InboxPermission::Read),
             "Write" => Ok(InboxPermission::Write),
             "Admin" => Ok(InboxPermission::Admin),
-            _ => Err(ShinkaiDBError::InvalidInboxPermission("Invalid permission string".to_string())),
+            _ => Err(ShinkaiDBError::InvalidInboxPermission(format!("Invalid permission string: {}", s).to_string())),
         }
     }
 }

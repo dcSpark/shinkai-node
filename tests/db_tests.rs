@@ -1,9 +1,11 @@
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-use shinkai_message_wasm::shinkai_utils::encryption::{EncryptionMethod, unsafe_deterministic_encryption_keypair};
+use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair};
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+};
 use shinkai_message_wasm::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
@@ -40,7 +42,6 @@ fn generate_message_with_text(
         .internal_metadata(
             "".to_string(),
             recipient_subidentity_name.clone().to_string(),
-            "".to_string(),
             EncryptionMethod::None,
         )
         .external_metadata_with_schedule(
@@ -130,14 +131,9 @@ fn test_insert_message_to_all() {
     );
     // Note: Hello All and Hello All 2 have the same scheduled time, so the order is
     // not guaranteed
-    assert_eq!(
-        last_messages_all[1].clone().body.unwrap().content,
-        "Hello All 2".to_string()
-    );
-    assert_eq!(
-        last_messages_all[2].clone().body.unwrap().content,
-        "Hello All".to_string()
-    );
+    let expected_contents = ["Hello All", "Hello All 2"];
+    assert!(expected_contents.contains(&last_messages_all[1].clone().body.unwrap().content.as_str()));
+    assert!(expected_contents.contains(&last_messages_all[2].clone().body.unwrap().content.as_str()));
     assert_eq!(
         last_messages_all[3].clone().body.unwrap().content,
         "Hello All before".to_string()
@@ -212,14 +208,11 @@ fn test_schedule_and_get_due_scheduled_messages() {
         due_messages[0].clone().body.unwrap().content,
         "Hello Scheduled before".to_string()
     );
-    assert_eq!(
-        due_messages[1].clone().body.unwrap().content,
-        "Hello Scheduled 2".to_string()
-    );
-    assert_eq!(
-        due_messages[2].clone().body.unwrap().content,
-        "Hello Scheduled".to_string()
-    );
+
+    let expected_contents = ["Hello Scheduled", "Hello Scheduled 2"];
+    assert!(expected_contents.contains(&due_messages[1].clone().body.unwrap().content.as_str()));
+    assert!(expected_contents.contains(&due_messages[2].clone().body.unwrap().content.as_str()));
+   
     assert_eq!(
         due_messages[3].clone().body.unwrap().content,
         "Hello Scheduled after".to_string()

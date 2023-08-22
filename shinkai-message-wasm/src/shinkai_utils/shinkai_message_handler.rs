@@ -6,7 +6,15 @@ use sha2::{Digest, Sha256};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::{shinkai_utils::{encryption::{EncryptionMethod, encrypt_body}, signatures::sign_message}, shinkai_message::{shinkai_message::{ShinkaiMessage, Body}}};
+use crate::{
+    shinkai_message::{shinkai_message::{Body, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType},
+    shinkai_utils::{
+        encryption::{encrypt_body, EncryptionMethod},
+        signatures::sign_message,
+    },
+};
+
+use super::encryption::{string_to_encryption_public_key, decrypt_body_message};
 
 pub struct ShinkaiMessageHandler;
 pub type ProfileName = String;
@@ -26,7 +34,7 @@ impl ShinkaiMessageHandler {
     pub fn decode_body(encoded: Vec<u8>) -> Body {
         bincode::deserialize(&encoded[..]).unwrap()
     }
-    
+
     pub fn encode_message(message: ShinkaiMessage) -> Vec<u8> {
         bincode::serialize(&message).unwrap()
     }
@@ -38,27 +46,27 @@ impl ShinkaiMessageHandler {
     pub fn encode_body_result(body: Body) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(&body)
     }
-    
+
     pub fn decode_body_result(encoded: Vec<u8>) -> Result<Body, bincode::Error> {
         bincode::deserialize(&encoded[..])
     }
-    
+
     pub fn encode_message_result(message: ShinkaiMessage) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(&message)
     }
-    
+
     pub fn decode_message_result(encoded: Vec<u8>) -> Result<ShinkaiMessage, bincode::Error> {
         bincode::deserialize(&encoded[..])
     }
-    
+
     pub fn as_json_string(message: ShinkaiMessage) -> Result<String, Error> {
         let message_json = serde_json::to_string_pretty(&message);
         message_json.map_err(|e| Error::new(std::io::ErrorKind::Other, e))
     }
 
     pub fn generate_time_now() -> String {
-        let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
-        let scheduled_time = format!("{}{}", &timestamp[..17], &timestamp[17..20]);
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S.%f").to_string();
+        let scheduled_time = format!("{}Z", &timestamp[..23]);
         scheduled_time
     }
 
@@ -98,6 +106,36 @@ impl ShinkaiMessageHandler {
 
         msg_to_encrypt.body = Some(new_body);
         msg_to_encrypt
+    }
+
+    pub fn decrypt_message_body_if_needed(
+        potentially_encrypted_msg: ShinkaiMessage,
+        encryption_secret_key: &EncryptionStaticKey,
+    ) -> Result<ShinkaiMessage, std::io::Error> {
+        if ShinkaiMessageHandler::is_body_currently_encrypted(&potentially_encrypted_msg) {
+            let sender_encryption_pk_string = potentially_encrypted_msg
+                .external_metadata
+                .clone()
+                .unwrap()
+                .other;
+            let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
+
+            let decrypted_msg = decrypt_body_message(
+                &potentially_encrypted_msg,
+                encryption_secret_key,
+                &sender_encryption_pk,
+            );
+
+            match decrypted_msg {
+                Ok(msg) => Ok(msg),
+                Err(e) => Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Decryption error: {}", e),
+                )),
+            }
+        } else {
+            Ok(potentially_encrypted_msg)
+        }
     }
 
     pub fn re_sign_message(message: ShinkaiMessage, signature_sk: SignatureStaticKey) -> ShinkaiMessage {
@@ -154,6 +192,35 @@ impl ShinkaiMessageHandler {
             EncryptionStatus::NotCurrentlyEncrypted
         }
     }
+
+    pub fn validate_message_schema(
+        msg: &ShinkaiMessage,
+        schema: MessageSchemaType,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(body) = &msg.body {
+            if let Some(internal_metadata) = &body.internal_metadata {
+                if internal_metadata.message_schema_type != schema {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "Invalid message schema type",
+                    )));
+                }
+            } else {
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Missing internal metadata",
+                )));
+            }
+        } else {
+            return Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Missing message body",
+            )));
+        }
+        Ok(())
+    }
+
+
 }
 
 #[cfg(test)]
@@ -171,14 +238,14 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
             .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata("".to_string(), "".to_string(), "".to_string(), content_encryption)
-            .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
+            .internal_metadata("".to_string(), "".to_string(), content_encryption)
+            .external_metadata_with_schedule(recipient, sender, "2023-07-02T20:53:34.813Z".to_string())
             .build();
 
         return message_result.unwrap();
@@ -295,7 +362,7 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
 
         assert_eq!(decoded_message.encryption, EncryptionMethod::None);
@@ -303,12 +370,12 @@ mod tests {
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, recipient);
-        assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
+        assert_eq!(external_metadata.scheduled_time, "2023-07-02T20:53:34.813Z");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 
@@ -325,19 +392,19 @@ mod tests {
         let internal_metadata = body.internal_metadata.as_ref().unwrap();
         assert_eq!(internal_metadata.sender_subidentity, "");
         assert_eq!(internal_metadata.recipient_subidentity, "");
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(internal_metadata.inbox, "inbox::@@my_node.shinkai::@@other_node.shinkai::false");
         assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
         assert_eq!(decoded_message.encryption, EncryptionMethod::None);
 
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, recipient);
-        assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
+        assert_eq!(external_metadata.scheduled_time, "2023-07-02T20:53:34.813Z");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 }

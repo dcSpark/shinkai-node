@@ -1,14 +1,17 @@
 target/
 .env
-/db/
+./db/
+./db_tests/
 db_tests/
-*.json
 !package.json
 !package-lock.json
 !tsconfig.json
 !.eslintrc.json
 !toolkit-setup.json
-*.bin
+./*.json
+./*.bin
+*.log
+/models/
 local-ai
 server
 embeddings
@@ -18,3 +21,6 @@ a.out
 packaged-shinkai-toolkit.js
 shinkai-toolkit-executor.js
 tmp_*.js
+qr_code_profile_*.png
+qr_code_device_*.png
+
