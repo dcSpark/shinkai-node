@@ -1,6 +1,7 @@
 import {
   IonActionSheet,
   IonAlert,
+  IonAvatar,
   IonButton,
   IonButtons,
   IonContent,
@@ -29,7 +30,12 @@ const Home: React.FC = () => {
 
   const { shinkai_identity, profile, registration_name, permission_type } =
     setupDetailsState;
-  const displayString = `${shinkai_identity}/${profile}/${registration_name} (Device)`;
+  const displayString = (
+    <>
+      {`${shinkai_identity}/${profile}/${registration_name}`}{" "}
+      <span className="text-muted text-sm">(Device)</span>
+    </>
+  );
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showLogoutAlert, setShowLogoutAlert] = useState(false);
   const inboxes = useSelector((state: RootState) => state.inboxes);
@@ -59,16 +65,18 @@ const Home: React.FC = () => {
         sender_subidentity,
         receiver,
         target_shinkai_name_profile,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
   }, []);
 
   return (
     <IonPage>
-      <IonHeader>
+      <IonHeader className="shadow">
         <IonToolbar>
-          <IonTitle>{displayString}</IonTitle>
+          <IonTitle className="container text-accent text-center">
+            {displayString}
+          </IonTitle>
           <IonButtons slot="end">
             {" "}
             {/* Add the "+" button to the right side of the toolbar */}
@@ -91,11 +99,22 @@ const Home: React.FC = () => {
               <IonItem
                 key={position}
                 button
+                className="text-accent [--inner-padding-top:20px] [--inner-padding-bottom:20px] [--inner-border-width:0]"
                 onClick={() => {
-                  const encodedInboxId = position.toString().replace(/\./g, "~");
+                  const encodedInboxId = position
+                    .toString()
+                    .replace(/\./g, "~");
                   history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
                 }}
               >
+                <IonAvatar slot="start" className="bg-white w-10 h-10">
+                  <img
+                    className="w-full h-full"
+                    src="https://ionicframework.com/docs/img/demos/avatar.svg"
+                    alt="Shinkai"
+                  />
+                </IonAvatar>
+
                 {JSON.stringify(position)}
               </IonItem>
             ))}
