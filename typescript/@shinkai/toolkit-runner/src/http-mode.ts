@@ -1,22 +1,22 @@
-import {execMode, execModeConfig, validate} from './exec-mode';
+import { execMode, execModeConfig, validate } from './exec-mode';
 import fs from 'fs/promises';
 // Http Mode
 import express from 'express';
 import bodyParser from 'body-parser';
-import {IncomingHttpHeaders} from 'http';
+import { IncomingHttpHeaders } from 'http';
 
 export function httpMode(port: string | number) {
   const app = express();
-  app.use(bodyParser.json({limit: '50mb'}));
+  app.use(bodyParser.json({ limit: '50mb' }));
 
   app.post(
     '/validate',
     async (
-      req: express.Request<{}, {}, {source: string}>,
+      req: express.Request<{}, {}, { source: string }>,
       res: express.Response
     ) => {
       if (!req.body.source)
-        return res.status(400).json({error: 'Missing source'});
+        return res.status(400).json({ error: 'Missing source' });
 
       const response = await runWithSource(
         req.body.source,
@@ -30,11 +30,11 @@ export function httpMode(port: string | number) {
   app.post(
     '/toolkit_json',
     async (
-      req: express.Request<{}, {}, {source: string}>,
+      req: express.Request<{}, {}, { source: string }>,
       res: express.Response
     ) => {
       if (!req.body.source)
-        return res.status(400).json({error: 'Missing source'});
+        return res.status(400).json({ error: 'Missing source' });
 
       const response = await runWithSource(
         req.body.source,
@@ -51,14 +51,14 @@ export function httpMode(port: string | number) {
       req: express.Request<
         {},
         {},
-        {source: string; tool: string; input: string}
+        { source: string; tool: string; input: string }
       >,
       res: express.Response
     ) => {
-      if (!req.body) return res.status(400).json({error: 'Missing body'});
+      if (!req.body) return res.status(400).json({ error: 'Missing body' });
       if (!req.body.source)
-        return res.status(400).json({error: 'Missing source'});
-      if (!req.body.tool) return res.status(400).json({error: 'Missing tool'});
+        return res.status(400).json({ error: 'Missing source' });
+      if (!req.body.tool) return res.status(400).json({ error: 'Missing tool' });
 
       const response = await runWithSource(
         req.body.source,
@@ -90,6 +90,7 @@ const filterHeaders = (rawHeaders: IncomingHttpHeaders): string => {
   return JSON.stringify(headers);
 };
 
+
 const runWithSource = async <T>(
   source: string,
   callback: (path: string) => Promise<T>
@@ -98,8 +99,35 @@ const runWithSource = async <T>(
     /0./,
     ''
   )}.js`;
+
   await fs.writeFile(path, source, 'utf8');
-  const data = await callback(path);
-  await fs.unlink(path);
+
+  let data: T;
+
+  try {
+    data = await callback(path);
+  } finally {
+    // Ensure the temporary file is deleted
+    try {
+      await fs.unlink(path);
+    } catch (err) {
+      console.error(`Failed to delete temporary file: ${path}. Error:`, err);
+    }
+  }
+
   return data;
 };
+
+// const runWithSource = async <T>(
+//   source: string,
+//   callback: (path: string) => Promise<T>
+// ): Promise<T> => {
+//   const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
+//     /0./,
+//     ''
+//   )}.js`;
+//   await fs.writeFile(path, source, 'utf8');
+//   const data = await callback(path);
+//   await fs.unlink(path);
+//   return data;
+// };

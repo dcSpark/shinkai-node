@@ -3,22 +3,37 @@ const util = require('node:util');
 const exec = util.promisify(require('node:child_process').exec);
 const fs = require('fs/promises');
 
+
 async function runScript(src: string, env = ''): Promise<string> {
-  // Create a temporal file for execution.
   const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
     /0./,
     ''
   )}.js`;
-  await fs.writeFile(path, src, 'utf8');
-  const {error, stdout, stderr} = await exec(`${env} node ${path}`);
-  await fs.unlink(path);
 
-  if (error || stderr) {
-    return JSON.stringify({stdout, error, stderr});
+  await fs.writeFile(path, src, 'utf8');
+
+  let result;
+
+  try {
+    const { error, stdout, stderr } = await exec(`${env} node ${path}`);
+
+    if (error || stderr) {
+      result = JSON.stringify({ stdout, error, stderr });
+    } else {
+      result = stdout;
+    }
+  } finally {
+    // Ensure the temporary file is deleted
+    try {
+      await fs.unlink(path);
+    } catch (err) {
+      console.error(`Failed to delete temporary file: ${path}. Error:`, err);
+    }
   }
 
-  return stdout;
+  return result;
 }
+
 
 // Exec mode run once
 export async function execMode(
