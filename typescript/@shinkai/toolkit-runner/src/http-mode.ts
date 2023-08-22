@@ -28,7 +28,7 @@ export function httpMode(port: string | number) {
   );
 
   app.post(
-    '/config',
+    '/toolkit_json',
     async (
       req: express.Request<{}, {}, {source: string}>,
       res: express.Response

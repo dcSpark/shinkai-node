@@ -151,7 +151,7 @@ Response:
 #### Example Request
 
 ```
-curl localhost:3000/config -H "Content-Type: application/json" -d @run-is-even.json
+curl localhost:3000/toolkit_json -H "Content-Type: application/json" -d @run-is-even.json
 ```
 
 Response:
