@@ -1,5 +1,5 @@
 {
-  "name": "@shinkai/toolkit-runner",
+  "name": "@shinkai/toolkit-executor",
   "version": "1.0.0",
   "description": "",
   "main": "build/runner.js",

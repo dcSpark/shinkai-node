@@ -5,7 +5,7 @@ cd toolkit-lib \
 && npm run test
 cd ..
 
-cd toolkit-runner \
+cd toolkit-executor \
 && npm ci \
 && npm run test
 pwd

@@ -4,7 +4,7 @@ cd toolkit-lib \
 && npm ci 
 cd ..
 
-cd toolkit-runner \
+cd toolkit-executor \
 && npm ci \
 && npm run compile \
 && cp dist/shinkai-toolkit-executor.js ../../../files
