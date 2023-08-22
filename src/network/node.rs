@@ -489,7 +489,7 @@ impl Node {
         db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
-        // println!("Sending {:?} to {:?}", message, peer);
+        println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
         let stream = TcpStream::connect(address).await;
@@ -499,7 +499,7 @@ impl Node {
                 // println!("send> Encoded Message: {:?}", encoded_msg);
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
-                // info!("Sent message to {}", stream.peer_addr()?);
+                info!("Sent message to {}", stream.peer_addr()?);
                 Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
                 Ok(())
             }

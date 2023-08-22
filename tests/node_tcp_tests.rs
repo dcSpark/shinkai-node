@@ -28,8 +28,8 @@ fn tcp_node_test() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1.shinkai";
-        let node2_identity_name = "@@node2.shinkai";
+        let node1_identity_name = "@@node1_test.shinkai";
+        let node2_identity_name = "@@node2_test.shinkai";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);

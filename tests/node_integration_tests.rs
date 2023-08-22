@@ -40,8 +40,8 @@ fn subidentity_registration() {
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {
-        let node1_identity_name = "@@node1.shinkai";
-        let node2_identity_name = "@@node2.shinkai";
+        let node1_identity_name = "@@node1_test.shinkai";
+        let node2_identity_name = "@@node2_test.shinkai";
         let node1_subidentity_name = "main";
         let node1_device_name = "node1_device";
         let node2_subidentity_name = "main_profile_node2";
@@ -530,7 +530,7 @@ fn subidentity_registration() {
                 assert!(send_result.is_ok(), "Failed to send onionized message");
 
                 {
-                    for _ in 0..20 {
+                    for _ in 0..30 {
                         let (res2_sender, res2_receiver) = async_channel::bounded(1);
                         node2_commands_sender
                             .send(NodeCommand::FetchLastMessages {
@@ -551,6 +551,7 @@ fn subidentity_registration() {
                     }
                 }
 
+                tokio::time::sleep(Duration::from_millis(1000)).await;
                 // Get Node2 messages
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
                 node2_commands_sender

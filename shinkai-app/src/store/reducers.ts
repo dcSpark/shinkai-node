@@ -1,4 +1,5 @@
 import { Base58String } from "../models/QRSetupData";
+import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import {
   Action,
   GET_PUBLIC_KEY,
@@ -11,6 +12,7 @@ import {
   CLEAR_STORE,
   ADD_MESSAGE_TO_INBOX,
   RECEIVE_ALL_INBOXES_FOR_PROFILE,
+  RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -73,16 +75,83 @@ const rootReducer = (state = initialState, action: Action): RootState => {
         registrationStatus: true,
         setupDetailsState: action.payload,
       };
-    case RECEIVE_LAST_MESSAGES_FROM_INBOX:
+    case RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX: {
       const { inboxId, messages } = action.payload;
-      console.log("RECEIVE_LAST_MESSAGES_FROM_INBOX: ", inboxId, messages);
+      const currentMessages = state.inboxes[inboxId] || [];
+      const lastCurrentMessageTimestamp =
+        currentMessages.length > 0 &&
+        currentMessages[currentMessages.length - 1].external_metadata
+          ? new Date(
+              currentMessages[
+                currentMessages.length - 1
+              ].external_metadata.scheduled_time
+            )
+          : null;
+      const lastNewMessageTimestamp = messages[messages.length - 1]
+        .external_metadata
+        ? new Date(
+            messages[messages.length - 1].external_metadata.scheduled_time
+          )
+        : null;
+
+      const newMessages =
+        currentMessages.length === 0 ||
+        (lastCurrentMessageTimestamp &&
+          lastNewMessageTimestamp &&
+          lastCurrentMessageTimestamp.getTime() <
+            lastNewMessageTimestamp.getTime())
+          ? messages
+          : [];
+
+      console.log(
+        "last current messages: ",
+        currentMessages[currentMessages.length - 1]
+      );
+      console.log("last new messages: ", messages[messages.length - 1]);
+
+      console.log("newMessages: ", newMessages);
+      console.log("currentMessages: ", currentMessages);
+      console.log("messages: ", messages);
+
       return {
         ...state,
         inboxes: {
           ...state.inboxes,
-          [inboxId]: [...(state.inboxes[inboxId] || []), ...messages],
+          [inboxId]: [...newMessages, ...currentMessages],
         },
       };
+    }
+    case RECEIVE_LAST_MESSAGES_FROM_INBOX: {
+      const { inboxId, messages } = action.payload;
+      const currentMessages = state.inboxes[inboxId] || [];
+      const lastMessageTimestamp =
+        currentMessages.length > 0 &&
+        currentMessages[currentMessages.length - 1].external_metadata
+          ? new Date(
+              currentMessages[
+                currentMessages.length - 1
+              ].external_metadata.scheduled_time
+            )
+          : null;
+      const firstNewMessageTimestamp = messages[0].external_metadata
+        ? new Date(messages[0].external_metadata.scheduled_time)
+        : null;
+
+      const newMessages =
+        currentMessages.length === 0 ||
+        (lastMessageTimestamp &&
+          firstNewMessageTimestamp &&
+          firstNewMessageTimestamp > lastMessageTimestamp)
+          ? messages
+          : [];
+      return {
+        ...state,
+        inboxes: {
+          ...state.inboxes,
+          [inboxId]: [...currentMessages, ...newMessages],
+        },
+      };
+    }
     case ADD_MESSAGE_TO_INBOX: {
       const { inboxId, message } = action.payload;
       return {

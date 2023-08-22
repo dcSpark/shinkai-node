@@ -65,8 +65,8 @@ impl ShinkaiMessageHandler {
     }
 
     pub fn generate_time_now() -> String {
-        let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
-        let scheduled_time = format!("{}{}", &timestamp[..17], &timestamp[17..20]);
+        let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%S.%f").to_string();
+        let scheduled_time = format!("{}Z", &timestamp[..23]);
         scheduled_time
     }
 
@@ -238,14 +238,14 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .body("Hello World".to_string())
             .body_encryption(body_encryption)
             .message_schema_type(MessageSchemaType::TextContent)
             .internal_metadata("".to_string(), "".to_string(), content_encryption)
-            .external_metadata_with_schedule(recipient, sender, "20230702T20533481345".to_string())
+            .external_metadata_with_schedule(recipient, sender, "2023-07-02T20:53:34.813Z".to_string())
             .build();
 
         return message_result.unwrap();
@@ -370,12 +370,12 @@ mod tests {
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, recipient);
-        assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
+        assert_eq!(external_metadata.scheduled_time, "2023-07-02T20:53:34.813Z");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 
@@ -399,12 +399,12 @@ mod tests {
         let (_, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34.813Z".to_string();
 
         let external_metadata = decoded_message.external_metadata.as_ref().unwrap();
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, recipient);
-        assert_eq!(external_metadata.scheduled_time, "20230702T20533481345");
+        assert_eq!(external_metadata.scheduled_time, "2023-07-02T20:53:34.813Z");
         assert!(verify_signature(&my_identity_pk, &message,).unwrap())
     }
 }
