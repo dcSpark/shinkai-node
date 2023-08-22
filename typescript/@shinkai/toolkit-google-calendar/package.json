@@ -18,6 +18,7 @@
     "@types/node": "^20.4.5",
     "gts": "^3.1.1",
     "jest": "^29.6.2",
+    "terser-webpack-plugin": "^5.3.9",
     "ts-loader": "^9.4.4",
     "ts-node": "^10.9.1",
     "tsconfig-paths-webpack-plugin": "^4.1.0",
@@ -26,8 +27,8 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
+    "@shinkai/toolkit-lib": "file:../toolkit-lib",
     "axios": "^1.4.0",
-    "dayjs": "^1.11.9",
-    "@shinkai/toolkit-lib": "file:../toolkit-lib"
+    "dayjs": "^1.11.9"
   }
 }
