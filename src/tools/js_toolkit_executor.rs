@@ -92,12 +92,9 @@ impl JSToolkitExecutor {
             JSToolkitExecutor::Remote(remote) => &remote.address,
         };
 
-        let response = client
-            .get(&format!("{}{}", address, endpoint))
-            .send()
-            .map_err(|_| ToolError::FailedJSONParsing)?;
+        let response = client.get(&format!("{}{}", address, endpoint)).send()?;
 
-        response.json().map_err(|_| ToolError::FailedJSONParsing)
+        Ok(response.json()?)
     }
 
     // Submits a post request to the JS Toolkit Executor
@@ -122,14 +119,14 @@ impl JSToolkitExecutor {
             request_builder = request_builder.header(key, value);
         }
 
-        let response = request_builder.send().map_err(|_| ToolError::FailedJSONParsing)?;
+        let response = request_builder.send()?;
 
-        response.json().map_err(|_| ToolError::FailedJSONParsing)
+        Ok(response.json()?)
     }
 }
 
 pub struct RemoteJSToolkitExecutor {
-    address: String, // Expected ip:port or DNS address
+    address: String, // Expected http://ip:port or DNS address
 }
 
 pub struct JSToolkitExecutorProcess {
@@ -156,7 +153,7 @@ impl JSToolkitExecutorProcess {
             .stderr(Stdio::from(dev_null)) // Redirect stderr
             .spawn()?;
 
-        let address = format!("0.0.0.0:{}", DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT.to_string());
+        let address = format!("http://0.0.0.0:{}", DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT.to_string());
 
         // Wait for 1/10th of a second for the JSToolkitExecutor process to boot up/initialize its
         // web server
