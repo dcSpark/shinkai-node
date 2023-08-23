@@ -11,6 +11,8 @@ pub enum ToolError {
     ParseError(String),
     ToolkitNotFound,
     ToolkitVersionAlreadyInstalled(String, String),
+    JSToolkitExecutorNotAvailable,
+    JSToolkitExecutorFailedStarting,
 }
 
 impl fmt::Display for ToolError {
@@ -24,6 +26,10 @@ impl fmt::Display for ToolError {
             ToolError::ToolkitVersionAlreadyInstalled(ref s, ref e) => {
                 write!(f, "Toolkit with the same version is already installed: {} {}", s, e)
             }
+            ToolError::JSToolkitExecutorNotAvailable => {
+                write!(f, "Failed connecting to JS Toolkit Executor over HTTP.")
+            }
+            ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
         }
     }
 }
