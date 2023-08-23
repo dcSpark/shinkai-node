@@ -2,6 +2,7 @@ use crate::tools::error::ToolError;
 use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io;
 use std::process::{Child, Command, Stdio};
@@ -43,8 +44,7 @@ impl JSToolkitExecutor {
 
     // Submits a health check request to /health_check and checks the response
     pub fn submit_health_check(&self) -> Result<(), ToolError> {
-        let health_check_json = serde_json::json!({});
-        let response = self.submit_request("/healthcheck", &health_check_json)?;
+        let response = self.submit_get_request("/healthcheck")?;
         if response.get("status").unwrap_or(&JsonValue::Bool(false)) == &JsonValue::Bool(true) {
             Ok(())
         } else {
@@ -52,11 +52,40 @@ impl JSToolkitExecutor {
         }
     }
 
-    pub fn submit_tool_execution_request(&self, input_data_json: &JsonValue) -> Result<JsonValue, ToolError> {
-        self.submit_request("/exec", input_data_json)
+    // Submits a toolkit json request to the JS Toolkit Executor
+    pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JsonValue, ToolError> {
+        let input_data_json = serde_json::json!({ "source": toolkit_js_code });
+        self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())
     }
 
-    fn submit_request(&self, endpoint: &str, input_data_json: &JsonValue) -> Result<JsonValue, ToolError> {
+    // Submits a headers validation request to the JS Toolkit Executor
+    pub fn submit_headers_validation_request(
+        &self,
+        toolkit_js_code: &str,
+        header_values: &HashMap<String, String>,
+    ) -> Result<JsonValue, ToolError> {
+        let input_data_json = serde_json::json!({ "source": toolkit_js_code });
+        self.submit_post_request("/validate", &input_data_json, header_values)
+    }
+
+    // Submits a tool execution request to the JS Toolkit Executor
+    pub fn submit_tool_execution_request(
+        &self,
+        tool: &str,
+        input_data: &JsonValue,
+        toolkit_js_code: &str,
+        header_values: &HashMap<String, String>,
+    ) -> Result<JsonValue, ToolError> {
+        let input_data_json = serde_json::json!({
+            "tool": tool,
+            "input": input_data,
+            "source": toolkit_js_code
+        });
+        self.submit_post_request("/exec", &input_data_json, header_values)
+    }
+
+    // Submits a get request to the JS Toolkit Executor
+    fn submit_get_request(&self, endpoint: &str) -> Result<JsonValue, ToolError> {
         let client = Client::new();
         let address = match self {
             JSToolkitExecutor::Local(process) => &process.address,
@@ -64,11 +93,36 @@ impl JSToolkitExecutor {
         };
 
         let response = client
-            .post(&format!("{}{}", address, endpoint))
-            .header("Content-Type", "application/json")
-            .json(input_data_json)
+            .get(&format!("{}{}", address, endpoint))
             .send()
             .map_err(|_| ToolError::FailedJSONParsing)?;
+
+        response.json().map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    // Submits a post request to the JS Toolkit Executor
+    fn submit_post_request(
+        &self,
+        endpoint: &str,
+        input_data_json: &JsonValue,
+        header_values: &HashMap<String, String>,
+    ) -> Result<JsonValue, ToolError> {
+        let client = Client::new();
+        let address = match self {
+            JSToolkitExecutor::Local(process) => &process.address,
+            JSToolkitExecutor::Remote(remote) => &remote.address,
+        };
+
+        let mut request_builder = client
+            .post(&format!("{}{}", address, endpoint))
+            .header("Content-Type", "application/json")
+            .json(input_data_json);
+
+        for (key, value) in header_values {
+            request_builder = request_builder.header(key, value);
+        }
+
+        let response = request_builder.send().map_err(|_| ToolError::FailedJSONParsing)?;
 
         response.json().map_err(|_| ToolError::FailedJSONParsing)
     }
