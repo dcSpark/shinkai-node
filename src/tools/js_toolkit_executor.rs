@@ -1,4 +1,5 @@
 use crate::tools::error::ToolError;
+use crate::tools::js_toolkit::JSToolkit;
 use lazy_static::lazy_static;
 use reqwest::blocking::Client;
 use serde_json::Value as JsonValue;
@@ -53,9 +54,12 @@ impl JSToolkitExecutor {
     }
 
     // Submits a toolkit json request to the JS Toolkit Executor
-    pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JsonValue, ToolError> {
+    // and parses the response into a JSToolkit struct
+    pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())
+        let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())?;
+        println!("{:?}", response);
+        JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
 
     // Submits a headers validation request to the JS Toolkit Executor

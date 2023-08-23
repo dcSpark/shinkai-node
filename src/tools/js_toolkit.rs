@@ -133,9 +133,7 @@ impl JSToolkit {
         key
     }
 
-    pub fn from_toolkit_json(json: &str, js_code: &str) -> Result<Self, ToolError> {
-        let parsed_json: JsonValue = serde_json::from_str(json)?;
-
+    pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse
         let name = parsed_json["toolkit-name"]
             .as_str()
@@ -162,13 +160,17 @@ impl JSToolkit {
         }
 
         // Header defs parsing
-        let execution_setup_json = parsed_json["executionSetup"]
-            .as_array()
-            .ok_or(ToolError::ParseError("executionSetup".to_string()))?;
+        let execution_setup_json = &parsed_json["executionSetup"];
         let mut header_defs = Vec::new();
-        for setup_json in execution_setup_json {
-            let header_def = HeaderDefinition::from_toolkit_json(setup_json)?;
-            header_defs.push(header_def);
+        if let Some(array) = execution_setup_json.as_array() {
+            for setup_json in array {
+                let header_def = HeaderDefinition::from_toolkit_json(setup_json)?;
+                header_defs.push(header_def);
+            }
+        } else if execution_setup_json.is_object() && execution_setup_json.as_object().unwrap().is_empty() {
+            // If it's an empty object, do nothing as header_defs is already an empty vector
+        } else {
+            return Err(ToolError::ParseError("executionSetup".to_string()));
         }
 
         Ok(Self {
