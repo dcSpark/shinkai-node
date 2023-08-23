@@ -1,21 +1,23 @@
-# Shinkai Tool Runner
+# Shinkai Tool Executor
 
-The Shinkai Tool Runner can be used as either an HTTP server (production) or as an executable (for testing).
+The Shinkai Tool Executor can be used as either an HTTP server (production) or as an executable (for testing).
 
 ## Compilation
 
-Before using the runner you first need to build it:
+Before using the Executor you first need to build it:
 
 ```
 npm i
-npm run build
+npm run compile
 ```
+
+You will see a new `dist` folder with the packaged `shinkai-toolkit-executor.js` prepared.
 
 ## Exec Mode
 
 ```
-node build/runner.js -h
-Usage: runner [options]
+node dist/shinkai-toolkit-executor.js -h
+Usage: executor [options]
 
 Options:
   -e, --exec-mode              Execution mode: exec
@@ -37,7 +39,7 @@ Options:
 This method is intended for unit testing and development.
 
 ```
-node build/runner.js -e -s packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'
+node dist/shinkai-toolkit-executor.js -e -s packaged-shinkai-toolkit.js -t isEven -i '{"number": 2}'
 ```
 
 Response:
@@ -51,7 +53,7 @@ Response:
 You can execute the toolkit's internal `validateHeaders()` function which validates that the provided API keys (or other headers) are accepted by the required services and work.
 
 ```
-node build/runner.js -e -v -s packaged-shinkai-toolkit.js -x '{ "x-shinkai-my-header": "my-api-key" }'
+node dist/shinkai-toolkit-executor.js -e -v -s packaged-shinkai-toolkit.js -x '{ "x-shinkai-my-header": "my-api-key" }'
 ```
 
 Response:
@@ -65,7 +67,7 @@ Response:
 You can generate the Toolkit JSON from the packaged toolkit using the following:
 
 ```
-node build/runner.js -e -s packaged-shinkai-toolkit.js -c
+node dist/shinkai-toolkit-executor.js -e -s packaged-shinkai-toolkit.js -c
 ```
 
 Response:
@@ -82,14 +84,14 @@ Response:
 
 ## Webserver Mode (HTTP)
 
-In webserver mode, the toolkit runner offers applications (like the Shinkai node or otherwise) the ability to easily execute tools by providing all data through HTTP requests.
+In webserver mode, the toolkit Executor offers applications (like the Shinkai node or otherwise) the ability to easily execute tools by providing all data through HTTP requests.
 
-Of note, the runner in webserver mode is meant to run sandboxed and not be publicly accessible as it executes whatever code is within the toolkit. Be careful, when using the runner outside of the Shinkai node in production.
+Of note, the Executor in webserver mode is meant to run sandboxed and not be publicly accessible as it executes whatever code is within the toolkit. Be careful, when using the runner outside of the Shinkai node in production.
 
-To start the runner in webserver mode on port 3000, simply do:
+To start the Executor in webserver mode on port 3000, simply do:
 
 ```
-node build/runner.js -w -p 3000
+node dist/shinkai-toolkit-executor.js -w -p 3000
 ```
 
 ### Tool Execution - POST `/exec`

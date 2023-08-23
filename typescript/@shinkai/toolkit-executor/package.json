@@ -4,7 +4,7 @@
   "description": "",
   "main": "build/runner.js",
   "scripts": {
-    "build": "tsc",
+    "build": "webpack",
     "test": "jest",
     "lint": "gts lint",
     "clean": "gts clean",
