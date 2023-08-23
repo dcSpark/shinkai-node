@@ -5,7 +5,7 @@ cd toolkit-lib \
 && npm run test
 cd ..
 
-cd toolkit-runner \
+cd toolkit-executor \
 && npm ci \
 && npm run test
 pwd
@@ -40,7 +40,7 @@ cd toolkit-google-calendar \
 pwd
 cd ..
 
-cd toolkit-common \
+cd toolkit-web \
 && npm ci \
 && npm run compile \
 && npm run test

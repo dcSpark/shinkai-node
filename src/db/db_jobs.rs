@@ -53,7 +53,7 @@ impl ShinkaiDB {
         let cf_job_id_step_history_name = format!("{}_step_history", &job_id); // keyed by time (do I need composite? probably)
         let cf_agent_id_name = format!("agentid_{}", &agent_id);
         let cf_job_id_name = format!("jobtopic_{}", &job_id);
-        let cf_conversation_inbox_name = format!("conversation_inbox_{}::|::|::false", &job_id);
+        let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
 
         // Check that the profile name exists in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesIdentityType
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()

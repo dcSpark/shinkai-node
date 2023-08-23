@@ -1,13 +1,15 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobToolCall;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, JobToolCall, RegistrationCodeType,
+};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -21,21 +23,19 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
-use crate::db::db_identity_registration::RegistrationCodeType;
 use crate::managers::identity_manager::{self};
-use crate::managers::job_manager::JobManager;
+use crate::managers::job_manager::{JobManager, JobManagerError};
 use crate::managers::{job_manager, IdentityManager};
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
-use crate::schemas::identity::{IdentityPermissions, StandardIdentity};
+use crate::schemas::identity::{Identity, StandardIdentity};
 
-// Buffer size in bytes.
-const BUFFER_SIZE: usize = 2024;
+use super::node_api::APIError;
 
 #[derive(Debug)]
 pub struct NodeError {
-    message: String,
+    pub message: String,
 }
 
 impl std::fmt::Display for NodeError {
@@ -62,6 +62,16 @@ impl From<std::io::Error> for NodeError {
     }
 }
 
+impl From<JobManagerError> for NodeError {
+    fn from(error: JobManagerError) -> Self {
+        // Here you need to decide how to convert a JobManagerError into a NodeError.
+        // This is just an example, adjust it according to your needs.
+        NodeError {
+            message: format!("JobManagerError occurred: {}", error),
+        }
+    }
+}
+
 pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
     PingAll,
@@ -70,19 +80,25 @@ pub enum NodeCommand {
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
+        res: async_channel::Sender<Result<(), APIError>>,
     },
     // Command to request the addresses of all nodes this node is aware of. The sender will receive the list of addresses.
     GetPeers(Sender<Vec<SocketAddr>>),
-    // Command to make the node create a registration code. The sender will receive the code.
-    CreateRegistrationCode {
+    // Command to make the node create a registration code through the API. The sender will receive the code.
+    APICreateRegistrationCode {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    // Command to make the node create a registration code locally. The sender will receive the code.
+    LocalCreateRegistrationCode {
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
         res: Sender<String>,
     },
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
-    UseRegistrationCode {
+    APIUseRegistrationCode {
         msg: ShinkaiMessage,
-        res: Sender<String>,
+        res: Sender<Result<String, APIError>>,
     },
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {
@@ -94,24 +110,50 @@ pub enum NodeCommand {
         address: SocketAddr,
         profile_name: String,
     },
+    // Command to make the node connect to a new node, given the node's address and profile name.
+    APIConnect {
+        address: SocketAddr,
+        profile_name: String,
+        res: Sender<Result<bool, APIError>>,
+    },
     // Command to fetch the last 'n' messages, where 'n' is defined by `limit`. The sender will receive the messages.
     FetchLastMessages {
         limit: usize,
         res: Sender<Vec<ShinkaiMessage>>,
     },
     // Command to request all subidentities that the node manages. The sender will receive the list of subidentities.
-    GetAllSubidentities {
-        res: Sender<Vec<StandardIdentity>>,
+    APIGetAllSubidentities {
+        res: Sender<Result<Vec<StandardIdentity>, APIError>>,
+    },
+    GetAllSubidentitiesDevicesAndAgents(Sender<Result<Vec<Identity>, APIError>>),
+    APIGetAllInboxesForProfile {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
+    APIGetLastMessagesFromInbox {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     },
     GetLastMessagesFromInbox {
         inbox_name: String,
         limit: usize,
+        offset_key: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
+    },
+    APIMarkAsReadUpTo {
+        // inbox_name: String,
+        // up_to_time: String,
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     MarkAsReadUpTo {
         inbox_name: String,
         up_to_time: String,
         res: Sender<String>,
+    },
+    APIGetLastUnreadMessagesFromInbox {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     },
     GetLastUnreadMessagesFromInbox {
         inbox_name: String,
@@ -119,11 +161,19 @@ pub enum NodeCommand {
         offset: Option<String>,
         res: Sender<Vec<ShinkaiMessage>>,
     },
+    APIAddInboxPermission {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     AddInboxPermission {
         inbox_name: String,
         perm_type: String,
         identity: String,
         res: Sender<String>,
+    },
+    APIRemoveInboxPermission {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     RemoveInboxPermission {
         inbox_name: String,
@@ -137,14 +187,26 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<bool>,
     },
+    APICreateNewJob {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
     CreateNewJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
+    },
+    APIJobMessage {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     JobMessage {
         job_id: String,
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
+    },
+    APIJobPreMessage {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
     },
     JobPreMessage {
         tool_calls: Vec<JobToolCall>,
@@ -205,7 +267,10 @@ impl Node {
 
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
-        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|_| panic!("Failed to open database: {}", db_path));
+        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
+            eprintln!("Error: {:?}", e);
+            panic!("Failed to open database: {}", db_path)
+        });
         let db_arc = Arc::new(Mutex::new(db));
         let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
         {
@@ -220,6 +285,7 @@ impl Node {
             }
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
+
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
@@ -265,6 +331,7 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
+
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
             pin_mut!(ping_future, commands_future);
@@ -279,21 +346,32 @@ impl Node {
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
                             Some(NodeCommand::Connect { address, profile_name }) => self.connect_node(address, profile_name).await?,
-                            Some(NodeCommand::SendOnionizedMessage { msg }) => self.handle_send_onionized_message(msg).await?,
+                            Some(NodeCommand::SendOnionizedMessage { msg, res }) => self.api_handle_send_onionized_message(msg, res).await?,
                             Some(NodeCommand::GetPublicKeys(res)) => self.send_public_keys(res).await?,
                             Some(NodeCommand::FetchLastMessages { limit, res }) => self.fetch_and_send_last_messages(limit, res).await?,
-                            Some(NodeCommand::CreateRegistrationCode { permissions, code_type, res }) => self.create_and_send_registration_code(permissions, code_type, res).await?,
-                            Some(NodeCommand::UseRegistrationCode { msg, res }) => self.handle_registration_code_usage(msg, res).await?,
-                            Some(NodeCommand::GetAllSubidentities { res }) => self.get_all_profiles(res).await?,
-                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, res }) => self.get_last_messages_from_inbox(inbox_name, limit, res).await,
-                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.mark_as_read_up_to(inbox_name, up_to_time, res).await,
-                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
-                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.add_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.remove_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::GetAllSubidentitiesDevicesAndAgents(res)) => self.local_get_all_subidentities_devices_and_agents(res).await,
+                            Some(NodeCommand::LocalCreateRegistrationCode { permissions, code_type, res }) => self.local_create_and_send_registration_code(permissions, code_type, res).await?,
+                            Some(NodeCommand::GetLastMessagesFromInbox { inbox_name, limit, offset_key, res }) => self.local_get_last_messages_from_inbox(inbox_name, limit, offset_key, res).await,
+                            Some(NodeCommand::MarkAsReadUpTo { inbox_name, up_to_time, res }) => self.local_mark_as_read_up_to(inbox_name, up_to_time, res).await,
+                            Some(NodeCommand::GetLastUnreadMessagesFromInbox { inbox_name, limit, offset, res }) => self.local_get_last_unread_messages_from_inbox(inbox_name, limit, offset, res).await,
+                            Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
+                            Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
                             Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
+                            // API Endpoints
+                            Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
+                            Some(NodeCommand::APIUseRegistrationCode { msg, res }) => self.api_handle_registration_code_usage(msg, res).await?,
+                            Some(NodeCommand::APIGetAllSubidentities { res }) => self.api_get_all_profiles(res).await?,
+                            Some(NodeCommand::APIGetLastMessagesFromInbox { msg, res }) => self.api_get_last_messages_from_inbox(msg, res).await?,
+                            Some(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res }) => self.api_get_last_unread_messages_from_inbox(msg, res).await?,
+                            Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
+                            // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
+                            // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
+                            Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
+                            // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
+                            Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
                             _ => break,
                         }
                     }
@@ -328,54 +406,38 @@ impl Node {
             let node_profile_name_clone = self.node_profile_name.clone();
 
             tokio::spawn(async move {
-                let mut buffer = [0u8; BUFFER_SIZE];
-                loop {
-                    match socket.read(&mut buffer).await {
-                        Ok(0) => {
-                            // reading 0 bytes signifies the client has closed the connection
-                            return;
-                        }
-                        Ok(n) => {
-                            // println!("{} > TCP: Received message.", addr);
-                            println!("{} > TCP: Received from {:?} : {} bytes.", addr, socket.peer_addr(), n);
-                            let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                            let _ = Node::handle_message(
-                                addr,
-                                destination_socket.clone(),
-                                &buffer[..n],
-                                node_profile_name_clone.clone().get_node_name(),
-                                clone_static_secret_key(&encryption_secret_key_clone),
-                                clone_signature_secret_key(&identity_secret_key_clone),
-                                db.clone(),
-                                identity_manager.clone(),
-                            )
-                            .await;
-                            if let Err(e) = socket.flush().await {
-                                eprintln!("Failed to flush the socket: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("{} > TCP: Failed to read from socket; err = {:?}", addr, e);
-                            return;
-                        }
-                    }
+                let mut buffer = Vec::new();
+                socket.read_to_end(&mut buffer).await.unwrap();
+
+                let destination_socket = socket.peer_addr().expect("Failed to get peer address");
+                let _ = Node::handle_message(
+                    addr,
+                    destination_socket.clone(),
+                    &buffer,
+                    node_profile_name_clone.clone().get_node_name(),
+                    clone_static_secret_key(&encryption_secret_key_clone),
+                    clone_signature_secret_key(&identity_secret_key_clone),
+                    db.clone(),
+                    identity_manager.clone(),
+                )
+                .await;
+                if let Err(e) = socket.flush().await {
+                    eprintln!("Failed to flush the socket: {}", e);
                 }
             });
         }
+    }
+
+    // indicates if the node is ready or not
+    pub async fn is_node_ready(&self) -> bool {
+        let identity_manager_guard = self.identity_manager.lock().await;
+        identity_manager_guard.is_ready
     }
 
     // Get a list of peers this node knows about.
     pub fn get_peers(&self) -> CHashMap<(SocketAddr, ProfileName), chrono::DateTime<Utc>> {
         return self.peers.clone();
     }
-
-    // pub async fn get_encryption_public_key(
-    //     &self,
-    //     identity_public_key: String,
-    // ) -> Result<String, ShinkaiDBError> {
-    //     let db = self.db.lock().await;
-    //     db.get_encryption_public_key(&identity_public_key)
-    // }
 
     // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
@@ -427,7 +489,7 @@ impl Node {
         db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
-        // println!("Sending {:?} to {:?}", message, peer);
+        println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
         let stream = TcpStream::connect(address).await;
@@ -437,7 +499,7 @@ impl Node {
                 // println!("send> Encoded Message: {:?}", encoded_msg);
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
-                // info!("Sent message to {}", stream.peer_addr()?);
+                info!("Sent message to {}", stream.peer_addr()?);
                 Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
                 Ok(())
             }
@@ -467,10 +529,16 @@ impl Node {
         // The body should only be decrypted if it's currently encrypted.
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
+            // Debug only
+            println!("save_to_db> message: {:?}", message.clone());
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
+                    .unwrap()
+                    .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender(message).unwrap().to_string();
+                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
+                    .unwrap()
+                    .to_string();
             }
             // find the sender's encryption public key in external
             let sender_encryption_pk = maybe_identity_manager
@@ -503,7 +571,9 @@ impl Node {
             }
         }
 
-        let db_result = db.insert_inbox_message(&message_to_save);
+        // TODO: add identity to this fn so we can check for permissions
+        println!("save_to_db> message_to_save: {:?}", message_to_save.clone());
+        let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),
             Err(e) => {
@@ -533,7 +603,9 @@ impl Node {
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender(&message).unwrap().get_node_name();
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)
+            .unwrap()
+            .get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await

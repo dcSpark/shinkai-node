@@ -1,17 +1,23 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use crate::network::node::NodeError;
+use crate::network::node_message_handlers::verify_message_signature;
+use crate::network::Node;
 use crate::schemas::identity::{
-    DeviceIdentity, Identity, IdentityPermissions, IdentityType, StandardIdentity, StandardIdentityType,
+    DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref,
 };
 use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
-use std::sync::Arc;
+use std::io::Error;
+use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -24,18 +30,22 @@ pub struct IdentityManager {
     pub local_identities: Vec<Identity>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
+    pub is_ready: bool,
 }
 
 impl IdentityManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, local_node_name: ShinkaiName) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        local_node_name: ShinkaiName,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let local_node_name = local_node_name.extract_node();
         let mut identities: Vec<Identity> = {
             let db = db.lock().await;
-            db.get_all_profiles(local_node_name.clone())?
+            db.get_all_profiles_and_devices(local_node_name.clone())?
                 .into_iter()
-                .map(Identity::Standard)
                 .collect()
         };
+        println!("identities_manager identities: {:?}", identities);
 
         let agents = {
             let db = db.lock().await;
@@ -45,28 +55,44 @@ impl IdentityManager {
                 .collect::<Vec<_>>()
         };
 
+        {
+            let db = db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+            println!("identities_manager agents: {:?}", identities);
+        }
+
         identities.extend(agents);
 
-        // TODO: enable this later on once we add the state machine to the node for adding the first subidentity
-        // if identities.is_empty() {
-        //     return Err(Box::new(std::io::Error::new(
-        //         std::io::ErrorKind::Other,
-        //         "No identities found in database",
-        //     )));
-        // }
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
-            
+
+        // Logic to check if the node is ready
+        let current_ready_status = identities.iter().any(|identity| {
+            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
+        });
+
         Ok(Self {
             local_node_name: local_node_name.extract_node(),
             local_identities: identities,
             db,
             external_identity_manager,
+            is_ready: current_ready_status,
         })
     }
 
     pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
-        self.local_identities
-            .push(Identity::Standard(identity.clone()));
+        eprintln!("add_profile_subidentity > identity: {}", identity);
+        let previously_had_profile_identity = self.has_profile_identity();
+        self.local_identities.push(Identity::Standard(identity.clone()));
+
+        if !previously_had_profile_identity && self.has_profile_identity() {
+            eprintln!("YAY! first profile added!");
+            self.is_ready = true;
+        }
+
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         Ok(())
     }
 
@@ -76,11 +102,28 @@ impl IdentityManager {
     }
 
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
+        println!("add_device_subidentity > device: {}", device);
         self.local_identities.push(Identity::Device(device.clone()));
+
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         Ok(())
     }
 
+    pub fn has_profile_identity(&self) -> bool {
+        self.local_identities.iter().any(|identity| {
+            matches!(identity, Identity::Standard(standard_identity) if standard_identity.identity_type == StandardIdentityType::Profile)
+        })
+    }
+
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
+
         let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
 
         // If the node name matches local node, search in self.identities
@@ -121,7 +164,16 @@ impl IdentityManager {
         db.get_agent(agent_id).ok().flatten()
     }
 
+    // Primarily for testing
+    pub fn get_all_subidentities_devices_and_agents(&self) -> Vec<Identity> {
+        self.local_identities.clone()
+    }
+
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        {
+            let db = self.db.lock().await;
+            db.debug_print_all_keys_for_profiles_identity_key();
+        }
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
 
@@ -151,6 +203,7 @@ impl IdentityManager {
     }
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
+        println!("identities_manager identities: {:?}", self.local_identities); 
         self.local_identities.clone()
     }
 
@@ -159,18 +212,8 @@ impl IdentityManager {
         db.get_all_agents()
     }
 
-    pub fn find_by_signature_key(&self, key: &SignaturePublicKey) -> Option<&Identity> {
-        self.local_identities.iter().find(|identity| {
-            match identity {
-                Identity::Standard(identity) => identity.profile_signature_public_key.as_ref() == Some(key),
-                // TODO: fix this
-                Identity::Device(device) => device.profile_signature_public_key.as_ref() == Some(key),
-                Identity::Agent(_) => false, // Return false if the identity is an Agent
-            }
-        })
-    }
-
-    pub fn find_by_profile_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+    pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+        println!("identities_manager identities: {:?}", self.local_identities); 
         self.local_identities.iter().find(|identity| {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
@@ -223,6 +266,55 @@ impl IdentityManager {
             Identity::Standard(std_identity) => Some(std_identity.full_identity_name.clone().to_string()),
             Identity::Agent(agent) => Some(agent.full_identity_name.clone().to_string()),
             Identity::Device(device) => Some(device.full_identity_name.clone().to_string()),
+        }
+    }
+
+    pub fn verify_message_signature(
+        sender_subidentity: Option<Identity>,
+        original_message: &ShinkaiMessage,
+        decrypted_message: &ShinkaiMessage,
+    ) -> Result<(), NodeError> {
+        if sender_subidentity.is_none() {
+            eprintln!(
+                "signature check > Subidentity not found for profile name: {}",
+                decrypted_message.external_metadata.clone().unwrap().sender
+            );
+            return Err(NodeError {
+                message: format!(
+                    "Subidentity not found for profile name: {}",
+                    decrypted_message.external_metadata.clone().unwrap().sender
+                ),
+            });
+        }
+        // If we reach this point, it means that subidentity exists, so it's safe to unwrap
+        let subidentity = sender_subidentity.unwrap();
+
+        // Validate that the message actually came from the subidentity
+        let signature_public_key = match &subidentity {
+            Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
+            Identity::Device(std_device) => std_device.device_signature_public_key.clone(),
+            Identity::Agent(_) => {
+                eprintln!("signature check > Agent identities cannot send onionized messages");
+                return Ok(());
+            }
+        };
+
+        if signature_public_key.is_none() {
+            eprintln!(
+                "signature check > Signature public key doesn't exist for identity: {}",
+                subidentity.get_full_identity_name()
+            );
+            return Ok(());
+        }
+
+        match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {
+            Ok(_) => Ok({}),
+            Err(e) => {
+                eprintln!("signature check > Failed to verify message signature: {}", e);
+                return Err(NodeError {
+                    message: format!("Failed to verify message signature: {}", e.to_string()),
+                });
+            }
         }
     }
 }

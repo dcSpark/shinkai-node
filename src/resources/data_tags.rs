@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
 
-use super::resource::DataChunk;
+use super::vector_resource::DataChunk;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DataTag {

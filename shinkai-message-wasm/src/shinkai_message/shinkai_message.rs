@@ -37,3 +37,4 @@ pub struct ShinkaiMessage {
     pub external_metadata: Option<ExternalMetadata>,
     pub encryption: EncryptionMethod,
 }
+

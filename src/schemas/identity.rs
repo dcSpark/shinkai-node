@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde::ser::{Serializer, SerializeStruct};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
 use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
 use std::sync::Arc;
@@ -80,22 +81,14 @@ impl StandardIdentityType {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RegistrationCode {
     pub code: String,
-    pub profile_name: String,
+    pub registration_name: String,
     pub identity_pk: String,
     pub encryption_pk: String,
     pub identity_type: IdentityType,
     pub permission_type: IdentityPermissions,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum IdentityPermissions {
-    Admin, // can create and delete other profiles
-    Standard, // can add / remove devices
-    None, // none of the above
-}
-
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Identity {
     // IdentityType::Global or IdentityType::Profile
     Standard(StandardIdentity),
@@ -103,6 +96,16 @@ pub enum Identity {
     Agent(SerializedAgent),
     // IdentityType::Device
     Device(DeviceIdentity),
+}
+
+impl Identity {
+    pub fn get_full_identity_name(&self) -> String {
+        match self {
+            Identity::Standard(std_identity) => std_identity.full_identity_name.clone().to_string(),
+            Identity::Agent(agent) => agent.full_identity_name.clone().to_string(),
+            Identity::Device(device) => device.full_identity_name.clone().to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,34 +146,6 @@ impl DeviceIdentity {
             identity_type: StandardIdentityType::Profile,
             permission_type: self.permission_type.clone(),
         })
-    }
-}
-
-impl IdentityPermissions {
-    pub fn from_slice(slice: &[u8]) -> Self {
-        let s = std::str::from_utf8(slice).unwrap();
-        match s {
-            "admin" => Self::Admin,
-            "standard" => Self::Standard,
-            _ => Self::None,
-        }
-    }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Admin => b"admin",
-            Self::Standard => b"standard",
-            Self::None => b"none",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "admin" => Some(Self::Admin),
-            "standard" => Some(Self::Standard),
-            "none" => Some(Self::None),
-            _ => None,
-        }
     }
 }
 
@@ -308,22 +283,32 @@ impl fmt::Display for DeviceIdentity {
     }
 }
 
-impl fmt::Display for IdentityPermissions {
+impl fmt::Debug for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Admin => write!(f, "admin"),
-            Self::Standard => write!(f, "standard"),
-            Self::None => write!(f, "none"),
-        }
-    }
-}
+            Identity::Standard(std_identity) => {
+                write!(f, "Standard({})", std_identity)
+            },
+            Identity::Agent(agent) => {
+                // Assuming you have implemented Debug for SerializedAgent
+                write!(f, "Agent({:?})", agent)
+            },
+            Identity::Device(device) => {
+                let node_encryption_public_key = encryption_public_key_to_string(device.node_encryption_public_key);
+                let node_signature_public_key = signature_public_key_to_string(device.node_signature_public_key);
+                let device_signature_public_key = device
+                    .device_signature_public_key
+                    .as_ref()
+                    .map(signature_public_key_to_string_ref)
+                    .unwrap_or_else(|| "None".to_string());
 
-impl Identity {
-    pub fn get_full_identity_name(&self) -> String {
-        match self {
-            Identity::Standard(std_identity) => std_identity.full_identity_name.clone().to_string(),
-            Identity::Agent(agent) => agent.full_identity_name.clone().to_string(),
-            Identity::Device(device) => device.full_identity_name.clone().to_string(),
+                write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, device_signature_public_key: {}, permission_type: {:?} }}",
+                    device.full_identity_name,
+                    node_encryption_public_key,
+                    node_signature_public_key,
+                    device_signature_public_key,
+                    device.permission_type)
+            },
         }
     }
 }

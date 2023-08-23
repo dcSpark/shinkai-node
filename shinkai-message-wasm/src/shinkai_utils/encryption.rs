@@ -1,21 +1,20 @@
 use core::fmt;
 use std::convert::TryInto;
 use std::error::Error;
-
-use bs58::decode;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
-use chacha20poly1305::ChaCha20Poly1305; use js_sys::Uint8Array;
+use chacha20poly1305::ChaCha20Poly1305;
+use js_sys::Uint8Array;
 // Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use wasm_bindgen::JsValue;
 use wasm_bindgen::prelude::wasm_bindgen;
+use wasm_bindgen::JsValue;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 use super::shinkai_message_handler::ShinkaiMessageHandler;
+use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
@@ -34,12 +33,17 @@ impl EncryptionMethod {
 
     pub fn from_str(s: &str) -> EncryptionMethod {
         match s {
-            "DiffieHellmanChaChaPoly1305" | "default" => {
-                EncryptionMethod::DiffieHellmanChaChaPoly1305
-            }
+            "DiffieHellmanChaChaPoly1305" | "default" => EncryptionMethod::DiffieHellmanChaChaPoly1305,
             _ => EncryptionMethod::None,
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: String) -> Result<String, JsValue> {
+    let my_encryption_sk_type = string_to_encryption_static_key(&encryption_sk)?;
+    let my_encryption_pk = x25519_dalek::PublicKey::from(&my_encryption_sk_type);
+    Ok(encryption_public_key_to_string(my_encryption_pk))
 }
 
 pub fn encryption_secret_key_to_jsvalue(secret: &StaticSecret) -> JsValue {
@@ -75,12 +79,12 @@ pub fn ephemeral_encryption_keys() -> (StaticSecret, PublicKey) {
 
 pub fn encryption_secret_key_to_string(secret_key: StaticSecret) -> String {
     let bytes = secret_key.to_bytes();
-    bs58::encode(&bytes).into_string()
+    hex::encode(&bytes)
 }
 
 pub fn encryption_public_key_to_string(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
-    bs58::encode(&bytes).into_string()
+    hex::encode(&bytes)
 }
 
 pub fn encryption_public_key_to_string_ref(public_key: &PublicKey) -> String {
@@ -89,7 +93,7 @@ pub fn encryption_public_key_to_string_ref(public_key: &PublicKey) -> String {
 
 pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
     println!("encoded_key: {}", encoded_key);
-    match bs58::decode(encoded_key).into_vec() {
+    match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == 32 {
                 let mut array = [0; 32];
@@ -101,12 +105,12 @@ pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret
                 Err("Decoded string length does not match StaticSecret length")
             }
         }
-        Err(_) => Err("Failed to decode bs58 string"),
+        Err(_) => Err("Failed to decode hex string"),
     }
 }
 
 pub fn string_to_encryption_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
-    match bs58::decode(encoded_key).into_vec() {
+    match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == 32 {
                 let mut array = [0; 32];
@@ -118,7 +122,7 @@ pub fn string_to_encryption_public_key(encoded_key: &str) -> Result<PublicKey, &
                 Err("Decoded string length does not match PublicKey length")
             }
         }
-        Err(_) => Err("Failed to decode bs58 string"),
+        Err(_) => Err("Failed to decode hex string"),
     }
 }
 
@@ -148,7 +152,6 @@ pub fn encrypt_body(
             hasher.update(shared_secret.as_bytes());
             let result = hasher.finalize();
             let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
-
             let cipher = ChaCha20Poly1305::new(&key);
 
             // Generate a unique nonce for each operation
@@ -159,10 +162,10 @@ pub fn encrypt_body(
             // Encrypt message
             let ciphertext = cipher.encrypt(nonce, body).expect("encryption failure!");
 
-            // Here we return the nonce and ciphertext (encoded to bs58 for easier storage and transmission)
+            // Here we return the nonce and ciphertext (encoded to hex for easier storage and transmission)
             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            Some(bs58::encode(&nonce_and_ciphertext).into_string())
+            Some(hex::encode(&nonce_and_ciphertext))
         }
         EncryptionMethod::None => None,
     }
@@ -202,14 +205,10 @@ pub fn encrypt_string_content(
             // = 140,737,488,355.328 MB (or roughly 140 terabytes).
             let content_len = (content.len() as u64).to_le_bytes();
             let content_schema_len = (content_schema.len() as u64).to_le_bytes();
-            let length_prefixed_nonce_and_ciphertext = [
-                &content_len[..],
-                &content_schema_len[..],
-                &nonce_and_ciphertext[..],
-            ]
-            .concat();
+            let length_prefixed_nonce_and_ciphertext =
+                [&content_len[..], &content_schema_len[..], &nonce_and_ciphertext[..]].concat();
 
-            Some(bs58::encode(length_prefixed_nonce_and_ciphertext).into_string())
+            Some(hex::encode(length_prefixed_nonce_and_ciphertext))
         }
         EncryptionMethod::None => None,
     }
@@ -250,7 +249,7 @@ pub fn decrypt_body_message(
     match EncryptionMethod::from_str(message.encryption.as_str()) {
         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
             let shared_secret = self_sk.diffie_hellman(&sender_pk);
-            
+
             // Convert the shared secret into a suitable key
             let mut hasher = Sha256::new();
             hasher.update(shared_secret.as_bytes());
@@ -259,9 +258,8 @@ pub fn decrypt_body_message(
 
             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = bs58::decode(&message.body.as_ref().unwrap().content)
-                .into_vec()
-                .map_err(|_| DecryptionError::new("Failed to decode bs58"))?;
+            let decoded = hex::decode(&message.body.as_ref().unwrap().content)
+                .map_err(|_| DecryptionError::new("Failed to decode hex"))?;
             let (nonce, ciphertext) = decoded.split_at(12);
             let nonce = GenericArray::from_slice(nonce);
 
@@ -271,8 +269,7 @@ pub fn decrypt_body_message(
                 .map_err(|_| DecryptionError::new("Decryption failure!"))?;
 
             // Convert the decrypted bytes back into a Body
-            let decrypted_body =
-                ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
+            let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
 
             decrypted_message.body = Some(decrypted_body);
         }
@@ -297,9 +294,8 @@ pub fn decrypt_content_message(
             let key = GenericArray::clone_from_slice(&result[..]);
             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = bs58::decode(&encrypted_content)
-                .into_vec()
-                .expect("Failed to decode bs58");
+            let decoded = hex::decode(&encrypted_content)
+                .expect("Failed to decode hex");
 
             let (content_len_bytes, remainder) = decoded.split_at(8);
             let (_, remainder) = remainder.split_at(8);
@@ -313,16 +309,12 @@ pub fn decrypt_content_message(
 
             let nonce = GenericArray::from_slice(nonce);
 
-            let plaintext_bytes = cipher
-                .decrypt(nonce, ciphertext)
-                .expect("Decryption failure!");
+            let plaintext_bytes = cipher.decrypt(nonce, ciphertext).expect("Decryption failure!");
 
             let (content_bytes, schema_bytes) = plaintext_bytes.split_at(content_len as usize);
 
-            let content = String::from_utf8(content_bytes.to_vec())
-                .expect("Failed to decode decrypted content");
-            let schema = String::from_utf8(schema_bytes.to_vec())
-                .expect("Failed to decode decrypted content schema");
+            let content = String::from_utf8(content_bytes.to_vec()).expect("Failed to decode decrypted content");
+            let schema = String::from_utf8(schema_bytes.to_vec()).expect("Failed to decode decrypted content schema");
 
             Ok((content, schema))
         }

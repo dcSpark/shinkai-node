@@ -24,17 +24,17 @@ pub trait EmbeddingGenerator {
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError>;
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
     /// of empty string. Default id is fine in most cases, due to the fact that
-    /// when embeddings are added into Resources, the id are rewritten anyways.
-    fn generate_embedding(&self, input_string: &str) -> Result<Embedding, ResourceError> {
+    /// when embeddings are added into VectorResources, the id are rewritten anyways.
+    fn generate_embedding(&self, input_string: &str) -> Result<Embedding, VectorResourceError> {
         self.generate_embedding_with_id(input_string, "")
     }
 
     /// Generates embeddings from the given list of input strings and ids.
-    fn generate_embeddings(&self, input_strings: &[&str], ids: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
+    fn generate_embeddings(&self, input_strings: &[&str], ids: &[&str]) -> Result<Vec<Embedding>, VectorResourceError> {
         input_strings
             .iter()
             .zip(ids)
@@ -43,7 +43,7 @@ pub trait EmbeddingGenerator {
     }
 
     /// Generate Embeddings for a list of input strings, sets ids to default
-    fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, ResourceError> {
+    fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, VectorResourceError> {
         input_strings
             .iter()
             .map(|input| self.generate_embedding(input))
@@ -81,7 +81,7 @@ pub struct RemoteEmbeddingGenerator {
 
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // If we're using a Bert model with a Bert-CPP server
         if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
             || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
@@ -129,17 +129,17 @@ impl RemoteEmbeddingGenerator {
     }
 
     /// This function takes a string and a TcpStream and sends the string to the Bert-CPP server
-    fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, ResourceError> {
+    fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, VectorResourceError> {
         // Send the input text to the server
         server
             .write_all(input_text.as_bytes())
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
         // Receive the data from the server
         let mut data = vec![0u8; N_EMBD * 4];
         server
             .read_exact(&mut data)
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
         // Convert the data into a vector of floats
         let mut rdr = Cursor::new(data);
@@ -155,13 +155,13 @@ impl RemoteEmbeddingGenerator {
     /// Generates embeddings for a given text using a local BERT C++ server.
     /// Of note, requires using TcpStream as the server has an arbitrary
     /// implementation that is not proper HTTP.
-    fn generate_embedding_bert_cpp(&self, input_text: &str) -> Result<Vec<f32>, ResourceError> {
+    fn generate_embedding_bert_cpp(&self, input_text: &str) -> Result<Vec<f32>, VectorResourceError> {
         let mut server_connection =
-            TcpStream::connect(self.api_url.clone()).map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            TcpStream::connect(self.api_url.clone()).map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
         let mut buffer = [0; 4];
         server_connection
             .read_exact(&mut buffer)
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
         let embedding = Self::bert_cpp_embeddings_fetch(&input_text, &mut server_connection);
         match embedding {
@@ -172,7 +172,7 @@ impl RemoteEmbeddingGenerator {
 
     // TODO: Add authorization logic
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
-    fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+    fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {
             input: String::from(input_string),
@@ -191,7 +191,7 @@ impl RemoteEmbeddingGenerator {
         // Send the request and check for errors
         let response = request.send().map_err(|err| {
             // Handle any HTTP client errors here (e.g., request creation failure)
-            ResourceError::RequestFailed(format!("HTTP request failed: {}", err))
+            VectorResourceError::RequestFailed(format!("HTTP request failed: {}", err))
         })?;
 
         println!("Received response");
@@ -201,9 +201,9 @@ impl RemoteEmbeddingGenerator {
             println!("Is successful");
             // Deserialize the response JSON into a struct (assuming you have an
             // EmbeddingResponse struct)
-            let embedding_response: EmbeddingResponse = response
-                .json()
-                .map_err(|err| ResourceError::RequestFailed(format!("Failed to deserialize response JSON: {}", err)))?;
+            let embedding_response: EmbeddingResponse = response.json().map_err(|err| {
+                VectorResourceError::RequestFailed(format!("Failed to deserialize response JSON: {}", err))
+            })?;
 
             // Use the response to create an Embedding instance
             Ok(Embedding {
@@ -212,7 +212,7 @@ impl RemoteEmbeddingGenerator {
             })
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
-            Err(ResourceError::RequestFailed(format!(
+            Err(VectorResourceError::RequestFailed(format!(
                 "HTTP request failed with status: {}",
                 response.status()
             )))
@@ -229,7 +229,7 @@ pub struct LocalEmbeddingGenerator {
 impl EmbeddingGenerator for LocalEmbeddingGenerator {
     /// Generate an Embedding for an input string.
     /// - `id`: The id to be associated with the embeddings.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, ResourceError> {
+    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         let mut session = self.model.start_session(Default::default());
         let mut output_request = llm::OutputRequest {
             all_logits: None,
@@ -240,7 +240,7 @@ impl EmbeddingGenerator for LocalEmbeddingGenerator {
 
         let tokens = vocab
             .tokenize(input_string, beginning_of_sentence)
-            .map_err(|_| ResourceError::FailedEmbeddingGeneration)?;
+            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
         let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
 
@@ -248,7 +248,7 @@ impl EmbeddingGenerator for LocalEmbeddingGenerator {
 
         let vector = output_request
             .embeddings
-            .ok_or_else(|| ResourceError::FailedEmbeddingGeneration)?;
+            .ok_or_else(|| VectorResourceError::FailedEmbeddingGeneration)?;
 
         Ok(Embedding {
             id: String::from(id),

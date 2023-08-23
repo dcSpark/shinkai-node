@@ -6,13 +6,12 @@ pub struct NodeEnvironment {
     pub listen_address: SocketAddr,
     pub api_listen_address: SocketAddr,
     pub ping_interval: u64,
+    pub starting_num_qr_profiles: u32,
+    pub starting_num_qr_devices: u32,
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {
-    // TODO: import necessary dependencies and modules
-    // You should refactor the corresponding functions to here, too.
-    let global_identity_name =
-        env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
+    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
 
     // Fetch the environment variables for the IP and port, or use default values
     let ip: IpAddr = env::var("NODE_IP")
@@ -38,6 +37,16 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse port number");
 
+    let starting_num_qr_profiles: u32 = env::var("STARTING_NUM_QR_PROFILES")
+        .unwrap_or_else(|_| "0".to_string())
+        .parse()
+        .expect("Failed to parse starting number of QR profiles");
+
+    let starting_num_qr_devices: u32 = env::var("STARTING_NUM_QR_DEVICES")
+        .unwrap_or_else(|_| "1".to_string())
+        .parse()
+        .expect("Failed to parse starting number of QR devices");
+
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
@@ -47,5 +56,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         listen_address,
         api_listen_address,
         ping_interval,
+        starting_num_qr_profiles,
+        starting_num_qr_devices,
     }
 }

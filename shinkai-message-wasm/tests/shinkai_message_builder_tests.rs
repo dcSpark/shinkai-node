@@ -5,12 +5,17 @@ mod tests {
     use js_sys::Uint8Array;
     use serde_wasm_bindgen::from_value;
     use shinkai_message_wasm::schemas::inbox_name::InboxName;
+    use shinkai_message_wasm::schemas::registration_code::RegistrationCode;
     use shinkai_message_wasm::shinkai_message::shinkai_message::{Body, ExternalMetadata, ShinkaiMessage};
-    use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobMessage, JobScope};
-    use shinkai_message_wasm::shinkai_utils::encryption::{
-        encryption_public_key_to_jsvalue, encryption_public_key_to_string, encryption_secret_key_to_jsvalue,
-        encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod, decrypt_content_message,
+    use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
+        JobMessage, JobScope, RegistrationCodeRequest,
     };
+    use shinkai_message_wasm::shinkai_utils::encryption::{
+        convert_encryption_sk_string_to_encryption_pk_string, decrypt_body_message, decrypt_content_message,
+        encryption_public_key_to_jsvalue, encryption_public_key_to_string, encryption_secret_key_to_jsvalue,
+        encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    };
+    use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ProfileName;
     use shinkai_message_wasm::shinkai_utils::signatures::{
         signature_secret_key_to_jsvalue, signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
         verify_signature,
@@ -49,7 +54,6 @@ mod tests {
         let _ = builder.internal_metadata(
             sender_subidentity.clone().into(),
             recipient_subidentity.clone().into(),
-            "".into(),
             "None".into(),
         );
         let _ = builder.external_metadata_with_schedule(
@@ -72,7 +76,10 @@ mod tests {
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(
+            internal_metadata.inbox,
+            "inbox::@@my_node.shinkai/sender_user2::@@other_node.shinkai/recipient_user1::false"
+        );
 
         let external_metadata = message.clone().external_metadata.unwrap();
 
@@ -116,7 +123,6 @@ mod tests {
         let _ = builder.internal_metadata(
             sender_subidentity.clone().into(),
             recipient_subidentity.clone().into(),
-            "".into(),
             "None".into(),
         );
         let _ = builder.external_metadata_with_schedule(
@@ -140,7 +146,10 @@ mod tests {
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
-        assert_eq!(internal_metadata.inbox, "");
+        assert_eq!(
+            internal_metadata.inbox,
+            "inbox::@@my_node.shinkai/sender_user2::@@other_node.shinkai/recipient_user1::false"
+        );
 
         let external_metadata_string = message.external_metadata().unwrap();
         let external_metadata: ExternalMetadata = ExternalMetadata::from_jsvalue(&external_metadata_string).unwrap();
@@ -168,7 +177,8 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let scope = JobScope {
-            buckets: vec![InboxName::new("inbox::@@node1.shinkai|test_name::@@|::false".to_string()).unwrap()],
+            // get_job_inbox_name_from_params
+            buckets: vec![InboxName::new("job_inbox::job2::false".to_string()).unwrap()],
             documents: vec!["document1".to_string(), "document2".to_string()],
         };
 
@@ -322,6 +332,190 @@ mod tests {
 
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
+    fn test_create_custom_shinkai_message_to_node() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile = "sender_profile".to_string();
+        let receiver_node = "@@receiver_node.shinkai".to_string();
+        let data = "Test data".to_string();
+        let schema = "TextContent".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            data.clone(),
+            sender_profile.clone(),
+            receiver_node.clone(),
+            schema.clone(),
+        );
+
+        if let Err(e) = &message_result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("create_custom_shinkai_message_to_node() returned an error: {:?}", e);
+        }
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // log::debug!("decrypted_message: {:?}", decrypted_message);
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+        assert_eq!(body.content, data);
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver_node);
+        assert_eq!(external_metadata.recipient, receiver_node);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_use_code_registration() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile = "sender_profile".to_string();
+        let receiver_node = "@@receiver_node.shinkai".to_string();
+        let code = "test_code".to_string();
+        let identity_type = "profile".to_string();
+        let permission_type = "admin".to_string();
+        let registration_name = "test_registration".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::use_code_registration(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            code.clone(),
+            identity_type.clone(),
+            permission_type.clone(),
+            registration_name.clone(),
+            sender_profile.clone(),
+            receiver_node.clone(),
+        );
+
+        if let Err(e) = &message_result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("use_code_registration() returned an error: {:?}", e);
+        }
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+
+        let registration_code: RegistrationCode = serde_json::from_str(&body.content).unwrap();
+        assert_eq!(registration_code.code, code);
+        assert_eq!(registration_code.registration_name, registration_name);
+        assert_eq!(registration_code.identity_type, identity_type);
+        assert_eq!(registration_code.permission_type, permission_type);
+        let encryption_pk_string =
+            convert_encryption_sk_string_to_encryption_pk_string(my_encryption_sk_string.clone()).unwrap();
+        assert_eq!(registration_code.encryption_pk, encryption_pk_string);
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver_node);
+        assert_eq!(external_metadata.recipient, receiver_node);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_request_code_registration() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile = "sender_profile".to_string();
+        let receiver_node = "@@receiver_node.shinkai".to_string();
+        let permissions = "admin".to_string();
+        let code_type = "profile".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::request_code_registration(
+            my_encryption_sk_string.clone(),
+            my_identity_sk_string.clone(),
+            receiver_public_key_string.clone(),
+            permissions.clone(),
+            code_type.clone(),
+            sender_profile.clone(),
+            receiver_node.clone(),
+        );
+
+        if let Err(e) = &message_result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!("request_code_registration() returned an error: {:?}", e);
+        }
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+
+        let registration_code_request: RegistrationCodeRequest = serde_json::from_str(&body.content).unwrap();
+        assert_eq!(registration_code_request.permissions.to_string(), permissions);
+        assert_eq!(registration_code_request.code_type.to_string(), code_type);
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver_node);
+        assert_eq!(external_metadata.recipient, receiver_node);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
     fn test_terminate_message_creation() {
         // Initialize test data
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
@@ -377,8 +571,6 @@ mod tests {
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_error_message_creation() {
-        console_log::init_with_level(log::Level::Debug).expect("error initializing log");
-
         // Initialize test data
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
@@ -443,6 +635,218 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_get_last_messages_from_inbox() {
+        console_log::init_with_level(log::Level::Debug).expect("error initializing log");
+
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile_name = "sender_profile".to_string();
+        let receiver = "@@receiver_node.shinkai".to_string();
+        let inbox = "inbox::@@node.shinkai::true".to_string();
+        let count = 10;
+        let offset = Some("offset_string".to_string());
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::get_last_messages_from_inbox(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key_string,
+            inbox,
+            count,
+            offset,
+            sender_profile_name.clone(),
+            receiver.clone(),
+        );
+
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+
+        // Check the content
+        assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
+        assert_eq!(content["inbox"]["RegularInbox"]["is_e2e"], true);
+        assert_eq!(
+            content["inbox"]["RegularInbox"]["identities"][0]["full_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(
+            content["inbox"]["RegularInbox"]["identities"][0]["node_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(content["count"], 10);
+        assert_eq!(content["offset"], "offset_string");
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_get_last_unread_messages_from_inbox() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile_name = "sender_profile".to_string();
+        let receiver = "@@receiver_node.shinkai".to_string();
+        let inbox = "inbox::@@node.shinkai::true".to_string();
+        let count = 10;
+        let offset = Some("offset_string".to_string());
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::get_last_unread_messages_from_inbox(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key_string,
+            inbox,
+            count,
+            offset,
+            sender_profile_name.clone(),
+            receiver.clone(),
+        );
+
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+
+        // Check the content
+        assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
+        assert_eq!(content["inbox"]["RegularInbox"]["is_e2e"], true);
+        assert_eq!(
+            content["inbox"]["RegularInbox"]["identities"][0]["full_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(
+            content["inbox"]["RegularInbox"]["identities"][0]["node_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(content["count"], 10);
+        assert_eq!(content["offset"], "offset_string");
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_read_up_to_time() {
+        // Initialize test data
+        let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
+
+        let sender_profile_name = "sender_profile".to_string();
+        let receiver = "@@receiver_node.shinkai".to_string();
+        let inbox = "inbox::@@node.shinkai::true".to_string();
+        let up_to_time = "20230702T20533481345".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::read_up_to_time(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key_string,
+            inbox,
+            up_to_time,
+            sender_profile_name.clone(),
+            receiver.clone(),
+        );
+
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Decrypt the content
+        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
+
+        // Deserialize the body and check its content
+        let body = decrypted_message.body.unwrap();
+
+        // Check internal metadata
+        let internal_metadata = body.internal_metadata.unwrap();
+
+        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
+        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(external_metadata.sender, receiver.to_string());
+        assert_eq!(external_metadata.recipient, receiver.to_string());
+
+        // Deserialize the content into a JSON object
+        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+
+        // Check the content
+        assert_eq!(
+            content["inbox_name"]["RegularInbox"]["value"],
+            "inbox::@@node.shinkai::true"
+        );
+        assert_eq!(content["inbox_name"]["RegularInbox"]["is_e2e"], true);
+        assert_eq!(
+            content["inbox_name"]["RegularInbox"]["identities"][0]["full_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(
+            content["inbox_name"]["RegularInbox"]["identities"][0]["node_name"],
+            "@@node.shinkai"
+        );
+        assert_eq!(content["up_to_time"], "20230702T20533481345");
+    }
     // #[wasm_bindgen_test]
     // fn test_builder_missing_fields() {
     //     // Setup code with keys goes here.

@@ -1,8 +1,9 @@
+use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::resources::document::DocumentResource;
+use shinkai_node::resources::document::DocumentVectorResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_node::resources::resource::Resource;
-use shinkai_node::resources::resource_errors::ResourceError;
+use shinkai_node::resources::resource_errors::VectorResourceError;
+use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::resources::{bert_cpp::BertCPPProcess, data_tags::DataTag};
 use std::fs;
 use std::path::Path;
@@ -12,15 +13,19 @@ fn setup() {
     let _ = fs::remove_dir_all(&path);
 }
 
-fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentResource {
+fn default_test_profile() -> ShinkaiName {
+    ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap()
+}
+
+fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
     // Read the pdf from file into a buffer
     let buffer = std::fs::read("files/shinkai_intro.pdf")
-        .map_err(|_| ResourceError::FailedPDFParsing)
+        .map_err(|_| VectorResourceError::FailedPDFParsing)
         .unwrap();
 
-    // Generate DocumentResource
+    // Generate DocumentVectorResource
     let desc = "An initial introduction to the Shinkai Network.";
-    let doc = DocumentResource::parse_pdf(
+    let doc = DocumentVectorResource::parse_pdf(
         &buffer,
         100,
         generator,
@@ -52,7 +57,7 @@ fn test_manual_document_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let mut doc = DocumentResource::new_empty(
+    let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         Some("animalwildlife.com"),
@@ -74,7 +79,7 @@ fn test_manual_document_resource_vector_search() {
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
-    let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+    let deserialized_doc: DocumentVectorResource = DocumentVectorResource::from_json(&json).unwrap();
     assert_eq!(doc, deserialized_doc);
 
     // Testing vector search works
@@ -103,7 +108,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
-    let deserialized_doc: DocumentResource = DocumentResource::from_json(&json).unwrap();
+    let deserialized_doc: DocumentVectorResource = DocumentVectorResource::from_json(&json).unwrap();
     assert_eq!(doc, deserialized_doc);
 
     // Testing vector search works
@@ -144,12 +149,13 @@ fn test_pdf_resource_save_to_db() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    let profile = default_test_profile();
+    shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save/fetch doc
-    let resource: Box<dyn Resource> = Box::new(doc.clone());
-    shinkai_db.save_resource(resource).unwrap();
-    let fetched_doc = shinkai_db.get_document(doc.db_key().clone()).unwrap();
+    let resource: Box<dyn VectorResource> = Box::new(doc.clone());
+    shinkai_db.save_resource(resource, &profile).unwrap();
+    let fetched_doc = shinkai_db.get_document(&doc.db_key(), &profile).unwrap();
 
     assert_eq!(doc, fetched_doc);
 }
@@ -161,7 +167,7 @@ fn test_multi_resource_db_vector_search() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Create a doc
-    let mut doc = DocumentResource::new_empty(
+    let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         Some("animalwildlife.com"),
@@ -192,34 +198,35 @@ fn test_multi_resource_db_vector_search() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    let profile = default_test_profile();
+    shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
-    let resource2 = Box::new(doc2.clone()) as Box<dyn Resource>;
-    shinkai_db.save_resources(vec![resource1, resource2]).unwrap();
+    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
+    let resource2 = Box::new(doc2.clone()) as Box<dyn VectorResource>;
+    shinkai_db.save_resources(vec![resource1, resource2], &profile).unwrap();
 
     // Animal resource vector search
     let query = generator.generate_embedding("Animals").unwrap();
-    let fetched_resources = shinkai_db.vector_search_resources(query, 100).unwrap();
+    let fetched_resources = shinkai_db.vector_search_resources(query, 100, &profile).unwrap();
     let fetched_doc = fetched_resources.get(0).unwrap();
     assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
 
     // Shinkai introduction resource vector search
     let query = generator.generate_embedding("Shinkai").unwrap();
-    let fetched_resources = shinkai_db.vector_search_resources(query, 1).unwrap();
+    let fetched_resources = shinkai_db.vector_search_resources(query, 1, &profile).unwrap();
     let fetched_doc = fetched_resources.get(0).unwrap();
     assert_eq!(&doc2.resource_id(), &fetched_doc.resource_id());
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Camels").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10).unwrap();
+    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(fact2, &ret_data_chunk.chunk.data);
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Does this relate to crypto?").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10).unwrap();
+    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
@@ -228,7 +235,9 @@ fn test_multi_resource_db_vector_search() {
 
     // Camel DataChunk proximity vector search
     let query = generator.generate_embedding("Camel").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data_doc_proximity(query, 10, 2).unwrap();
+    let ret_data_chunks = shinkai_db
+        .vector_search_data_doc_proximity(query, 10, 2, &profile)
+        .unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
     let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
@@ -238,7 +247,9 @@ fn test_multi_resource_db_vector_search() {
 
     // Animal tolerance range vector search
     let query = generator.generate_embedding("Animals that peform actions").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data_tolerance_ranged(query, 10, 0.4).unwrap();
+    let ret_data_chunks = shinkai_db
+        .vector_search_data_tolerance_ranged(query, 10, 0.4, &profile)
+        .unwrap();
 
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
@@ -291,18 +302,19 @@ fn test_db_syntactic_vector_search() {
     // Init Database
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    shinkai_db.init_global_resource_router().unwrap();
+    let profile = default_test_profile();
+    shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn Resource>;
-    shinkai_db.save_resources(vec![resource1]).unwrap();
+    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
+    shinkai_db.save_resources(vec![resource1], &profile).unwrap();
 
     println!("Doc data tag index: {:?}", doc.data_tag_index());
 
     // Email syntactic vector search
     let query = generator.generate_embedding("Fetch me emails.").unwrap();
     let fetched_data = shinkai_db
-        .syntactic_vector_search_data(query, 1, 10, &vec![email_tag.name.clone()])
+        .syntactic_vector_search_data(query, 1, 10, &vec![email_tag.name.clone()], &profile)
         .unwrap();
     let fetched_chunk = fetched_data.get(0).unwrap();
     assert_eq!("1", &fetched_chunk.chunk.id);
@@ -311,7 +323,7 @@ fn test_db_syntactic_vector_search() {
     // Multiplier syntactic vector search
     let query = generator.generate_embedding("Fetch me multipliers.").unwrap();
     let fetched_data = shinkai_db
-        .syntactic_vector_search_data(query, 1, 10, &vec![multiplier_tag.name.clone()])
+        .syntactic_vector_search_data(query, 1, 10, &vec![multiplier_tag.name.clone()], &profile)
         .unwrap();
     let fetched_chunk = fetched_data.get(0).unwrap();
     assert_eq!("15", &fetched_chunk.chunk.id);

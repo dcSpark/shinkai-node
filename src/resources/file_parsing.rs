@@ -11,11 +11,11 @@ pub struct FileParser {}
 impl FileParser {
     /// Parse CSV data from a buffer and attempt to automatically detect
     /// headers.
-    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VectorResourceError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = reader
             .headers()
-            .map_err(|_| ResourceError::FailedCSVParsing)?
+            .map_err(|_| VectorResourceError::FailedCSVParsing)?
             .iter()
             .map(String::from)
             .collect::<Vec<String>>();
@@ -34,12 +34,12 @@ impl FileParser {
     /// Parse CSV data from a buffer.
     /// * `header` - A boolean indicating whether to prepend column headers to
     ///   values.
-    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VectorResourceError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = if header {
             reader
                 .headers()
-                .map_err(|_| ResourceError::FailedCSVParsing)?
+                .map_err(|_| VectorResourceError::FailedCSVParsing)?
                 .iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -49,7 +49,7 @@ impl FileParser {
 
         let mut result = Vec::new();
         for record in reader.records() {
-            let record = record.map_err(|_| ResourceError::FailedCSVParsing)?;
+            let record = record.map_err(|_| VectorResourceError::FailedCSVParsing)?;
             let row: Vec<String> = if header {
                 record
                     .iter()
@@ -70,7 +70,7 @@ impl FileParser {
     /// text cleanup, and sentence grouping (for data chunks).
     /// * `average_group_size` - Average number of characters per group desired.
     ///   Do note, we stop at fully sentences, so this is just a target minimum.
-    pub fn parse_pdf(buffer: &[u8], average_group_size: u64) -> Result<Vec<String>, ResourceError> {
+    pub fn parse_pdf(buffer: &[u8], average_group_size: u64) -> Result<Vec<String>, VectorResourceError> {
         // Setting average length to 400, to respect small context size LLMs.
         // Sentences continue past this light 400 cap, so it has to be less than the
         // hard cap.
@@ -79,7 +79,8 @@ impl FileParser {
         } else {
             average_group_size
         };
-        let text = FileParser::extract_text_from_pdf_buffer(buffer).map_err(|_| ResourceError::FailedPDFParsing)?;
+        let text =
+            FileParser::extract_text_from_pdf_buffer(buffer).map_err(|_| VectorResourceError::FailedPDFParsing)?;
         let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
 
         grouped_text_list
@@ -134,7 +135,7 @@ impl FileParser {
     /// characters with a single space. 4. Replaces sequences of periods
     /// followed by whitespace and a digit with a single period and a space.
     /// 5. Removes whitespace before punctuation.
-    fn clean_text(text: &str) -> Result<String, ResourceError> {
+    fn clean_text(text: &str) -> Result<String, VectorResourceError> {
         let text = text.replace("\n", " ");
         let re = Regex::new(r#"[^a-zA-Z0-9 .,!?'\"-$/&@*()\[\]%#]"#)?;
         let re_whitespace = Regex::new(r"\s{2,}")?;
@@ -222,7 +223,7 @@ impl FileParser {
     /// into sentences, and then the sentences are grouped together until the
     /// total length of the group exceeds the character minimum. Once the
     /// character minimum is exceeded, a new group is started.
-    fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, ResourceError> {
+    fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, VectorResourceError> {
         let cleaned_text = FileParser::clean_text(text)?;
         let sentences = FileParser::split_into_sentences(&cleaned_text);
         let mut groups = Vec::new();
