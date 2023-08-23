@@ -75,6 +75,13 @@ export function httpMode(port: string | number) {
     }
   );
 
+  app.all(
+    '/healthcheck',
+    async (req: express.Request, res: express.Response) => {
+      return res.json({status: true});
+    }
+  );
+
   app.listen(parseInt(String(port), 10), () => {
     console.log(`Listening at http://localhost:${port}`);
   });
