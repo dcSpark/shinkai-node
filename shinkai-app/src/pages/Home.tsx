@@ -75,8 +75,8 @@ const Home: React.FC = () => {
   return (
     <IonPage>
       <IonHeader className="shadow">
-        <IonToolbar>
-          <IonTitle className="container text-accent text-center">
+        <IonToolbar className="container mx-auto">
+          <IonTitle className="text-accent text-center">
             {displayString}
           </IonTitle>
           <IonButtons slot="end">
@@ -96,7 +96,7 @@ const Home: React.FC = () => {
         </IonHeader>
         {/* <ExploreContainer /> */}
         <IonContent fullscreen>
-          <IonList>
+          <IonList className="container mx-auto">
             {Object.entries(inboxes).map(([position, inboxId]) => (
               <IonItem
                 key={position}
@@ -109,7 +109,7 @@ const Home: React.FC = () => {
                   history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
                 }}
               >
-                <Avatar />
+                <Avatar className="shrink-0" />
                 <IonText className="ml-4">{JSON.stringify(position)}</IonText>
               </IonItem>
             ))}

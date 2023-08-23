@@ -141,7 +141,7 @@ const Chat: React.FC = () => {
   return (
     <IonPage>
       <IonHeader className="shadow">
-        <IonToolbar>
+        <IonToolbar className="mx-auto container">
           <IonButtons slot="start">
             <IonBackButton defaultHref="/home" />
           </IonButtons>
@@ -149,7 +149,7 @@ const Chat: React.FC = () => {
             <IonTitle className="w-auto text-accent text-center">
               {otherPersonIdentity}
             </IonTitle>
-            <Avatar />
+            <Avatar className="shrink-0" />
           </div>
         </IonToolbar>
       </IonHeader>
@@ -181,9 +181,10 @@ const Chat: React.FC = () => {
                   <IonItem key={index} lines="none">
                     <div
                       className={cn(
-                        "flex flex-col gap-1 max-w-[300px]",
+                        "flex flex-col gap-1 max-w-[300px] min-w-[180px]",
 
-                        true && "ml-auto",
+                        message?.body?.internal_metadata
+                          ?.recipient_subidentity === "" && "ml-auto",
                       )}
                     >
                       <IonLabel
@@ -214,11 +215,13 @@ const Chat: React.FC = () => {
             }}
           >
             <IonInput
+              fill={"outline"}
               value={inputMessage}
               placeholder="Type a message..."
               shape="round"
               onIonChange={(e) => setInputMessage(e.detail.value!)}
-            ></IonInput>
+              aria-label="Type a message..."
+            />
             <IonButton onClick={sendMessage} aria-label="Send Message">
               <IonIcon size="large" icon={send} />
             </IonButton>
