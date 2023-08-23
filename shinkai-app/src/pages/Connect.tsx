@@ -89,7 +89,7 @@ const Connect: React.FC = () => {
       console.log("New QR Code Data:", setupData);
     }
   };
-
+  console.log(isPlatform("desktop"));
   const handleImageUpload = async () => {
     try {
       const image = await Camera.getPhoto({

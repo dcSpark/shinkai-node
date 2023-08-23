@@ -24,6 +24,7 @@ import { ApiConfig } from "../api/api_config";
 import { clearStore } from "../store/actions";
 import { getAllInboxesForProfile } from "../api";
 import Avatar from "../components/ui/Avatar";
+import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 
 const Home: React.FC = () => {
   const { setupDetailsState } = useSelector((state: RootState) => state);
@@ -74,20 +75,19 @@ const Home: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader className="shadow">
-        <IonToolbar className="container mx-auto">
-          <IonTitle className="text-accent text-center">
-            {displayString}
-          </IonTitle>
-          <IonButtons slot="end">
-            {" "}
-            {/* Add the "+" button to the right side of the toolbar */}
-            <IonButton onClick={() => setShowActionSheet(true)}>
-              <IonIcon slot="icon-only" icon={addOutline} />
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+      <IonHeaderCustom>
+        <IonTitle className="text-center text-inherit">
+          {displayString}
+        </IonTitle>
+        <IonButtons slot="end">
+          {" "}
+          {/* Add the "+" button to the right side of the toolbar */}
+          <IonButton onClick={() => setShowActionSheet(true)}>
+            <IonIcon slot="icon-only" icon={addOutline} />
+          </IonButton>
+        </IonButtons>
+      </IonHeaderCustom>
+
       <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
@@ -95,26 +95,22 @@ const Home: React.FC = () => {
           </IonToolbar>
         </IonHeader>
         {/* <ExploreContainer /> */}
-        <IonContent fullscreen>
-          <IonList className="container mx-auto">
-            {Object.entries(inboxes).map(([position, inboxId]) => (
-              <IonItem
-                key={position}
-                button
-                className="text-accent [--inner-padding-top:20px] [--inner-padding-bottom:20px] [--inner-border-width:0]"
-                onClick={() => {
-                  const encodedInboxId = position
-                    .toString()
-                    .replace(/\./g, "~");
-                  history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
-                }}
-              >
-                <Avatar className="shrink-0" />
-                <IonText className="ml-4">{JSON.stringify(position)}</IonText>
-              </IonItem>
-            ))}
-          </IonList>
-        </IonContent>
+        <IonContentCustom>
+          {Object.entries(inboxes).map(([position, inboxId]) => (
+            <IonItem
+              key={position}
+              button
+              className="ion-item-home"
+              onClick={() => {
+                const encodedInboxId = position.toString().replace(/\./g, "~");
+                history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
+              }}
+            >
+              <Avatar className="shrink-0" />
+              <IonText className="ml-4">{JSON.stringify(position)}</IonText>
+            </IonItem>
+          ))}
+        </IonContentCustom>
       </IonContent>
       {/* Action Sheet (popup) */}
       <IonActionSheet

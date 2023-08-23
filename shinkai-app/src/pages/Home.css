@@ -1,0 +1,9 @@
+.ion-item-home {
+  --ion-item-background: theme("colors.slate.100");
+  --background: theme("colors.slate.100");
+  @media (prefers-color-scheme: dark) {
+    --ion-item-background: theme("colors.slate.800");
+    --background: theme("colors.slate.800");
+    --background-hover: theme("colors.slate.900");
+  }
+}

@@ -3,6 +3,7 @@ import {
   IonButton,
   IonButtons,
   IonContent,
+  IonFooter,
   IonHeader,
   IonIcon,
   IonInput,
@@ -11,6 +12,7 @@ import {
   IonList,
   IonPage,
   IonText,
+  IonTextarea,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
@@ -33,6 +35,12 @@ import { calculateMessageHash } from "../utils/shinkai_message_handler";
 import Avatar from "../components/ui/Avatar";
 import { cn } from "../theme/lib/utils";
 import { send } from "ionicons/icons";
+import "./Chat.css";
+import {
+  IonContentCustom,
+  IonFooterCustom,
+  IonHeaderCustom,
+} from "../components/ui/Layout";
 
 const parseDate = (dateString: string) => {
   const formattedDateString =
@@ -140,95 +148,124 @@ const Chat: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader className="shadow">
-        <IonToolbar className="mx-auto container">
-          <IonButtons slot="start">
-            <IonBackButton defaultHref="/home" />
-          </IonButtons>
-          <div className="flex gap-4 px-4">
-            <IonTitle className="w-auto text-accent text-center">
-              {otherPersonIdentity}
-            </IonTitle>
-            <Avatar className="shrink-0" />
-          </div>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen className="bg-neutral-50">
-        <div className="container mx-auto">
-          {hasMoreMessages && (
-            <IonButton
-              onClick={() =>
-                dispatch(
-                  getLastMessagesFromInbox(
-                    deserializedId,
-                    10,
-                    lastKey,
-                    setupDetailsState,
-                    true,
-                  ),
-                )
-              }
-            >
-              Load More
-            </IonButton>
-          )}
-          <IonList className="flex flex-col gap-5 pt-6">
-            {messages &&
-              messages
-                .slice()
-                .reverse()
-                .map((message, index) => (
-                  <IonItem key={index} lines="none">
-                    <div
-                      className={cn(
-                        "flex flex-col gap-1 max-w-[300px] min-w-[180px]",
+      <IonHeaderCustom>
+        <IonButtons slot="start">
+          <IonBackButton defaultHref="/home" />
+        </IonButtons>
+        <div className="flex gap-4 px-4">
+          <IonTitle className="w-auto text-accent text-center text-inherit">
+            {otherPersonIdentity}
+          </IonTitle>
+          {/*<Avatar className="shrink-0" />*/}
+        </div>
+      </IonHeaderCustom>
 
-                        message?.body?.internal_metadata
-                          ?.recipient_subidentity === "" && "ml-auto",
-                      )}
-                    >
-                      <IonLabel
-                        className={
-                          "rounded-xl bg-slate-50 shadow px-3 py-2 text-accent "
+      <IonContentCustom>
+        {hasMoreMessages && (
+          <IonButton
+            onClick={() =>
+              dispatch(
+                getLastMessagesFromInbox(
+                  deserializedId,
+                  10,
+                  lastKey,
+                  setupDetailsState,
+                  true,
+                ),
+              )
+            }
+          >
+            Load More
+          </IonButton>
+        )}
+        <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50  ">
+          {messages &&
+            messages
+              .slice()
+              .reverse()
+              .map((message, index) => {
+                const { shinkai_identity, profile, registration_name } =
+                  setupDetailsState;
+
+                const localIdentity = `${profile}/device/${registration_name}`;
+
+                const isLocalMessage =
+                  message?.body?.internal_metadata?.sender_subidentity ===
+                  localIdentity;
+
+                return (
+                  <IonItem
+                    key={index}
+                    lines="none"
+                    className={cn(
+                      "ion-item-chat relative w-full shadow",
+                      isLocalMessage && "isLocalMessage",
+                    )}
+                  >
+                    <div className="px-2 py-4 flex gap-4 pb-10 w-full">
+                      <Avatar
+                        className="shrink-0 mr-4"
+                        url={
+                          isLocalMessage
+                            ? "https://ui-avatars.com/api/?name=Me&background=FE6162&color=fff"
+                            : "https://ui-avatars.com/api/?name=O&background=363636&color=fff"
                         }
-                      >
-                        {message?.body?.content}
-                      </IonLabel>
+                      />
+
+                      <p>{message?.body?.content}</p>
                       {message?.external_metadata?.scheduled_time && (
-                        <IonText className="text-muted">
+                        <span className="absolute bottom-[5px] right-5 text-muted text-sm">
                           {parseDate(
                             message.external_metadata.scheduled_time,
-                          ).toLocaleString()}
-                        </IonText>
+                          ).toLocaleTimeString()}
+                        </span>
                       )}
                     </div>
                   </IonItem>
-                ))}
-          </IonList>
-          <form
-            className="flex gap-8 px-5 fixed bottom-0 left-0 right-0  pb-10 container"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (inputMessage.trim() !== "") {
-                sendMessage();
-              }
-            }}
-          >
-            <IonInput
-              fill={"outline"}
+                );
+              })}
+        </IonList>
+        <div ref={bottomChatRef} />
+      </IonContentCustom>
+      <IonFooterCustom>
+        <form
+          className={
+            "flex flex-col w-full py-2 flex-grow md:py-3 md:pl-4 relative"
+          }
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (inputMessage.trim() !== "") {
+              sendMessage();
+            }
+          }}
+        >
+          <div className="m-2 relative flex h-full flex-1 md:flex-col">
+            <IonTextarea
+              class="ion-textarea-chat"
+              rows={1}
+              autoGrow
+              fill="outline"
+              className="m-0 w-full bg-transparent p-0 pl-2 pr-12 md:pl-0"
               value={inputMessage}
-              placeholder="Type a message..."
-              shape="round"
               onIonChange={(e) => setInputMessage(e.detail.value!)}
-              aria-label="Type a message..."
-            />
-            <IonButton onClick={sendMessage} aria-label="Send Message">
-              <IonIcon size="large" icon={send} />
-            </IonButton>
-          </form>
-          <div ref={bottomChatRef} />
-        </div>
-      </IonContent>
+              placeholder="Type a message"
+            ></IonTextarea>
+
+            <button
+              onClick={sendMessage}
+              aria-label="Send Message"
+              className={cn(
+                "absolute z-10 p-3 rounded-md text-gray-500 bottom-[1px] right-1",
+                "md:bottom-2.5 md:right-2",
+                "hover:bg-gray-100 disabled:hover:bg-transparent",
+                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent",
+              )}
+            >
+              <IonIcon size="" icon={send} />
+            </button>
+          </div>
+        </form>
+      </IonFooterCustom>
     </IonPage>
   );
 };
