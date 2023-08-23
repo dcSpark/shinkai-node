@@ -25,7 +25,6 @@ fn main() {
         .output()
         .expect("TS test toolkit building and preparation failed");
 
-
     // Local Embedding Generator model (not used anymore, here in case for testing)
     // let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";
     // let model_filename = "models/pythia-160m-q4_0.bin";

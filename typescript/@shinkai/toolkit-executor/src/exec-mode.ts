@@ -34,7 +34,6 @@ async function runScript(src: string, env = ''): Promise<string> {
   return result;
 }
 
-
 // Exec mode run once
 export async function execMode(
   source: string,
@@ -73,8 +72,13 @@ export async function execMode(
     })();
   }, 0);
   `;
-  return await runScript(src);
+
+  const parsedResponse = JSON.parse(await runScript(src));
+  const toolResult = parsedResponse[tool as any];
+  const response = { tool_name: tool, result: toolResult };
+  return JSON.stringify(response);
 }
+
 export async function validate(
   source: string,
   headers: string

@@ -71,14 +71,14 @@ export function httpMode(port: string | number) {
           )
       );
 
-      return res.send(response); //  res.json(JSON.parse(response));
+      return res.json(JSON.parse(response));
     }
   );
 
   app.all(
     '/healthcheck',
     async (req: express.Request, res: express.Response) => {
-      return res.json({status: true});
+      return res.json({ status: true });
     }
   );
 

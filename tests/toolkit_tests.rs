@@ -70,5 +70,6 @@ fn test_js_toolkit_executor() {
         .unwrap();
 
     println!("{:?}", tool_execution_result);
-    assert!(tool_execution_result.is_object()); // Replace with your own condition
+    assert_eq!(tool_execution_result["result"].as_bool().unwrap(), true);
+    assert_eq!(tool_execution_result["tool_name"].as_str().unwrap(), "isEven");
 }
