@@ -10,5 +10,5 @@ export class ToolKitSetup extends ShinkaiSetup {
   oauth = undefined;
 
   // Register Setup Keys
-  executionSetup = undefined;
+  toolkitHeaders = undefined;
 }

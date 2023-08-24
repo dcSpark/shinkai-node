@@ -1,5 +1,5 @@
-import {ShinkaiTookitLib} from './ShinkaiTookitLib';
-import {ShinkaiFieldHeader} from './types';
+import { ShinkaiTookitLib } from './ShinkaiTookitLib';
+import { ShinkaiFieldHeader } from './types';
 
 export abstract class ShinkaiSetup {
   abstract 'toolkit-name': string;
@@ -8,7 +8,7 @@ export abstract class ShinkaiSetup {
 
   // List of fields that are required for the execution of the toolkit.
   // e.g., API Keys, OAuth, URLS, etc.
-  executionSetup?: ShinkaiFieldHeader[] | undefined;
+  toolkitHeaders?: ShinkaiFieldHeader[] | undefined;
 
   // Validate if header values are correct and valid.
   // e.g., API key must have a valid format and active.

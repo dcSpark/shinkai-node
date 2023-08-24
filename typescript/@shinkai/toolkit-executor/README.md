@@ -77,7 +77,7 @@ Response:
 > "toolkit-name": "@shinkai/toolkit-example",
 > "author": "shinkai-dev",
 > "version": "0.0.1",
-> "executionSetup": {},
+> "toolkitHeaders": {},
 > ...
 > }
 ```
@@ -163,7 +163,7 @@ Response:
 > "toolkit-name": "@shinkai/toolkit-example",
 > "author": "shinkai-dev",
 > "version": "0.0.1",
-> "executionSetup": {},
+> "toolkitHeaders": {},
 > ...
 > }
 ```

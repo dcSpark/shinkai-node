@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 import Joi from 'joi';
 
-import {BaseInput} from './BaseTool';
-import {DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader} from './types';
-import {ShinkaiSetup} from './ShinkaiSetup';
+import { BaseInput } from './BaseTool';
+import { DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader } from './types';
+import { ShinkaiSetup } from './ShinkaiSetup';
 
 const DEBUG = !!process.env.DEBUG_TOOLKIT;
 /**
@@ -166,8 +166,8 @@ export class ShinkaiTookitLib {
         if (!enumList) throw new Error('Enum list is requried.');
         const val = required
           ? Joi.string()
-              .valid(...enumList)
-              .required()
+            .valid(...enumList)
+            .required()
           : Joi.string().valid(...enumList);
         if (required && isArray)
           return Joi.array().min(1).items(val).required();
@@ -204,7 +204,7 @@ export class ShinkaiTookitLib {
 
   private static async generateHeaderValidator() {
     const joiObjects: Record<string, Joi.AnySchema> = {};
-    const fields = ShinkaiTookitLib.toolkit.executionSetup || [];
+    const fields = ShinkaiTookitLib.toolkit.toolkitHeaders || [];
     fields.forEach((field: ShinkaiFieldHeader) => {
       const header = ShinkaiTookitLib.fieldNameToHeaderName(field.name);
       if (field.oauth) field.type = DATA_TYPES.OAUTH;
@@ -386,21 +386,21 @@ Use @description('') to add a description.`
     return `x-shinkai-${validHeader}`;
   }
 
-  private static generateExecutionSetupFields() {
+  private static generatetoolkitHeadersFields() {
     const setup: typeof ShinkaiTookitLib.toolkit = JSON.parse(
       JSON.stringify(ShinkaiTookitLib.toolkit)
     );
     // Setup setup vars & headers
-    if (!setup.executionSetup) return {};
+    if (!setup.toolkitHeaders) return {};
 
-    setup.executionSetup.forEach((field: ShinkaiFieldHeader) => {
+    setup.toolkitHeaders.forEach((field: ShinkaiFieldHeader) => {
       field.header = ShinkaiTookitLib.fieldNameToHeaderName(field.name);
       if (field.oauth) {
         field.type = DATA_TYPES.OAUTH;
         field.description = field.description || field.oauth.description;
       }
     });
-    return setup.executionSetup;
+    return setup.toolkitHeaders;
   }
 
   private static generateConfig() {
@@ -451,7 +451,7 @@ Use @description('') to add a description.`
 
     return {
       ...ShinkaiTookitLib.toolkit,
-      executionSetup: ShinkaiTookitLib.generateExecutionSetupFields(),
+      toolkitHeaders: ShinkaiTookitLib.generatetoolkitHeadersFields(),
       tools: toolData,
     };
   }

@@ -2,7 +2,7 @@
   "toolkit-name": "@shinkai/toolkit-smtp",
   "author": "shinakai-dev",
   "version": "0.0.1",
-  "executionSetup": [
+  "toolkitHeaders": [
     {
       "name": "HOST",
       "type": "STRING",
