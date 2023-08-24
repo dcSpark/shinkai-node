@@ -6,7 +6,7 @@ describe('Is Even test', () => {
 
     const x = {number: 2};
     const result = await new isEven().run(x);
-    expect(result.isEven).toEqual(true);
+    expect(result.isEvenOutput).toEqual(true);
   });
 
   test('3 is not even', async () => {
@@ -14,6 +14,6 @@ describe('Is Even test', () => {
 
     const x = {number: 3};
     const result = await new isEven().run(x);
-    expect(result.isEven).toEqual(false);
+    expect(result.isEvenOutput).toEqual(false);
   });
 });
