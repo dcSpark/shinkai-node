@@ -16,7 +16,7 @@ export const IonHeaderCustom = ({
   children: React.ReactNode;
 }) => {
   return (
-    <IonHeader className="shadow border-b border-slate-50 dark:border-slate-600">
+    <IonHeader className="shadow border-b border-slate-50 dark:border-slate-600 md:border-0 bg-slate-900">
       <IonToolbar className="mx-auto container" class="ion-header-custom">
         {children}
       </IonToolbar>
@@ -41,8 +41,13 @@ export const IonFooterCustom = ({
   children: React.ReactNode;
 }) => {
   return (
-    <IonFooter className="shadow border-t border-slate-50 dark:border-slate-600">
-      <IonToolbar class="ion-toolbar-custom">{children}</IonToolbar>
+    <IonFooter className="shadow border-t border-slate-50 md:border-0 dark:border-slate-600 ">
+      <IonToolbar
+        className="container rounded-[1.5rem]"
+        class="ion-toolbar-custom"
+      >
+        {children}
+      </IonToolbar>
     </IonFooter>
   );
 };

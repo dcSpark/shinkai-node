@@ -1,17 +1,13 @@
 .ion-header-custom {
-  --background: theme("colors.white");
-  --color: theme("colors.slate.900");
+  --background: theme("colors.slate.900");
+  --color: white;
   @media (prefers-color-scheme: dark) {
-    --background: theme("colors.slate.900");
     --color: theme("colors.slate.200");
   }
 }
 
 .ion-content-custom {
-  --background: theme("colors.slate.100");
-  @media (prefers-color-scheme: dark) {
-    --background: theme("colors.gray.900");
-  }
+  --background: theme("colors.slate.900");
 }
 .ion-toolbar-custom {
   --background: theme("colors.white");

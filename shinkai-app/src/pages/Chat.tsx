@@ -17,7 +17,7 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useParams } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
@@ -147,7 +147,7 @@ const Chat: React.FC = () => {
   };
 
   return (
-    <IonPage>
+    <IonPage className="bg-slate-900">
       <IonHeaderCustom>
         <IonButtons slot="start">
           <IonBackButton defaultHref="/home" />
@@ -161,71 +161,73 @@ const Chat: React.FC = () => {
       </IonHeaderCustom>
 
       <IonContentCustom>
-        {hasMoreMessages && (
-          <IonButton
-            onClick={() =>
-              dispatch(
-                getLastMessagesFromInbox(
-                  deserializedId,
-                  10,
-                  lastKey,
-                  setupDetailsState,
-                  true,
-                ),
-              )
-            }
-          >
-            Load More
-          </IonButton>
-        )}
-        <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50  ">
-          {messages &&
-            messages
-              .slice()
-              .reverse()
-              .map((message, index) => {
-                const { shinkai_identity, profile, registration_name } =
-                  setupDetailsState;
+        <div className="py-10 rounded-[1.25rem] bg-white dark:bg-slate-800">
+          {hasMoreMessages && (
+            <IonButton
+              onClick={() =>
+                dispatch(
+                  getLastMessagesFromInbox(
+                    deserializedId,
+                    10,
+                    lastKey,
+                    setupDetailsState,
+                    true,
+                  ),
+                )
+              }
+            >
+              Load More
+            </IonButton>
+          )}
+          <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50 rounded=[1.5rem]  ">
+            {messages &&
+              messages
+                .slice()
+                .reverse()
+                .map((message, index) => {
+                  const { shinkai_identity, profile, registration_name } =
+                    setupDetailsState;
 
-                const localIdentity = `${profile}/device/${registration_name}`;
+                  const localIdentity = `${profile}/device/${registration_name}`;
 
-                const isLocalMessage =
-                  message?.body?.internal_metadata?.sender_subidentity ===
-                  localIdentity;
+                  const isLocalMessage =
+                    message?.body?.internal_metadata?.sender_subidentity ===
+                    localIdentity;
 
-                return (
-                  <IonItem
-                    key={index}
-                    lines="none"
-                    className={cn(
-                      "ion-item-chat relative w-full shadow",
-                      isLocalMessage && "isLocalMessage",
-                    )}
-                  >
-                    <div className="px-2 py-4 flex gap-4 pb-10 w-full">
-                      <Avatar
-                        className="shrink-0 mr-4"
-                        url={
-                          isLocalMessage
-                            ? "https://ui-avatars.com/api/?name=Me&background=FE6162&color=fff"
-                            : "https://ui-avatars.com/api/?name=O&background=363636&color=fff"
-                        }
-                      />
-
-                      <p>{message?.body?.content}</p>
-                      {message?.external_metadata?.scheduled_time && (
-                        <span className="absolute bottom-[5px] right-5 text-muted text-sm">
-                          {parseDate(
-                            message.external_metadata.scheduled_time,
-                          ).toLocaleTimeString()}
-                        </span>
+                  return (
+                    <IonItem
+                      key={index}
+                      lines="none"
+                      className={cn(
+                        "ion-item-chat relative w-full shadow",
+                        isLocalMessage && "isLocalMessage",
                       )}
-                    </div>
-                  </IonItem>
-                );
-              })}
-        </IonList>
-        <div ref={bottomChatRef} />
+                    >
+                      <div className="px-2 py-4 flex gap-4 pb-10 w-full">
+                        <Avatar
+                          className="shrink-0 mr-4"
+                          url={
+                            isLocalMessage
+                              ? "https://ui-avatars.com/api/?name=Me&background=FE6162&color=fff"
+                              : "https://ui-avatars.com/api/?name=O&background=363636&color=fff"
+                          }
+                        />
+
+                        <p>{message?.body?.content}</p>
+                        {message?.external_metadata?.scheduled_time && (
+                          <span className="absolute bottom-[5px] right-5 text-muted text-sm">
+                            {parseDate(
+                              message.external_metadata.scheduled_time,
+                            ).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                    </IonItem>
+                  );
+                })}
+          </IonList>
+          <div ref={bottomChatRef} />
+        </div>
       </IonContentCustom>
       <IonFooterCustom>
         <form

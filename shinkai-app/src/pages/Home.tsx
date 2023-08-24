@@ -14,12 +14,12 @@ import {
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { addOutline } from "ionicons/icons";
+import { addOutline, arrowForward, cloudUpload } from "ionicons/icons";
 import "./Home.css";
 import { useHistory } from "react-router-dom";
 import { RootState } from "../store";
 import { useDispatch, useSelector } from "react-redux";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ApiConfig } from "../api/api_config";
 import { clearStore } from "../store/actions";
 import { getAllInboxesForProfile } from "../api";
@@ -74,7 +74,7 @@ const Home: React.FC = () => {
   }, []);
 
   return (
-    <IonPage>
+    <IonPage className="bg-slate-900">
       <IonHeaderCustom>
         <IonTitle className="text-center text-inherit">
           {displayString}
@@ -87,7 +87,6 @@ const Home: React.FC = () => {
           </IonButton>
         </IonButtons>
       </IonHeaderCustom>
-
       <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
@@ -95,21 +94,37 @@ const Home: React.FC = () => {
           </IonToolbar>
         </IonHeader>
         {/* <ExploreContainer /> */}
+
         <IonContentCustom>
-          {Object.entries(inboxes).map(([position, inboxId]) => (
-            <IonItem
-              key={position}
-              button
-              className="ion-item-home"
-              onClick={() => {
-                const encodedInboxId = position.toString().replace(/\./g, "~");
-                history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
-              }}
-            >
-              <Avatar className="shrink-0" />
-              <IonText className="ml-4">{JSON.stringify(position)}</IonText>
-            </IonItem>
-          ))}
+          <div className=" h-full flex flex-col">
+            <div className="flex-1 rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4">
+              {Object.entries(inboxes).map(([position, inboxId]) => (
+                <IonItem
+                  key={position}
+                  button
+                  className="ion-item-home"
+                  onClick={() => {
+                    const encodedInboxId = position
+                      .toString()
+                      .replace(/\./g, "~");
+                    history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
+                  }}
+                >
+                  <Avatar
+                    url={`https://ui-avatars.com/api/?name=${position}&background=FE6162&color=fff`}
+                    className="shrink-0"
+                  />
+                  <IonText className="ml-4 font-bold md:text-lg">
+                    {JSON.stringify(position)}
+                  </IonText>
+                  <IonIcon
+                    icon={arrowForward}
+                    className="hidden md:ml-auto md:block"
+                  />
+                </IonItem>
+              ))}
+            </div>
+          </div>
         </IonContentCustom>
       </IonContent>
       {/* Action Sheet (popup) */}
