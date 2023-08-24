@@ -10,7 +10,7 @@ export function httpMode(port: string | number) {
   app.use(bodyParser.json({ limit: '50mb' }));
 
   app.post(
-    '/validate',
+    '/validate_headers',
     async (
       req: express.Request<{}, {}, { source: string }>,
       res: express.Response
@@ -46,7 +46,7 @@ export function httpMode(port: string | number) {
   );
 
   app.post(
-    '/exec',
+    '/execute_tool',
     async (
       req: express.Request<
         {},
@@ -76,7 +76,7 @@ export function httpMode(port: string | number) {
   );
 
   app.all(
-    '/healthcheck',
+    '/health_check',
     async (req: express.Request, res: express.Response) => {
       return res.json({ status: true });
     }

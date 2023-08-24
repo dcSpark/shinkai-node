@@ -75,7 +75,7 @@ export async function execMode(
 
   const parsedResponse = JSON.parse(await runScript(src));
   const toolResult = parsedResponse[tool as any];
-  const response = { tool_name: tool, result: toolResult };
+  const response = { tool: tool, result: toolResult };
   return JSON.stringify(response);
 }
 

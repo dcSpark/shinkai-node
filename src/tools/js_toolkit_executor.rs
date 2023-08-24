@@ -45,7 +45,7 @@ impl JSToolkitExecutor {
 
     // Submits a health check request to /health_check and checks the response
     pub fn submit_health_check(&self) -> Result<(), ToolError> {
-        let response = self.submit_get_request("/healthcheck")?;
+        let response = self.submit_get_request("/health_check")?;
         if response.get("status").unwrap_or(&JsonValue::Bool(false)) == &JsonValue::Bool(true) {
             Ok(())
         } else {
@@ -69,23 +69,23 @@ impl JSToolkitExecutor {
         header_values: &HashMap<String, String>,
     ) -> Result<JsonValue, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        self.submit_post_request("/validate", &input_data_json, header_values)
+        self.submit_post_request("/validate_headers", &input_data_json, header_values)
     }
 
     // Submits a tool execution request to the JS Toolkit Executor
     pub fn submit_tool_execution_request(
         &self,
-        tool: &str,
+        tool_name: &str,
         input_data: &JsonValue,
         toolkit_js_code: &str,
         header_values: &HashMap<String, String>,
     ) -> Result<JsonValue, ToolError> {
         let input_data_json = serde_json::json!({
-            "tool": tool,
+            "tool": tool_name,
             "input": input_data,
             "source": toolkit_js_code
         });
-        self.submit_post_request("/exec", &input_data_json, header_values)
+        self.submit_post_request("/execute_tool", &input_data_json, header_values)
     }
 
     // Submits a get request to the JS Toolkit Executor
