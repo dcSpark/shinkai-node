@@ -1,4 +1,4 @@
-import { ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
+import {ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
@@ -11,6 +11,4 @@ export class ToolKitSetup extends ShinkaiSetup {
 
   // Register Setup Keys
   toolkitHeaders = undefined;
-
-
 }

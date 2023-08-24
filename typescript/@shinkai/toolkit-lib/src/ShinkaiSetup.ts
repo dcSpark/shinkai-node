@@ -1,5 +1,5 @@
-import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
-import { ShinkaiFieldHeader } from './types';
+import {ShinkaiToolkitLib} from './ShinkaiToolkitLib';
+import {ShinkaiFieldHeader} from './types';
 
 export abstract class ShinkaiSetup {
   abstract toolkitName: string;

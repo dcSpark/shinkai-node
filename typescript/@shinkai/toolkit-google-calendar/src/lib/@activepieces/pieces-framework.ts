@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {OAuthShinkai} from '@shinkai/toolkit-lib';
 import {
   SHINKAI_AP_HEADERS,

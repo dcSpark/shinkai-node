@@ -1,8 +1,8 @@
 import Joi from 'joi';
-import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
+import {ShinkaiToolkitLib} from './ShinkaiToolkitLib';
 
-export abstract class BaseInput { }
-export abstract class BaseOutput { }
+export abstract class BaseInput {}
+export abstract class BaseOutput {}
 
 export abstract class BaseTool<I extends BaseInput, O extends BaseOutput> {
   abstract description: string;

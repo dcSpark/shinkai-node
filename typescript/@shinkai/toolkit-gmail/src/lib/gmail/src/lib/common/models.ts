@@ -30,10 +30,12 @@ export interface GmailMessage {
       value: string;
     }[];
     body: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       data: any;
       size: number;
     };
     parts: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       parts: any[];
       partId: string;
       mimeType: string;

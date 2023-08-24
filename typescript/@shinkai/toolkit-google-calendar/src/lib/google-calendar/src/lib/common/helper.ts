@@ -32,6 +32,7 @@ export async function stopWatchEvent(
       token: authProp.access_token,
     },
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await httpClient.sendRequest<any>(request);
 }
 

@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 import Joi from 'joi';
 
-import { BaseInput } from './BaseTool';
-import { DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader } from './types';
-import { ShinkaiSetup } from './ShinkaiSetup';
+import {BaseInput} from './BaseTool';
+import {DATA_TYPES, ShinkaiFieldIO, ShinkaiFieldHeader} from './types';
+import {ShinkaiSetup} from './ShinkaiSetup';
 
 const DEBUG = !!process.env.DEBUG_TOOLKIT;
 /**
@@ -166,8 +166,8 @@ export class ShinkaiToolkitLib {
         if (!enumList) throw new Error('Enum list is requried.');
         const val = required
           ? Joi.string()
-            .valid(...enumList)
-            .required()
+              .valid(...enumList)
+              .required()
           : Joi.string().valid(...enumList);
         if (required && isArray)
           return Joi.array().min(1).items(val).required();
@@ -296,12 +296,13 @@ export class ShinkaiToolkitLib {
       }
 
       // Generate the Joi validation for each field
-      joiObjects[toolName][fieldName] = ShinkaiToolkitLib.buildFieldJoiValidator(
-        fieldData.type!,
-        !fieldData.isOptional,
-        fieldData.wrapperType === 'array',
-        fieldData.enum || []
-      );
+      joiObjects[toolName][fieldName] =
+        ShinkaiToolkitLib.buildFieldJoiValidator(
+          fieldData.type!,
+          !fieldData.isOptional,
+          fieldData.wrapperType === 'array',
+          fieldData.enum || []
+        );
     });
 
     // Build the Input Object Validators
@@ -417,7 +418,9 @@ Use @description('') to add a description.`
           throw new Error('No context name provided');
         }
         return Object.keys(ShinkaiToolkitLib.ebnf)
-          .filter(field => ShinkaiToolkitLib.ebnf[field].context === contextName)
+          .filter(
+            field => ShinkaiToolkitLib.ebnf[field].context === contextName
+          )
           .map(field => {
             // eslint-disable-next-line @typescript-eslint/no-unused-vars
             const [prefix, fieldName] = field.split('.'); // [input, field

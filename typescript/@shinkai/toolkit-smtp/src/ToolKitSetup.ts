@@ -1,4 +1,4 @@
-import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
+import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {

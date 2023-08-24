@@ -1,4 +1,4 @@
-import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
+import {ShinkaiToolkitLib} from './ShinkaiToolkitLib';
 
 export * from './decorators';
 export * from './BaseTool';

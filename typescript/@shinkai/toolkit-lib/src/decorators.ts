@@ -1,8 +1,8 @@
 // Decorator for toolkit description
 
-import { BaseInput, BaseOutput } from './BaseTool';
-import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
-import { DATA_TYPES } from './types';
+import {BaseInput, BaseOutput} from './BaseTool';
+import {ShinkaiToolkitLib} from './ShinkaiToolkitLib';
+import {DATA_TYPES} from './types';
 import 'reflect-metadata';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +99,11 @@ export function isEnum(enumValues: string[], description?: string) {
     const fieldName = buildFieldName(context, propertyKey);
 
     const contextName = context.constructor.name;
-    ShinkaiToolkitLib.registerFieldType(fieldName, contextName, DATA_TYPES.ENUM);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.ENUM
+    );
     ShinkaiToolkitLib.registerFieldEnumData(fieldName, enumValues);
     if (description) {
       ShinkaiToolkitLib.registerFieldDescription(
@@ -117,7 +121,11 @@ export function isChar(enumValues: string[], description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiToolkitLib.registerFieldType(fieldName, contextName, DATA_TYPES.CHAR);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.CHAR
+    );
     if (description) {
       ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
@@ -134,7 +142,11 @@ export function isJSON(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiToolkitLib.registerFieldType(fieldName, contextName, DATA_TYPES.JSON);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.JSON
+    );
     if (description) {
       ShinkaiToolkitLib.registerFieldDescription(
         fieldName,

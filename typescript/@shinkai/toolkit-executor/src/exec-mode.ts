@@ -3,7 +3,6 @@ const util = require('node:util');
 const exec = util.promisify(require('node:child_process').exec);
 const fs = require('fs/promises');
 
-
 async function runScript(src: string, env = ''): Promise<string> {
   const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
     /0./,
@@ -15,10 +14,10 @@ async function runScript(src: string, env = ''): Promise<string> {
   let result;
 
   try {
-    const { error, stdout, stderr } = await exec(`${env} node ${path}`);
+    const {error, stdout, stderr} = await exec(`${env} node ${path}`);
 
     if (error || stderr) {
-      result = JSON.stringify({ stdout, error, stderr });
+      result = JSON.stringify({stdout, error, stderr});
     } else {
       result = stdout;
     }
@@ -74,8 +73,9 @@ export async function execMode(
   `;
 
   const parsedResponse = JSON.parse(await runScript(src));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toolResult = parsedResponse[tool as any];
-  const response = { tool: tool, result: toolResult };
+  const response = {tool: tool, result: toolResult};
   return JSON.stringify(response);
 }
 

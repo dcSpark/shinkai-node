@@ -127,7 +127,9 @@ export const GmailRequests = {
     if (mail.subject) query.push(`subject:(${mail.subject})`);
     if (mail.label) query.push(`label:${mail.label.name}`);
     if (mail.category) query.push(`category:${mail.category}`);
+    // eslint-disable-next-line eqeqeq
     if (mail.after != null && mail.after > 0) query.push(`after:${mail.after}`);
+    // eslint-disable-next-line eqeqeq
     if (mail.before != null) query.push(`before:${mail.before}`);
 
     const response = await httpClient.sendRequest<GmailMessageList>({
@@ -180,6 +182,7 @@ export const GmailRequests = {
   },
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function decodeBase64(data: any) {
   return Buffer.from(data, 'base64').toString();
 }
