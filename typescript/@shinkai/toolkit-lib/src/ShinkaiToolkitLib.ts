@@ -118,10 +118,9 @@ export class ShinkaiToolkitLib {
   }
 
   // Emit the toolkit config.
-  public static async emitConfig(): Promise<string> {
+  public static async emitConfig() {
     await ShinkaiToolkitLib.waitForLib();
-    const config = ShinkaiToolkitLib.generateConfig();
-    return JSON.stringify(config, null, 2);
+    return ShinkaiToolkitLib.generateConfig();
   }
 
   private static buildFieldJoiValidator(

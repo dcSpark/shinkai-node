@@ -32,7 +32,11 @@
           "description": "Result of the comparison.",
           "isOptional": false,
           "wrapperType": "none",
-          "enum": ["GT", "LT", "EQ"],
+          "enum": [
+            "GT",
+            "LT",
+            "EQ"
+          ],
           "ebnf": "(\"GT\" | \"LT\" | \"EQ\")"
         }
       ],
@@ -53,7 +57,7 @@
       ],
       "output": [
         {
-          "name": "isEven",
+          "name": "isEvenOutput",
           "type": "BOOL",
           "description": "Result of the check. True if the number is even.",
           "isOptional": false,
@@ -61,7 +65,7 @@
           "ebnf": "(\"true\"|\"false\")"
         }
       ],
-      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")\nnumber ::= (-?[0-9]+)\nisEven ::= (\"true\"|\"false\")"
+      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")\nnumber ::= (-?[0-9]+)\nisEvenOutput ::= (\"true\"|\"false\")"
     }
   ]
 }

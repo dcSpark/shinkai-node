@@ -1,36 +1,16 @@
 // Exec Mode
-const util = require('node:util');
-const exec = util.promisify(require('node:child_process').exec);
-const fs = require('fs/promises');
+import {Worker} from 'node:worker_threads';
+let processId = 0;
 
-async function runScript(src: string, env = ''): Promise<string> {
-  const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
-    /0./,
-    ''
-  )}.js`;
-
-  await fs.writeFile(path, src, 'utf8');
-
-  let result;
-
-  try {
-    const {error, stdout, stderr} = await exec(`${env} node ${path}`);
-
-    if (error || stderr) {
-      result = JSON.stringify({stdout, error, stderr});
-    } else {
-      result = stdout;
-    }
-  } finally {
-    // Ensure the temporary file is deleted
-    try {
-      await fs.unlink(path);
-    } catch (err) {
-      console.error(`Failed to delete temporary file: ${path}. Error:`, err);
-    }
-  }
-
-  return result;
+async function runScript(pid: number, src: string): Promise<Object> {
+  const startTime = Date.now();
+  return new Promise(resolve => {
+    const worker = new Worker(src, {eval: true});
+    worker.on('message', msg => {
+      console.log(`< Process ${pid} finished in ${Date.now() - startTime}[ms]`);
+      resolve(msg);
+    });
+  });
 }
 
 // Exec mode run once
@@ -39,73 +19,92 @@ export async function execMode(
   tool: string,
   input: string,
   headers: string
-): Promise<string> {
+): Promise<{tool: string; result: unknown}> {
   const src = `
-  const tools = require('${source}'); 
-  setTimeout(() => {
-    (async () => {
-      try {
-        if (!tools['${tool}']) {
-          console.log(JSON.stringify({ error: 'Tool "${tool}" not found' }));
-          return;
-        }
-        const toolkit = new tools.ToolKitSetup;
-        const tool = new tools['${tool}'];
+  ${source}
+  ;
 
-        const rawHeaders = {};
-        Object.assign(rawHeaders, ${headers || '{}'});
-        const headers = await toolkit.processRawHeaderValues(rawHeaders);
+  const {ShinkaiToolkitLib, ToolKitSetup, ${tool}} = module.exports; 
+  const {parentPort} = require('node:worker_threads');
 
-        const rawInput = {};
-        Object.assign(rawInput, ${input || '{}'});
-        const inputData = await tool.validateInputs(rawInput);
-        const inputObject = new tools.ShinkaiToolkitLib.inputClass['${tool}']();
-        Object.assign(inputObject, inputData);
-
-        const response = await tool.run(inputObject, headers);
-
-        console.log(JSON.stringify(response));
-      } catch (e) {
-        console.log(JSON.stringify({ error: e.message }));
+  (async () => {
+    try {
+      if (!${tool}) {
+        console.log(JSON.stringify({ error: 'Tool "${tool}" not found' }));
+        return;
       }
-    })();
-  }, 0);
-  `;
+      const toolkit = new ToolKitSetup();
+      const tool = new ${tool}();
 
-  const parsedResponse = JSON.parse(await runScript(src));
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toolResult = parsedResponse[tool as any];
-  const response = {tool: tool, result: toolResult};
-  return JSON.stringify(response);
+      const rawHeaders = {};
+      Object.assign(rawHeaders, ${headers || '{}'});
+      const headers = await toolkit.processRawHeaderValues(rawHeaders);
+
+      const rawInput = {};
+      Object.assign(rawInput, ${input || '{}'});
+      const inputData = await tool.validateInputs(rawInput);
+      const inputObject = new ShinkaiToolkitLib.inputClass['${tool}']();
+      Object.assign(inputObject, inputData);
+
+      const response = await tool.run(inputObject, headers);
+
+      parentPort?.postMessage(response);
+    } catch (e) {
+      parentPort?.postMessage({ error: e.message });
+    }
+  })();
+  `;
+  processId += 1;
+  console.log(`> EXEC Process ${processId}. Tool: ${tool}`);
+  return {tool, result: await runScript(processId, src)};
 }
 
 export async function validate(
   source: string,
   headers: string
-): Promise<string> {
+): Promise<Object> {
   const src = `
-  const tools = require('${source}'); 
-  setTimeout(() => {
+    ${source}
+    ;
+
+    const {ShinkaiToolkitLib, ToolKitSetup} = module.exports; 
+    const {parentPort} = require('node:worker_threads');
+
     (async () => {
       try {
-        const toolkit = new tools.ToolKitSetup;
+        const toolkit = new ToolKitSetup();
         const rawHeaders = {};
         Object.assign(rawHeaders, ${headers || '{}'});
         const response = await toolkit.validateHeaders(rawHeaders);
-        console.log(JSON.stringify(response));
+        parentPort?.postMessage(response);
       } catch (e) {
-        console.log(JSON.stringify({ error: e.message }));
+        parentPort?.postMessage({ error: e.message });
       }
     })();
-  }, 0);
   `;
-  return await runScript(src);
+  processId += 1;
+  console.log(`> VALIDATE Process ${processId}`);
+  return {result: await runScript(processId, src)};
 }
 
-export async function execModeConfig(source: string): Promise<string> {
+export async function toolkitConfig(source: string): Promise<Object> {
   const src = `
-    const tools = require('${source}');
-  `;
+    ${source}
+    ;
 
-  return await runScript(src, 'EMIT_TOOLS=1');
+    const {ShinkaiToolkitLib, ToolKitSetup} = module.exports; 
+    const {parentPort} = require('node:worker_threads');
+
+    (async () => {
+      try {
+        const config = await ShinkaiToolkitLib.emitConfig();
+        parentPort?.postMessage(config);
+      } catch (e) {
+        parentPort?.postMessage({ error: e.message });
+      }
+    })();
+  `;
+  processId += 1;
+  console.log(`> TOOLKIT_CONFIG process ${processId}.`);
+  return await runScript(processId, src);
 }

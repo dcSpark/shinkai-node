@@ -10,9 +10,10 @@ export * from './ShinkaiSetup';
 // generates the tool descriptions and validators.
 // Run at end of eventloop, after all user decorators are parsed.
 ShinkaiToolkitLib.start();
-(async () => {
-  if (process.env.EMIT_TOOLS) {
+
+if (process.env.EMIT_TOOLS) {
+  (async () => {
     const config = await ShinkaiToolkitLib.emitConfig();
-    console.log(config);
-  }
-})();
+    console.log(JSON.stringify(config, null, 2));
+  })();
+}
