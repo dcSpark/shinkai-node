@@ -74,7 +74,7 @@ Response:
 
 ```
 > `{
-> "toolkit-name": "@shinkai/toolkit-example",
+> "toolkitName": "@shinkai/toolkit-example",
 > "author": "shinkai-dev",
 > "version": "0.0.1",
 > "toolkitHeaders": {},
@@ -160,7 +160,7 @@ Response:
 
 ```
 > `{
-> "toolkit-name": "@shinkai/toolkit-example",
+> "toolkitName": "@shinkai/toolkit-example",
 > "author": "shinkai-dev",
 > "version": "0.0.1",
 > "toolkitHeaders": {},

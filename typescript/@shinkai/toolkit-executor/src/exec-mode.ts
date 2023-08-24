@@ -60,7 +60,7 @@ export async function execMode(
         const rawInput = {};
         Object.assign(rawInput, ${input || '{}'});
         const inputData = await tool.validateInputs(rawInput);
-        const inputObject = new tools.ShinkaiTookitLib.inputClass['${tool}']();
+        const inputObject = new tools.ShinkaiToolkitLib.inputClass['${tool}']();
         Object.assign(inputObject, inputData);
 
         const response = await tool.run(inputObject, headers);

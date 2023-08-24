@@ -1,5 +1,5 @@
 {
-  "toolkit-name": "@shinkai/toolkit-google-calendar",
+  "toolkitName": "@shinkai/toolkit-google-calendar",
   "author": "shinkai-dev",
   "version": "0.0.1",
   "toolkitHeaders": [

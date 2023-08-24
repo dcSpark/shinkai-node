@@ -1,5 +1,5 @@
 {
-  "toolkit-name": "@shinkai/toolkit-smtp",
+  "toolkitName": "@shinkai/toolkit-smtp",
   "author": "shinakai-dev",
   "version": "0.0.1",
   "toolkitHeaders": [

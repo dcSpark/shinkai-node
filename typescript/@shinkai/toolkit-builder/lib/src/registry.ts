@@ -1,8 +1,8 @@
 /* Toolkit Defintion */
-export {ToolKitSetup} from './ToolKitSetup';
+export { ToolKitSetup } from './ToolKitSetup';
 
 /* Required for executor for introspection */
-export {ShinkaiTookitLib} from '@shinkai/toolkit-lib';
+export { ShinkaiToolkitLib } from '@shinkai/toolkit-lib';
 
 /* Tools */
-export {Sample} from './packages/sample';
+export { Sample } from './packages/sample';

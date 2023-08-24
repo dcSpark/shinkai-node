@@ -135,9 +135,9 @@ impl JSToolkit {
 
     pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse
-        let name = parsed_json["toolkit-name"]
+        let name = parsed_json["toolkitName"]
             .as_str()
-            .ok_or(ToolError::ParseError("toolkit-name".to_string()))?;
+            .ok_or(ToolError::ParseError("toolkitName".to_string()))?;
 
         // Author parse
         let author = parsed_json["author"]

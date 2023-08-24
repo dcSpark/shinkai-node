@@ -1,8 +1,8 @@
-import { ShinkaiTookitLib } from './ShinkaiTookitLib';
+import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
 import { ShinkaiFieldHeader } from './types';
 
 export abstract class ShinkaiSetup {
-  abstract 'toolkit-name': string;
+  abstract toolkitName: string;
   abstract author: string;
   abstract version: string;
 
@@ -21,7 +21,7 @@ export abstract class ShinkaiSetup {
   }
 
   public async processRawHeaderValues(rawHeader: Record<string, string>) {
-    const v = await ShinkaiTookitLib.getHeadersValidator();
+    const v = await ShinkaiToolkitLib.getHeadersValidator();
     const headers = {};
     Object.keys(rawHeader).forEach((key: string) => {
       if (!v.transformer[key]) {

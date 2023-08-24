@@ -2,7 +2,7 @@ import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
-  'toolkit-name' = '@shinkai/toolkit-smtp';
+  toolkitName = '@shinkai/toolkit-smtp';
   author = 'shinakai-dev';
   version = '0.0.1';
 

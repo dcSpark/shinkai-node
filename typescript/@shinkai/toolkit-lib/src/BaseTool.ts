@@ -1,8 +1,8 @@
 import Joi from 'joi';
-import {ShinkaiTookitLib} from './ShinkaiTookitLib';
+import { ShinkaiToolkitLib } from './ShinkaiToolkitLib';
 
-export abstract class BaseInput {}
-export abstract class BaseOutput {}
+export abstract class BaseInput { }
+export abstract class BaseOutput { }
 
 export abstract class BaseTool<I extends BaseInput, O extends BaseOutput> {
   abstract description: string;
@@ -11,7 +11,7 @@ export abstract class BaseTool<I extends BaseInput, O extends BaseOutput> {
 
   public async validateInputs(input: I): Promise<I> {
     const validator: Joi.ObjectSchema =
-      await ShinkaiTookitLib.getInputValidator(this.constructor.name);
+      await ShinkaiToolkitLib.getInputValidator(this.constructor.name);
     const inputValidation = validator.validate(input);
     if (inputValidation.error) {
       throw new Error(String(inputValidation.error));

@@ -1,5 +1,5 @@
 {
-  "toolkit-name": "@shinkai/toolkit-gmail",
+  "toolkitName": "@shinkai/toolkit-gmail",
   "author": "shinkai-dev",
   "version": "0.0.1",
   "toolkitHeaders": [
