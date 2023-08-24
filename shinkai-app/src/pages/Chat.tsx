@@ -26,7 +26,6 @@ import {
   extractReceiverShinkaiName,
   getOtherPersonIdentity,
 } from "../utils/inbox_name_handler";
-import { ShinkaiMessageWrapper } from "../lib/wasm/ShinkaiMessageWrapper";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { calculateMessageHash } from "../utils/shinkai_message_handler";
 

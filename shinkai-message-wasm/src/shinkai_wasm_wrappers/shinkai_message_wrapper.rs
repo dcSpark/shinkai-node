@@ -53,11 +53,6 @@ impl ShinkaiMessageWrapper {
         Ok(())
     }
 
-    // #[wasm_bindgen(method, getter)]
-    // pub fn external_metadata(&self) -> Result<JsValue, JsValue> {
-    //     self.inner.external_metadata.clone().unwrap().to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
-    // }
-
     #[wasm_bindgen(method, getter)]
     pub fn external_metadata(&self) -> Result<JsValue, JsValue> {
         self.inner
