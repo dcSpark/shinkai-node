@@ -1060,7 +1060,7 @@ impl Node {
         // We update the signature so it comes from the node and not the profile
         // that way the recipient will be able to verify it
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
+        let msg = ShinkaiMessageHandler::re_sign_outer_layer_message(body_encrypted_msg, signature_sk);
 
         let mut db_guard = self.db.lock().await;
 

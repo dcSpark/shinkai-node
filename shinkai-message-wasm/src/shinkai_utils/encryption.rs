@@ -13,9 +13,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use super::shinkai_message_handler::ShinkaiMessageHandler;
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
-
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub enum EncryptionMethod {
@@ -220,7 +217,7 @@ pub struct DecryptionError {
 }
 
 impl DecryptionError {
-    fn new(msg: &str) -> DecryptionError {
+    pub fn new(msg: &str) -> DecryptionError {
         DecryptionError {
             details: msg.to_string(),
         }
@@ -239,85 +236,85 @@ impl Error for DecryptionError {
     }
 }
 
-pub fn decrypt_body_message(
-    message: &ShinkaiMessage,
-    self_sk: &StaticSecret,
-    sender_pk: &PublicKey,
-) -> Result<ShinkaiMessage, DecryptionError> {
-    let mut decrypted_message = message.clone();
+// pub fn decrypt_body_message(
+//     message: &ShinkaiMessage,
+//     self_sk: &StaticSecret,
+//     sender_pk: &PublicKey,
+// ) -> Result<ShinkaiMessage, DecryptionError> {
+//     let mut decrypted_message = message.clone();
 
-    match EncryptionMethod::from_str(message.encryption.as_str()) {
-        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
-            let shared_secret = self_sk.diffie_hellman(&sender_pk);
+//     match EncryptionMethod::from_str(&message.body.internal_metadata.as_ref().unwrap().encryption.as_str()) {
+//         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
+//             let shared_secret = self_sk.diffie_hellman(&sender_pk);
 
-            // Convert the shared secret into a suitable key
-            let mut hasher = Sha256::new();
-            hasher.update(shared_secret.as_bytes());
-            let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
+//             // Convert the shared secret into a suitable key
+//             let mut hasher = Sha256::new();
+//             hasher.update(shared_secret.as_bytes());
+//             let result = hasher.finalize();
+//             let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
 
-            let cipher = ChaCha20Poly1305::new(&key);
+//             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = hex::decode(&message.body.as_ref().unwrap().content)
-                .map_err(|_| DecryptionError::new("Failed to decode hex"))?;
-            let (nonce, ciphertext) = decoded.split_at(12);
-            let nonce = GenericArray::from_slice(nonce);
+//             let decoded = hex::decode(&message.body.content)
+//                 .map_err(|_| DecryptionError::new("Failed to decode hex"))?;
+//             let (nonce, ciphertext) = decoded.split_at(12);
+//             let nonce = GenericArray::from_slice(nonce);
 
-            // Decrypt ciphertext
-            let plaintext_bytes = cipher
-                .decrypt(nonce, ciphertext)
-                .map_err(|_| DecryptionError::new("Decryption failure!"))?;
+//             // Decrypt ciphertext
+//             let plaintext_bytes = cipher
+//                 .decrypt(nonce, ciphertext)
+//                 .map_err(|_| DecryptionError::new("Decryption failure!"))?;
 
-            // Convert the decrypted bytes back into a Body
-            let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
+//             // Convert the decrypted bytes back into a Body
+//             let decrypted_body = ShinkaiMessageHandler::decode_body(plaintext_bytes.as_slice().to_vec());
 
-            decrypted_message.body = Some(decrypted_body);
-        }
-        EncryptionMethod::None => (),
-    }
+//             decrypted_message.body = decrypted_body;
+//         }
+//         EncryptionMethod::None => (),
+//     }
 
-    Ok(decrypted_message)
-}
+//     Ok(decrypted_message)
+// }
 
-pub fn decrypt_content_message(
-    encrypted_content: String,
-    encryption: &str,
-    self_sk: &StaticSecret,
-    sender_pk: &PublicKey,
-) -> Result<(String, String), DecryptionError> {
-    match EncryptionMethod::from_str(encryption) {
-        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
-            let shared_secret = self_sk.diffie_hellman(sender_pk);
-            let mut hasher = Sha256::new();
-            hasher.update(shared_secret.as_bytes());
-            let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]);
-            let cipher = ChaCha20Poly1305::new(&key);
+// pub fn decrypt_content_message(
+//     encrypted_content: String,
+//     encryption: &str,
+//     self_sk: &StaticSecret,
+//     sender_pk: &PublicKey,
+// ) -> Result<(String, String), DecryptionError> {
+//     match EncryptionMethod::from_str(encryption) {
+//         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
+//             let shared_secret = self_sk.diffie_hellman(sender_pk);
+//             let mut hasher = Sha256::new();
+//             hasher.update(shared_secret.as_bytes());
+//             let result = hasher.finalize();
+//             let key = GenericArray::clone_from_slice(&result[..]);
+//             let cipher = ChaCha20Poly1305::new(&key);
 
-            let decoded = hex::decode(&encrypted_content)
-                .expect("Failed to decode hex");
+//             let decoded = hex::decode(&encrypted_content)
+//                 .expect("Failed to decode hex");
 
-            let (content_len_bytes, remainder) = decoded.split_at(8);
-            let (_, remainder) = remainder.split_at(8);
-            let (nonce, ciphertext) = remainder.split_at(12);
+//             let (content_len_bytes, remainder) = decoded.split_at(8);
+//             let (_, remainder) = remainder.split_at(8);
+//             let (nonce, ciphertext) = remainder.split_at(12);
 
-            let content_len = u64::from_le_bytes(
-                content_len_bytes
-                    .try_into()
-                    .map_err(|_| DecryptionError::new("Failed to parse content length"))?,
-            );
+//             let content_len = u64::from_le_bytes(
+//                 content_len_bytes
+//                     .try_into()
+//                     .map_err(|_| DecryptionError::new("Failed to parse content length"))?,
+//             );
 
-            let nonce = GenericArray::from_slice(nonce);
+//             let nonce = GenericArray::from_slice(nonce);
 
-            let plaintext_bytes = cipher.decrypt(nonce, ciphertext).expect("Decryption failure!");
+//             let plaintext_bytes = cipher.decrypt(nonce, ciphertext).expect("Decryption failure!");
 
-            let (content_bytes, schema_bytes) = plaintext_bytes.split_at(content_len as usize);
+//             let (content_bytes, schema_bytes) = plaintext_bytes.split_at(content_len as usize);
 
-            let content = String::from_utf8(content_bytes.to_vec()).expect("Failed to decode decrypted content");
-            let schema = String::from_utf8(schema_bytes.to_vec()).expect("Failed to decode decrypted content schema");
+//             let content = String::from_utf8(content_bytes.to_vec()).expect("Failed to decode decrypted content");
+//             let schema = String::from_utf8(schema_bytes.to_vec()).expect("Failed to decode decrypted content schema");
 
-            Ok((content, schema))
-        }
-        EncryptionMethod::None => Err(DecryptionError::new("Encryption method is None")),
-    }
-}
+//             Ok((content, schema))
+//         }
+//         EncryptionMethod::None => Err(DecryptionError::new("Encryption method is None")),
+//     }
+// }

@@ -76,15 +76,15 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn body(&mut self, content: String) -> Result<(), JsValue> {
+    pub fn message_raw_content(&mut self, message_raw_content: String) -> Result<(), JsValue> {
         if let Some(mut inner) = self.inner.take() {
-            inner = inner.body(content);
+            inner = inner.message_raw_content(message_raw_content);
             self.inner = Some(inner);
-            Ok(())
+            return Ok(());
         } else {
-            Err(JsValue::from_str(
+            return Err(JsValue::from_str(
                 "Inner ShinkaiMessageBuilder is None. This should never happen.",
-            ))
+            ));
         }
     }
 
@@ -315,7 +315,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body("ACK".to_string());
+        let _ = builder.message_raw_content("ACK".to_string());
         let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);
@@ -503,7 +503,7 @@ impl ShinkaiMessageBuilderWrapper {
         let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
         let schema_jsvalue = JsValue::from_str(&schema);
 
-        let _ = builder.body(data);
+        let _ = builder.message_raw_content(data);
         let _ = builder.body_encryption(body_encryption);
         let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
         let _ = builder.internal_metadata_with_schema(
@@ -532,7 +532,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body(message);
+        let _ = builder.message_raw_content(message);
         let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);
@@ -558,7 +558,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body(body);
+        let _ = builder.message_raw_content(body);
         let _ = builder.internal_metadata_with_schema(
             "".to_string(),
             receiver_subidentity.clone(),
@@ -595,7 +595,7 @@ impl ShinkaiMessageBuilderWrapper {
             .map_err(|e| JsValue::from_str(&e.to_string()))?
             .get_value();
 
-        let _ = builder.body(body);
+        let _ = builder.message_raw_content(body);
         let _ = builder.internal_metadata_with_schema(
             "".to_string(),
             receiver_subidentity.clone(),
@@ -620,7 +620,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body("terminate".to_string());
+        let _ = builder.message_raw_content("terminate".to_string());
         let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);
@@ -640,7 +640,7 @@ impl ShinkaiMessageBuilderWrapper {
         let mut builder =
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
-        let _ = builder.body(format!("{{error: \"{}\"}}", error_msg))?;
+        let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg))?;
         let _ = builder.empty_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
         let _ = builder.external_metadata(receiver, sender);

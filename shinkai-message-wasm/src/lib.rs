@@ -1,4 +1,4 @@
-use shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, Body, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType};
+use shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiBody, ShinkaiMessage}, shinkai_message_schemas::MessageSchemaType};
 use shinkai_utils::encryption::EncryptionMethod;
 use wasm_bindgen::prelude::*;
 

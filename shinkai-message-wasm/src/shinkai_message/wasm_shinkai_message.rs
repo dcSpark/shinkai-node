@@ -1,11 +1,10 @@
 use crate::shinkai_utils::encryption::EncryptionMethod;
 
 use super::{
-    shinkai_message::{Body, ExternalMetadata, InternalMetadata, ShinkaiMessage},
+    shinkai_message::{ShinkaiBody, ExternalMetadata, InternalMetadata, ShinkaiMessage, ShinkaiVersion, MessageData, MessageBody},
     shinkai_message_schemas::MessageSchemaType,
 };
 use anyhow::Result;
-use serde_wasm_bindgen::{from_value, to_value};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
@@ -25,17 +24,20 @@ impl InternalMetadata {
     pub fn new(
         sender_subidentity: String,
         recipient_subidentity: String,
-        message_schema_type: String,
+        // message_schema_type: String,
         inbox: String,
         encryption: String,
-    ) -> Option<Self> {
-        let message_schema_type = MessageSchemaType::from_str(&message_schema_type)?;
+        signature: String,
+    ) -> Result<Self, ShinkaiMessageWasmError> {
+        // let message_schema_type = MessageSchemaType::from_str(&message_schema_type)
+            // .ok_or(ShinkaiMessageWasmError::MessageSchemaTypeParseError(message_schema_type.clone()))?;
         let encryption = EncryptionMethod::from_str(&encryption);
 
-        Some(InternalMetadata {
+        Ok(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,
-            message_schema_type,
+            // message_schema_type,
+            signature,
             inbox,
             encryption,
         })
@@ -90,10 +92,10 @@ impl ExternalMetadata {
     }
 }
 
-impl Body {
-    pub fn new(content: String, internal_metadata: Option<InternalMetadata>) -> Self {
-        Body {
-            content,
+impl ShinkaiBody {
+    pub fn new(message_data: MessageData, internal_metadata: InternalMetadata) -> Self {
+        ShinkaiBody {
+            message_data,
             internal_metadata,
         }
     }
@@ -118,11 +120,12 @@ impl Body {
 }
 
 impl ShinkaiMessage {
-    pub fn new(body: Option<Body>, external_metadata: Option<ExternalMetadata>, encryption: EncryptionMethod) -> Self {
+    pub fn new(message_body: MessageBody, external_metadata: ExternalMetadata, encryption: EncryptionMethod, version: Option<ShinkaiVersion>) -> Self {
         ShinkaiMessage {
-            body,
+            body: message_body,
             external_metadata,
             encryption,
+            version: version.unwrap_or(ShinkaiVersion::V1_0),
         }
     }
 

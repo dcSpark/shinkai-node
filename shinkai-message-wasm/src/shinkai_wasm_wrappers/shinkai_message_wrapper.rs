@@ -1,8 +1,12 @@
-use crate::{shinkai_message::shinkai_message::{ShinkaiMessage, Body, ExternalMetadata}, shinkai_utils::encryption::{self, EncryptionMethod}};
+use crate::{
+    shinkai_message::{shinkai_message::{ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage}, self},
+    shinkai_utils::encryption::{self, EncryptionMethod},
+};
 use chrono::Utc;
-use sha2::{Sha256, Digest};
-use wasm_bindgen::prelude::*;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use wasm_bindgen::prelude::*;
+
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ShinkaiMessageWrapper {
@@ -12,38 +16,62 @@ pub struct ShinkaiMessageWrapper {
 #[wasm_bindgen]
 impl ShinkaiMessageWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(body: &JsValue, external_metadata: &JsValue, encryption: EncryptionMethod) -> Result<ShinkaiMessageWrapper, JsValue> {
-        let body = Body::from_jsvalue(body).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        let external_metadata = ExternalMetadata::from_jsvalue(external_metadata).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    pub fn new(
+        body: &JsValue,
+        external_metadata: &JsValue,
+        encryption: EncryptionMethod,
+    ) -> Result<ShinkaiMessageWrapper, JsValue> {
+        let body = ShinkaiBody::from_jsvalue(body).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let external_metadata =
+            ExternalMetadata::from_jsvalue(external_metadata).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let shinkai_message = ShinkaiMessage::new(Some(body), Some(external_metadata), encryption);
+        let shinkai_message = ShinkaiMessage::new(
+            MessageBody::Unencrypted(body),
+            external_metadata,
+            encryption,
+            None,
+        );
 
-        Ok(ShinkaiMessageWrapper {
-            inner: shinkai_message,
-        })
+        Ok(ShinkaiMessageWrapper { inner: shinkai_message })
     }
 
     #[wasm_bindgen(method, getter)]
-    pub fn body(&self) -> Result<JsValue, JsValue> {
-        self.inner.body.clone().unwrap().to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
+    pub fn message_body(&self) -> Result<JsValue, JsValue> {
+        match &self.inner.body {
+            MessageBody::Unencrypted(body) => {
+                body.to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
+            },
+            // Add other variants of MessageBody if needed
+            _ => Err(JsValue::from_str("Unsupported MessageBody variant")),
+        }
     }
 
     #[wasm_bindgen(method, setter)]
-    pub fn set_body(&mut self, body: JsValue) -> Result<(), JsValue> {
-        let body = Body::from_jsvalue(&body).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        self.inner.body = Some(body);
+    pub fn set_message_body(&mut self, body: JsValue) -> Result<(), JsValue> {
+        let body = ShinkaiBody::from_jsvalue(&body).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.inner.body = MessageBody::Unencrypted(body);
         Ok(())
     }
 
+    // #[wasm_bindgen(method, getter)]
+    // pub fn external_metadata(&self) -> Result<JsValue, JsValue> {
+    //     self.inner.external_metadata.clone().unwrap().to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
+    // }
+
     #[wasm_bindgen(method, getter)]
     pub fn external_metadata(&self) -> Result<JsValue, JsValue> {
-        self.inner.external_metadata.clone().unwrap().to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
+        self.inner
+            .external_metadata
+            .clone()
+            .to_jsvalue()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen(method, setter)]
     pub fn set_external_metadata(&mut self, external_metadata: JsValue) -> Result<(), JsValue> {
-        let external_metadata = ExternalMetadata::from_jsvalue(&external_metadata).map_err(|e| JsValue::from_str(&e.to_string()))?;
-        self.inner.external_metadata = Some(external_metadata);
+        let external_metadata =
+            ExternalMetadata::from_jsvalue(&external_metadata).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.inner.external_metadata = external_metadata;
         Ok(())
     }
 
@@ -79,7 +107,7 @@ impl ShinkaiMessageWrapper {
         Ok(ShinkaiMessageWrapper { inner })
     }
 
-    #[wasm_bindgen] 
+    #[wasm_bindgen]
     pub fn calculate_hash(&self) -> String {
         let mut hasher = Sha256::new();
 
@@ -88,7 +116,7 @@ impl ShinkaiMessageWrapper {
         format!("{:x}", result)
     }
 
-    #[wasm_bindgen] 
+    #[wasm_bindgen]
     pub fn generate_time_now() -> String {
         let timestamp = Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
         let scheduled_time = format!("{}{}", &timestamp[..17], &timestamp[17..20]);

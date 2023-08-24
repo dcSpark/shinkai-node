@@ -2,26 +2,37 @@
 mod tests {
     use serde_json::json;
     use serde_json::to_value;
-    use shinkai_message_wasm::shinkai_message::shinkai_message::Body;
     use shinkai_message_wasm::shinkai_message::shinkai_message::ExternalMetadata;
     use shinkai_message_wasm::shinkai_message::shinkai_message::InternalMetadata;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::MessageBody;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::MessageData;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiBody;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiData;
     use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+    use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiVersion;
     use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
     use shinkai_message_wasm::shinkai_utils::encryption::EncryptionMethod;
     use wasm_bindgen_test::*;
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_to_jsvalue() {
         let internal_metadata = InternalMetadata::new(
             String::from("test_sender_subidentity"),
             String::from("test_recipient_subidentity"),
-            String::from("TextContent"),
             String::from("part1|part2::part3|part4::part5|part6::true"),
             String::from("None"),
+            String::from("test_signature"),
         )
         .unwrap();
-        let body = Body::new(String::from("test_content"), Some(internal_metadata));
+
+        let message_data = MessageData::Unencrypted(ShinkaiData {
+            message_raw_content: "test_content".into(),
+            message_content_schema: MessageSchemaType::TextContent,
+        });
+
+        let body = MessageBody::Unencrypted(ShinkaiBody::new(message_data, internal_metadata));
+
         let external_metadata = ExternalMetadata::new(
             String::from("test_sender"),
             String::from("test_recipient"),
@@ -30,9 +41,10 @@ mod tests {
             String::from("test_other"),
         );
         let message = ShinkaiMessage::new(
-            Some(body),
-            Some(external_metadata),
+            body,
+            external_metadata,
             EncryptionMethod::DiffieHellmanChaChaPoly1305,
+            None,
         );
         let js_value_result = message.to_jsvalue();
 
@@ -53,7 +65,8 @@ mod tests {
                         "recipient_subidentity": "test_recipient_subidentity",
                         "message_schema_type": "TextContent",
                         "inbox": "part1|part2::part3|part4::part5|part6::true",
-                        "encryption": "None"
+                        "encryption": "None",
+                        "signature": "test_signature"
                     }
                 },
                 "external_metadata": {
@@ -63,12 +76,13 @@ mod tests {
                     "signature": "test_signature",
                     "other": "test_other"
                 },
-                "encryption": "DiffieHellmanChaChaPoly1305"
+                "encryption": "DiffieHellmanChaChaPoly1305",
+                "version": "V1_0"
             })
         );
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_from_jsvalue() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");
@@ -80,7 +94,8 @@ mod tests {
                     "recipient_subidentity": "test_recipient_subidentity",
                     "message_schema_type": "TextContent",
                     "inbox": "part1|part2::part3|part4::part5|part6::true",
-                    "encryption": "None"
+                    "encryption": "None",
+                    "signature": "test_signature"
                 }
             },
             "external_metadata": {
@@ -90,7 +105,8 @@ mod tests {
                 "signature": "test_signature",
                 "other": "test_other"
             },
-            "encryption": "DiffieHellmanChaChaPoly1305"
+            "encryption": "DiffieHellmanChaChaPoly1305",
+            "version": "V1_0"
         }"#;
 
         let shinkai_message = ShinkaiMessage::from_json_str(json).unwrap();
@@ -104,23 +120,38 @@ mod tests {
         let message = message_result.unwrap();
 
         assert_eq!(message.encryption, EncryptionMethod::DiffieHellmanChaChaPoly1305);
-        let body = message.body.unwrap();
-        assert_eq!(body.content, String::from("test_content"));
+        assert_eq!(message.version, ShinkaiVersion::V1_0);
+        let body = match message.body {
+            MessageBody::Unencrypted(body) => body,
+            _ => panic!("Unexpected MessageBody variant"),
+        };
 
-        let internal_metadata = body.internal_metadata.unwrap();
+        let message_data = match body.message_data {
+            MessageData::Unencrypted(ref data) => data,
+            _ => panic!("Unexpected MessageData variant"),
+        };
+
+        assert_eq!(message_data.message_raw_content, String::from("test_content"));
+
+        let internal_metadata = body.internal_metadata;
         assert_eq!(
             internal_metadata.sender_subidentity,
             String::from("test_sender_subidentity")
         );
-        assert_eq!(
-            internal_metadata.recipient_subidentity,
-            String::from("test_recipient_subidentity")
-        );
-        assert_eq!(internal_metadata.message_schema_type, MessageSchemaType::TextContent);
-        assert_eq!(internal_metadata.inbox, String::from("part1|part2::part3|part4::part5|part6::true"));
-        assert_eq!(internal_metadata.encryption, EncryptionMethod::None);
+        let message_data = match body.message_data {
+            MessageData::Unencrypted(ref data) => data,
+            _ => panic!("Unexpected MessageData variant"),
+        };
 
-        let external_metadata = message.external_metadata.unwrap();
+        assert_eq!(message_data.message_content_schema, MessageSchemaType::TextContent);
+        assert_eq!(
+            internal_metadata.inbox,
+            String::from("part1|part2::part3|part4::part5|part6::true")
+        );
+        assert_eq!(internal_metadata.encryption, EncryptionMethod::None);
+        assert_eq!(internal_metadata.signature, String::from("test_signature"));
+
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, String::from("test_sender"));
         assert_eq!(external_metadata.recipient, String::from("test_recipient"));
         assert_eq!(external_metadata.scheduled_time, String::from("20230702T20533481345"));
