@@ -50,15 +50,19 @@ pub struct ShinkaiData {
     pub message_content_schema: MessageSchemaType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MessageBody {
+    #[serde(rename = "encrypted")]
     Encrypted(EncryptedShinkaiBody),
+    #[serde(rename = "unencrypted")]
     Unencrypted(ShinkaiBody),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum MessageData {
+    #[serde(rename = "encrypted")]
     Encrypted(EncryptedShinkaiData),
+    #[serde(rename = "unencrypted")]
     Unencrypted(ShinkaiData),
 }
 

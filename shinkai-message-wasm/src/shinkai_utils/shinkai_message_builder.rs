@@ -17,7 +17,7 @@ use crate::{
         },
     },
     shinkai_utils::{
-        encryption::{encrypt_body, encrypt_string_content, encryption_public_key_to_string, EncryptionMethod},
+        encryption::{encryption_public_key_to_string, EncryptionMethod},
         signatures::{sign_message, signature_public_key_to_string},
     },
 };
@@ -281,20 +281,21 @@ impl ShinkaiMessageBuilder {
         if let Some(internal_metadata) = &mut new_self.internal_metadata {
             // if self.internal_metadata.encryption is not None
             let new_message_data = if internal_metadata.encryption != encryption_method_none {
-                println!("Encrypting body content");
-                let encrypted_content = encrypt_string_content(
-                    new_self.message_raw_content.clone(),
-                    new_self.message_content_schema.clone().to_str().to_string(),
+                println!("Encrypting data content");
+
+                let data = ShinkaiData {
+                    message_raw_content: new_self.message_raw_content.clone(),
+                    message_content_schema: new_self.message_content_schema.clone(),
+                };
+
+                let encrypted_content = MessageData::encrypt_message_data(
+                    &data,
                     &new_self.my_encryption_secret_key,
                     &new_self.receiver_public_key,
-                    internal_metadata.encryption.as_str(),
                 )
-                .expect("Failed to encrypt body");
+                .expect("Failed to encrypt data content");
 
-                let encrypted_data = EncryptedShinkaiData {
-                    content: encrypted_content,
-                };
-                MessageData::Encrypted(encrypted_data)
+                encrypted_content
             } else {
                 // If encryption method is None, just return body
                 MessageData::Unencrypted(ShinkaiData {
@@ -305,22 +306,17 @@ impl ShinkaiMessageBuilder {
 
             // if self.encryption is not None
             let new_body = if new_self.encryption != encryption_method_none {
-                let serialized_body = bincode::serialize(&ShinkaiBody {
-                    message_data: new_message_data.clone(),
-                    internal_metadata: internal_metadata.clone(),
-                })
-                .unwrap();
-                let encrypted_body = encrypt_body(
-                    &serialized_body,
+                let encrypted_body = MessageBody::encrypt_message_body(
+                    &ShinkaiBody {
+                        message_data: new_message_data.clone(),
+                        internal_metadata: internal_metadata.clone(),
+                    },
                     &new_self.my_encryption_secret_key,
                     &new_self.receiver_public_key,
-                    new_self.encryption.as_str(),
                 )
                 .expect("Failed to encrypt body");
 
-                MessageBody::Encrypted(EncryptedShinkaiBody {
-                    content: encrypted_body,
-                })
+                encrypted_body
             } else {
                 // println!("No encryption");
                 // If encryption method is None, just return body
@@ -719,6 +715,7 @@ mod tests {
 
     #[test]
     fn test_builder_with_all_fields_body_encryption() {
+        println!("\n\n\ntest_builder_with_all_fields_body_encryption");
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
         let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
@@ -749,7 +746,7 @@ mod tests {
             let message_data = shinkai_body.message_data;
             if let MessageData::Unencrypted(shinkai_data) = message_data {
                 let decrypted_content = shinkai_data.message_raw_content;
-                println!("decrypted content: {}", decrypted_content);
+                eprintln!("\n\ndecrypted content: {}", decrypted_content);
                 assert_eq!(decrypted_content, "body content");
             }
         }

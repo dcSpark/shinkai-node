@@ -59,14 +59,20 @@ mod tests {
             js_value_serde,
             json!({
                 "body": {
-                    "content": "test_content",
-                    "internal_metadata": {
-                        "sender_subidentity": "test_sender_subidentity",
-                        "recipient_subidentity": "test_recipient_subidentity",
-                        "message_schema_type": "TextContent",
-                        "inbox": "part1|part2::part3|part4::part5|part6::true",
-                        "encryption": "None",
-                        "signature": "test_signature"
+                    "unencrypted": {
+                        "internal_metadata": {
+                            "sender_subidentity": "test_sender_subidentity",
+                            "recipient_subidentity": "test_recipient_subidentity",
+                            "inbox": "part1|part2::part3|part4::part5|part6::true",
+                            "encryption": "None",
+                            "signature": "test_signature"
+                        },
+                        "message_data": {
+                            "unencrypted": {
+                                "message_content_schema": "TextContent",
+                                "message_raw_content": "test_content"
+                            }
+                        }
                     }
                 },
                 "external_metadata": {
@@ -88,14 +94,20 @@ mod tests {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");
         let json = r#"{
             "body": {
-                "content": "test_content",
-                "internal_metadata": {
-                    "sender_subidentity": "test_sender_subidentity",
-                    "recipient_subidentity": "test_recipient_subidentity",
-                    "message_schema_type": "TextContent",
-                    "inbox": "part1|part2::part3|part4::part5|part6::true",
-                    "encryption": "None",
-                    "signature": "test_signature"
+                "unencrypted": {
+                    "internal_metadata": {
+                        "sender_subidentity": "test_sender_subidentity",
+                        "recipient_subidentity": "test_recipient_subidentity",
+                        "inbox": "part1|part2::part3|part4::part5|part6::true",
+                        "encryption": "None",
+                        "signature": "test_signature"
+                    },
+                    "message_data": {
+                        "unencrypted": {
+                            "message_content_schema": "TextContent",
+                            "message_raw_content": "test_content"
+                        }
+                    }
                 }
             },
             "external_metadata": {
@@ -106,7 +118,7 @@ mod tests {
                 "other": "test_other"
             },
             "encryption": "DiffieHellmanChaChaPoly1305",
-            "version": "V1_0"
+            "version": "V1_0" 
         }"#;
 
         let shinkai_message = ShinkaiMessage::from_json_str(json).unwrap();

@@ -135,81 +135,81 @@ pub fn hash_encryption_public_key(public_key: PublicKey) -> String {
     format!("{:x}", result)
 }
 
-pub fn encrypt_body(
-    body: &[u8],
-    self_sk: &StaticSecret,
-    destination_pk: &PublicKey,
-    encryption: &str,
-) -> Option<String> {
-    match EncryptionMethod::from_str(encryption) {
-        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
-            let shared_secret = self_sk.diffie_hellman(&destination_pk);
-            // Convert the shared secret into a suitable key
-            let mut hasher = Sha256::new();
-            hasher.update(shared_secret.as_bytes());
-            let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
-            let cipher = ChaCha20Poly1305::new(&key);
+// pub fn encrypt_body(
+//     body: &[u8],
+//     self_sk: &StaticSecret,
+//     destination_pk: &PublicKey,
+//     encryption: &str,
+// ) -> Option<String> {
+//     match EncryptionMethod::from_str(encryption) {
+//         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
+//             let shared_secret = self_sk.diffie_hellman(&destination_pk);
+//             // Convert the shared secret into a suitable key
+//             let mut hasher = Sha256::new();
+//             hasher.update(shared_secret.as_bytes());
+//             let result = hasher.finalize();
+//             let key = GenericArray::clone_from_slice(&result[..]); // panics if lengths are unequal
+//             let cipher = ChaCha20Poly1305::new(&key);
 
-            // Generate a unique nonce for each operation
-            let mut nonce = [0u8; 12];
-            OsRng.fill_bytes(&mut nonce[..]);
-            let nonce = GenericArray::from_slice(&nonce);
+//             // Generate a unique nonce for each operation
+//             let mut nonce = [0u8; 12];
+//             OsRng.fill_bytes(&mut nonce[..]);
+//             let nonce = GenericArray::from_slice(&nonce);
 
-            // Encrypt message
-            let ciphertext = cipher.encrypt(nonce, body).expect("encryption failure!");
+//             // Encrypt message
+//             let ciphertext = cipher.encrypt(nonce, body).expect("encryption failure!");
 
-            // Here we return the nonce and ciphertext (encoded to hex for easier storage and transmission)
-            let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
+//             // Here we return the nonce and ciphertext (encoded to hex for easier storage and transmission)
+//             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            Some(hex::encode(&nonce_and_ciphertext))
-        }
-        EncryptionMethod::None => None,
-    }
-}
+//             Some(hex::encode(&nonce_and_ciphertext))
+//         }
+//         EncryptionMethod::None => None,
+//     }
+// }
 
-pub fn encrypt_string_content(
-    content: String,
-    content_schema: String,
-    self_sk: &StaticSecret,
-    destination_pk: &PublicKey,
-    encryption: &str,
-) -> Option<String> {
-    match EncryptionMethod::from_str(encryption) {
-        EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
-            let shared_secret = self_sk.diffie_hellman(destination_pk);
+// pub fn encrypt_string_content(
+//     content: String,
+//     content_schema: String,
+//     self_sk: &StaticSecret,
+//     destination_pk: &PublicKey,
+//     encryption: &str,
+// ) -> Option<String> {
+//     match EncryptionMethod::from_str(encryption) {
+//         EncryptionMethod::DiffieHellmanChaChaPoly1305 => {
+//             let shared_secret = self_sk.diffie_hellman(destination_pk);
 
-            let mut hasher = Sha256::new();
-            hasher.update(shared_secret.as_bytes());
-            let result = hasher.finalize();
-            let key = GenericArray::clone_from_slice(&result[..]);
-            let cipher = ChaCha20Poly1305::new(&key);
+//             let mut hasher = Sha256::new();
+//             hasher.update(shared_secret.as_bytes());
+//             let result = hasher.finalize();
+//             let key = GenericArray::clone_from_slice(&result[..]);
+//             let cipher = ChaCha20Poly1305::new(&key);
 
-            let mut nonce = [0u8; 12];
-            OsRng.fill_bytes(&mut nonce[..]);
-            let nonce = GenericArray::from_slice(&nonce);
+//             let mut nonce = [0u8; 12];
+//             OsRng.fill_bytes(&mut nonce[..]);
+//             let nonce = GenericArray::from_slice(&nonce);
 
-            // Combine the content and content_schema into a single string
-            let combined_content = format!("{}{}", content, content_schema);
-            let ciphertext = cipher
-                .encrypt(nonce, combined_content.as_bytes())
-                .expect("encryption failure!");
+//             // Combine the content and content_schema into a single string
+//             let combined_content = format!("{}{}", content, content_schema);
+//             let ciphertext = cipher
+//                 .encrypt(nonce, combined_content.as_bytes())
+//                 .expect("encryption failure!");
 
-            let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
+//             let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
-            // Prepend the length of the content and content_schema as 8-byte strings
-            // the maximum value of an 8-byte integer in megabytes would be (2^64 - 1) * 2^-17
-            // = 140,737,488,355.328 MB (or roughly 140 terabytes).
-            let content_len = (content.len() as u64).to_le_bytes();
-            let content_schema_len = (content_schema.len() as u64).to_le_bytes();
-            let length_prefixed_nonce_and_ciphertext =
-                [&content_len[..], &content_schema_len[..], &nonce_and_ciphertext[..]].concat();
+//             // Prepend the length of the content and content_schema as 8-byte strings
+//             // the maximum value of an 8-byte integer in megabytes would be (2^64 - 1) * 2^-17
+//             // = 140,737,488,355.328 MB (or roughly 140 terabytes).
+//             let content_len = (content.len() as u64).to_le_bytes();
+//             let content_schema_len = (content_schema.len() as u64).to_le_bytes();
+//             let length_prefixed_nonce_and_ciphertext =
+//                 [&content_len[..], &content_schema_len[..], &nonce_and_ciphertext[..]].concat();
 
-            Some(hex::encode(length_prefixed_nonce_and_ciphertext))
-        }
-        EncryptionMethod::None => None,
-    }
-}
+//             Some(hex::encode(length_prefixed_nonce_and_ciphertext))
+//         }
+//         EncryptionMethod::None => None,
+//     }
+// }
 
 #[derive(Debug)]
 pub struct DecryptionError {

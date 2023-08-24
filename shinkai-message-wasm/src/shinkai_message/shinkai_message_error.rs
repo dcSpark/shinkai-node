@@ -7,6 +7,7 @@ pub enum ShinkaiMessageError {
     EncryptionError(String),
     InvalidMessageSchemaType(String),
     MissingMessageBody(String),
+    DeserializationError(String),
 }
 
 impl fmt::Display for ShinkaiMessageError {
@@ -17,6 +18,7 @@ impl fmt::Display for ShinkaiMessageError {
             ShinkaiMessageError::EncryptionError(msg) => write!(f, "EncryptionError: {}", msg),
             ShinkaiMessageError::InvalidMessageSchemaType(msg) => write!(f, "InvalidMessageSchemaType: {}", msg),
             ShinkaiMessageError::MissingMessageBody(msg) => write!(f, "MissingMessageBody: {}", msg),
+            ShinkaiMessageError::DeserializationError(msg) => write!(f, "DeserializationError: {}", msg),
         }
     }
 }
