@@ -73,7 +73,7 @@ test('ShinkaiMessageBuilderWrapper should set body content correctly', async () 
   );
 
   // Pass the enum value directly
-  await messageBuilder.body('Hello world!');
+  await messageBuilder.message_raw_content('Hello world!');
   await messageBuilder.body_encryption(EncryptionMethod.None);
   await messageBuilder.message_schema_type(MessageSchemaType.TextContent);
   await messageBuilder.internal_metadata('sender_user2', 'recipient_user1', '', 'None');

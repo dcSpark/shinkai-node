@@ -31,8 +31,8 @@ export class ShinkaiMessageBuilderWrapper {
     this.wasmBuilder.no_body_encryption();
   }
 
-  body(content: string): void {
-    this.wasmBuilder.body(content);
+  message_raw_content(content: string): void {
+    this.wasmBuilder.message_raw_content(content);
   }
 
   message_schema_type(content: any): void {
