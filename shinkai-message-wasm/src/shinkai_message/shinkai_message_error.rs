@@ -10,6 +10,7 @@ pub enum ShinkaiMessageError {
     MissingMessageBody(String),
     DeserializationError(String),
     SerializationError(String),
+    AlreadyEncrypted(String),
 }
 
 impl fmt::Display for ShinkaiMessageError {
@@ -22,6 +23,7 @@ impl fmt::Display for ShinkaiMessageError {
             ShinkaiMessageError::MissingMessageBody(msg) => write!(f, "MissingMessageBody: {}", msg),
             ShinkaiMessageError::DeserializationError(msg) => write!(f, "DeserializationError: {}", msg),
             ShinkaiMessageError::SerializationError(msg) => write!(f, "SerializationError: {}", msg),
+            ShinkaiMessageError::AlreadyEncrypted(msg) => write!(f, "AlreadyEncrypted: {}", msg),
         }
     }
 }

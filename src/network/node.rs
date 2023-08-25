@@ -540,11 +540,11 @@ impl Node {
             // Debug only
             println!("save_to_db> message: {:?}", message.clone());
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(message)
                     .unwrap()
                     .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_only_using_sender_node_name(message)
                     .unwrap()
                     .to_string();
             }
@@ -604,14 +604,14 @@ impl Node {
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {
-        info!("{} > Got message from {:?}", receiver_address, unsafe_sender_address);
+        info!("\n\n {} > Got message from {:?}", receiver_address, unsafe_sender_address);
 
         // Extract and validate the message
         let message = extract_message(bytes, receiver_address)?;
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
             .unwrap()
             .get_node_name();
         let sender_identity = maybe_identity_manager

@@ -177,16 +177,6 @@ fn subidentity_registration() {
             // Register a Profile in Node1 and verifies it
             {
                 eprintln!("Register a Profile in Node1 and verifies it");
-                // registration_profile_node(
-                //     node1_commands_sender.clone(),
-                //     node1_subidentity_name,
-                //     node1_identity_name,
-                //     node1_subencryption_sk_clone.clone(),
-                //     node1_encryption_pk,
-                //     clone_signature_secret_key(&node1_subidentity_sk),
-                //     1,
-                // )
-                // .await;
                 api_registration_device_node(
                     node1_commands_sender.clone(),
                     node1_subidentity_name,
@@ -534,11 +524,17 @@ fn subidentity_registration() {
                             .await
                             .unwrap();
                         let node2_last_messages = res2_receiver.recv().await.unwrap();
+                        eprintln!("node2_last_messages: {:?}", node2_last_messages);
 
-                        if node2_last_messages[0].get_message_content().unwrap()
-                            == unchanged_message.get_message_content().unwrap()
-                        {
-                            break;
+                        match node2_last_messages[0].get_message_content() {
+                            Ok(message) => {
+                                if message == message_content {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                // nothing
+                            }
                         }
 
                         tokio::time::sleep(Duration::from_millis(500)).await;

@@ -45,6 +45,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
         let msg: ShinkaiMessage;
         {
@@ -1102,7 +1103,7 @@ impl Node {
             recipient_profile_name_string
         );
 
-        let body_encrypted_msg = msg.encrypt_outer_layer(
+        let encrypted_msg = msg.encrypt_outer_layer(
             &self.encryption_secret_key.clone(),
             &external_global_identity.node_encryption_public_key,
         )?;
@@ -1110,14 +1111,14 @@ impl Node {
         // We update the signature so it comes from the node and not the profile
         // that way the recipient will be able to verify it
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = body_encrypted_msg.sign_outer_layer(&signature_sk)?;
+        let encrypted_msg = encrypted_msg.sign_outer_layer(&signature_sk)?;
 
         let mut db_guard = self.db.lock().await;
 
         let node_addr = external_global_identity.addr.unwrap();
 
         Node::send(
-            &msg,
+            &encrypted_msg,
             clone_static_secret_key(&self.encryption_secret_key),
             (node_addr, recipient_profile_name_string),
             &mut db_guard,

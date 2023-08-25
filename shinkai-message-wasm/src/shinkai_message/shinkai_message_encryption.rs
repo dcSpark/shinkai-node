@@ -1,3 +1,5 @@
+use crate::shinkai_utils::encryption::EncryptionMethod;
+
 use super::shinkai_message::{
     EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
 };
@@ -20,8 +22,15 @@ impl ShinkaiMessage {
         self_sk: &EncryptionStaticKey,
         destination_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiMessage, ShinkaiMessageError> {
+        if self.encryption != EncryptionMethod::None {
+            return Err(ShinkaiMessageError::AlreadyEncrypted(
+                "Message is already encrypted".to_string(),
+            ));
+        }
+    
         let mut message_clone = self.clone();
         message_clone.body = MessageBody::encrypt(&message_clone.body, self_sk, destination_pk)?;
+        message_clone.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
         Ok(message_clone)
     }
 
@@ -107,7 +116,6 @@ impl MessageBody {
         destination_pk: &EncryptionPublicKey,
     ) -> Result<MessageBody, ShinkaiMessageError> {
         let body_bytes = bincode::serialize(body).unwrap();
-        println!("Serialized body: {:?}", body_bytes);
 
         let shared_secret = self_sk.diffie_hellman(destination_pk);
         let mut hasher = Sha256::new();
@@ -121,12 +129,10 @@ impl MessageBody {
         let nonce = GenericArray::from_slice(&nonce);
 
         let ciphertext = cipher.encrypt(nonce, &body_bytes[..]).expect("encryption failure!");
-        println!("Encrypted content: {:?}", ciphertext);
 
         let nonce_and_ciphertext = [nonce.as_slice(), &ciphertext].concat();
 
         let encrypted_content = format!("encrypted:{}", hex::encode(&nonce_and_ciphertext));
-        eprintln!("### MessageBody Encrypted content: {}", encrypted_content);
 
         Ok(MessageBody::Encrypted(EncryptedShinkaiBody {
             content: encrypted_content,
@@ -138,9 +144,7 @@ impl MessageBody {
         self_sk: &EncryptionStaticKey,
         sender_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiBody, ShinkaiMessageError> {
-        println!("Decrypting content (before parts): {}", encrypted_body.content);
         let parts: Vec<&str> = encrypted_body.content.split(':').collect();
-        println!("Decrypting content (after parts): {:?}", parts);
         match parts.get(0) {
             Some(&"encrypted") => {
                 let content = parts.get(1).unwrap_or(&"");
@@ -153,7 +157,6 @@ impl MessageBody {
 
                 let decoded = hex::decode(content)
                     .map_err(|e| ShinkaiMessageError::DecryptionError(format!("Failed to decode hex: {}", e)))?;
-                println!("Decoded hex content: {:?}", decoded);
                 let (nonce, ciphertext) = decoded.split_at(12);
                 let nonce = GenericArray::from_slice(nonce);
 
@@ -161,24 +164,9 @@ impl MessageBody {
                     .decrypt(nonce, ciphertext)
                     .map_err(|_| ShinkaiMessageError::DecryptionError("Decryption failure!".to_string()))?;
 
-                println!("Decrypted content: {:?}", plaintext_bytes);
-
                 let decrypted_body: ShinkaiBody = bincode::deserialize(&plaintext_bytes)
                 .map_err(|_| ShinkaiMessageError::DecryptionError("Failed to deserialize body".to_string()))?;
 
-                // let decrypted_value: serde_json::Value = serde_json::from_slice(&plaintext_bytes).map_err(|_| {
-                //     ShinkaiMessageError::DeserializationError(
-                //         "Could not deserialize decrypted content".to_string(),
-                //     )
-                // })?;
-                
-                // let decrypted_body: ShinkaiBody = serde_json::from_value(decrypted_value).map_err(|_| {
-                //     ShinkaiMessageError::DeserializationError(
-                //         "Could not deserialize ShinkaiBody".to_string(),
-                //     )
-                // })?;
-
-                println!("Deserialized body: {:?}", decrypted_body);
                 Ok(decrypted_body)
             }
             _ => Err(ShinkaiMessageError::DecryptionError("Unexpected variant".to_string())),
@@ -241,10 +229,6 @@ impl MessageData {
         let length_prefixed_nonce_and_ciphertext =
             [&content_len[..], &content_schema_len[..], &nonce_and_ciphertext[..]].concat();
 
-        println!(
-            "### MessageData Encrypted content: {}",
-            hex::encode(&length_prefixed_nonce_and_ciphertext)
-        );
         Ok(MessageData::Encrypted(EncryptedShinkaiData {
             content: format!("encrypted:{}", hex::encode(length_prefixed_nonce_and_ciphertext)),
         }))
@@ -255,7 +239,6 @@ impl MessageData {
         self_sk: &EncryptionStaticKey,
         sender_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiData, ShinkaiMessageError> {
-        println!("Decrypting content: {}", encrypted_data.content);
         let parts: Vec<&str> = encrypted_data.content.split(':').collect();
         match parts.get(0) {
             Some(&"encrypted") => {
