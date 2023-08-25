@@ -1,6 +1,6 @@
 use crate::{resources::resource_errors::VectorResourceError, tools::error::ToolError};
 use core::fmt;
-use shinkai_message_wasm::schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError};
+use shinkai_message_wasm::{schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError}, shinkai_message::shinkai_message_error::ShinkaiMessageError};
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
@@ -43,6 +43,8 @@ pub enum ShinkaiDBError {
     DeviceNameNonExistent(String),
     ShinkaiNameLacksProfile,
     ToolError(ToolError),
+    MessageEncodingError(String),
+    ShinkaiMessageError(String)
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -98,6 +100,8 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ProfileNotFound(e) => write!(f, "Profile not found: {}", e),
             ShinkaiDBError::DeviceIdentityAlreadyExists(e) => write!(f, "Device identity already exists: {}", e),
             ShinkaiDBError::DeviceNameNonExistent(e) => write!(f, "Device name does not exist: {}", e),
+            ShinkaiDBError::MessageEncodingError(e) => write!(f, "Message encoding error: {}", e),
+            ShinkaiDBError::ShinkaiMessageError(e) => write!(f, "ShinkaiMessage error: {}", e),
         }
     }
 }
@@ -226,5 +230,13 @@ impl From<InboxNameError> for ShinkaiDBError {
 impl From<ShinkaiNameError> for ShinkaiDBError {
     fn from(error: ShinkaiNameError) -> Self {
         ShinkaiDBError::ShinkaiNameError(error)
+    }
+}
+
+impl From<ShinkaiMessageError> for ShinkaiDBError {
+    fn from(err: ShinkaiMessageError) -> ShinkaiDBError {
+        // Convert the ShinkaiMessageError into a ShinkaiDBError
+        // You might want to add a new variant to ShinkaiDBError for this
+        ShinkaiDBError::ShinkaiMessageError(err.to_string())
     }
 }

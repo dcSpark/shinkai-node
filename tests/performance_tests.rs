@@ -26,7 +26,7 @@ fn create_message(
         clone_signature_secret_key(&node_identity_sk),
         node_encryption_pk,
     )
-    .body(message_content.clone())
+    .message_raw_content(message_content.clone())
     .no_body_encryption()
     .message_schema_type(MessageSchemaType::TextContent)
     .internal_metadata(

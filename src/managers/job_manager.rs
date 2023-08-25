@@ -1,9 +1,14 @@
-use crate::{
-    db::{db_errors::ShinkaiDBError, ShinkaiDB},
-};
+use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use reqwest::Identity;
-use shinkai_message_wasm::{shinkai_message::{shinkai_message_schemas::{MessageSchemaType, JobPreMessage, JobScope, JobCreation, JobMessage}, shinkai_message::ShinkaiMessage}, ShinkaiMessageWrapper, schemas::inbox_name::InboxName};
+use shinkai_message_wasm::{
+    schemas::inbox_name::InboxName,
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope, MessageSchemaType},
+    },
+    ShinkaiMessageWrapper,
+};
 use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use std::{fmt, thread};
@@ -74,10 +79,7 @@ pub struct JobManager {
 }
 
 impl JobManager {
-    pub async fn new(
-        db: Arc<Mutex<ShinkaiDB>>,
-        identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> Self {
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, identity_manager: Arc<Mutex<IdentityManager>>) -> Self {
         let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
         let agent_manager = AgentManager::new(db, identity_manager, job_manager_sender).await;
 
@@ -89,9 +91,17 @@ impl JobManager {
         job_manager
     }
 
-    pub async fn process_job_message(&mut self, shinkai_message: ShinkaiMessage, job_id: Option<String>) -> Result<String, JobManagerError> {
+    pub async fn process_job_message(
+        &mut self,
+        shinkai_message: ShinkaiMessage,
+        job_id: Option<String>,
+    ) -> Result<String, JobManagerError> {
         if self.agent_manager.lock().await.is_job_message(shinkai_message.clone()) {
-            self.agent_manager.lock().await.process_job_message(shinkai_message, job_id).await
+            self.agent_manager
+                .lock()
+                .await
+                .process_job_message(shinkai_message, job_id)
+                .await
         } else {
             Err(JobManagerError::NotAJobMessage)
         }
@@ -119,7 +129,10 @@ impl JobManager {
         self.agent_manager.lock().await.decision_phase(job).await
     }
 
-    pub async fn execution_phase(&self, pre_messages: Vec<JobPreMessage>) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
+    pub async fn execution_phase(
+        &self,
+        pre_messages: Vec<JobPreMessage>,
+    ) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
         self.agent_manager.lock().await.execution_phase(pre_messages).await
     }
 }
@@ -170,10 +183,14 @@ impl AgentManager {
     }
 
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
-        match message.body.unwrap().internal_metadata.unwrap().message_schema_type {
-            MessageSchemaType::JobCreationSchema
-            | MessageSchemaType::JobMessageSchema
-            | MessageSchemaType::PreMessageSchema => true,
+        match &message.body {
+            MessageBody::Unencrypted(body) => match &body.message_data {
+                MessageData::Unencrypted(data) => match data.message_content_schema {
+                    MessageSchemaType::JobCreationSchema | MessageSchemaType::JobMessageSchema => true,
+                    _ => false,
+                },
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -250,31 +267,46 @@ impl AgentManager {
         message: ShinkaiMessage,
         job_id: Option<String>,
     ) -> Result<String, JobManagerError> {
-        let body = message.body.clone().unwrap();
-        let internal_metadata = body.internal_metadata.unwrap();
-        let message_type = internal_metadata.message_schema_type;
-        let agent_id = &internal_metadata.recipient_subidentity;
-    
-        match message_type {
-            MessageSchemaType::JobCreationSchema => {
-                let job_creation: JobCreation = serde_json::from_str(&body.content).map_err(|_| JobManagerError::ContentParseFailed)?;
-                self.handle_job_creation_schema(job_creation, agent_id).await
+        match message.body {
+            MessageBody::Unencrypted(body) => {
+                let internal_metadata = body.internal_metadata;
+                let agent_id = &internal_metadata.recipient_subidentity;
+
+                match body.message_data {
+                    MessageData::Unencrypted(data) => {
+                        let message_type = data.message_content_schema;
+                        match message_type {
+                            MessageSchemaType::JobCreationSchema => {
+                                let job_creation: JobCreation =
+                                    serde_json::from_str(&data.message_raw_content)
+                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                self.handle_job_creation_schema(job_creation, agent_id).await
+                            }
+                            MessageSchemaType::JobMessageSchema => {
+                                let job_message: JobMessage =
+                                    serde_json::from_str(&data.message_raw_content)
+                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                self.handle_job_message_schema(job_message).await
+                            }
+                            MessageSchemaType::PreMessageSchema => {
+                                let pre_message: JobPreMessage =
+                                    serde_json::from_str(&data.message_raw_content)
+                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                self.handle_pre_message_schema(pre_message).await
+                            }
+                            _ => {
+                                // Handle Empty message type if needed, or return an error if it's not a valid job message
+                                Err(JobManagerError::NotAJobMessage)
+                            }
+                        }
+                    }
+                    _ => Err(JobManagerError::NotAJobMessage),
+                }
             }
-            MessageSchemaType::JobMessageSchema => {
-                let job_message: JobMessage = serde_json::from_str(&body.content).map_err(|_| JobManagerError::ContentParseFailed)?;
-                self.handle_job_message_schema(job_message).await
-            }
-            MessageSchemaType::PreMessageSchema => {
-                let pre_message: JobPreMessage = serde_json::from_str(&body.content).map_err(|_| JobManagerError::ContentParseFailed)?;
-                self.handle_pre_message_schema(pre_message).await
-            }
-            _ => {
-                // Handle Empty message type if needed, or return an error if it's not a valid job message
-                Err(JobManagerError::NotAJobMessage)
-            }
+            _ => Err(JobManagerError::NotAJobMessage),
         }
     }
-    
+
     async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
         // When a new message is supplied to the job, the decision phase of the new step begins running
         // (with its existing step history as context) which triggers calling the Agent's LLM.

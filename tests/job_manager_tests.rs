@@ -22,7 +22,7 @@ mod tests {
         schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
         shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
-            encryption::{unsafe_deterministic_encryption_keypair, decrypt_body_message},
+            encryption::{unsafe_deterministic_encryption_keypair},
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
             utils::hash_string,
@@ -143,7 +143,7 @@ mod tests {
         )
         .unwrap();
 
-        let shinkai_message_creation = decrypt_body_message(&shinkai_message_creation_encrypted, &node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+        let shinkai_message_creation = shinkai_message_creation_encrypted.decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
         .expect("Failed to decrypt body content");
 
         // Process the JobCreationSchema message
@@ -177,7 +177,7 @@ mod tests {
         )
         .unwrap();
 
-        let shinkai_job_message = decrypt_body_message(&shinkai_job_message_encrypted, &node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+        let shinkai_job_message = shinkai_job_message_encrypted.decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
         .expect("Failed to decrypt body content");
 
         println!("shinkai_job_message: {:?}", shinkai_job_message);

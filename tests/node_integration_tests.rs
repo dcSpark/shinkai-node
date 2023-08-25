@@ -3,15 +3,15 @@ use async_std::println;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_wasm::shinkai_utils::encryption::{
-    decrypt_content_message, encryption_public_key_to_string, encryption_secret_key_to_string,
-    unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    EncryptionMethod,
 };
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
@@ -237,7 +237,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node2_subidentity_sk),
                     node1_encryption_pk,
                 )
-                .body(message_content.clone())
+                .message_raw_content(message_content.clone())
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
@@ -302,7 +302,7 @@ fn subidentity_registration() {
                 let message_to_check = node1_last_messages[1].clone();
                 // Check that the message is body encrypted
                 assert_eq!(
-                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     false,
                     "Message from Node 2 to Node 1 is not body encrypted for Node 1 (receiver)"
                 );
@@ -310,7 +310,7 @@ fn subidentity_registration() {
                 let message_to_check = node2_last_messages[1].clone();
                 // Check that the message is body encrypted
                 assert_eq!(
-                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     false,
                     "Message from Node 2 to Node 1 is not body encrypted for Node 2 (sender)"
                 );
@@ -318,43 +318,38 @@ fn subidentity_registration() {
                 // Check that the content is encrypted
                 eprintln!("Message to check: {:?}", message_to_check.clone());
                 assert_eq!(
-                    ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
                     true,
                     "Message from Node 2 to Node 1 is content encrypted"
                 );
 
                 {
                     println!("Checking that the message has the right sender {:?}", message_to_check);
-                    let internal_metadata = message_to_check.clone().body.unwrap().internal_metadata.unwrap();
                     assert_eq!(
-                        internal_metadata.sender_subidentity,
+                        message_to_check.get_sender_subidentity().unwrap(),
                         node2_subidentity_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
                 }
-
-                let message_to_check_content_unencrypted = decrypt_content_message(
-                    message_to_check.clone().body.unwrap().content,
-                    &message_to_check.clone().encryption.as_str(),
-                    &node1_encryption_sk_clone.clone(),
-                    &node2_subencryption_pk,
-                )
-                .unwrap();
+                let message_to_check_content_unencrypted = message_to_check
+                    .clone()
+                    .decrypt_inner_layer(&node1_encryption_sk_clone.clone(), &node2_subencryption_pk)
+                    .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
-                    message_content, message_to_check_content_unencrypted.0,
+                    message_content, message_to_check_content_unencrypted.get_message_content().unwrap(),
                     "Node 2's profile send an encrypted message to Node 1"
                 );
 
                 assert_eq!(
-                    node2_last_messages[1].external_metadata.clone().as_ref().unwrap().other,
+                    node2_last_messages[1].external_metadata.clone().other,
                     encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 2 sends the subidentity's pk in other"
                 );
 
                 assert_eq!(
-                    node1_last_messages[1].external_metadata.clone().as_ref().unwrap().other,
+                    node1_last_messages[1].external_metadata.clone().other,
                     encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 1 has the other's public key"
                 );
@@ -411,7 +406,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_subidentity_sk),
                     node1_subencryption_pk_2,
                 )
-                .body(message_content.clone())
+                .message_raw_content(message_content.clone())
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
@@ -458,27 +453,26 @@ fn subidentity_registration() {
 
                 // Check that the message is not body encrypted
                 assert_eq!(
-                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     false,
                     "Message from Node 1 subidentity to Node 1 subidentity 2 is not body encrypted"
                 );
 
                 // Check that the content is encrypted
                 assert_eq!(
-                    ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
                     true,
                     "Message from Node 1 subidentity to Node 1 subidentity 2 is content encrypted"
                 );
 
                 // Check the sender and recipient
-                let internal_metadata = message_to_check.clone().body.unwrap().internal_metadata.unwrap();
                 assert_eq!(
-                    internal_metadata.sender_subidentity,
+                    message_to_check.get_sender_subidentity().unwrap(),
                     node1_subidentity_name.to_string(),
                     "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right sender."
                 );
                 assert_eq!(
-                    internal_metadata.recipient_subidentity,
+                    message_to_check.get_recipient_subidentity().unwrap(),
                     node1_subidentity_name_2.to_string(),
                     "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right recipient."
                 );
@@ -496,7 +490,7 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_subidentity_sk),
                     node2_subencryption_pk,
                 )
-                .body(message_content.clone())
+                .message_raw_content(message_content.clone())
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
@@ -541,8 +535,8 @@ fn subidentity_registration() {
                             .unwrap();
                         let node2_last_messages = res2_receiver.recv().await.unwrap();
 
-                        if node2_last_messages[0].body.clone().unwrap().content
-                            == unchanged_message.body.clone().unwrap().content
+                        if node2_last_messages[0].get_message_content().unwrap()
+                            == unchanged_message.get_message_content().unwrap()
                         {
                             break;
                         }
@@ -574,7 +568,7 @@ fn subidentity_registration() {
 
                 // Check that the message is body encrypted
                 assert_eq!(
-                    ShinkaiMessageHandler::is_body_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_body_currently_encrypted(&message_to_check.clone()),
                     false,
                     "Message from Node 1 to Node 2 is body encrypted"
                 );
@@ -582,37 +576,33 @@ fn subidentity_registration() {
                 // Check that the content is encrypted
                 eprintln!("Message to check: {:?}", message_to_check.clone());
                 assert_eq!(
-                    ShinkaiMessageHandler::is_content_currently_encrypted(&message_to_check.clone()),
+                    ShinkaiMessage::is_content_currently_encrypted(&message_to_check.clone()),
                     true,
                     "Message from Node 1 to Node 2 is content encrypted"
                 );
 
                 {
-                    let internal_metadata = &message_to_check.clone().body.unwrap().internal_metadata.unwrap();
                     assert_eq!(
-                        internal_metadata.sender_subidentity,
+                        message_to_check.get_sender_subidentity().unwrap(),
                         node1_subidentity_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
 
                     assert_eq!(
-                        internal_metadata.recipient_subidentity,
+                        message_to_check.get_recipient_subidentity().unwrap(),
                         node2_subidentity_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
                 }
 
-                let message_to_check_content_unencrypted = decrypt_content_message(
-                    message_to_check.clone().body.unwrap().content,
-                    &message_to_check.clone().encryption.as_str(),
-                    &node2_subencryption_sk_clone.clone(),
-                    &node1_subencryption_pk,
-                )
-                .unwrap();
+                let message_to_check_content_unencrypted = message_to_check
+                    .clone()
+                    .decrypt_inner_layer(&node2_subencryption_sk_clone.clone(), &node1_subencryption_pk)
+                    .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
-                    message_content, message_to_check_content_unencrypted.0,
+                    message_content, message_to_check_content_unencrypted.get_message_content().unwrap(),
                     "Node 1's profile send an encrypted message to Node 1's profile"
                 );
             }

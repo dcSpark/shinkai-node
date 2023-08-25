@@ -3,7 +3,6 @@ use async_channel::Sender;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use shinkai_message_wasm::shinkai_message::json_serde_shinkai_message::JSONSerdeShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_utils::encryption::encryption_public_key_to_string;
 use shinkai_message_wasm::shinkai_utils::signatures::signature_public_key_to_string;
@@ -47,6 +46,16 @@ impl APIError {
             code: code.as_u16(),
             error: error.to_string(),
             message: message.to_string(),
+        }
+    }
+}
+
+impl From<&str> for APIError {
+    fn from(error: &str) -> Self {
+        APIError {
+            code: StatusCode::BAD_REQUEST.as_u16(),
+            error: "Bad Request".to_string(),
+            message: error.to_string(),
         }
     }
 }

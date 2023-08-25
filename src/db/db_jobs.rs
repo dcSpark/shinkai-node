@@ -3,9 +3,8 @@ use crate::managers::job_manager::{Job, JobLike};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
-use shinkai_message_wasm::schemas::inbox_name::InboxName;
+use shinkai_message_wasm::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobScope;
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 enum JobInfo {
@@ -77,7 +76,7 @@ impl ShinkaiDB {
         let mut batch = WriteBatch::default();
 
         // Generate time now used as a key. it should be safe because it's generated here so it shouldn't be duplicated (presumably)
-        let current_time = ShinkaiMessageHandler::generate_time_now();
+        let current_time = ShinkaiTime::generate_time_now();
         let scope_bytes = scope.to_bytes()?;
 
         let cf_job_id = self.db.cf_handle(&cf_job_id_name).unwrap();
@@ -266,7 +265,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name)
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
-        let current_time = ShinkaiMessageHandler::generate_time_now();
+        let current_time = ShinkaiTime::generate_time_now();
         self.db.put_cf(cf_handle, current_time.as_bytes(), step.as_bytes())?;
         Ok(())
     }

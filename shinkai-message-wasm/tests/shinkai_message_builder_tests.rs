@@ -291,7 +291,7 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Deserialize the body and check its content
-        let body_content = message.get_message_raw_content().unwrap();
+        let body_content = message.get_message_content().unwrap();
         assert_eq!(body_content, "ACK");
 
         // Check internal metadata
@@ -341,7 +341,7 @@ mod tests {
             let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
             // Deserialize the body and check its content
-            assert_eq!(message.get_message_raw_content().unwrap(), message_content);
+            assert_eq!(message.get_message_content().unwrap(), message_content);
 
             // Check internal metadata
             assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
@@ -398,7 +398,7 @@ mod tests {
 
         // log::debug!("decrypted_message: {:?}", decrypted_message);
         // Deserialize the body and check its content
-        assert_eq!(decrypted_message.get_message_raw_content().unwrap(), data);
+        assert_eq!(decrypted_message.get_message_content().unwrap(), data);
 
         // Check internal metadata
         assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
@@ -460,7 +460,7 @@ mod tests {
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code.code, code);
@@ -524,7 +524,7 @@ mod tests {
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         let registration_code_request: RegistrationCodeRequest = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code_request.permissions.to_string(), permissions);
@@ -580,7 +580,7 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Check the body content
-        let content = message.get_message_raw_content().unwrap();
+        let content = message.get_message_content().unwrap();
         assert_eq!(content, "terminate");
 
         // Check internal metadata
@@ -642,7 +642,7 @@ mod tests {
             .decrypt_inner_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
         assert_eq!(content, format!("{{error: \"{}\"}}", error_msg));
 
         // Check internal metadata
@@ -698,7 +698,7 @@ mod tests {
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Deserialize the content into a JSON object
         let content: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -768,7 +768,7 @@ mod tests {
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Deserialize the content into a JSON object
         let content: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -836,7 +836,7 @@ mod tests {
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let content = decrypted_message.get_message_raw_content().unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Check internal metadata
         assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile_name);
