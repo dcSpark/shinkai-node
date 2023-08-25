@@ -1,7 +1,8 @@
+use chrono::{DateTime, Utc};
 use rocksdb::{AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, WriteBatch, DB};
 use shinkai_message_wasm::{
-    schemas::shinkai_name::ShinkaiName, shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler,
+    schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
+    shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::path::Path;
 
@@ -270,30 +271,39 @@ impl ShinkaiDB {
     // the key, but we are currently using the hash that could be extracted from the
     // message maybe this saves parsing time for a big quantity of messages
     // (maybe)
-    pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), Error> {
+    pub fn insert_message_to_all(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
+        let hash_key = message.calculate_message_hash();
 
         // Clone the external_metadata first, then unwrap
         let cloned_external_metadata = message.external_metadata.clone();
-        let ext_metadata = cloned_external_metadata.unwrap();
+        let ext_metadata = cloned_external_metadata;
 
         // Calculate the scheduled time or current time
         let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiMessageHandler::generate_time_now(),
+            true => ShinkaiTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
 
         // Create a composite key by concatenating the time_key and the hash_key, with a
         // separator
-        let composite_key = format!("{}:{}", time_key, hash_key);
+        let composite_key = format!("{}:::{}", time_key, hash_key);
 
         // Create a write batch
         let mut batch = rocksdb::WriteBatch::default();
 
         // Define the data for AllMessages
         let all_messages_cf = self.get_cf_handle(Topic::AllMessages).unwrap();
-        let message_bytes = ShinkaiMessageHandler::encode_message(message.clone());
+        let message_bytes = match message.encode_message() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                println!("Error encoding message: {:?}", e);
+                return Err(ShinkaiDBError::MessageEncodingError(format!(
+                    "Error encoding message: {:?}",
+                    e
+                )));
+            }
+        };
         batch.put_cf(all_messages_cf, &hash_key, &message_bytes);
 
         // Define the data for AllMessagesTimeKeyed
@@ -306,22 +316,22 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn schedule_message(&self, message: &ShinkaiMessage) -> Result<(), Error> {
+    pub fn schedule_message(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
-        let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
+        let hash_key = message.calculate_message_hash();
 
         // Calculate the scheduled time or current time
-        let time_key = match message.external_metadata.clone().unwrap().scheduled_time.is_empty() {
-            true => ShinkaiMessageHandler::generate_time_now(),
-            false => message.external_metadata.clone().unwrap().scheduled_time.clone(),
+        let time_key = match message.external_metadata.clone().scheduled_time.is_empty() {
+            true => ShinkaiTime::generate_time_now(),
+            false => message.external_metadata.clone().scheduled_time.clone(),
         };
 
         // Create a composite key by concatenating the time_key and the hash_key, with a
         // separator
-        let composite_key = format!("{}:{}", time_key, hash_key);
+        let composite_key = format!("{}:::{}", time_key, hash_key);
 
         // Convert ShinkaiMessage into bytes for storage
-        let message_bytes = ShinkaiMessageHandler::encode_message(message.clone());
+        let message_bytes = message.encode_message()?;
 
         // Retrieve the handle to the "ToSend" column family
         let to_send_cf = self.get_cf_handle(Topic::ScheduledMessage).unwrap();
@@ -332,11 +342,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    // Format: "20230702T20533481346" or
-    // Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
+    // Format: "2023-07-02T20:53:33Z" or
+    // Utc::now().format("%Y-%m-%dT%H:%M:%S.%").to_string();
     // Check out ShinkaiMessageHandler::generate_time_now() for more details.
-    // Note: If you pass just a date like "20230702" without the time component,
-    // then the function would interpret this as "20230702T00000000000", i.e., the
+    // Note: If you pass just a date like "2023-07-02" without the time component,
+    // then the function would interpret this as "2023-07-02T00:00:00Z", i.e., the
     // start of the day.
     pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family
@@ -345,8 +355,10 @@ impl ShinkaiDB {
         // Get an iterator over the column family from the start
         let iter = self.db.iterator_cf(scheduled_message_cf, IteratorMode::Start);
 
-        // Convert up_to_time to &str
-        let up_to_time = &*up_to_time;
+        // Parse up_to_time into a DateTime object
+        let up_to_time = DateTime::parse_from_rfc3339(&up_to_time)
+            .map_err(|_| ShinkaiDBError::InvalidData)?
+            .with_timezone(&Utc);
 
         // Collect all messages before the up_to_time
         let mut messages = Vec::new();
@@ -358,7 +370,12 @@ impl ShinkaiDB {
             let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiDBError::InvalidData)?;
 
             // Split the composite key to get the time component
-            let time_key = key_str.split(':').next().ok_or(ShinkaiDBError::InvalidData)?;
+            let time_key_str = key_str.split(":::").next().ok_or(ShinkaiDBError::InvalidData)?;
+
+            // Parse the time_key into a DateTime object
+            let time_key = DateTime::parse_from_rfc3339(time_key_str)
+                .map_err(|_| ShinkaiDBError::InvalidData)?
+                .with_timezone(&Utc);
 
             // Compare the time key with the up_to_time
             if time_key > up_to_time {
@@ -367,7 +384,7 @@ impl ShinkaiDB {
             }
 
             // Decode the message
-            let message = ShinkaiMessageHandler::decode_message_result(value.to_vec()).map_err(ShinkaiDBError::from)?;
+            let message = ShinkaiMessage::decode_message_result(value.to_vec())?;
             messages.push(message);
         }
 
@@ -391,7 +408,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessageHandler::decode_message_result(bytes.to_vec())?;
+                            let message = ShinkaiMessage::decode_message_result(bytes)?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),

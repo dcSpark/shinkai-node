@@ -23,7 +23,7 @@ use shinkai_message_wasm::{
         shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
     },
     shinkai_message::{
-        shinkai_message::ShinkaiMessage,
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
             APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
             RegistrationCodeRequest, RegistrationCodeType,
@@ -31,22 +31,12 @@ use shinkai_message_wasm::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
+            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+            string_to_encryption_public_key,
         },
-        shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
 };
-use std::str::FromStr;
-use std::{
-    cell::RefCell,
-    io::{self, Error},
-    net::SocketAddr,
-};
-use tokio::sync::oneshot::error;
-use uuid::Uuid;
-use warp::path::full;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -55,26 +45,89 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
-        let msg = match ShinkaiMessageHandler::decrypt_message_body_if_needed(
-            potentially_encrypted_msg.clone(),
-            &self.encryption_secret_key,
-        ) {
-            Ok(msg) => msg,
-            Err(e) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to decrypt message body: {}", e),
-                })
+        let msg: ShinkaiMessage;
+        {
+            // check if the message is encrypted
+            let is_body_encrypted = potentially_encrypted_msg.clone().is_body_currently_encrypted();
+            if is_body_encrypted {
+                /*
+                When someone sends an encrypted message, we need to compute the shared key using Diffie-Hellman,
+                but what if they are using a subidentity? We don't know which one because it's encrypted.
+                So the only way to get the pk is if they send it to us in the external_metadata.other field.
+                For other cases, we can find it in the identity manager.
+                */
+                let sender_encryption_pk_string = potentially_encrypted_msg.external_metadata.clone().other;
+                let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).ok();
+
+                if sender_encryption_pk.is_some() {
+                    msg = match potentially_encrypted_msg.clone()
+                        .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk.unwrap())
+                    {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            return Err(APIError {
+                                code: StatusCode::BAD_REQUEST.as_u16(),
+                                error: "Bad Request".to_string(),
+                                message: format!("Failed to decrypt message body: {}", e),
+                            })
+                        }
+                    };
+                } else {
+                    let sender_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(
+                        &potentially_encrypted_msg.clone(),
+                    )?;
+
+                    let sender_encryption_pk = match self.identity_manager
+                    .lock()
+                    .await
+                    .search_identity(sender_name.clone().to_string().as_str())
+                    .await  // Add this line to await the Future
+                    {
+                    Some(identity) => {
+                        match identity {
+                            Identity::Standard(std_identity) => std_identity.node_encryption_public_key,
+                            Identity::Device(device) => device.node_encryption_public_key,
+                            Identity::Agent(_) => {
+                                return Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Bad Request".to_string(),
+                                    message: "Failed to get sender encryption pk from message: Agent identity not supported".to_string(),
+                                })
+                            },
+                        }
+                    },
+                    None => {
+                        return Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: "Failed to get sender encryption pk from message: Identity not found".to_string(),
+                        })
+                    }};
+                    msg = match potentially_encrypted_msg.clone()
+                        .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)
+                    {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            return Err(APIError {
+                                code: StatusCode::BAD_REQUEST.as_u16(),
+                                error: "Bad Request".to_string(),
+                                message: format!("Failed to decrypt message body: {}", e),
+                            })
+                        }
+                    };
+                }
+                println!("after decrypt_message_body_if_needed> msg: {:?}", msg);
+            } else {
+                msg = potentially_encrypted_msg.clone();
             }
-        };
-        println!("after decrypt_message_body_if_needed> msg: {:?}", msg);
+        }
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
             println!("schema: {:?}", schema);
-            if let Err(e) = ShinkaiMessageHandler::validate_message_schema(&msg, schema) {
+            if let Err(e) = msg.validate_message_schema(schema) {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
                     error: "Bad Request".to_string(),
@@ -214,7 +267,21 @@ impl Node {
             }
         };
 
-        let content = msg.body.unwrap().content;
+        let content = match msg.body {
+            MessageBody::Unencrypted(body) => match body.message_data {
+                MessageData::Unencrypted(data) => data.message_raw_content,
+                _ => {
+                    return Err(NodeError {
+                        message: "Message data is encrypted".into(),
+                    })
+                }
+            },
+            _ => {
+                return Err(NodeError {
+                    message: "Message body is encrypted".into(),
+                })
+            }
+        };
         let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
             serde_json::from_str(&content).map_err(|e| NodeError {
                 message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
@@ -286,7 +353,7 @@ impl Node {
             }
         };
 
-        let content = msg.body.unwrap().content;
+        let content = msg.get_message_content()?;
         let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
             serde_json::from_str(&content).map_err(|e| NodeError {
                 message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
@@ -389,7 +456,7 @@ impl Node {
         }
 
         // Parse the message content (message.body.content). it's of type CreateRegistrationCode and continue.
-        let content = msg.body.unwrap().content;
+        let content = msg.get_message_content()?;
         let create_registration_code: RegistrationCodeRequest =
             serde_json::from_str(&content).map_err(|e| NodeError {
                 message: format!("Failed to parse CreateRegistrationCode: {}", e),
@@ -478,7 +545,7 @@ impl Node {
             }
         };
 
-        let content = msg.body.unwrap().content;
+        let content = msg.get_message_content()?;
         let read_up_to_time: APIReadUpToTimeRequest = serde_json::from_str(&content).map_err(|e| NodeError {
             message: format!("Failed to parse APIReadUpToTimeRequest: {}", e),
         })?;
@@ -562,7 +629,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("handle_registration_code_usage");
-        let sender_encryption_pk_string = msg.external_metadata.clone().unwrap().other;
+        let sender_encryption_pk_string = msg.external_metadata.clone().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
         // Decrypt the message
@@ -570,26 +637,11 @@ impl Node {
         let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
         let encryption_secret_key_string = encryption_secret_key_to_string(self.encryption_secret_key.clone());
 
-        let decrypted_content = decrypt_body_message(
-            &message_to_decrypt.clone(),
-            &self.encryption_secret_key,
-            &sender_encryption_pk,
-        );
-
-        // println!("handle_registration_code_usage> decrypted_content: {:?}", decrypted_content);
-
-        // You'll need to handle the case where decryption fails
-        let decrypted_message = match decrypted_content {
-            Ok(message) => message,
-            Err(_) => {
-                // TODO: add more debug info
-                println!("Failed to decrypt the message");
-                return Ok(());
-            }
-        };
+        let decrypted_message =
+            message_to_decrypt.decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)?;
 
         // Deserialize body.content into RegistrationCode
-        let content = decrypted_message.clone().body.unwrap().content;
+        let content = decrypted_message.get_message_content()?;
         println!("handle_registration_code_usage> content: {:?}", content);
         // let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
         let registration_code: RegistrationCode = serde_json::from_str(&content).map_err(|e| NodeError {
@@ -804,7 +856,7 @@ impl Node {
             }
         };
 
-        let profile_requested = msg.body.unwrap().content;
+        let profile_requested = msg.get_message_content()?;
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
@@ -1051,23 +1103,22 @@ impl Node {
             recipient_profile_name_string
         );
 
-        let body_encrypted_msg = ShinkaiMessageHandler::encrypt_body_if_needed(
-            msg.clone(),
-            self.encryption_secret_key.clone(),
-            external_global_identity.node_encryption_public_key, // other node's encryption public key
-        );
+        let encrypted_msg = msg.encrypt_outer_layer(
+            &self.encryption_secret_key.clone(),
+            &external_global_identity.node_encryption_public_key,
+        )?;
 
         // We update the signature so it comes from the node and not the profile
         // that way the recipient will be able to verify it
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
-        let msg = ShinkaiMessageHandler::re_sign_message(body_encrypted_msg, signature_sk);
+        let encrypted_msg = encrypted_msg.sign_outer_layer(&signature_sk)?;
 
         let mut db_guard = self.db.lock().await;
 
         let node_addr = external_global_identity.addr.unwrap();
 
         Node::send(
-            &msg,
+            &encrypted_msg,
             clone_static_secret_key(&self.encryption_secret_key),
             (node_addr, recipient_profile_name_string),
             &mut db_guard,

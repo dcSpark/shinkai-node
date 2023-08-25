@@ -32,10 +32,9 @@ use shinkai_message_wasm::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            clone_static_secret_key, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key,
         },
-        shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
 };
@@ -69,7 +68,7 @@ impl Node {
         Ok(())
     }
 
-    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), Error> {
+    pub async fn connect_node(&self, address: SocketAddr, profile_name: String) -> Result<(), NodeError> {
         let address_str = address.to_string();
         self.connect(&address_str, profile_name).await?;
         Ok(())
@@ -302,7 +301,7 @@ impl Node {
                 &mut db_lock,
                 self.identity_manager.clone(),
             )
-            .await?;
+            .await;
         }
         Ok(())
     }

@@ -29,9 +29,9 @@ export class ShinkaiMessageBuilderWrapper {
 */
   no_body_encryption(): void;
 /**
-* @param {string} content
+* @param {string} message_raw_content
 */
-  body(content: string): void;
+  message_raw_content(message_raw_content: string): void;
 /**
 * @param {any} content
 */
@@ -262,11 +262,11 @@ export class ShinkaiMessageWrapper {
   static generate_time_now(): string;
 /**
 */
-  body: any;
-/**
-*/
   encryption: string;
 /**
 */
   external_metadata: any;
+/**
+*/
+  message_body: any;
 }

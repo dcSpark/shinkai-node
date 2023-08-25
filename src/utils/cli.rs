@@ -67,7 +67,7 @@ fn handle_code_registration(
 
     println!(
         "Message's signature: {}",
-        message.clone().external_metadata.unwrap().signature
+        message.clone().external_metadata.signature
     );
 
     // Serialize the wrapper into JSON and print to stdout
@@ -94,7 +94,7 @@ fn handle_create_message(
         clone_signature_secret_key(&node_keys.identity_secret_key),
         node2_encryption_pk,
     )
-    .body(body_content.to_string())
+    .message_raw_content(body_content.to_string())
     .body_encryption(EncryptionMethod::None)
     .message_schema_type(MessageSchemaType::Empty)
     .internal_metadata_with_inbox(
@@ -108,7 +108,7 @@ fn handle_create_message(
 
     println!(
         "Message's signature: {}",
-        message.clone().unwrap().external_metadata.unwrap().signature
+        message.clone().unwrap().external_metadata.signature
     );
 
     // Serialize the wrapper into JSON and print to stdout

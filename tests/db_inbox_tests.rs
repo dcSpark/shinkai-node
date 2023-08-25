@@ -2,11 +2,11 @@ use async_channel::{bounded, Receiver, Sender};
 use prost::Message;
 use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_wasm::schemas::shinkai_time::ShinkaiTime;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
@@ -35,20 +35,19 @@ fn setup() {
 
 fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
     // Calculate the hash of the message for the key
-    let hash_key = ShinkaiMessageHandler::calculate_hash(&message);
+    let hash_key = message.calculate_message_hash();
 
     // Clone the external_metadata first, then unwrap
-    let cloned_external_metadata = message.external_metadata.clone();
-    let ext_metadata = cloned_external_metadata.expect("Failed to clone external metadata");
+    let ext_metadata = message.external_metadata.clone();
 
     // Get the scheduled time or calculate current time
     let time_key = match ext_metadata.scheduled_time.is_empty() {
-        true => ShinkaiMessageHandler::generate_time_now(),
+        true => ShinkaiTime::generate_time_now(),
         false => ext_metadata.scheduled_time.clone(),
     };
 
     // Create the composite key by concatenating the time_key and the hash_key, with a separator
-    let composite_key = format!("{}:{}", time_key, hash_key);
+    let composite_key = format!("{}:::{}", time_key, hash_key);
 
     Ok(composite_key)
 }
@@ -76,7 +75,7 @@ fn generate_message_with_text(
     };
 
     let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
-        .body(content.to_string())
+        .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
         .internal_metadata_with_inbox(
@@ -121,11 +120,14 @@ fn db_inbox() {
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone());
+    println!("Inserted message {:?}", message.encode_message());
+    let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
+    println!("Decoded message {:?}", result);
 
     let last_messages_all = shinkai_db.get_last_messages_from_all(10).unwrap();
     assert_eq!(last_messages_all.len(), 1);
     assert_eq!(
-        last_messages_all[0].clone().body.unwrap().content,
+        last_messages_all[0].clone().get_message_content().unwrap(),
         "Hello World".to_string()
     );
 
@@ -141,13 +143,13 @@ fn db_inbox() {
         "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()
     );
 
-    println!("Inbox name: {}", inbox_name_value);
+    println!("Inbox name: {}", inbox_name_value.to_string());
     let last_messages_inbox = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.to_string(), 10, None)
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 1);
     assert_eq!(
-        last_messages_inbox[0].clone().body.unwrap().content,
+        last_messages_inbox[0].clone().get_message_content().unwrap(),
         "Hello World".to_string()
     );
 
@@ -155,8 +157,9 @@ fn db_inbox() {
     let last_unread = shinkai_db
         .get_last_unread_messages_from_inbox(inbox_name_value.clone().to_string(), 10, None)
         .unwrap();
+    println!("Last unread messages: {:?}", last_unread);
     assert_eq!(last_unread.len(), 1);
-    assert_eq!(last_unread[0].clone().body.unwrap().content, "Hello World".to_string());
+    assert_eq!(last_unread[0].clone().get_message_content().unwrap(), "Hello World".to_string());
 
     let message2 = generate_message_with_text(
         "Hello World 2".to_string(),
@@ -196,11 +199,11 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_unread_messages_inbox.len(), 2);
     assert_eq!(
-        last_unread_messages_inbox[0].clone().body.unwrap().content,
+        last_unread_messages_inbox[0].clone().get_message_content().unwrap(),
         "Hello World 3".to_string()
     );
     assert_eq!(
-        last_unread_messages_inbox[1].clone().body.unwrap().content,
+        last_unread_messages_inbox[1].clone().get_message_content().unwrap(),
         "Hello World 2".to_string()
     );
 
@@ -210,7 +213,7 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_unread_messages_inbox_page2.len(), 1);
     assert_eq!(
-        last_unread_messages_inbox_page2[0].clone().body.unwrap().content,
+        last_unread_messages_inbox_page2[0].clone().get_message_content().unwrap(),
         "Hello World".to_string()
     );
 

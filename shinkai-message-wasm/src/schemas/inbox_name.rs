@@ -3,7 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use super::shinkai_name::{ShinkaiName, ShinkaiNameError};
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
+use crate::shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody};
 use std::fmt::Debug;
 
 #[derive(Debug, PartialEq)]
@@ -98,19 +98,13 @@ impl InboxName {
     }
 
     pub fn from_message(message: &ShinkaiMessage) -> Result<InboxName, InboxNameError> {
-        let body = message
-            .body
-            .as_ref()
-            .ok_or(ShinkaiNameError::MissingBody(message.to_json_str().unwrap()))?;
-        let internal_metadata = body
-            .internal_metadata
-            .as_ref()
-            .ok_or(ShinkaiNameError::MissingInternalMetadata(
-                message.to_json_str().unwrap(),
-            ))?;
-
-        let inbox_name = internal_metadata.inbox.clone();
-        InboxName::new(inbox_name)
+        match &message.body {
+            MessageBody::Unencrypted(body) => {
+                let inbox_name = body.internal_metadata.inbox.clone();
+                InboxName::new(inbox_name)
+            },
+            _ => Err(InboxNameError::InvalidFormat("Expected Unencrypted MessageBody".into())),
+        }
     }
 
     pub fn has_creation_access(&self, identity_name: ShinkaiName) -> Result<bool, InboxNameError> {
@@ -197,7 +191,9 @@ impl InboxName {
 mod tests {
     use crate::{
         shinkai_message::{
-            shinkai_message::{Body, ExternalMetadata, InternalMetadata},
+            shinkai_message::{
+                ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiVersion,
+            },
             shinkai_message_schemas::MessageSchemaType,
         },
         shinkai_utils::encryption::EncryptionMethod,
@@ -297,25 +293,29 @@ mod tests {
     #[test]
     fn test_from_message() {
         let mock_message = ShinkaiMessage {
-            body: Some(Body {
-                content: "ACK".into(),
-                internal_metadata: Some(InternalMetadata {
+            body: MessageBody::Unencrypted(ShinkaiBody {
+                message_data: MessageData::Unencrypted(ShinkaiData {
+                    message_raw_content: "ACK".into(),
+                    message_content_schema: MessageSchemaType::TextContent,
+                }),
+                internal_metadata: InternalMetadata {
                     sender_subidentity: "".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".into(),
+                    signature: "".into(),
                     encryption: EncryptionMethod::None,
-                }),
+                },
             }),
-            external_metadata: Some(ExternalMetadata {
+            external_metadata: ExternalMetadata {
                 sender: "@@node2.shinkai".into(),
                 recipient: "@@node1.shinkai".into(),
                 scheduled_time: "20230714T19363326163".into(),
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
-            }),
+            },
             encryption: EncryptionMethod::None,
+            version: ShinkaiVersion::V1_0,
         };
 
         let manager = InboxName::from_message(&mock_message).unwrap();
@@ -331,25 +331,29 @@ mod tests {
     #[test]
     fn test_from_message_invalid() {
         let mock_message = ShinkaiMessage {
-            body: Some(Body {
-                content: "ACK".into(),
-                internal_metadata: Some(InternalMetadata {
+            body: MessageBody::Unencrypted(ShinkaiBody {
+                message_data: MessageData::Unencrypted(ShinkaiData {
+                    message_raw_content: "ACK".into(),
+                    message_content_schema: MessageSchemaType::TextContent,
+                }),
+                internal_metadata: InternalMetadata {
                     sender_subidentity: "".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "1nb0x::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::truee".into(),
+                    signature: "".into(),
                     encryption: EncryptionMethod::None,
-                }),
+                },
             }),
-            external_metadata: Some(ExternalMetadata {
+            external_metadata: ExternalMetadata {
                 sender: "@@node2.shinkai".into(),
                 recipient: "@@node1.shinkai".into(),
                 scheduled_time: "20230714T19363326163".into(),
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
-            }),
+            },
             encryption: EncryptionMethod::None,
+            version: ShinkaiVersion::V1_0,
         };
 
         let result = InboxName::from_message(&mock_message);
@@ -437,29 +441,32 @@ mod tests {
     #[test]
     fn test_has_sender_creation_access() {
         let mock_message = ShinkaiMessage {
-            body: Some(Body {
-                content: "ACK".into(),
-                internal_metadata: Some(InternalMetadata {
+            body: MessageBody::Unencrypted(ShinkaiBody {
+                message_data: MessageData::Unencrypted(ShinkaiData {
+                    message_raw_content: "ACK".into(),
+                    message_content_schema: MessageSchemaType::TextContent,
+                }),
+                internal_metadata: InternalMetadata {
                     sender_subidentity: "subidentity2".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai/subidentity2::true".into(),
+                    signature: "".into(),
                     encryption: EncryptionMethod::None,
-                }),
+                },
             }),
-            external_metadata: Some(ExternalMetadata {
+            external_metadata: ExternalMetadata {
                 sender: "@@node2.shinkai".into(),
                 recipient: "@@node1.shinkai".into(),
                 scheduled_time: "20230714T19363326163".into(),
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
-            }),
+            },
             encryption: EncryptionMethod::None,
+            version: ShinkaiVersion::V1_0,
         };
 
         let manager = InboxName::from_message(&mock_message).unwrap();
-
         match manager.has_sender_creation_access(mock_message) {
             Ok(access) => assert!(access, "Expected sender to have creation access"),
             Err(err) => panic!("Unexpected error: {:?}", err),
@@ -469,25 +476,29 @@ mod tests {
     #[test]
     fn test_sender_does_not_have_creation_access() {
         let mock_message = ShinkaiMessage {
-            body: Some(Body {
-                content: "ACK".into(),
-                internal_metadata: Some(InternalMetadata {
+            body: MessageBody::Unencrypted(ShinkaiBody {
+                message_data: MessageData::Unencrypted(ShinkaiData {
+                    message_raw_content: "ACK".into(),
+                    message_content_schema: MessageSchemaType::TextContent,
+                }),
+                internal_metadata: InternalMetadata {
                     sender_subidentity: "subidentity3".into(),
                     recipient_subidentity: "".into(),
-                    message_schema_type: MessageSchemaType::TextContent,
                     inbox: "inbox::@@node1.shinkai::@@node2.shinkai::true".into(),
+                    signature: "".into(),
                     encryption: EncryptionMethod::None,
-                }),
+                },
             }),
-            external_metadata: Some(ExternalMetadata {
+            external_metadata: ExternalMetadata {
                 sender: "@@node3.shinkai".into(),
                 recipient: "@@node1.shinkai".into(),
                 scheduled_time: "20230714T19363326163".into(),
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
-            }),
+            },
             encryption: EncryptionMethod::None,
+            version: ShinkaiVersion::V1_0,
         };
 
         let manager = InboxName::from_message(&mock_message).unwrap();

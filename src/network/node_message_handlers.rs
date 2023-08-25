@@ -1,16 +1,26 @@
 use crate::{
     db::ShinkaiDB,
-    managers::{IdentityManager, identity_manager},
+    managers::{IdentityManager},
     network::Node,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use log::debug;
-use regex::Regex;
-use shinkai_message_wasm::{shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::{shinkai_message_handler::{ShinkaiMessageHandler, EncryptionStatus}, signatures::{signature_public_key_to_string, verify_signature, clone_signature_secret_key}, encryption::{clone_static_secret_key, encryption_public_key_to_string, decrypt_body_message}, shinkai_message_builder::{ShinkaiMessageBuilder, ProfileName}}};
+use shinkai_message_wasm::{
+    shinkai_message::{
+        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
+        shinkai_message_extension::EncryptionStatus,
+    },
+    shinkai_utils::{
+        encryption::{clone_static_secret_key, encryption_public_key_to_string},
+        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string},
+    },
+};
 use std::sync::Arc;
 use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+use super::node::NodeError;
 
 pub enum PingPong {
     Ping,
@@ -29,18 +39,23 @@ pub async fn handle_based_on_message_content_and_encryption(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
-) -> io::Result<()> {
-    let message_body = message.body.clone().unwrap();
-    let message_content = message_body.content.as_str();
-    let message_encryption_status = ShinkaiMessageHandler::get_encryption_status(message.clone());
+) -> Result<(), NodeError> {
+    let message_body = message.body.clone();
+    let message_content = match &message_body {
+        MessageBody::Encrypted(body) => &body.content,
+        MessageBody::Unencrypted(body) => match &body.message_data {
+            MessageData::Encrypted(data) => &data.content,
+            MessageData::Unencrypted(data) => &data.message_raw_content,
+        },
+    };
+    let message_encryption_status = message.clone().get_encryption_status();
     println!(
         "{} > handle_based_on_message_content_and_encryption message: {:?} {:?}",
         receiver_address, message, message_encryption_status
     );
 
     // TODO: if content body encrypted to the node itself then decrypt it and process it.
-
-    match (message_content, message_encryption_status) {
+    match (message_content.as_str(), message_encryption_status) {
         (_, EncryptionStatus::BodyEncrypted) => {
             handle_default_encryption(
                 message,
@@ -53,7 +68,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
-                maybe_identity_manager
+                maybe_identity_manager,
             )
             .await
         }
@@ -70,7 +85,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
-                maybe_identity_manager
+                maybe_identity_manager,
             )
             .await
         }
@@ -85,7 +100,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
-                maybe_identity_manager
+                maybe_identity_manager,
             )
             .await
         }
@@ -104,7 +119,7 @@ pub async fn handle_based_on_message_content_and_encryption(
                 receiver_address,
                 unsafe_sender_address,
                 maybe_db,
-                maybe_identity_manager
+                maybe_identity_manager,
             )
             .await
         }
@@ -113,7 +128,7 @@ pub async fn handle_based_on_message_content_and_encryption(
 
 // All the new helper functions here:
 pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result<ShinkaiMessage> {
-    ShinkaiMessageHandler::decode_message_result(bytes.to_vec()).map_err(|_| {
+    ShinkaiMessage::decode_message_result(bytes.to_vec()).map_err(|_| {
         println!("{} > Failed to decode message.", receiver_address);
         io::Error::new(io::ErrorKind::Other, "Failed to decode message")
     })
@@ -123,7 +138,7 @@ pub fn verify_message_signature(
     sender_signature_pk: ed25519_dalek::PublicKey,
     message: &ShinkaiMessage,
 ) -> io::Result<()> {
-    match verify_signature(&sender_signature_pk.clone(), &message.clone()) {
+    match message.verify_outer_layer_signature(&sender_signature_pk) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
             println!("Failed to validate message's signature. Message: {:?}", message);
@@ -157,8 +172,8 @@ pub async fn handle_ping(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
-    maybe_identity_manager: Arc<Mutex<IdentityManager>>
-) -> io::Result<()> {
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+) -> Result<(), NodeError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
     let mut db_lock = maybe_db.lock().await;
     ping_pong(
@@ -186,8 +201,8 @@ pub async fn handle_default_encryption(
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
-    maybe_identity_manager: Arc<Mutex<IdentityManager>>
-) -> io::Result<()> {
+    maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+) -> Result<(), NodeError> {
     println!(
         "{} > handle_default_encryption message: {:?}",
         receiver_address, message
@@ -196,12 +211,9 @@ pub async fn handle_default_encryption(
         "Sender encryption pk: {:?}",
         encryption_public_key_to_string(sender_encryption_pk)
     );
-    let decrypted_message_result =
-        decrypt_body_message(&message.clone(), my_encryption_secret_key, &sender_encryption_pk);
-
+    let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(decrypted_message) => {
-            let _ = decrypted_message.body.unwrap().content.as_str();
             println!(
                 "{} > Got message from {:?}. Sending ACK",
                 receiver_address, unsafe_sender_address
@@ -238,7 +250,7 @@ pub async fn handle_other_cases(
     unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> io::Result<()> {
+) -> Result<(), NodeError> {
     println!(
         "{} > Got message from {:?}. Sending ACK",
         receiver_address, unsafe_sender_address
@@ -266,7 +278,7 @@ pub async fn send_ack(
     receiver: ProfileName,
     db: &mut ShinkaiDB,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> io::Result<()> {
+) -> Result<(), NodeError> {
     let msg = ShinkaiMessageBuilder::ack_message(
         clone_static_secret_key(&encryption_secret_key),
         signature_secret_key,
@@ -276,7 +288,14 @@ pub async fn send_ack(
     )
     .unwrap();
 
-    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db, maybe_identity_manager).await?;
+    Node::send(
+        &msg,
+        clone_static_secret_key(&encryption_secret_key),
+        peer,
+        db,
+        maybe_identity_manager,
+    )
+    .await?;
     Ok(())
 }
 
@@ -298,7 +317,7 @@ pub async fn ping_pong(
     receiver: ProfileName,
     db: &mut ShinkaiDB,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-) -> io::Result<()> {
+) -> Result<(), NodeError> {
     let message = match ping_or_pong {
         PingPong::Ping => "Ping",
         PingPong::Pong => "Pong",
@@ -313,5 +332,12 @@ pub async fn ping_pong(
         receiver,
     )
     .unwrap();
-    Node::send(&msg, clone_static_secret_key(&encryption_secret_key), peer, db, maybe_identity_manager).await
+    Node::send(
+        &msg,
+        clone_static_secret_key(&encryption_secret_key),
+        peer,
+        db,
+        maybe_identity_manager,
+    )
+    .await
 }

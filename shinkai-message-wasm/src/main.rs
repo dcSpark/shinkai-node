@@ -5,7 +5,7 @@ pub mod shinkai_wasm_wrappers;
 
 use std::error::Error;
 
-use crate::{shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, Body}, shinkai_message_schemas::MessageSchemaType}, shinkai_utils::encryption::EncryptionMethod};
+use crate::{shinkai_message::{shinkai_message::{InternalMetadata, ExternalMetadata, ShinkaiMessage, ShinkaiVersion, MessageData, MessageBody, ShinkaiData, ShinkaiBody}, shinkai_message_schemas::MessageSchemaType}, shinkai_utils::encryption::EncryptionMethod};
 
 fn main() -> Result<(), Box<dyn Error>> {
     console_log::init_with_level(log::Level::Debug).expect("error initializing log");
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let internal_metadata = InternalMetadata {
         sender_subidentity: "sender_subidentity".into(),
         recipient_subidentity: "recipient_subidentity".into(),
-        message_schema_type: MessageSchemaType::TextContent,
+        signature: "signature".into(),
         inbox: "inbox".into(),
         encryption: EncryptionMethod::None,
     };
@@ -26,15 +26,22 @@ fn main() -> Result<(), Box<dyn Error>> {
         other: "other".into(),
     };
 
-    let body = Body {
-        content: "content".into(),
-        internal_metadata: Some(internal_metadata),
-    };
+    let data = MessageData::Unencrypted(ShinkaiData {
+        message_raw_content: "content".into(),
+        message_content_schema: MessageSchemaType::TextContent,
+    });
+
+    let body = MessageBody::Unencrypted(ShinkaiBody {
+        message_data: data,
+        internal_metadata: internal_metadata,
+    });
+    
 
     let shinkai_message = ShinkaiMessage {
-        body: Some(body),
-        external_metadata: Some(external_metadata),
+        body,
+        external_metadata: external_metadata,
         encryption: EncryptionMethod::None,
+        version: ShinkaiVersion::V1_0,
     };
 
     println!("Shinkai message: {:?}", shinkai_message);

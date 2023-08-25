@@ -2,7 +2,6 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_wasm::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
 use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_message_wasm::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
@@ -129,56 +128,56 @@ fn tcp_node_test() {
 
             // Node 1 (receiving the Ping, sending back a Pong)
             assert_eq!(
-                node1_last_messages[1].body.as_ref().unwrap().content == "Pong".to_string(),
+                node1_last_messages[1].get_message_content().unwrap() == "Pong".to_string(),
                 true,
             );
             assert_eq!(
-                node1_last_messages[1].external_metadata.as_ref().unwrap().sender == node1_identity_name.to_string(),
+                node1_last_messages[1].external_metadata.sender == node1_identity_name.to_string(),
                 true
             );
             assert_eq!(
-                node1_last_messages[1].external_metadata.as_ref().unwrap().recipient == node2_identity_name.clone(),
+                node1_last_messages[1].external_metadata.recipient == node2_identity_name.clone(),
                 true
             );
 
             // Node 2 (sending the Ping, Receiving a Pong and confirming with ACK)
             assert_eq!(
-                node2_last_messages[0].body.as_ref().unwrap().content == "ACK".to_string(),
+                node2_last_messages[0].get_message_content().unwrap() == "ACK".to_string(),
                 true
             );
             assert_eq!(
-                node2_last_messages[0].external_metadata.as_ref().unwrap().sender == node2_identity_name.clone(),
+                node2_last_messages[0].external_metadata.sender == node2_identity_name.clone(),
                 true
             );
             assert_eq!(
-                node2_last_messages[0].external_metadata.as_ref().unwrap().recipient == node1_identity_name.clone(),
+                node2_last_messages[0].external_metadata.recipient == node1_identity_name.clone(),
                 true
             );
             assert_eq!(
-                node2_last_messages[2].body.as_ref().unwrap().content == "Ping".to_string(),
+                node2_last_messages[2].get_message_content().unwrap() == "Ping".to_string(),
                 true
             );
             assert_eq!(
-                node2_last_messages[2].external_metadata.as_ref().unwrap().sender == node2_identity_name.clone(),
+                node2_last_messages[2].external_metadata.sender == node2_identity_name.clone(),
                 true
             );
             assert_eq!(
-                node2_last_messages[2].external_metadata.as_ref().unwrap().recipient == node1_identity_name.clone(),
+                node2_last_messages[2].external_metadata.recipient == node1_identity_name.clone(),
                 true
             );
 
             // Messages should be equal
             assert_eq!(
-                ShinkaiMessageHandler::calculate_hash(&node1_last_messages[0]),
-                ShinkaiMessageHandler::calculate_hash(&node2_last_messages[0])
+                &node1_last_messages[0].calculate_message_hash(),
+                &node2_last_messages[0].calculate_message_hash()
             );
             assert_eq!(
-                ShinkaiMessageHandler::calculate_hash(&node1_last_messages[1]),
-                ShinkaiMessageHandler::calculate_hash(&node2_last_messages[1])
+                &node1_last_messages[1].calculate_message_hash(),
+                &node2_last_messages[1].calculate_message_hash()
             );
             assert_eq!(
-                ShinkaiMessageHandler::calculate_hash(&node1_last_messages[2]),
-                ShinkaiMessageHandler::calculate_hash(&node2_last_messages[2])
+                &node1_last_messages[2].calculate_message_hash(),
+                &node2_last_messages[2].calculate_message_hash()
             );
         });
 

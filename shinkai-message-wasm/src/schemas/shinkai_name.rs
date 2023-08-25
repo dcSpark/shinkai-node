@@ -2,7 +2,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
+use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ShinkaiName {
@@ -37,6 +37,7 @@ pub enum ShinkaiNameError {
     InvalidGroupFormat(String),
     InvalidNameFormat(String),
     SomeError(String),
+    InvalidOperation(String),
 }
 
 impl fmt::Display for ShinkaiNameError {
@@ -57,6 +58,9 @@ impl fmt::Display for ShinkaiNameError {
                 write!(f, "Invalid name format: {}", message)
             }
             ShinkaiNameError::SomeError(message) => write!(f, "Some error: {}", message),
+            ShinkaiNameError::InvalidOperation(message) => {
+                write!(f, "Invalid operation: {}", message)
+            }
         }
     }
 }
@@ -212,89 +216,77 @@ impl ShinkaiName {
             name.to_lowercase()
         );
 
-        println!("device full_identity_name: {}", full_identity_name);
-
         // Create a new ShinkaiName
         Self::new(full_identity_name)
     }
 
     pub fn from_shinkai_message_only_using_sender_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
-        match &message.external_metadata {
-            Some(metadata) => Self::new(metadata.sender.clone()),
-            None => Err("External metadata is missing."),
-        }
+        Self::new(message.external_metadata.sender.clone())
     }
 
     pub fn from_shinkai_message_only_using_recipient_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
-        match &message.external_metadata {
-            Some(metadata) => Self::new(metadata.recipient.clone()),
-            None => Err("External metadata is missing."),
-        }
+        Self::new(message.external_metadata.recipient.clone())
     }
 
     pub fn from_shinkai_message_using_sender_subidentity(message: &ShinkaiMessage) -> Result<Self, ShinkaiNameError> {
-        match (&message.body, &message.external_metadata) {
-            (Some(body), Some(external_metadata)) => {
-                let node = match Self::new(external_metadata.sender.clone()) {
-                    Ok(name) => name.extract_node(),
-                    Err(_) => return Err(ShinkaiNameError::InvalidNameFormat(external_metadata.sender.clone())),
-                };
-                match &body.internal_metadata {
-                    Some(metadata) => {
-                        let sender_subidentity = if metadata.sender_subidentity.is_empty() {
-                            String::from("")
-                        } else {
-                            format!("/{}", metadata.sender_subidentity)
-                        };
-                        match Self::new(format!("{}{}", node, sender_subidentity)) {
-                            Ok(name) => Ok(name),
-                            Err(_) => Err(ShinkaiNameError::InvalidNameFormat(format!(
-                                "{}{}",
-                                node, sender_subidentity
-                            ))),
-                        }
-                    }
-                    None => {
-                        // If there's no internal_metadata, create a ShinkaiName with just the node
-                        Ok(node)
-                    }
-                }
+        // Check if outer encrypted or inner encrypted and return error if so
+        let body = match &message.body {
+            MessageBody::Unencrypted(body) => body,
+            _ => return Err(ShinkaiNameError::MessageBodyMissing),
+        };
+
+        let node = match Self::new(message.external_metadata.sender.clone()) {
+            Ok(name) => name.extract_node(),
+            Err(_) => {
+                return Err(ShinkaiNameError::InvalidNameFormat(
+                    message.external_metadata.sender.clone(),
+                ))
             }
-            _ => Err(ShinkaiNameError::MessageBodyMissing),
+        };
+
+        let sender_subidentity = if body.internal_metadata.sender_subidentity.is_empty() {
+            String::from("")
+        } else {
+            format!("/{}", body.internal_metadata.sender_subidentity)
+        };
+
+        match Self::new(format!("{}{}", node, sender_subidentity)) {
+            Ok(name) => Ok(name),
+            Err(_) => Err(ShinkaiNameError::InvalidNameFormat(format!(
+                "{}{}",
+                node, sender_subidentity
+            ))),
         }
     }
 
-    pub fn from_shinkai_message_using_recipient_subidentity(
-        message: &ShinkaiMessage,
-    ) -> Result<Self, ShinkaiNameError> {
-        match (&message.body, &message.external_metadata) {
-            (Some(body), Some(external_metadata)) => {
-                let node = match Self::new(external_metadata.recipient.clone()) {
-                    Ok(name) => name.extract_node(),
-                    Err(_) => return Err(ShinkaiNameError::InvalidNameFormat(external_metadata.recipient.clone())),
-                };
-                match &body.internal_metadata {
-                    Some(metadata) => {
-                        let recipient_subidentity = if metadata.recipient_subidentity.is_empty() {
-                            String::from("")
-                        } else {
-                            format!("/{}", metadata.recipient_subidentity)
-                        };
-                        match Self::new(format!("{}{}", node, recipient_subidentity)) {
-                            Ok(name) => Ok(name),
-                            Err(_) => Err(ShinkaiNameError::InvalidNameFormat(format!(
-                                "{}{}",
-                                node, recipient_subidentity
-                            ))),
-                        }
-                    }
-                    None => {
-                        // If there's no internal_metadata, create a ShinkaiName with just the node
-                        Ok(node)
-                    }
-                }
-            }
-            _ => Err(ShinkaiNameError::MessageBodyMissing),
+    pub fn from_shinkai_message_using_recipient_subidentity(message: &ShinkaiMessage) -> Result<Self, ShinkaiNameError> {
+        // Check if the message is encrypted
+        let body = match &message.body {
+            MessageBody::Unencrypted(body) => body,
+            _ => return Err(ShinkaiNameError::InvalidOperation(
+                "Cannot process encrypted ShinkaiMessage".to_string(),
+            )),
+        };
+    
+        let node = match Self::new(message.external_metadata.recipient.clone()) {
+            Ok(name) => name.extract_node(),
+            Err(_) => return Err(ShinkaiNameError::InvalidNameFormat(
+                message.external_metadata.recipient.clone(),
+            )),
+        };
+    
+        let recipient_subidentity = if body.internal_metadata.recipient_subidentity.is_empty() {
+            String::from("")
+        } else {
+            format!("/{}", body.internal_metadata.recipient_subidentity)
+        };
+    
+        match Self::new(format!("{}{}", node, recipient_subidentity)) {
+            Ok(name) => Ok(name),
+            Err(_) => Err(ShinkaiNameError::InvalidNameFormat(format!(
+                "{}{}",
+                node, recipient_subidentity
+            ))),
         }
     }
 

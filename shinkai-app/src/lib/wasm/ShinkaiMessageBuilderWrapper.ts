@@ -31,8 +31,8 @@ export class ShinkaiMessageBuilderWrapper {
     this.wasmBuilder.no_body_encryption();
   }
 
-  body(content: string): void {
-    this.wasmBuilder.body(content);
+  message_raw_content(content: string): void {
+    this.wasmBuilder.message_raw_content(content);
   }
 
   message_schema_type(content: any): void {
@@ -206,7 +206,7 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key
     );
 
-    builder.body(target_shinkai_name_profile);
+    builder.message_raw_content(target_shinkai_name_profile);
     builder.message_schema_type(MessageSchemaType.TextContent.toString());
     builder.internal_metadata(
       sender_subidentity,
@@ -337,7 +337,7 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key
     );
 
-    builder.body(text_message);
+    builder.message_raw_content(text_message);
     builder.message_schema_type(MessageSchemaType.TextContent.toString());
     builder.internal_metadata(
       sender_subidentity,
@@ -371,7 +371,7 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key
     );
 
-    builder.body(text_message);
+    builder.message_raw_content(text_message);
     builder.message_schema_type(MessageSchemaType.TextContent.toString());
     builder.internal_metadata_with_inbox(
       sender_subidentity,

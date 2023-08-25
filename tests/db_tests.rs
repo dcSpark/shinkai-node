@@ -36,7 +36,7 @@ fn generate_message_with_text(
     scheduled_time: String,
 ) -> ShinkaiMessage {
     let message = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
-        .body(content.to_string())
+        .message_raw_content(content.to_string())
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
         .internal_metadata(
@@ -86,7 +86,7 @@ fn test_insert_message_to_all() {
     let last_messages_all = shinkai_db.get_last_messages_from_all(1).unwrap();
     assert_eq!(last_messages_all.len(), 1);
     assert_eq!(
-        last_messages_all[0].clone().body.unwrap().content,
+        last_messages_all[0].clone().get_message_content().unwrap(),
         "Hello All".to_string()
     );
 
@@ -126,16 +126,16 @@ fn test_insert_message_to_all() {
     let last_messages_all = shinkai_db.get_last_messages_from_all(5).unwrap();
     assert_eq!(last_messages_all.len(), 4);
     assert_eq!(
-        last_messages_all[0].clone().body.unwrap().content,
+        last_messages_all[0].clone().get_message_content().unwrap(),
         "Hello All after".to_string()
     );
     // Note: Hello All and Hello All 2 have the same scheduled time, so the order is
     // not guaranteed
     let expected_contents = ["Hello All", "Hello All 2"];
-    assert!(expected_contents.contains(&last_messages_all[1].clone().body.unwrap().content.as_str()));
-    assert!(expected_contents.contains(&last_messages_all[2].clone().body.unwrap().content.as_str()));
+    assert!(expected_contents.contains(&last_messages_all[1].clone().get_message_content().unwrap().as_str()));
+    assert!(expected_contents.contains(&last_messages_all[2].clone().get_message_content().unwrap().as_str()));
     assert_eq!(
-        last_messages_all[3].clone().body.unwrap().content,
+        last_messages_all[3].clone().get_message_content().unwrap(),
         "Hello All before".to_string()
     );
 }
@@ -161,7 +161,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34Z".to_string(),
     );
     let message2 = generate_message_with_text(
         "Hello Scheduled 2".to_string(),
@@ -170,7 +170,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34Z".to_string(),
     );
     let message_before = generate_message_with_text(
         "Hello Scheduled before".to_string(),
@@ -179,7 +179,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481344".to_string(),
+        "2023-07-02T20:53:33Z".to_string(),
     );
     let message_after = generate_message_with_text(
         "Hello Scheduled after".to_string(),
@@ -188,7 +188,7 @@ fn test_schedule_and_get_due_scheduled_messages() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481346".to_string(),
+        "2023-07-02T20:53:35Z".to_string(),
     );
 
     // Create the DB and schedule the message
@@ -201,35 +201,35 @@ fn test_schedule_and_get_due_scheduled_messages() {
 
     // Fetch the due messages
     let due_messages = shinkai_db
-        .get_due_scheduled_messages("20230702T20533481346".to_string())
+        .get_due_scheduled_messages("2023-07-02T20:53:35Z".to_string())
         .unwrap();
     assert_eq!(due_messages.len(), 4);
     assert_eq!(
-        due_messages[0].clone().body.unwrap().content,
+        due_messages[0].clone().get_message_content().unwrap(),
         "Hello Scheduled before".to_string()
     );
 
     let expected_contents = ["Hello Scheduled", "Hello Scheduled 2"];
-    assert!(expected_contents.contains(&due_messages[1].clone().body.unwrap().content.as_str()));
-    assert!(expected_contents.contains(&due_messages[2].clone().body.unwrap().content.as_str()));
+    assert!(expected_contents.contains(&due_messages[1].clone().get_message_content().unwrap().as_str()));
+    assert!(expected_contents.contains(&due_messages[2].clone().get_message_content().unwrap().as_str()));
    
     assert_eq!(
-        due_messages[3].clone().body.unwrap().content,
+        due_messages[3].clone().get_message_content().unwrap(),
         "Hello Scheduled after".to_string()
     );
 
     let due_messages = shinkai_db
-        .get_due_scheduled_messages("20230702T20533481344".to_string())
+        .get_due_scheduled_messages("2023-07-02T20:53:33Z".to_string())
         .unwrap();
     assert_eq!(due_messages.len(), 1);
     assert_eq!(
-        due_messages[0].clone().body.unwrap().content,
+        due_messages[0].clone().get_message_content().unwrap(),
         "Hello Scheduled before".to_string()
     );
 
-    let due_messages = shinkai_db.get_due_scheduled_messages("20230703".to_string()).unwrap();
+    let due_messages = shinkai_db.get_due_scheduled_messages("2023-07-03T00:00:00Z".to_string()).unwrap();
     assert_eq!(due_messages.len(), 4);
 
-    let due_messages = shinkai_db.get_due_scheduled_messages("20230701".to_string()).unwrap();
+    let due_messages = shinkai_db.get_due_scheduled_messages("2023-07-01T00:00:00Z".to_string()).unwrap();
     assert_eq!(due_messages.len(), 0);
 }

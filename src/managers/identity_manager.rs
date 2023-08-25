@@ -1,8 +1,6 @@
-use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::network::node::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
-use crate::network::Node;
 use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
 };
@@ -16,7 +14,6 @@ use shinkai_message_wasm::shinkai_utils::encryption::{
 use shinkai_message_wasm::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
-use std::io::Error;
 use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -277,12 +274,12 @@ impl IdentityManager {
         if sender_subidentity.is_none() {
             eprintln!(
                 "signature check > Subidentity not found for profile name: {}",
-                decrypted_message.external_metadata.clone().unwrap().sender
+                decrypted_message.external_metadata.clone().sender
             );
             return Err(NodeError {
                 message: format!(
                     "Subidentity not found for profile name: {}",
-                    decrypted_message.external_metadata.clone().unwrap().sender
+                    decrypted_message.external_metadata.clone().sender
                 ),
             });
         }

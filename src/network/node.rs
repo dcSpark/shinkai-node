@@ -1,6 +1,7 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
@@ -11,9 +12,8 @@ use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
 use shinkai_message_wasm::shinkai_utils::encryption::{
-    clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string, encryption_secret_key_to_string,
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_wasm::shinkai_utils::shinkai_message_handler::ShinkaiMessageHandler;
 use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
@@ -56,6 +56,14 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
 
 impl From<std::io::Error> for NodeError {
     fn from(err: std::io::Error) -> NodeError {
+        NodeError {
+            message: format!("{}", err),
+        }
+    }
+}
+
+impl From<ShinkaiMessageError> for NodeError {
+    fn from(err: ShinkaiMessageError) -> NodeError {
         NodeError {
             message: format!("{}", err),
         }
@@ -440,7 +448,7 @@ impl Node {
     }
 
     // Connect to a peer node.
-    pub async fn connect(&self, peer_address: &str, profile_name: String) -> io::Result<()> {
+    pub async fn connect(&self, peer_address: &str, profile_name: String) -> Result<(), NodeError> {
         info!(
             "{} {} > Connecting to {} with profile_name: {:?}",
             self.node_profile_name, self.listen_address, peer_address, profile_name
@@ -488,14 +496,14 @@ impl Node {
         peer: (SocketAddr, ProfileName),
         db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> io::Result<()> {
+    ) -> Result<(), NodeError> {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
         // let mut stream = TcpStream::connect(address).await?;
         let stream = TcpStream::connect(address).await;
         match stream {
             Ok(mut stream) => {
-                let encoded_msg = ShinkaiMessageHandler::encode_message(message.clone());
+                let encoded_msg = message.encode_message()?;
                 // println!("send> Encoded Message: {:?}", encoded_msg);
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
@@ -521,7 +529,7 @@ impl Node {
         // We want to save it decrypted if possible
         // We are just going to check for the body encryption
 
-        let is_body_encrypted = ShinkaiMessageHandler::is_body_currently_encrypted(message);
+        let is_body_encrypted = message.is_body_currently_encrypted();
 
         // Clone the message to get a fully owned version
         let mut message_to_save = message.clone();
@@ -532,11 +540,11 @@ impl Node {
             // Debug only
             println!("save_to_db> message: {:?}", message.clone());
             if am_i_sender {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_recipient_subidentity(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(message)
                     .unwrap()
                     .to_string();
             } else {
-                counterpart_identity = ShinkaiName::from_shinkai_message_using_sender_subidentity(message)
+                counterpart_identity = ShinkaiName::from_shinkai_message_only_using_sender_node_name(message)
                     .unwrap()
                     .to_string();
             }
@@ -550,7 +558,7 @@ impl Node {
                 .node_encryption_public_key;
 
             // Decrypt the message body
-            let decrypted_result = decrypt_body_message(&message.clone(), &my_encryption_sk, &sender_encryption_pk);
+            let decrypted_result = message.decrypt_outer_layer(&my_encryption_sk, &sender_encryption_pk);
             match decrypted_result {
                 Ok(decrypted_content) => {
                     message_to_save = decrypted_content;
@@ -595,15 +603,15 @@ impl Node {
         my_signature_secret_key: SignatureStaticKey,
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> io::Result<()> {
-        info!("{} > Got message from {:?}", receiver_address, unsafe_sender_address);
+    ) -> Result<(), NodeError> {
+        info!("\n\n {} > Got message from {:?}", receiver_address, unsafe_sender_address);
 
         // Extract and validate the message
         let message = extract_message(bytes, receiver_address)?;
         println!("{} > Decoded Message: {:?}", receiver_address, message);
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message)
+        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
             .unwrap()
             .get_node_name();
         let sender_identity = maybe_identity_manager

@@ -6,14 +6,16 @@ mod tests {
     use serde_wasm_bindgen::from_value;
     use shinkai_message_wasm::schemas::inbox_name::InboxName;
     use shinkai_message_wasm::schemas::registration_code::RegistrationCode;
-    use shinkai_message_wasm::shinkai_message::shinkai_message::{Body, ExternalMetadata, ShinkaiMessage};
+    use shinkai_message_wasm::shinkai_message::shinkai_message::{
+        ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
+    };
     use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
         JobMessage, JobScope, RegistrationCodeRequest,
     };
     use shinkai_message_wasm::shinkai_utils::encryption::{
-        convert_encryption_sk_string_to_encryption_pk_string, decrypt_body_message, decrypt_content_message,
-        encryption_public_key_to_jsvalue, encryption_public_key_to_string, encryption_secret_key_to_jsvalue,
-        encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+        convert_encryption_sk_string_to_encryption_pk_string, encryption_public_key_to_jsvalue,
+        encryption_public_key_to_string, encryption_secret_key_to_jsvalue, encryption_secret_key_to_string,
+        unsafe_deterministic_encryption_keypair, EncryptionMethod,
     };
     use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ProfileName;
     use shinkai_message_wasm::shinkai_utils::signatures::{
@@ -48,7 +50,7 @@ mod tests {
         )
         .unwrap();
 
-        let _ = builder.body("body content".into());
+        let _ = builder.message_raw_content("body content".into());
         let _ = builder.body_encryption("None".into());
         let _ = builder.message_schema_type("TextContent".into());
         let _ = builder.internal_metadata(
@@ -68,11 +70,26 @@ mod tests {
         let message_json = message_result.unwrap().to_json_str().unwrap();
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_json).unwrap();
 
-        let body = message.clone().body.unwrap();
-        let internal_metadata = body.internal_metadata.unwrap();
+        let body = message.clone().body;
+        let internal_metadata;
+        let body_content;
+
+        match body {
+            MessageBody::Unencrypted(unencrypted_body) => {
+                internal_metadata = unencrypted_body.internal_metadata;
+                match unencrypted_body.message_data {
+                    MessageData::Unencrypted(data) => {
+                        body_content = data.message_raw_content;
+                    }
+                    _ => panic!("Unexpected MessageData variant"),
+                }
+            }
+            _ => panic!("Unexpected MessageBody variant"),
+        }
+
         let encryption = EncryptionMethod::from_str(&message.encryption.as_str().to_string());
 
-        assert_eq!(body.content, "body content");
+        assert_eq!(body_content, "body content");
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
@@ -81,7 +98,7 @@ mod tests {
             "inbox::@@my_node.shinkai/sender_user2::@@other_node.shinkai/recipient_user1::false"
         );
 
-        let external_metadata = message.clone().external_metadata.unwrap();
+        let external_metadata = message.clone().external_metadata;
 
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.scheduled_time, scheduled_time);
@@ -90,7 +107,7 @@ mod tests {
         // Convert ShinkaiMessage back to JSON
         let message_clone_json = message.to_json_str().unwrap();
         let message_clone: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_clone_json).unwrap();
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap());
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -117,7 +134,7 @@ mod tests {
         )
         .unwrap();
 
-        let _ = builder.body("body content".into());
+        let _ = builder.message_raw_content("body content".into());
         let _ = builder.body_encryption("None".into());
         let _ = builder.message_schema_type("TextContent".into());
         let _ = builder.internal_metadata(
@@ -137,12 +154,16 @@ mod tests {
         let message_string = message_result.unwrap();
         let message: ShinkaiMessageWrapper = ShinkaiMessageWrapper::from_jsvalue(&message_string).unwrap();
 
-        let body_string = message.body().unwrap();
-        let body: Body = Body::from_jsvalue(&body_string).unwrap();
-        let internal_metadata = body.internal_metadata.unwrap();
+        let body_jsvalue = message.message_body().unwrap();
+        let body: ShinkaiBody = ShinkaiBody::from_jsvalue(&body_jsvalue).unwrap();
+        let internal_metadata = body.internal_metadata;
         let encryption = EncryptionMethod::from_str(&message.encryption().as_str().to_string());
 
-        assert_eq!(body.content, "body content");
+        let body_content = match body.message_data {
+            MessageData::Unencrypted(data) => data.message_raw_content,
+            _ => panic!("Unexpected MessageData variant"),
+        };
+        assert_eq!(body_content, "body content");
         assert_eq!(encryption, EncryptionMethod::None);
         assert_eq!(internal_metadata.sender_subidentity, sender_subidentity);
         assert_eq!(internal_metadata.recipient_subidentity, recipient_subidentity);
@@ -161,7 +182,7 @@ mod tests {
         // Convert ShinkaiMessage back to JSON
         let message_clone_string = message.to_json_str().unwrap();
         let message_clone: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_clone_string).unwrap();
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -210,9 +231,15 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Deserialize the body and check its content
-        let body = message.body.unwrap();
+        let body = match message.body {
+            MessageBody::Unencrypted(body) => body,
+            _ => panic!("Unexpected MessageBody variant"),
+        };
 
-        let job_message: JobMessage = serde_json::from_str(&body.content).unwrap();
+        let job_message: JobMessage = match body.message_data {
+            MessageData::Unencrypted(data) => serde_json::from_str(&data.message_raw_content).unwrap(),
+            _ => panic!("Unexpected MessageData variant"),
+        };
         assert_eq!(job_message.job_id, job_id);
         assert_eq!(job_message.content, content);
 
@@ -220,12 +247,12 @@ mod tests {
         assert_eq!(job_message_scope, scope);
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
+        let internal_metadata = body.internal_metadata;
         assert_eq!(internal_metadata.sender_subidentity, "".to_string());
         assert_eq!(internal_metadata.recipient_subidentity, node_receiver_subidentity);
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, node_sender);
         assert_eq!(external_metadata.recipient, node_receiver);
     }
@@ -264,16 +291,15 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Deserialize the body and check its content
-        let body = message.body.unwrap();
-        assert_eq!(body.content, "ACK".to_string());
+        let body_content = message.get_message_content().unwrap();
+        assert_eq!(body_content, "ACK");
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, "".to_string());
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
+        assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, sender_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -315,16 +341,14 @@ mod tests {
             let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
             // Deserialize the body and check its content
-            let body = message.body.unwrap();
-            assert_eq!(body.content, message_content);
+            assert_eq!(message.get_message_content().unwrap(), message_content);
 
             // Check internal metadata
-            let internal_metadata = body.internal_metadata.unwrap();
-            assert_eq!(internal_metadata.sender_subidentity, "".to_string());
-            assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+            assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
+            assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
 
             // Check external metadata
-            let external_metadata = message.external_metadata.unwrap();
+            let external_metadata = message.external_metadata;
             assert_eq!(external_metadata.sender, sender_node);
             assert_eq!(external_metadata.recipient, receiver_node);
         }
@@ -368,21 +392,23 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // log::debug!("decrypted_message: {:?}", decrypted_message);
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
-        assert_eq!(body.content, data);
+        assert_eq!(decrypted_message.get_message_content().unwrap(), data);
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
+        assert_eq!(
+            decrypted_message.get_sender_subidentity().unwrap(),
+            "sender_profile".to_string()
+        );
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = decrypted_message.external_metadata;
         assert_eq!(external_metadata.sender, receiver_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -429,13 +455,14 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
-        let registration_code: RegistrationCode = serde_json::from_str(&body.content).unwrap();
+        let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code.code, code);
         assert_eq!(registration_code.registration_name, registration_name);
         assert_eq!(registration_code.identity_type, identity_type);
@@ -445,12 +472,11 @@ mod tests {
         assert_eq!(registration_code.encryption_pk, encryption_pk_string);
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = decrypted_message.external_metadata;
         assert_eq!(external_metadata.sender, receiver_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -493,23 +519,23 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
-        let registration_code_request: RegistrationCodeRequest = serde_json::from_str(&body.content).unwrap();
+        let registration_code_request: RegistrationCodeRequest = serde_json::from_str(&content).unwrap();
         assert_eq!(registration_code_request.permissions.to_string(), permissions);
         assert_eq!(registration_code_request.code_type.to_string(), code_type);
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = decrypted_message.external_metadata;
         assert_eq!(external_metadata.sender, receiver_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -542,9 +568,9 @@ mod tests {
             eprintln!("Error occurred: {:?}", e);
             panic!(
                 "terminate_message() returned an error: {:?}\n\
-            my_encryption_sk_string: {}\n\
-            my_identity_sk_string: {}\n\
-            receiver_public_key_string: {}",
+                my_encryption_sk_string: {}\n\
+                my_identity_sk_string: {}\n\
+                receiver_public_key_string: {}",
                 e, my_encryption_sk_string, my_identity_sk_string, receiver_public_key_string
             );
         }
@@ -554,16 +580,15 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Check the body content
-        let body = message.body.unwrap();
-        assert_eq!(body.content, "terminate");
+        let content = message.get_message_content().unwrap();
+        assert_eq!(content, "terminate");
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, "".to_string());
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
+        assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, sender_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -599,9 +624,9 @@ mod tests {
             eprintln!("Error occurred: {:?}", e);
             panic!(
                 "error_message() returned an error: {:?}\n\
-            my_encryption_sk_string: {}\n\
-            my_identity_sk_string: {}\n\
-            receiver_public_key_string: {}",
+                my_encryption_sk_string: {}\n\
+                my_identity_sk_string: {}\n\
+                receiver_public_key_string: {}",
                 e, my_encryption_sk_string, my_identity_sk_string, receiver_public_key_string
             );
         }
@@ -611,26 +636,21 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Check the body content
-        let body = message.body.unwrap();
 
         // Decrypt the content
-        let decrypted_content = decrypt_content_message(
-            body.content,
-            &body.internal_metadata.clone().unwrap().encryption.as_str().to_string(),
-            &my_encryption_sk,
-            &receiver_public_key,
-        )
-        .expect("Failed to decrypt body content");
+        let decrypted_message = message
+            .decrypt_inner_layer(&my_encryption_sk, &receiver_public_key)
+            .expect("Failed to decrypt body content");
 
-        assert_eq!(decrypted_content.0, format!("{{error: \"{}\"}}", error_msg));
+        let content = decrypted_message.get_message_content().unwrap();
+        assert_eq!(content, format!("{{error: \"{}\"}}", error_msg));
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, "".to_string());
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
+        assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, sender_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
@@ -673,14 +693,15 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Deserialize the content into a JSON object
-        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
 
         // Check the content
         assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
@@ -697,12 +718,11 @@ mod tests {
         assert_eq!(content["offset"], "offset_string");
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile_name);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = decrypted_message.external_metadata;
         assert_eq!(external_metadata.sender, receiver.to_string());
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
@@ -743,14 +763,15 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Deserialize the content into a JSON object
-        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
 
         // Check the content
         assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
@@ -767,12 +788,11 @@ mod tests {
         assert_eq!(content["offset"], "offset_string");
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile_name);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, receiver.to_string());
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
@@ -811,25 +831,24 @@ mod tests {
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
 
         // Decrypt the content
-        let decrypted_message = decrypt_body_message(&message, &my_encryption_sk, &receiver_public_key)
+        let decrypted_message = message
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         // Deserialize the body and check its content
-        let body = decrypted_message.body.unwrap();
+        let content = decrypted_message.get_message_content().unwrap();
 
         // Check internal metadata
-        let internal_metadata = body.internal_metadata.unwrap();
-
-        assert_eq!(internal_metadata.sender_subidentity, sender_profile_name);
-        assert_eq!(internal_metadata.recipient_subidentity, "".to_string());
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile_name);
+        assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
-        let external_metadata = message.external_metadata.unwrap();
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, receiver.to_string());
         assert_eq!(external_metadata.recipient, receiver.to_string());
 
         // Deserialize the content into a JSON object
-        let content: serde_json::Value = serde_json::from_str(&body.content).unwrap();
+        let content: serde_json::Value = serde_json::from_str(&content).unwrap();
 
         // Check the content
         assert_eq!(
@@ -847,12 +866,4 @@ mod tests {
         );
         assert_eq!(content["up_to_time"], "20230702T20533481345");
     }
-    // #[wasm_bindgen_test]
-    // fn test_builder_missing_fields() {
-    //     // Setup code with keys goes here.
-
-    //     let mut builder = ShinkaiMessageBuilderWrapper::new(/* Insert your keys here */);
-    //     let message_result = builder.build();
-    //     assert!(message_result.is_err());
-    // }
 }

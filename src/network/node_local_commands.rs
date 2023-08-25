@@ -14,10 +14,9 @@ use shinkai_message_wasm::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, decrypt_body_message, encryption_public_key_to_string,
+            clone_static_secret_key, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key,
         },
-        shinkai_message_handler::ShinkaiMessageHandler,
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
 };
