@@ -4,6 +4,7 @@ import {execMode, toolkitConfig, validate} from './exec-mode';
 import express from 'express';
 import bodyParser from 'body-parser';
 import {IncomingHttpHeaders} from 'http';
+import {TerminusState, createTerminus} from '@godaddy/terminus';
 
 export function httpMode(port: string | number) {
   const app = express();
@@ -62,15 +63,28 @@ export function httpMode(port: string | number) {
     }
   );
 
-  app.all(
-    '/health_check',
-    async (req: express.Request, res: express.Response) => {
-      return res.json({status: true});
-    }
-  );
-
-  app.listen(parseInt(String(port), 10), () => {
+  const server = app.listen(port ? parseInt(String(port), 10) : 3000, () => {
     console.log(`Listening at http://localhost:${port}`);
+  });
+
+  createTerminus(server, {
+    healthChecks: {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      '/healthcheck': (state: {state: TerminusState}) => {
+        return Promise.resolve();
+      },
+    },
+    timeout: 30000,
+    signals: ['SIGUSR2', 'SIGINT', 'SIGTERM'],
+    onSignal: () => {
+      console.log('[Signal] Server is Starting Cleanup');
+      // Server is closed by terminus.
+      return Promise.resolve();
+    },
+    onShutdown: () => {
+      console.log('[Shutdown] Server is Shutting Down');
+      return Promise.resolve();
+    },
   });
 }
 
