@@ -1,8 +1,11 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+
+use crate::shinkai_message::shinkai_message::ShinkaiVersion;
 
 use super::{
     shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-    shinkai_message_schemas::MessageSchemaType, shinkai_message_error::ShinkaiMessageError,
+    shinkai_message_error::ShinkaiMessageError,
+    shinkai_message_schemas::MessageSchemaType,
 };
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -77,7 +80,25 @@ impl ShinkaiMessage {
     }
 
     pub fn decode_message_result(encoded: Vec<u8>) -> Result<Self, ShinkaiMessageError> {
-        bincode::deserialize(&encoded[..]).map_err(|err| ShinkaiMessageError::from(err))
+        let result: Result<ShinkaiMessage, _> = bincode::deserialize(&encoded[..]);
+        match &result {
+            Err(err) => {
+                eprintln!("Failed to decode entire message: {:?}, error: {}", encoded, err);
+
+                // Try to deserialize each part individually
+                if let Err(e) = bincode::deserialize::<MessageBody>(&encoded[..]) {
+                    eprintln!("Failed to decode MessageBody: {:?}, error: {}", encoded, e);
+                }
+                if let Err(e) = bincode::deserialize::<MessageData>(&encoded[..]) {
+                    eprintln!("Failed to decode MessageData: {:?}, error: {}", encoded, e);
+                }
+                if let Err(e) = bincode::deserialize::<ShinkaiVersion>(&encoded[..]) {
+                    eprintln!("Failed to decode ShinkaiVersion: {:?}, error: {}", encoded, e);
+                }
+            }
+            _ => {}
+        }
+        result.map_err(|err| ShinkaiMessageError::from(err))
     }
 
     pub fn validate_message_schema(&self, schema: MessageSchemaType) -> Result<(), ShinkaiMessageError> {

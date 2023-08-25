@@ -95,7 +95,7 @@ impl ShinkaiDB {
         };
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:{}", time_key, hash_key);
+        let composite_key = format!("{}:::{}", time_key, hash_key);
         println!("Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
@@ -170,7 +170,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessage::decode_message_result(value.to_vec())?;
+                            let message = ShinkaiMessage::decode_message_result(bytes)?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),
@@ -284,7 +284,7 @@ impl ShinkaiDB {
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
-                            let message = ShinkaiMessage::decode_message_result(value.to_vec())?;
+                            let message = ShinkaiMessage::decode_message_result(bytes)?;
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),

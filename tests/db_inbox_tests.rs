@@ -47,7 +47,7 @@ fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, Shinkai
     };
 
     // Create the composite key by concatenating the time_key and the hash_key, with a separator
-    let composite_key = format!("{}:{}", time_key, hash_key);
+    let composite_key = format!("{}:::{}", time_key, hash_key);
 
     Ok(composite_key)
 }
@@ -120,6 +120,9 @@ fn db_inbox() {
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone());
+    println!("Inserted message {:?}", message.encode_message());
+    let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
+    println!("Decoded message {:?}", result);
 
     let last_messages_all = shinkai_db.get_last_messages_from_all(10).unwrap();
     assert_eq!(last_messages_all.len(), 1);
@@ -140,7 +143,7 @@ fn db_inbox() {
         "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string()
     );
 
-    println!("Inbox name: {}", inbox_name_value);
+    println!("Inbox name: {}", inbox_name_value.to_string());
     let last_messages_inbox = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.to_string(), 10, None)
         .unwrap();
@@ -154,6 +157,7 @@ fn db_inbox() {
     let last_unread = shinkai_db
         .get_last_unread_messages_from_inbox(inbox_name_value.clone().to_string(), 10, None)
         .unwrap();
+    println!("Last unread messages: {:?}", last_unread);
     assert_eq!(last_unread.len(), 1);
     assert_eq!(last_unread[0].clone().get_message_content().unwrap(), "Hello World".to_string());
 

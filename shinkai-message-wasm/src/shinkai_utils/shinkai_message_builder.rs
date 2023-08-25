@@ -131,6 +131,7 @@ impl ShinkaiMessageBuilder {
         encryption: EncryptionMethod,
     ) -> Self {
         let signature = "".to_string();
+        self.message_content_schema = message_schema.clone();
         self.internal_metadata = Some(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,
