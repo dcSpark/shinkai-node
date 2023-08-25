@@ -1,6 +1,8 @@
-const {toolkitConfig, validate, execMode} = require('./../build/exec-mode');
 const fs = require('fs');
 
+const {toolkitConfig, validate, execMode} = require('./../build/exec-mode');
+
+process.env.LOG = 'false';
 
 describe('Test Runner: Exec', () => {
   test('Help', async () => {
