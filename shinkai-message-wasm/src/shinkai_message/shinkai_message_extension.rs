@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::shinkai_message::shinkai_message::ShinkaiVersion;
 
@@ -80,23 +81,19 @@ impl ShinkaiMessage {
     }
 
     pub fn decode_message_result(encoded: Vec<u8>) -> Result<Self, ShinkaiMessageError> {
-        let result: Result<ShinkaiMessage, _> = bincode::deserialize(&encoded[..]);
-        match &result {
-            Err(err) => {
-                eprintln!("Failed to decode entire message: {:?}, error: {}", encoded, err);
-
-                // Try to deserialize each part individually
-                if let Err(e) = bincode::deserialize::<MessageBody>(&encoded[..]) {
-                    eprintln!("Failed to decode MessageBody: {:?}, error: {}", encoded, e);
-                }
-                if let Err(e) = bincode::deserialize::<MessageData>(&encoded[..]) {
-                    eprintln!("Failed to decode MessageData: {:?}, error: {}", encoded, e);
-                }
-                if let Err(e) = bincode::deserialize::<ShinkaiVersion>(&encoded[..]) {
-                    eprintln!("Failed to decode ShinkaiVersion: {:?}, error: {}", encoded, e);
+        // Try to deserialize as JSON first
+        if let Ok(str_data) = std::str::from_utf8(&encoded) {
+            if str_data.starts_with('{') && str_data.ends_with('}') {
+                if let Ok(message) = serde_json::from_str::<ShinkaiMessage>(str_data) {
+                    return Ok(message);
                 }
             }
-            _ => {}
+        }
+    
+        // If JSON deserialization failed, try with bincode
+        let result: Result<ShinkaiMessage, _> = bincode::deserialize(&encoded[..]);
+        if result.is_err() {
+            eprintln!("Failed to decode entire message: {:?}, error: {}", encoded, result.as_ref().unwrap_err());
         }
         result.map_err(|err| ShinkaiMessageError::from(err))
     }

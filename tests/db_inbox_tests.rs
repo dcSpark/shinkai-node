@@ -115,7 +115,7 @@ fn db_inbox() {
         node1_subencryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
-        "20230702T20533481345".to_string(),
+        "2023-07-02T20:53:34Z".to_string(),
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();

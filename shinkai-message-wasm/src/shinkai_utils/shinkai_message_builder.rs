@@ -679,7 +679,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk)
             .message_raw_content("body content".to_string())
@@ -723,7 +723,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
             .message_raw_content("body content".to_string())
@@ -775,7 +775,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk.clone(), my_identity_sk, node2_encryption_pk)
             .message_raw_content("body content".to_string())
@@ -891,7 +891,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
 
         let message_result = ShinkaiMessageBuilder::new(my_encryption_sk, my_identity_sk, node2_encryption_pk).build();
         assert!(message_result.is_err());

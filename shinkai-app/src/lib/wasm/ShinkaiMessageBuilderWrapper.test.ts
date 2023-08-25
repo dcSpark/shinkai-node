@@ -77,7 +77,7 @@ test('ShinkaiMessageBuilderWrapper should set body content correctly', async () 
   await messageBuilder.body_encryption(EncryptionMethod.None);
   await messageBuilder.message_schema_type(MessageSchemaType.TextContent);
   await messageBuilder.internal_metadata('sender_user2', 'recipient_user1', '', 'None');
-  await messageBuilder.external_metadata_with_schedule('@@other_node.shinkai', '@@my_node.shinkai', '20230702T20533481345');
+  await messageBuilder.external_metadata_with_schedule('@@other_node.shinkai', '@@my_node.shinkai', '2023-07-02T20:53:34Z');
 
   const message = messageBuilder.build_to_string();
 

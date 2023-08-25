@@ -11,8 +11,8 @@ mod tests {
     use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
     use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiVersion;
     use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-    use shinkai_message_wasm::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_wasm::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+    use shinkai_message_wasm::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
     use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
     use shinkai_message_wasm::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
@@ -25,23 +25,27 @@ mod tests {
         let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
         let receiver_public_key = my_encryption_public_key.clone();
 
-        let message = ShinkaiMessageBuilder::new(my_encryption_secret_key.clone(), clone_signature_secret_key(&my_signature_secret_key), receiver_public_key)
-            .message_raw_content("Hello World".to_string())
-            .body_encryption(EncryptionMethod::None)
-            .message_schema_type(MessageSchemaType::TextContent)
-            .internal_metadata_with_inbox(
-                "".to_string(),
-                "main_profile_node1".to_string(),
-                "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
-                EncryptionMethod::None,
-            )
-            .external_metadata_with_schedule(
-                "@@node1.shinkai".to_string(),
-                "@@node1.shinkai".to_string(),
-                "20230702T20533481345".to_string(),
-            )
-            .build()
-            .unwrap();
+        let message = ShinkaiMessageBuilder::new(
+            my_encryption_secret_key.clone(),
+            clone_signature_secret_key(&my_signature_secret_key),
+            receiver_public_key,
+        )
+        .message_raw_content("Hello World".to_string())
+        .body_encryption(EncryptionMethod::None)
+        .message_schema_type(MessageSchemaType::TextContent)
+        .internal_metadata_with_inbox(
+            "".to_string(),
+            "main_profile_node1".to_string(),
+            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
+            EncryptionMethod::None,
+        )
+        .external_metadata_with_schedule(
+            "@@node1.shinkai".to_string(),
+            "@@node1.shinkai".to_string(),
+            "2023-07-02T20:53:34Z".to_string(),
+        )
+        .build()
+        .unwrap();
 
         // Encode the message
         let encoded_message = message.encode_message().unwrap();
@@ -50,7 +54,97 @@ mod tests {
         let decoded_message = ShinkaiMessage::decode_message_result(encoded_message).unwrap();
 
         // Check if the original and decoded messages are the same
-        assert_eq!(message.calculate_message_hash(), decoded_message.calculate_message_hash());
+        assert_eq!(
+            message.calculate_message_hash(),
+            decoded_message.calculate_message_hash()
+        );
+    }
+
+    #[test]
+    fn test_serde_encode_decode_message() {
+        // Initialize the message
+        let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
+        let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
+        let receiver_public_key = my_encryption_public_key.clone();
+
+        let message = ShinkaiMessageBuilder::new(
+            my_encryption_secret_key.clone(),
+            clone_signature_secret_key(&my_signature_secret_key),
+            receiver_public_key,
+        )
+        .message_raw_content("Hello World".to_string())
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .message_schema_type(MessageSchemaType::TextContent)
+        .internal_metadata_with_inbox(
+            "".to_string(),
+            "main_profile_node1".to_string(),
+            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
+            EncryptionMethod::None,
+        )
+        .external_metadata_with_schedule(
+            "@@node1.shinkai".to_string(),
+            "@@node1.shinkai".to_string(),
+            "2023-07-02T20:53:34Z".to_string(),
+        )
+        .build()
+        .unwrap();
+
+        // Serialize the message to a JSON string
+        let serialized_message = serde_json::to_string(&message).unwrap();
+
+        // Deserialize the JSON string back to a ShinkaiMessage
+        let deserialized_message: ShinkaiMessage = serde_json::from_str(&serialized_message).unwrap();
+
+        // Check if the original and deserialized messages are the same
+        assert_eq!(
+            message.calculate_message_hash(),
+            deserialized_message.calculate_message_hash()
+        );
+    }
+
+    #[test]
+    fn test_serde_encode_decode_message_with_decode_message_result() {
+        // Initialize the message
+        let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
+        let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
+        let receiver_public_key = my_encryption_public_key.clone();
+    
+        let message = ShinkaiMessageBuilder::new(
+            my_encryption_secret_key.clone(),
+            clone_signature_secret_key(&my_signature_secret_key),
+            receiver_public_key,
+        )
+        .message_raw_content("Hello World".to_string())
+        .body_encryption(EncryptionMethod::None)
+        .message_schema_type(MessageSchemaType::TextContent)
+        .internal_metadata_with_inbox(
+            "".to_string(),
+            "main_profile_node1".to_string(),
+            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false".to_string(),
+            EncryptionMethod::DiffieHellmanChaChaPoly1305,
+        )
+        .external_metadata_with_schedule(
+            "@@node1.shinkai".to_string(),
+            "@@node1.shinkai".to_string(),
+            "2023-07-02T20:53:34Z".to_string(),
+        )
+        .build()
+        .unwrap();
+    
+        // Serialize the message to a JSON string
+        let serialized_message = serde_json::to_string(&message).unwrap();
+    
+        // Convert the JSON string to bytes
+        let serialized_message_bytes = serialized_message.into_bytes();
+    
+        // Deserialize the JSON string back to a ShinkaiMessage using decode_message_result
+        let deserialized_message = ShinkaiMessage::decode_message_result(serialized_message_bytes).unwrap();
+    
+        // Check if the original and deserialized messages are the same
+        assert_eq!(
+            message.calculate_message_hash(),
+            deserialized_message.calculate_message_hash()
+        );
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -75,7 +169,7 @@ mod tests {
         let external_metadata = ExternalMetadata::new(
             String::from("test_sender"),
             String::from("test_recipient"),
-            String::from("20230702T20533481345"),
+            String::from("2023-07-02T20:53:34Z"),
             String::from("test_signature"),
             String::from("test_other"),
         );
@@ -117,7 +211,7 @@ mod tests {
                 "external_metadata": {
                     "sender": "test_sender",
                     "recipient": "test_recipient",
-                    "scheduled_time": "20230702T20533481345",
+                    "scheduled_time": "2023-07-02T20:53:34Z",
                     "signature": "test_signature",
                     "other": "test_other"
                 },
@@ -152,7 +246,7 @@ mod tests {
             "external_metadata": {
                 "sender": "test_sender",
                 "recipient": "test_recipient",
-                "scheduled_time": "20230702T20533481345",
+                "scheduled_time": "2023-07-02T20:53:34Z",
                 "signature": "test_signature",
                 "other": "test_other"
             },
@@ -205,7 +299,7 @@ mod tests {
         let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, String::from("test_sender"));
         assert_eq!(external_metadata.recipient, String::from("test_recipient"));
-        assert_eq!(external_metadata.scheduled_time, String::from("20230702T20533481345"));
+        assert_eq!(external_metadata.scheduled_time, String::from("2023-07-02T20:53:34Z"));
         assert_eq!(external_metadata.signature, String::from("test_signature"));
         assert_eq!(external_metadata.other, String::from("test_other"));
     }
