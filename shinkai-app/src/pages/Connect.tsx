@@ -175,7 +175,7 @@ const Connect: React.FC = () => {
               />
             </div>
           </div>
-          <div className="flex grow p-10 rounded-[1.25rem] bg-white dark:bg-slate-800">
+          <div className="flex grow p-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
             <div className="w-full max-w-[31.5rem] m-auto">
               <a href="https://shinkai.com/" target="_blank">
                 <img

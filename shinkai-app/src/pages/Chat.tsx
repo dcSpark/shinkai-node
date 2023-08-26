@@ -161,7 +161,7 @@ const Chat: React.FC = () => {
       </IonHeaderCustom>
 
       <IonContentCustom>
-        <div className="py-10 rounded-[1.25rem] bg-white dark:bg-slate-800">
+        <div className="py-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
           {hasMoreMessages && (
             <IonButton
               onClick={() =>
@@ -179,7 +179,7 @@ const Chat: React.FC = () => {
               Load More
             </IonButton>
           )}
-          <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50 rounded=[1.5rem]  ">
+          <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50 md:rounded=[1.25rem]  ">
             {messages &&
               messages
                 .slice()

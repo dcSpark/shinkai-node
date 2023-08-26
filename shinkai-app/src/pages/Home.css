@@ -16,12 +16,12 @@
 
 .ion-actionSheet-custom {
   --max-width: 100%;
-  border-radius: 1.5rem;
+  @apply md:rounded-[1.5rem];
   --button-background: theme("colors.white");
   @media (prefers-color-scheme: dark) {
     --button-background: theme("colors.slate.800");
   }
   .action-sheet-container {
-    @apply bg-white rounded-t-[1.5rem] py-6 pb-2 dark:bg-slate-800;
+    @apply bg-white rounded-t-[1.25rem] py-6 pb-2 dark:bg-slate-800;
   }
 }

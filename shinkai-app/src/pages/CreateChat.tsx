@@ -85,7 +85,7 @@ const CreateChat: React.FC = () => {
       <IonContentCustom>
         <IonGrid
           className={
-            "rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4"
+            "md:rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4"
           }
         >
           <IonRow>

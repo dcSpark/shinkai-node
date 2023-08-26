@@ -30,7 +30,7 @@ export const IonContentCustom = ({
 }) => {
   return (
     <IonContent fullscreen class="ion-content-custom">
-      <div className="container mx-auto md:mt-4">{children}</div>
+      <div className="container mx-auto mt-4 md:mt-4">{children}</div>
     </IonContent>
   );
 };
@@ -43,7 +43,7 @@ export const IonFooterCustom = ({
   return (
     <IonFooter className="shadow border-t border-slate-50 md:border-0 dark:border-slate-600 ">
       <IonToolbar
-        className="container rounded-[1.5rem]"
+        className="container md:rounded-[1.25rem]"
         class="ion-toolbar-custom"
       >
         {children}

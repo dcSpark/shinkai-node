@@ -1,7 +1,7 @@
 .ion-header-custom {
   --background: theme("colors.slate.900");
   --color: white;
-  min-height:100px;
+  @apply min-h-[60px] md:min-h-[100px];
   @apply flex items-center;
   @media (prefers-color-scheme: dark) {
     --color: theme("colors.slate.200");
