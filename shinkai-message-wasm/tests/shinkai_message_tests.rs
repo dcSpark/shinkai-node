@@ -11,11 +11,16 @@ mod tests {
     use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
     use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiVersion;
     use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+    use shinkai_message_wasm::shinkai_utils::encryption::encryption_public_key_to_string;
+    use shinkai_message_wasm::shinkai_utils::encryption::encryption_secret_key_to_string;
     use shinkai_message_wasm::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
     use shinkai_message_wasm::shinkai_utils::encryption::EncryptionMethod;
     use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
     use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
+    use shinkai_message_wasm::shinkai_utils::signatures::signature_secret_key_to_string;
     use shinkai_message_wasm::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+    use shinkai_message_wasm::ShinkaiMessageBuilderWrapper;
+    use shinkai_message_wasm::ShinkaiMessageWrapper;
     use wasm_bindgen_test::*;
 
     #[test]
@@ -108,7 +113,7 @@ mod tests {
         let (my_encryption_secret_key, my_encryption_public_key) = unsafe_deterministic_encryption_keypair(0);
         let (my_signature_secret_key, my_signature_public_key) = unsafe_deterministic_signature_keypair(0);
         let receiver_public_key = my_encryption_public_key.clone();
-    
+
         let message = ShinkaiMessageBuilder::new(
             my_encryption_secret_key.clone(),
             clone_signature_secret_key(&my_signature_secret_key),
@@ -130,19 +135,76 @@ mod tests {
         )
         .build()
         .unwrap();
-    
+
         // Serialize the message to a JSON string
         let serialized_message = serde_json::to_string(&message).unwrap();
-    
+
         // Convert the JSON string to bytes
         let serialized_message_bytes = serialized_message.into_bytes();
-    
+
         // Deserialize the JSON string back to a ShinkaiMessage using decode_message_result
         let deserialized_message = ShinkaiMessage::decode_message_result(serialized_message_bytes).unwrap();
-    
+
         // Check if the original and deserialized messages are the same
         assert_eq!(
             message.calculate_message_hash(),
+            deserialized_message.calculate_message_hash()
+        );
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_wasm_serde_encode_decode_message_with_decode_message_result() {
+        let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+        let recipient = "@@other_node.shinkai".to_string();
+        let sender = "@@my_node.shinkai".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
+        let recipient_subidentity = "recipient_user1".to_string();
+        let sender_subidentity = "sender_user2".to_string();
+
+        let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk);
+        let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let node2_encryption_pk_string = encryption_public_key_to_string(node2_encryption_pk);
+
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            node2_encryption_pk_string,
+        )
+        .unwrap();
+
+        let _ = builder.message_raw_content("body content".into());
+        let _ = builder.body_encryption("None".into());
+        let _ = builder.message_schema_type("TextContent".into());
+        let _ = builder.internal_metadata(
+            sender_subidentity.clone().into(),
+            recipient_subidentity.clone().into(),
+            "None".into(),
+        );
+        let _ = builder.external_metadata_with_schedule(
+            recipient.clone().into(),
+            sender.clone().into(),
+            scheduled_time.clone().into(),
+        );
+
+        let message_result = builder.build();
+        assert!(message_result.is_ok());
+
+        let message_wrapper = message_result.unwrap();
+        let message_json = message_wrapper.to_json_str().unwrap();
+
+        // Convert the JSON string to bytes
+        let message_bytes = message_json.into_bytes();
+
+        // Deserialize the JSON string back to a ShinkaiMessage using decode_message_result
+        let deserialized_message = ShinkaiMessage::decode_message_result(message_bytes).unwrap();
+
+        // Check if the original and deserialized messages are the same
+        assert_eq!(
+            message_wrapper.calculate_hash(),
             deserialized_message.calculate_message_hash()
         );
     }

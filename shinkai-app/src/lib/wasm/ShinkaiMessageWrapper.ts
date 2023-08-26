@@ -1,12 +1,12 @@
 import { EncryptionMethod, ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper as ShinkaiMessageWrapperWASM } from '../../pkg/shinkai_message_wasm.js';
-import { Body, ExternalMetadata, ShinkaiMessage } from '../../models/ShinkaiMessage';
+import { ExternalMetadata, ShinkaiMessage } from '../../models/ShinkaiMessage';
 import { mapEncryptionMethod } from '../../utils/wasm_helpers.js';
 
 export class ShinkaiMessageWrapper {
   private wasmWrapper: ShinkaiMessageWrapperWASM;
 
   constructor(message: ShinkaiMessage) {
-    this.wasmWrapper = new ShinkaiMessageWrapperWASM(message.body, message.external_metadata, mapEncryptionMethod(message.encryption));
+    this.wasmWrapper = ShinkaiMessageWrapperWASM.fromJsValue(message);
   }
 
   static fromJsValue(j: any): ShinkaiMessageWrapper {
@@ -36,7 +36,7 @@ export class ShinkaiMessageWrapper {
   }
 
   get body(): Body {
-    return this.wasmWrapper.body;
+    return this.wasmWrapper.message_body;
   }
 
   get encryption(): string {
