@@ -3,7 +3,6 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::{
         identity_manager::{self, IdentityManager},
-        job_manager::Job, agent_serialization::SerializedAgent,
     },
     network::{
         node_message_handlers::{ping_pong, PingPong},
@@ -21,7 +20,7 @@ use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{
         inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
+        shinkai_name::{ShinkaiName, ShinkaiNameError}, agents::serialized_agent::SerializedAgent,
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,

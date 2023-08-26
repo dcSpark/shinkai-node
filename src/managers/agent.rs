@@ -1,10 +1,7 @@
-use super::agent_serialization::SerializedAgent;
-use super::providers::openai::OpenAI;
-use super::providers::sleep_api::SleepAPI;
 use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::shinkai_name::ShinkaiName};
+use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{AgentAPIModel, SerializedAgent}}};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -25,11 +22,11 @@ pub struct Agent {
     pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AgentAPIModel {
-    OpenAI(OpenAI),
-    Sleep(SleepAPI),
-}
+// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+// pub enum AgentAPIModel {
+//     OpenAI(OpenAI),
+//     Sleep(SleepAPI),
+// }
 
 impl Agent {
     pub fn new(
@@ -175,6 +172,7 @@ impl From<reqwest::Error> for AgentError {
 mod tests {
     use super::*;
     use mockito::Server;
+    use shinkai_message_wasm::schemas::agents::serialized_agent::{SleepAPI, OpenAI};
     use tokio::sync::mpsc;
 
     #[tokio::test]

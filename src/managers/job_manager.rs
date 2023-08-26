@@ -15,7 +15,7 @@ use std::{fmt, thread};
 use tokio::sync::{mpsc, Mutex};
 use warp::path::full;
 
-use super::{agent::Agent, agent_serialization::SerializedAgent, IdentityManager};
+use super::{agent::Agent, IdentityManager};
 
 pub trait JobLike: Send + Sync {
     fn job_id(&self) -> &str;

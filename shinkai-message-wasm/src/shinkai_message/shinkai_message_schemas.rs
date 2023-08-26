@@ -5,7 +5,7 @@ use serde_json::Result;
 use regex::Regex;
 use wasm_bindgen::JsValue;
 
-use crate::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName};
+use crate::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, agents::serialized_agent::SerializedAgent};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {

@@ -5,6 +5,7 @@ use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
@@ -18,7 +19,6 @@ use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::agent_serialization::SerializedAgent;
 use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Clone)]

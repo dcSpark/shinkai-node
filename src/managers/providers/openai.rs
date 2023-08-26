@@ -1,7 +1,7 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient};
+use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::agents::serialized_agent::OpenAI};
 use std::error::Error;
 use async_trait::async_trait;
 
@@ -36,11 +36,6 @@ struct Usage {
     prompt_tokens: i32,
     completion_tokens: i32,
     total_tokens: i32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct OpenAI {
-    pub model_type: String,
 }
 
 #[async_trait]

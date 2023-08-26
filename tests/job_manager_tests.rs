@@ -19,7 +19,7 @@ mod tests {
     use async_trait::async_trait;
     use mockito::Server;
     use shinkai_message_wasm::{
-        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
+        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, agents::serialized_agent::{SerializedAgent, OpenAI, AgentAPIModel}},
         shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
             encryption::{unsafe_deterministic_encryption_keypair},
@@ -31,11 +31,8 @@ mod tests {
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
-            agent::{Agent, AgentAPIModel},
-            agent_serialization::SerializedAgent,
             identity_manager,
             job_manager::{AgentManager, JobLike, JobManager},
-            providers::openai::OpenAI,
         },
     };
     use std::collections::HashMap;
