@@ -34,7 +34,6 @@ pub enum AgentAPIModel {
 impl Agent {
     pub fn new(
         id: String,
-        // name: String,
         full_identity_name: ShinkaiName,
         job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
         perform_locally: bool,

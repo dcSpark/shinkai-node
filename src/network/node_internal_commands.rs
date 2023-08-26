@@ -1,12 +1,11 @@
-use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node};
+use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node, node_error::NodeError};
 use crate::{
     db::db_errors::ShinkaiDBError,
     managers::{
         identity_manager::{self, IdentityManager},
-        job_manager::Job,
+        job_manager::Job, agent_serialization::SerializedAgent,
     },
     network::{
-        node::NodeError,
         node_message_handlers::{ping_pong, PingPong},
     },
     schemas::{
@@ -274,6 +273,11 @@ impl Node {
         };
     }
 
+    pub async fn add_agent(&self, agent: SerializedAgent, res: Sender<Result<(), NodeError>>) {
+        let result = self.db.lock().await.add_agent(agent);
+        let _ = res.send(result.map_err(|e| NodeError::from(e))).await;
+    }
+
     pub async fn ping_all(&self) -> io::Result<()> {
         info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
         let mut db_lock = self.db.lock().await;
@@ -290,7 +294,7 @@ impl Node {
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
-            ping_pong(
+            let _ = ping_pong(
                 peer,
                 PingPong::Ping,
                 clone_static_secret_key(&self.encryption_secret_key),

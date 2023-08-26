@@ -22,7 +22,8 @@ fn setup() {
 }
 
 #[test]
-fn tcp_node_test() {
+fn node_agent_registration() {
+    // WIP: need to find a way to test the agent registration
     setup();
     let rt = Runtime::new().unwrap();
 

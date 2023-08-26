@@ -15,6 +15,7 @@ pub enum MessageSchemaType {
     CreateRegistrationCode,
     APIGetMessagesFromInboxRequest,
     APIReadUpToTimeRequest,
+    APIAddAgentRequest,
     TextContent,
     Empty
 }
@@ -29,6 +30,7 @@ impl MessageSchemaType {
             "TextContent" => Some(Self::TextContent),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
+            "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -43,6 +45,7 @@ impl MessageSchemaType {
             Self::TextContent => "TextContent",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
+            Self::APIAddAgentRequest => "APIAddAgentRequest",
             Self::Empty => "",
         }
     }
@@ -206,6 +209,22 @@ pub struct APIReadUpToTimeRequest {
 }
 
 impl APIReadUpToTimeRequest {
+    pub fn from_json_str(s: &str) -> Result<Self> {
+        let deserialized: Self = serde_json::from_str(s)?;
+        Ok(deserialized)
+    }
+
+    pub fn to_json_str(&self) -> std::result::Result<String, JsValue> {
+        serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct APIAddAgentRequest {
+    pub agent: SerializedAgent,
+}
+
+impl APIAddAgentRequest {
     pub fn from_json_str(s: &str) -> Result<Self> {
         let deserialized: Self = serde_json::from_str(s)?;
         Ok(deserialized)

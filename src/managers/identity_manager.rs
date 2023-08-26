@@ -1,5 +1,5 @@
 use crate::db::ShinkaiDB;
-use crate::network::node::NodeError;
+use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
 use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,

@@ -23,6 +23,7 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::{JobManager, JobManagerError};
 use crate::managers::{job_manager, IdentityManager};
@@ -32,53 +33,7 @@ use crate::network::node_message_handlers::{
 use crate::schemas::identity::{Identity, StandardIdentity};
 
 use super::node_api::APIError;
-
-#[derive(Debug)]
-pub struct NodeError {
-    pub message: String,
-}
-
-impl std::fmt::Display for NodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for NodeError {}
-
-impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<std::io::Error> for NodeError {
-    fn from(err: std::io::Error) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<ShinkaiMessageError> for NodeError {
-    fn from(err: ShinkaiMessageError) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<JobManagerError> for NodeError {
-    fn from(error: JobManagerError) -> Self {
-        // Here you need to decide how to convert a JobManagerError into a NodeError.
-        // This is just an example, adjust it according to your needs.
-        NodeError {
-            message: format!("JobManagerError occurred: {}", error),
-        }
-    }
-}
+use super::node_error::NodeError;
 
 pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
@@ -149,8 +104,6 @@ pub enum NodeCommand {
         res: Sender<Vec<ShinkaiMessage>>,
     },
     APIMarkAsReadUpTo {
-        // inbox_name: String,
-        // up_to_time: String,
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },

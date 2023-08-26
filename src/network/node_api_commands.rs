@@ -1,9 +1,8 @@
-use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node};
+use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node, node_error::NodeError};
 use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::{
-        node::NodeError,
         node_message_handlers::{ping_pong, PingPong},
     },
     schemas::{
@@ -995,6 +994,46 @@ impl Node {
         }
 
         Ok(())
+    }
+
+    pub async fn api_add_agent(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(
+                potentially_encrypted_msg,
+                Some(MessageSchemaType::REPLACE_ME),
+            )
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+    
+        // TODO: add permissions to check if the sender has the right permissions to contact the agent
+    
+        match self.add_agent(msg).await {
+            Ok(_) => {
+                // If everything went well, send the job_id back with an empty string for error
+                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
     }
 
     pub async fn api_handle_send_onionized_message(
