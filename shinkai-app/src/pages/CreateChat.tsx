@@ -23,11 +23,14 @@ import { useSetup } from "../hooks/usetSetup";
 import { RootState } from "../store/reducers";
 import { useHistory } from "react-router-dom";
 import { History } from "history";
+import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
+import Input from "../components/ui/Input";
+import Button from "../components/ui/Button";
 
 const CreateChat: React.FC = () => {
   useSetup();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetailsState,
   );
   const [shinkaiIdentity, setShinkaiIdentity] = useState("");
   const [messageText, setMessageText] = useState("");
@@ -45,8 +48,7 @@ const CreateChat: React.FC = () => {
     let receiver_subidentity = rest.join("/");
 
     // Local Identity
-    const { shinkai_identity, profile, registration_name } =
-      setupDetailsState;
+    const { shinkai_identity, profile, registration_name } = setupDetailsState;
 
     let sender = shinkai_identity;
     let sender_subidentity = `${profile}/device/${registration_name}`;
@@ -61,59 +63,59 @@ const CreateChat: React.FC = () => {
         receiver,
         receiver_subidentity,
         messageText,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
 
     if (inboxId) {
       // Hacky solution because react-router can't handle dots in the URL
-      const encodedInboxId = inboxId.toString().replace(/\./g, '~');
+      const encodedInboxId = inboxId.toString().replace(/\./g, "~");
       history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
     }
   };
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonButtons slot="start">
-            <IonBackButton defaultHref="/home" />
-          </IonButtons>
-          <IonTitle>Create Chat</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
-        <IonGrid>
+      <IonHeaderCustom>
+        <IonButtons slot="start">
+          <IonBackButton defaultHref="/home" />
+        </IonButtons>
+        <IonTitle>Create Chat</IonTitle>
+      </IonHeaderCustom>
+      <IonContentCustom>
+        <IonGrid
+          className={
+            "rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4"
+          }
+        >
           <IonRow>
             <IonCol>
-              <h2>New Chat Details</h2>
-              <IonItem>
-                <IonInput
+              <h2 className={"text-lg mb-3 md:mb-8 text-center"}>
+                New Chat Details
+              </h2>
+              <div className={"space-y-5"}>
+                <Input
                   value={shinkaiIdentity}
-                  label="Enter Shinkai Identity"
+                  label="Enter Shinkai Identity. Eg:@@name.shinkai or @@name.shinkai/profile"
                   aria-label="Enter Shinkai Identity"
-                  placeholder="@@name.shinkai or @@name.shinkai/profile"
-                  onIonChange={(e) => setShinkaiIdentity(e.detail.value!)}
+                  onChange={(e) => setShinkaiIdentity(e.detail.value!)}
                 />
-              </IonItem>
-              <IonItem>
-                <IonLabel position="floating">Enter Message</IonLabel>
-                <IonTextarea
+
+                <Input
                   label="Enter Message"
                   aria-label="Enter Message"
                   value={messageText}
-                  onIonChange={(e) => setMessageText(e.detail.value!)}
+                  onChange={(e) => setMessageText(e.detail.value!)}
                 />
-              </IonItem>
+              </div>
+
               <div style={{ marginTop: "20px" }}>
-                <IonButton expand="full" onClick={handleCreateChat}>
-                  Create Chat
-                </IonButton>
+                <Button onClick={handleCreateChat}>Create Chat</Button>
               </div>
             </IonCol>
           </IonRow>
         </IonGrid>
-      </IonContent>
+      </IonContentCustom>
     </IonPage>
   );
 };

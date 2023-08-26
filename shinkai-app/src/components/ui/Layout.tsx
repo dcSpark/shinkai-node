@@ -30,7 +30,7 @@ export const IonContentCustom = ({
 }) => {
   return (
     <IonContent fullscreen class="ion-content-custom">
-      <div className="container mx-auto">{children}</div>
+      <div className="container mx-auto md:mt-4">{children}</div>
     </IonContent>
   );
 };

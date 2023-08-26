@@ -13,6 +13,7 @@ import {
   IonToast,
   InputChangeEventDetail,
   IonIcon,
+  IonSpinner,
 } from "@ionic/react";
 import { submitRegistrationCode } from "../api";
 import { BrowserQRCodeReader } from "@zxing/browser";
@@ -34,7 +35,7 @@ import { cn } from "../theme/lib/utils";
 import Button from "../components/ui/Button";
 import { IonHeaderCustom } from "../components/ui/Layout";
 import Input from "../components/ui/Input";
-import { scan, cloudUpload } from "ionicons/icons";
+import { scan, cloudUpload, checkmarkSharp } from "ionicons/icons";
 
 export type MergedSetupType = SetupDetailsState & QRSetupData;
 
@@ -54,6 +55,9 @@ const Connect: React.FC = () => {
     myIdentityPk: "",
     myIdentitySk: "",
   });
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "error" | "success"
+  >("idle");
   const [error, setError] = useState<string | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const history = useHistory();
@@ -128,12 +132,16 @@ const Connect: React.FC = () => {
   };
 
   const finishSetup = async () => {
+    setStatus("loading");
     const success = await dispatch(submitRegistrationCode(setupData));
 
     if (success) {
+      setStatus("success");
       localStorage.setItem("setupComplete", "true");
       history.push("/home");
     } else {
+      setStatus("error");
+
       console.log("Error from state:", errorFromState);
       toast.error(errorFromState);
     }
@@ -259,8 +267,27 @@ const Connect: React.FC = () => {
                   }
                   label="My Signature Public Key"
                 />
-                <Button onClick={finishSetup} className="mt-6">
-                  Sign In
+                {status === "error" && (
+                  <p
+                    role={"alert"}
+                    className={"text-red-600 text-base text-center"}
+                  >
+                    Something went wrong. Please check your inputs and try again
+                  </p>
+                )}
+                <Button
+                  onClick={finishSetup}
+                  className="mt-6"
+                  disabled={status === "loading"}
+                >
+                  {status === "loading" ? (
+                    <IonSpinner
+                      name="bubbles"
+                      className={"w-10 h-10"}
+                    ></IonSpinner>
+                  ) : (
+                    "Sign In"
+                  )}
                 </Button>
               </div>
             </div>
@@ -285,6 +312,9 @@ function CustomQrScanner({
   scanDelay: number;
 }) {
   const [showScanner, setShowScanner] = useState(false);
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "error" | "success"
+  >("idle");
 
   return showScanner ? (
     <div className="relative">
@@ -293,6 +323,10 @@ function CustomQrScanner({
         onError={onError}
         onDecode={onDecode}
         containerStyle={containerStyle}
+        onResult={(result) => {
+          setStatus("success");
+          setShowScanner(false);
+        }}
       />
       <Button
         variant={"tertiary"}
@@ -301,6 +335,12 @@ function CustomQrScanner({
       >
         Close
       </Button>
+      <IonToast
+        message={"QR Code scanned successfully!"}
+        duration={5000}
+        icon={checkmarkSharp}
+        isOpen={status === "success"}
+      ></IonToast>
     </div>
   ) : (
     <Button

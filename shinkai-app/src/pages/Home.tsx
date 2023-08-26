@@ -96,7 +96,7 @@ const Home: React.FC = () => {
         {/* <ExploreContainer /> */}
 
         <IonContentCustom>
-          <div className=" h-full flex flex-col">
+          <div className="h-full flex flex-col">
             <div className="flex-1 rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4">
               {Object.entries(inboxes).map(([position, inboxId]) => (
                 <IonItem
@@ -129,6 +129,7 @@ const Home: React.FC = () => {
       </IonContent>
       {/* Action Sheet (popup) */}
       <IonActionSheet
+        className="ion-actionSheet-custom"
         isOpen={showActionSheet}
         onDidDismiss={() => setShowActionSheet(false)}
         buttons={[
