@@ -24,15 +24,11 @@ impl InternalMetadata {
     pub fn new(
         sender_subidentity: String,
         recipient_subidentity: String,
-        // message_schema_type: String,
         inbox: String,
         encryption: String,
         signature: String,
     ) -> Result<Self, ShinkaiMessageWasmError> {
-        // let message_schema_type = MessageSchemaType::from_str(&message_schema_type)
-            // .ok_or(ShinkaiMessageWasmError::MessageSchemaTypeParseError(message_schema_type.clone()))?;
         let encryption = EncryptionMethod::from_str(&encryption);
-
         Ok(InternalMetadata {
             sender_subidentity,
             recipient_subidentity,

@@ -271,6 +271,7 @@ impl IdentityManager {
         original_message: &ShinkaiMessage,
         decrypted_message: &ShinkaiMessage,
     ) -> Result<(), NodeError> {
+        eprintln!("signature check > sender_subidentity: {:?}", sender_subidentity);
         if sender_subidentity.is_none() {
             eprintln!(
                 "signature check > Subidentity not found for profile name: {}",
@@ -301,7 +302,9 @@ impl IdentityManager {
                 "signature check > Signature public key doesn't exist for identity: {}",
                 subidentity.get_full_identity_name()
             );
-            return Ok(());
+            return Err(NodeError {
+                message: format!("Failed to verify message signature. Signature public key doesn't exist for identity"),
+            });
         }
 
         match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {

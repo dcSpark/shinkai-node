@@ -35,7 +35,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
         let recipient_subidentity = "recipient_user1".to_string();
         let sender_subidentity = "sender_user2".to_string();
 
@@ -119,7 +119,7 @@ mod tests {
 
         let recipient = "@@other_node.shinkai".to_string();
         let sender = "@@my_node.shinkai".to_string();
-        let scheduled_time = "20230702T20533481345".to_string();
+        let scheduled_time = "2023-07-02T20:53:34Z".to_string();
         let recipient_subidentity = "recipient_user1".to_string();
         let sender_subidentity = "sender_user2".to_string();
 
@@ -812,7 +812,7 @@ mod tests {
         let sender_profile_name = "sender_profile".to_string();
         let receiver = "@@receiver_node.shinkai".to_string();
         let inbox = "inbox::@@node.shinkai::true".to_string();
-        let up_to_time = "20230702T20533481345".to_string();
+        let up_to_time = "2023-07-02T20:53:34Z".to_string();
 
         // Call the function and check the result
         let message_result = ShinkaiMessageBuilderWrapper::read_up_to_time(
@@ -864,6 +864,6 @@ mod tests {
             content["inbox_name"]["RegularInbox"]["identities"][0]["node_name"],
             "@@node.shinkai"
         );
-        assert_eq!(content["up_to_time"], "20230702T20533481345");
+        assert_eq!(content["up_to_time"], "2023-07-02T20:53:34Z");
     }
 }
