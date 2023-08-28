@@ -1,6 +1,7 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -148,11 +149,11 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<bool>,
     },
-    APICreateNewJob {
+    APICreateJob {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
-    CreateNewJob {
+    CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
@@ -174,6 +175,14 @@ pub enum NodeCommand {
         content: String,
         recipient: String,
         res: Sender<(String, String)>,
+    },
+    APIAddAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    AddAgent {
+        agent: SerializedAgent,
+        res: Sender<String>,
     },
 }
 
@@ -318,8 +327,9 @@ impl Node {
                             Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
                             Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
+                            Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints
                             Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
@@ -330,9 +340,10 @@ impl Node {
                             Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
                             // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
                             // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
-                            Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
+                            Some(NodeCommand::APICreateJob { msg, res }) => self.api_create_new_job(msg, res).await?,
                             // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
+                            Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
                             _ => break,
                         }
                     }

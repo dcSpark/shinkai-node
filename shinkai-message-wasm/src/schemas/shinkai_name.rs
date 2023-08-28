@@ -321,6 +321,13 @@ impl ShinkaiName {
         }
     }
 
+    pub fn has_agent(&self) -> bool {
+        match self.subidentity_type {
+            Some(ShinkaiSubidentityType::Agent) => true,
+            _ => false,
+        }
+    }
+
     pub fn has_no_subidentities(&self) -> bool {
         self.profile_name.is_none() && self.subidentity_type.is_none()
     }
@@ -335,6 +342,14 @@ impl ShinkaiName {
 
     pub fn get_device_name(&self) -> Option<String> {
         if self.has_device() {
+            self.subidentity_name.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn get_agent_name(&self) -> Option<String> {
+        if self.has_agent() {
             self.subidentity_name.clone()
         } else {
             None

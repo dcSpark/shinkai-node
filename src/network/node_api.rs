@@ -432,7 +432,7 @@ async fn create_job_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateNewJob {
+        |node_commands_sender, message, res_sender| NodeCommand::APICreateJob {
             msg: message,
             res: res_sender,
         },

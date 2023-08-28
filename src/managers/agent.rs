@@ -22,12 +22,6 @@ pub struct Agent {
     pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
 }
 
-// #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-// pub enum AgentAPIModel {
-//     OpenAI(OpenAI),
-//     Sleep(SleepAPI),
-// }
-
 impl Agent {
     pub fn new(
         id: String,

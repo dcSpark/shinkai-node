@@ -25,7 +25,7 @@ use shinkai_message_wasm::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
             APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
-            RegistrationCodeRequest, RegistrationCodeType,
+            RegistrationCodeRequest, RegistrationCodeType, APIAddAgentRequest,
         },
     },
     shinkai_utils::{
@@ -1004,7 +1004,7 @@ impl Node {
         let validation_result = self
             .validate_message(
                 potentially_encrypted_msg,
-                Some(MessageSchemaType::TextContent),
+                Some(MessageSchemaType::APIAddAgentRequest),
             )
             .await;
         let (msg, sender_subidentity) = match validation_result {
@@ -1017,23 +1017,28 @@ impl Node {
     
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
     
-        // match self.add_agent(msg).await {
-        //     Ok(_) => {
-        //         // If everything went well, send the job_id back with an empty string for error
-        //         let _ = res.send(Ok("Agent added successfully".to_string())).await;
-        //         Ok(())
-        //     }
-        //     Err(err) => {
-        //         // If there was an error, send the error message
-        //         let api_error = APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("{}", err),
-        //         };
-        //         let _ = res.send(Err(api_error)).await;
+        let serialized_agent_string = msg.get_message_content()?;
+        let serialized_agent: APIAddAgentRequest = serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {
+            message: format!("Failed to parse APIAddAgentRequest: {}", e),
+        })?;
+
+        match self.internal_add_agent(serialized_agent.agent).await {
+            Ok(_) => {
+                // If everything went well, send the job_id back with an empty string for error
+                let _ = res.send(Ok("Agent added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
                 return Ok(());
-        //     }
-        // }
+            }
+        }
     }
 
     pub async fn api_handle_send_onionized_message(
