@@ -10,7 +10,7 @@ export async function execMode(
   tool: string,
   input: string,
   headers: string
-): Promise<{tool: string; outputs: Record<string, unknown>[]}> {
+): Promise<{tool: string; result: Record<string, unknown>[]}> {
   const src = `
   ${source}
   ;
@@ -40,7 +40,7 @@ export async function execMode(
   log(
     `[${new Date().toISOString()}] ⚒️ EXEC Process ${processId}. Tool: ${tool}`
   );
-  return {tool, outputs: await runScript(processId, src)};
+  return {tool, result: await runScript(processId, src)};
 }
 
 export async function validate(

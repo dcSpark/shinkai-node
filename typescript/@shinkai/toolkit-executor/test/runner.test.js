@@ -8,7 +8,7 @@ describe('Test Runner: Exec', () => {
   test('Help', async () => {
     const data = JSON.parse(fs.readFileSync(__dirname + '/data/data.json', 'utf8'));
     const x = await execMode(data.source, data.tool, JSON.stringify(data.input), JSON.stringify(data.headers || {}));
-    expect(x).toEqual({"outputs":  [{
+    expect(x).toEqual({"result":  [{
         "description": "Result of the check. True if the number is even.",
         "ebnf": "(\"true\"|\"false\")",
         "enum": undefined,
