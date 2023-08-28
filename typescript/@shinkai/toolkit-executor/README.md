@@ -48,6 +48,22 @@ Response:
 > {"isEven":true}
 ```
 
+### Memory management
+
+Node max memory usage can be limited. 
+Workers will be killed if the limit is reached.
+NOTE: This is a shared pool for all concurrent jobs.
+
+`NODE_OPTIONS=--max-old-space-size=SIZE (in megabytes)`
+
+For example: 
+```
+NODE_OPTIONS=--max-old-space-size=1024 node dist/shinkai-toolkit-executor.js -w
+```
+
+https://nodejs.org/api/cli.html#useful-v8-options
+
+
 ### Validate Toolkit Headers
 
 You can execute the toolkit's internal `validateHeaders()` function which validates that the provided API keys (or other headers) are accepted by the required services and work.
