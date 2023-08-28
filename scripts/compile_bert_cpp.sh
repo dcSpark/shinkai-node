@@ -1,4 +1,4 @@
-git clone https://github.com/skeskinen/bert.cpp
+git clone https://github.com/robkorn/bert.cpp
 cd bert.cpp
 git submodule update --init --recursive
 mkdir build
