@@ -69,7 +69,6 @@ fn test_js_toolkit_executor() {
         .submit_tool_execution_request(tool, input_data, &toolkit_js_code, &header_values)
         .unwrap();
 
-    println!("{:?}", tool_execution_result);
     assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
     assert_eq!(tool_execution_result.tool, "isEven");
 }

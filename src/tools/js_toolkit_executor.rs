@@ -33,6 +33,7 @@ pub struct ExecutionResult {
     #[serde(rename = "wrapperType")]
     pub wrapper_type: String,
     pub ebnf: String,
+    #[serde(rename = "result")]
     pub output: JsonValue,
 }
 
@@ -80,7 +81,6 @@ impl JSToolkitExecutor {
     pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())?;
-        println!("{:?}", response);
         JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
 
@@ -89,9 +89,14 @@ impl JSToolkitExecutor {
         &self,
         toolkit_js_code: &str,
         header_values: &HashMap<String, String>,
-    ) -> Result<JsonValue, ToolError> {
+    ) -> Result<bool, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        self.submit_post_request("/validate_headers", &input_data_json, header_values)
+        let response = self.submit_post_request("/validate_headers", &input_data_json, header_values)?;
+        if let Some(JsonValue::Bool(result)) = response.get("result") {
+            Ok(*result)
+        } else {
+            Err(ToolError::JSToolkitExecutorNotAvailable)
+        }
     }
 
     // Submits a tool execution request to the JS Toolkit Executor
