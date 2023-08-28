@@ -109,8 +109,8 @@ impl ShinkaiDB {
     ///
     /// If an existing toolkit has the same name/version, this function will error.
     /// If an existing toolkit has same name but a different version (higher or lower), the old one will be replaced.
-    pub fn install_toolkit(&self, toolkit: JSToolkit, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
-        self.install_toolkits(vec![toolkit], profile)
+    pub fn install_toolkit(&self, toolkit: &JSToolkit, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        self.install_toolkits(&vec![toolkit.clone()], profile)
     }
 
     /// Installs the provided JSToolkits, and saving them to the profile-wide Installed Toolkit List.
@@ -118,7 +118,7 @@ impl ShinkaiDB {
     ///
     /// If an existing toolkit has the same name/version, this function will error.
     /// If an existing toolkit has same name but a different version (higher or lower), the old one will be replaced.
-    pub fn install_toolkits(&self, toolkits: Vec<JSToolkit>, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn install_toolkits(&self, toolkits: &Vec<JSToolkit>, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Get the toolkit map
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
 
@@ -127,7 +127,10 @@ impl ShinkaiDB {
         for toolkit in toolkits {
             // Check if an equivalent version of the toolkit is already installed
             if self.check_equivalent_toolkit_version_installed(&toolkit, profile)? {
-                return Err(ToolError::ToolkitVersionAlreadyInstalled(toolkit.name, toolkit.version))?;
+                return Err(ToolError::ToolkitVersionAlreadyInstalled(
+                    toolkit.name.clone(),
+                    toolkit.version.clone(),
+                ))?;
             }
             // Check if the toolkit is installed with a different version
             if self.check_if_toolkit_installed(&toolkit, profile)? {
@@ -140,7 +143,7 @@ impl ShinkaiDB {
             pb_batch.put_cf_pb(cf, &toolkit.db_key(), &bytes);
 
             // Add the toolkit info to the map
-            let toolkit_info = JSToolkitInfo::from(&toolkit);
+            let toolkit_info = JSToolkitInfo::from(&toolkit.clone());
             toolkit_map.add_toolkit_info(&toolkit_info);
         }
 

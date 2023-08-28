@@ -1,5 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use std::collections::HashMap;
@@ -43,7 +44,7 @@ fn test_default_js_toolkit_json_parsing() {
 }
 
 #[test]
-fn test_js_toolkit_executor() {
+fn test_js_toolkit_execution_and_installing() {
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
@@ -71,4 +72,12 @@ fn test_js_toolkit_executor() {
 
     assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
     assert_eq!(tool_execution_result.tool, "isEven");
+
+    // Install the toolkit
+    let db_path = format!("db_tests/{}", "embeddings");
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    let profile = default_test_profile();
+    shinkai_db.init_profile_toolkit_map(&profile).unwrap();
+    shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap())
 }
