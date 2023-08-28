@@ -190,8 +190,6 @@ impl ShinkaiDB {
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.
-    /// In practice this means the profile name is prepended to the supplied key before
-    /// performing the put.
     pub fn put_cf_pb<V>(
         &self,
         cf: &impl AsColumnFamilyRef,
@@ -204,6 +202,25 @@ impl ShinkaiDB {
     {
         let new_key = ShinkaiDB::generate_profile_bound_key(key, profile)?;
         self.put_cf(cf, new_key, value)
+    }
+
+    /// Deletes the key from the provided column family
+    pub fn delete_cf<K>(&self, cf: &impl AsColumnFamilyRef, key: K) -> Result<(), ShinkaiDBError>
+    where
+        K: AsRef<[u8]>,
+    {
+        Ok(self.db.delete_cf(cf, key)?)
+    }
+
+    /// Deletes the key (profile-bound) from the provided column family.
+    pub fn delete_cf_pb(
+        &self,
+        cf: &impl AsColumnFamilyRef,
+        key: &str,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
+        let new_key = ShinkaiDB::generate_profile_bound_key(key, profile)?;
+        self.delete_cf(cf, new_key)
     }
 
     /// Saves the WriteBatch to the database

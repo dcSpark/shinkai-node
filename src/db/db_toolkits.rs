@@ -56,19 +56,38 @@ impl ShinkaiDB {
         Ok(toolkit_map)
     }
 
+    /// Fetches the `JSToolkit` from the DB (for the provided profile and toolkit name)
+    pub fn get_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<JSToolkit, ShinkaiDBError> {
+        let key = JSToolkit::db_key_from_name(toolkit_name);
+        let bytes = self.get_cf_pb(Topic::Toolkits, &key, profile)?;
+        let json_str = std::str::from_utf8(&bytes)?;
+
+        let toolkit: JSToolkit = from_str(json_str)?;
+        Ok(toolkit)
+    }
+
     /// Uninstalls (and deactivates) a JSToolkit based on its name, and removes it from the profile-wide Installed Toolkit List.
     /// Note, any Toolkit headers (ie. API keys) will not be removed, and will stay in the DB.
-    fn uninstall_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
-        // 1. Deactivate
-        // 2. Delete toolkit itself from db
-        // 3. Delete toolkit from toolkit map
+    pub fn uninstall_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        // TODO: Make this atomic with a batch, not extremely important here due to ordering
+
+        let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
+        // 1. Deactivate the toolkit
+        self.deactivate_toolkit(toolkit_name, profile)?;
+        // 2. Delete toolkit from toolkit map
+        toolkit_map.remove_toolkit_info(toolkit_name)?;
+        self._save_profile_toolkit_map(&toolkit_map, profile)?;
+        // 3. Delete toolkit itself from db
+        let cf = self.get_cf_handle(Topic::Toolkits)?;
+        self.delete_cf_pb(cf, &JSToolkit::db_key_from_name(toolkit_name), profile)?;
+
         Ok(())
     }
 
     /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter. Of note,
     /// this function validates the toolkit headers values are available in DB (or errors), thus after installing
     /// a toolkit they must be set before calling activate.
-    fn activate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn activate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // 1. Check if toolkit is inactive and headers are set, or error
         // 2. Validate that the headers work with the toolkit validation function
         // 3. Propagate the internal tools to the ToolRouter
@@ -79,7 +98,7 @@ impl ShinkaiDB {
     }
 
     /// Deactivates a JSToolkit, removes its tools from the ToolRouter
-    fn deactivate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn deactivate_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // 1. Check if toolkit is active or error
         // 2. Delete all of the toolkit's tools from the ToolRouter
         // 3. Set toolkit/info to active
@@ -90,7 +109,7 @@ impl ShinkaiDB {
 
     /// Sets the toolkit's header values to be used when a tool in the toolkit is executed.
     /// Of note, this replaces any previous header values if the KV pair is provided in the input hashmap.
-    fn set_toolkit_header_values(
+    pub fn set_toolkit_header_values(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,

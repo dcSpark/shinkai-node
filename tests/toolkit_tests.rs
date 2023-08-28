@@ -79,5 +79,11 @@ fn test_js_toolkit_execution_and_installing() {
     let profile = default_test_profile();
     shinkai_db.init_profile_toolkit_map(&profile).unwrap();
     shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
-    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap())
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
+
+    // Uninstall and check via the toolkit map and db key (TODO: later add deactivation checks too)
+    shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap() == false);
+    let fetched_toolkit = shinkai_db.get_toolkit(&toolkit.name, &profile);
+    assert!(fetched_toolkit.is_err());
 }
