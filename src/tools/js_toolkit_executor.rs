@@ -2,6 +2,7 @@ use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::JSToolkit;
 use lazy_static::lazy_static;
 use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::fs::File;
@@ -12,6 +13,27 @@ use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT: &'static str = "3555";
+}
+
+/// The resulting data from execution a JS tool
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolExecutionResult {
+    pub tool: String,
+    pub result: Vec<ExecutionResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionResult {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub result_type: String,
+    pub description: String,
+    #[serde(rename = "isOptional")]
+    pub is_optional: bool,
+    #[serde(rename = "wrapperType")]
+    pub wrapper_type: String,
+    pub ebnf: String,
+    pub output: JsonValue,
 }
 
 pub enum JSToolkitExecutor {
@@ -46,7 +68,7 @@ impl JSToolkitExecutor {
     // Submits a health check request to /health_check and checks the response
     pub fn submit_health_check(&self) -> Result<(), ToolError> {
         let response = self.submit_get_request("/health_check")?;
-        if response.get("status").unwrap_or(&JsonValue::Bool(false)) == &JsonValue::Bool(true) {
+        if let Some(_) = response.get("status") {
             Ok(())
         } else {
             Err(ToolError::JSToolkitExecutorNotAvailable)
@@ -79,13 +101,15 @@ impl JSToolkitExecutor {
         input_data: &JsonValue,
         toolkit_js_code: &str,
         header_values: &HashMap<String, String>,
-    ) -> Result<JsonValue, ToolError> {
+    ) -> Result<ToolExecutionResult, ToolError> {
         let input_data_json = serde_json::json!({
             "tool": tool_name,
             "input": input_data,
             "source": toolkit_js_code
         });
-        self.submit_post_request("/execute_tool", &input_data_json, header_values)
+        let response = self.submit_post_request("/execute_tool", &input_data_json, header_values)?;
+        let tool_execution_result: ToolExecutionResult = serde_json::from_value(response)?;
+        Ok(tool_execution_result)
     }
 
     // Submits a get request to the JS Toolkit Executor
@@ -159,9 +183,9 @@ impl JSToolkitExecutorProcess {
 
         let address = format!("http://0.0.0.0:{}", DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT.to_string());
 
-        // Wait for 1/10th of a second for the JSToolkitExecutor process to boot up/initialize its
+        // Wait for 1/2 of a second for the JSToolkitExecutor process to boot up/initialize its
         // web server
-        let duration = Duration::from_millis(100);
+        let duration = Duration::from_millis(500);
         thread::sleep(duration);
         Ok(JSToolkitExecutor::Local(JSToolkitExecutorProcess {
             child,

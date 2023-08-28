@@ -18,6 +18,7 @@ impl InstalledJSToolkitMap {
         }
     }
 
+
     /// DB Key For the Installed JS Toolkits Map
     pub fn db_key() -> String {
         "installed_js_toolkit_map".to_string()
