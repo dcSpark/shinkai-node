@@ -10,7 +10,7 @@ export async function execMode(
   tool: string,
   input: string,
   headers: string
-): Promise<{tool: string; result: unknown}> {
+): Promise<{tool: string; outputs: Record<string, unknown>[]}> {
   const src = `
   ${source}
   ;
@@ -33,15 +33,14 @@ export async function execMode(
     Object.assign(inputObject, inputData);
 
     const response = await tool.run(inputObject, headers);
-
-    parentPort?.postMessage(response);
+    parentPort?.postMessage(await response.processOutput());
   })();
   `;
   processId += 1;
   log(
     `[${new Date().toISOString()}] ⚒️ EXEC Process ${processId}. Tool: ${tool}`
   );
-  return {tool, result: await runScript(processId, src)};
+  return {tool, outputs: await runScript(processId, src)};
 }
 
 export async function validate(

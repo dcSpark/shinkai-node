@@ -572,4 +572,13 @@ Use @description('') to add a description.`
       inputOutputName,
     ];
   }
+
+  public static findToolByOutput(name: string): string {
+    const classes = Object.keys(ShinkaiToolkitLib.toolsInOut);
+    const target = classes.find(
+      c => ShinkaiToolkitLib.toolsInOut[c][1] === name
+    );
+    if (!target) throw new Error('Tool not found for ' + name);
+    return target;
+  }
 }

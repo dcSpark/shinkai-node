@@ -5,7 +5,7 @@ const TIMEOUT = process.env.WORKER_TIMEOUT_MS
   ? parseInt(process.env.WORKER_TIMEOUT_MS, 10)
   : 120 * 1000; // 120 seconds;
 
-export async function runScript(pid: number, src: string): Promise<Object> {
+export async function runScript<T>(pid: number, src: string): Promise<T> {
   const startTime = Date.now();
   let resolved = false;
 

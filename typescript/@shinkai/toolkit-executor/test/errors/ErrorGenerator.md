@@ -1,3 +1,21 @@
+# Build Error Data
+
+#!/bin/bash
+
+```
+node generate-cmd.js -o fill-memory.json -t ErrorGenerator -i '{"error":"fill-memory"}' -p './dist/packaged-shinkai-toolkit.js'
+node generate-cmd.js -o io-block.json -t ErrorGenerator -i '{"error":"io-block"}' -p './dist/packaged-shinkai-toolkit.js'
+node generate-cmd.js -o none.json -t ErrorGenerator -i '{"error":"none"}' -p './dist/packaged-shinkai-toolkit.js'
+node generate-cmd.js -o terminate.json -t ErrorGenerator -i '{"error":"terminate"}' -p './dist/packaged-shinkai-toolkit.js'
+node generate-cmd.js -o throw-exception.json -t ErrorGenerator -i '{"error":"throw-exception"}' -p './dist/packaged-shinkai-toolkit.js'
+node generate-cmd.js -o timeout.json -t ErrorGenerator -i '{"error":"timeout"}' -p './dist/packaged-shinkai-toolkit.js'
+
+cp fill-memory.json io-block.json none.json terminate.json throw-exception.json timeout.json ../shinkai-executor/test/errors/
+```
+
+
+# ErrorGenerator Source
+```
 import {
   isInput,
   BaseInput,
@@ -73,3 +91,4 @@ export class ErrorGenerator extends BaseTool<
     return out;
   }
 }
+```
