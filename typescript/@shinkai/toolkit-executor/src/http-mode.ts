@@ -1,9 +1,10 @@
-import {execMode, execModeConfig, validate} from './exec-mode';
-import fs from 'fs/promises';
+import {execMode, toolkitConfig, validate} from './exec-mode';
+
 // Http Mode
 import express from 'express';
 import bodyParser from 'body-parser';
 import {IncomingHttpHeaders} from 'http';
+import {TerminusState, createTerminus} from '@godaddy/terminus';
 
 export function httpMode(port: string | number) {
   const app = express();
@@ -18,12 +19,9 @@ export function httpMode(port: string | number) {
       if (!req.body.source)
         return res.status(400).json({error: 'Missing source'});
 
-      const response = await runWithSource(
-        req.body.source,
-        async path => await validate(path, filterHeaders(req.headers))
+      return res.json(
+        await validate(req.body.source, filterHeaders(req.headers))
       );
-
-      return res.json(JSON.parse(response));
     }
   );
 
@@ -35,13 +33,7 @@ export function httpMode(port: string | number) {
     ) => {
       if (!req.body.source)
         return res.status(400).json({error: 'Missing source'});
-
-      const response = await runWithSource(
-        req.body.source,
-        async path => await execModeConfig(path)
-      );
-
-      return res.json(JSON.parse(response));
+      return res.json(await toolkitConfig(req.body.source));
     }
   );
 
@@ -60,30 +52,39 @@ export function httpMode(port: string | number) {
         return res.status(400).json({error: 'Missing source'});
       if (!req.body.tool) return res.status(400).json({error: 'Missing tool'});
 
-      const response = await runWithSource(
-        req.body.source,
-        async path =>
-          await execMode(
-            path,
-            req.body.tool,
-            JSON.stringify(req.body.input || {}),
-            filterHeaders(req.headers)
-          )
+      return res.json(
+        await execMode(
+          req.body.source,
+          req.body.tool,
+          JSON.stringify(req.body.input || {}),
+          filterHeaders(req.headers)
+        )
       );
-
-      return res.json(JSON.parse(response));
     }
   );
 
-  app.all(
-    '/health_check',
-    async (req: express.Request, res: express.Response) => {
-      return res.json({status: true});
-    }
-  );
-
-  app.listen(parseInt(String(port), 10), () => {
+  const server = app.listen(port ? parseInt(String(port), 10) : 3000, () => {
     console.log(`Listening at http://localhost:${port}`);
+  });
+
+  createTerminus(server, {
+    healthChecks: {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      '/healthcheck': (state: {state: TerminusState}) => {
+        return Promise.resolve();
+      },
+    },
+    timeout: 30000,
+    signals: ['SIGUSR2', 'SIGINT', 'SIGTERM'],
+    onSignal: () => {
+      console.log('[Signal] Server is Starting Cleanup');
+      // Server is closed by terminus.
+      return Promise.resolve();
+    },
+    onShutdown: () => {
+      console.log('[Shutdown] Server is Shutting Down');
+      return Promise.resolve();
+    },
   });
 }
 
@@ -95,31 +96,4 @@ const filterHeaders = (rawHeaders: IncomingHttpHeaders): string => {
     }
   });
   return JSON.stringify(headers);
-};
-
-const runWithSource = async <T>(
-  source: string,
-  callback: (path: string) => Promise<T>
-): Promise<T> => {
-  const path = `./tmp_${new Date().getTime()}_${String(Math.random()).replace(
-    /0./,
-    ''
-  )}.js`;
-
-  await fs.writeFile(path, source, 'utf8');
-
-  let data: T;
-
-  try {
-    data = await callback(path);
-  } finally {
-    // Ensure the temporary file is deleted
-    try {
-      await fs.unlink(path);
-    } catch (err) {
-      console.error(`Failed to delete temporary file: ${path}. Error:`, err);
-    }
-  }
-
-  return data;
 };

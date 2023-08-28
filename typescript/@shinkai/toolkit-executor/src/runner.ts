@@ -1,7 +1,8 @@
 /* eslint-disable no-process-exit */
 import {program} from 'commander';
-import {execMode, execModeConfig, validate} from './exec-mode';
+import {execMode, toolkitConfig, validate} from './exec-mode';
 import {httpMode} from './http-mode';
+import fs from 'fs/promises';
 
 program
   .option('-e, --exec-mode', 'Execution mode: exec')
@@ -49,6 +50,7 @@ function validateOptions() {
       // only headers required
       if (!options.headers) {
         console.log('Must provide headers: -x <headers>');
+        process.exit(1);
       }
     } else {
       // standard execution mode
@@ -68,17 +70,20 @@ validateOptions();
 
 (async () => {
   if (options.execMode) {
+    const source = await fs.readFile(options.source, 'utf8');
+
     if (options.validate) {
-      console.log(await validate(options.source, options.headers));
+      console.log(
+        JSON.stringify(await validate(source, options.headers), null, 2)
+      );
     } else if (options.getConfig) {
-      console.log(await execModeConfig(options.source));
+      console.log(JSON.stringify(await toolkitConfig(source), null, 2));
     } else {
       console.log(
-        await execMode(
-          options.source,
-          options.tool,
-          options.input,
-          options.headers
+        JSON.stringify(
+          await execMode(source, options.tool, options.input, options.headers),
+          null,
+          2
         )
       );
     }

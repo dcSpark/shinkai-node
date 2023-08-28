@@ -6,7 +6,7 @@ module.exports = {
   mode: 'production', // Change mode to 'production'
   stats: 'errors-warnings',
   entry: {
-    main: './src/runner.ts',
+    main: './src/index.ts',
   },
   output: {
     iife: true,
