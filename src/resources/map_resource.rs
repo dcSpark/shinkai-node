@@ -8,8 +8,10 @@ use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 
+/// A VectorResource which uses an internal HashMap data model, thus providing a
+/// native key-value interface.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct KVVectorResource {
+pub struct MapVectorResource {
     name: String,
     description: Option<String>,
     source: Option<String>,
@@ -22,7 +24,7 @@ pub struct KVVectorResource {
     data_tag_index: DataTagIndex,
 }
 
-impl VectorResource for KVVectorResource {
+impl VectorResource for MapVectorResource {
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
     }
@@ -52,7 +54,7 @@ impl VectorResource for KVVectorResource {
     }
 
     fn resource_type(&self) -> VectorResourceType {
-        VectorResourceType::KeyValue
+        VectorResourceType::Map
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -81,7 +83,7 @@ impl VectorResource for KVVectorResource {
     }
 }
 
-impl KVVectorResource {
+impl MapVectorResource {
     /// * `resource_id` - This can be the Sha256 hash as a String from the bytes of the original data
     /// or anything that is deterministic to ensure duplicates are not possible.
     pub fn new(
@@ -94,7 +96,7 @@ impl KVVectorResource {
         data_chunks: HashMap<String, DataChunk>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
-        KVVectorResource {
+        MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source.map(String::from),
@@ -108,9 +110,9 @@ impl KVVectorResource {
         }
     }
 
-    /// Initializes an empty `KVVectorResource` with empty defaults.
+    /// Initializes an empty `MapVectorResource` with empty defaults.
     pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
-        KVVectorResource::new(
+        MapVectorResource::new(
             name,
             desc,
             source,

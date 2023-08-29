@@ -1,5 +1,5 @@
 use crate::resources::embeddings::*;
-use crate::resources::kv_resource::KVVectorResource;
+use crate::resources::map_resource::MapVectorResource;
 use crate::resources::resource_errors::*;
 use crate::resources::vector_resource::*;
 use serde_json;
@@ -39,10 +39,10 @@ impl From<Box<dyn VectorResource>> for VectorResourcePointer {
 }
 
 /// A top level struct which indexes a series of resource pointers
-/// using a KVVectorResource
+/// using a MapVectorResource
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourceRouter {
-    routing_resource: KVVectorResource,
+    routing_resource: MapVectorResource,
 }
 
 impl VectorResourceRouter {
@@ -53,7 +53,7 @@ impl VectorResourceRouter {
         let source = None;
         let resource_id = "resource_router";
         VectorResourceRouter {
-            routing_resource: KVVectorResource::new_empty(name, desc, source, resource_id),
+            routing_resource: MapVectorResource::new_empty(name, desc, source, resource_id),
         }
     }
 
@@ -197,7 +197,7 @@ impl VectorResourceRouter {
 
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
         Ok(VectorResourceRouter {
-            routing_resource: KVVectorResource::from_json(json)?,
+            routing_resource: MapVectorResource::from_json(json)?,
         })
     }
     /// Convert to json

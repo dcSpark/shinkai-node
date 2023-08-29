@@ -10,19 +10,20 @@ use std::str::FromStr;
 
 use super::router::VectorResourcePointer;
 
-/// Enum used for all VectorResources to specify their type
-/// when dealing with Trait objects.
+/// Enum used for all VectorResources to specify their type.
+/// Used primarily when dealing with Trait objects, and self-attesting
+/// JSON serialized VectorResources
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VectorResourceType {
     Document,
-    KeyValue,
+    Map,
 }
 
 impl VectorResourceType {
     pub fn to_str(&self) -> &str {
         match self {
             VectorResourceType::Document => "Document",
-            VectorResourceType::KeyValue => "KeyValue",
+            VectorResourceType::Map => "Map",
         }
     }
 }
@@ -33,7 +34,7 @@ impl FromStr for VectorResourceType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Document" => Ok(VectorResourceType::Document),
-            "KeyValue" => Ok(VectorResourceType::KeyValue),
+            "Map" => Ok(VectorResourceType::Map),
             _ => Err(VectorResourceError::InvalidVectorResourceType),
         }
     }

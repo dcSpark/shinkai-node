@@ -8,4 +8,4 @@ pub mod model_type;
 pub mod vector_resource;
 pub mod resource_errors;
 pub mod router;
-pub mod kv_resource;
+pub mod map_resource;

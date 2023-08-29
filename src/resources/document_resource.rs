@@ -8,6 +8,9 @@ use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 
+/// A VectorResource which uses an internal numbered/ordered list data model,  
+/// thus providing an ideal interface for document-like content such as PDFs,
+/// epubs, web content, written works, and more.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentVectorResource {
     name: String,
