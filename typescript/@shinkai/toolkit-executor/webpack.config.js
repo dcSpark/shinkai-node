@@ -1,10 +1,12 @@
 const path = require('path');
+// eslint-disable-next-line node/no-unpublished-require
 const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = {
   mode: 'production', // Change mode to 'production'
+  stats: 'errors-warnings',
   entry: {
-    main: './src/runner.ts',
+    main: './src/index.ts',
   },
   output: {
     iife: true,

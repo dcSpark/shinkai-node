@@ -1,18 +1,18 @@
 {
-  "toolkit-name": "@shinkai/toolkit-smtp",
+  "toolkitName": "@shinkai/toolkit-smtp",
   "author": "shinakai-dev",
   "version": "0.0.1",
-  "executionSetup": [
+  "toolkitHeaders": [
     {
       "name": "HOST",
       "type": "STRING",
-      "description": "SMTP HOST e.g., smtp.gmail.com",
+      "description": "SMTP HOST e.g, smtp.gmail.com",
       "header": "x-shinkai-host"
     },
     {
       "name": "PORT",
       "type": "INT",
-      "description": "SMTP PORT. e.g., 587",
+      "description": "SMTP PORT. e.g, 587",
       "header": "x-shinkai-port"
     },
     {

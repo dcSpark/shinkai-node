@@ -9,11 +9,11 @@ import axios from 'axios';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
-  'toolkit-name' = '@shinkai/toolkit-gmail';
+  toolkitName = '@shinkai/toolkit-gmail';
   author = 'shinkai-dev';
   version = '0.0.1';
 
-  executionSetup = [
+  toolkitHeaders = [
     // Register OAuth
     {
       name: SHINKAI_OAUTH,

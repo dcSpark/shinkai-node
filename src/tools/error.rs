@@ -1,9 +1,10 @@
+use reqwest::Error as ReqwestError;
 use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ToolError {
     RocksDBError(RocksError),
     RegexError(regex::Error),
@@ -11,6 +12,9 @@ pub enum ToolError {
     ParseError(String),
     ToolkitNotFound,
     ToolkitVersionAlreadyInstalled(String, String),
+    JSToolkitExecutorNotAvailable,
+    JSToolkitExecutorFailedStarting,
+    RequestError(ReqwestError),
 }
 
 impl fmt::Display for ToolError {
@@ -24,11 +28,22 @@ impl fmt::Display for ToolError {
             ToolError::ToolkitVersionAlreadyInstalled(ref s, ref e) => {
                 write!(f, "Toolkit with the same version is already installed: {} {}", s, e)
             }
+            ToolError::JSToolkitExecutorNotAvailable => {
+                write!(f, "Failed connecting to JS Toolkit Executor over HTTP.")
+            }
+            ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
+            ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
         }
     }
 }
 
 impl Error for ToolError {}
+
+impl From<ReqwestError> for ToolError {
+    fn from(err: ReqwestError) -> ToolError {
+        ToolError::RequestError(err)
+    }
+}
 
 impl From<RocksError> for ToolError {
     fn from(err: RocksError) -> ToolError {

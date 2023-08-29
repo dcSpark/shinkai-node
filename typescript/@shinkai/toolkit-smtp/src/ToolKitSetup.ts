@@ -2,7 +2,7 @@ import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
-  'toolkit-name' = '@shinkai/toolkit-smtp';
+  toolkitName = '@shinkai/toolkit-smtp';
   author = 'shinakai-dev';
   version = '0.0.1';
 
@@ -10,17 +10,17 @@ export class ToolKitSetup extends ShinkaiSetup {
   oauth = undefined;
 
   // Register Setup Keys
-  executionSetup = [
+  toolkitHeaders = [
     // Register Auth & Keys
     {
       name: 'HOST',
       type: DATA_TYPES.STRING,
-      description: 'SMTP HOST e.g., smtp.gmail.com',
+      description: 'SMTP HOST e.g, smtp.gmail.com',
     },
     {
       name: 'PORT',
       type: DATA_TYPES.INTEGER,
-      description: 'SMTP PORT. e.g., 587',
+      description: 'SMTP PORT. e.g, 587',
     },
     {
       name: 'EMAIL',

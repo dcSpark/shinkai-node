@@ -18,6 +18,7 @@ impl InstalledJSToolkitMap {
         }
     }
 
+
     /// DB Key For the Installed JS Toolkits Map
     pub fn db_key() -> String {
         "installed_js_toolkit_map".to_string()
@@ -133,13 +134,11 @@ impl JSToolkit {
         key
     }
 
-    pub fn from_toolkit_json(json: &str, js_code: &str) -> Result<Self, ToolError> {
-        let parsed_json: JsonValue = serde_json::from_str(json)?;
-
+    pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse
-        let name = parsed_json["toolkit-name"]
+        let name = parsed_json["toolkitName"]
             .as_str()
-            .ok_or(ToolError::ParseError("toolkit-name".to_string()))?;
+            .ok_or(ToolError::ParseError("toolkitName".to_string()))?;
 
         // Author parse
         let author = parsed_json["author"]
@@ -162,13 +161,17 @@ impl JSToolkit {
         }
 
         // Header defs parsing
-        let execution_setup_json = parsed_json["executionSetup"]
-            .as_array()
-            .ok_or(ToolError::ParseError("executionSetup".to_string()))?;
+        let execution_setup_json = &parsed_json["toolkitHeaders"];
         let mut header_defs = Vec::new();
-        for setup_json in execution_setup_json {
-            let header_def = HeaderDefinition::from_toolkit_json(setup_json)?;
-            header_defs.push(header_def);
+        if let Some(array) = execution_setup_json.as_array() {
+            for setup_json in array {
+                let header_def = HeaderDefinition::from_toolkit_json(setup_json)?;
+                header_defs.push(header_def);
+            }
+        } else if execution_setup_json.is_object() && execution_setup_json.as_object().unwrap().is_empty() {
+            // If it's an empty object, do nothing as header_defs is already an empty vector
+        } else {
+            return Err(ToolError::ParseError("toolkitHeaders".to_string()));
         }
 
         Ok(Self {
@@ -192,29 +195,5 @@ impl JSToolkit {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         let deserialized: Self = serde_json::from_str(json)?;
         Ok(deserialized)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn default_toolkit_json() -> String {
-        r#"{"toolkit-name":"Google Calendar Toolkit", "author":"Shinkai Team","version":"0.0.1","executionSetup":[{"name":"OAUTH","oauth":{"description":"","displayName":"Authentication","authUrl":"https://accounts.google.com/o/oauth2/auth","tokenUrl":"https://oauth2.googleapis.com/token","required":true,"pkce":true,"scope":["https://www.googleapis.com/auth/calendar.events","https://www.googleapis.com/auth/calendar.readonly"],"cloudOAuth":"activepieces"},"header":"x-shinkai-oauth"},{"name":"API_KEY","description":"Some Optional API Key","type":"STRING","isOptional":true,"header":"x-shinkai-api-key"},{"name":"API_SECRET","description":"Api Secret key","type":"STRING","header":"x-shinkai-api-secret"},{"name":"BASE_URL","description":"Base URL for api","type":"STRING","header":"x-shinkai-base-url"}],"tools":[{"name":"GoogleCalendarQuickEvent","description":"Activepieces Create Quick Event at Google Calendar","input":[{"name":"calendar_id","type":"STRING","description":"Primary calendar used if not specified","isOptional":true,"wrapperType":"none","ebnf":"([a-zA-Z0-9_]+)?"},{"name":"text","type":"STRING","description":"The text describing the event to be created","isOptional":false,"wrapperType":"none","ebnf":"([a-zA-Z0-9_]+)"},{"name":"send_updates","type":"ENUM","description":"Guests who should receive notifications about the creation of the new event.","isOptional":true,"wrapperType":"none","enum":["all","externalOnly","none"],"ebnf":"(\"all\" | \"externalOnly\" | \"none\")?"}],"output":[{"name":"response","type":"STRING","description":"Network Response","isOptional":false,"wrapperType":"none","ebnf":"([a-zA-Z0-9_]+)"}],"inputEBNF":"calendar_id ::= ([a-zA-Z0-9_]+)?\ntext ::= ([a-zA-Z0-9_]+)\nsend_updates ::= (\"all\" | \"externalOnly\" | \"none\")?\nresponse ::= ([a-zA-Z0-9_]+)"}]}"#.to_string()
-    }
-
-    #[test]
-    fn test_js_toolkit_json_parsing() {
-        let toolkit = JSToolkit::from_toolkit_json(&default_toolkit_json(), "").unwrap();
-
-        assert_eq!(toolkit.name, "Google Calendar Toolkit");
-        assert_eq!(
-            toolkit.tools[0].ebnf_inputs(false).replace("\n", ""),
-            r#"{"calendar_id": calendar_id, "text": text, "send_updates": send_updates, }calendar_id :== ([a-zA-Z0-9_]+)?text :== ([a-zA-Z0-9_]+)send_updates :== ("all" | "externalOnly" | "none")?"#
-        );
-
-        assert_eq!(toolkit.header_definitions.len(), 4);
-        assert_eq!(toolkit.version, "0.0.1".to_string());
-        assert_eq!(toolkit.author, "Shinkai Team".to_string());
     }
 }

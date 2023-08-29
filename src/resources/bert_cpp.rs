@@ -1,7 +1,6 @@
 use lazy_static::lazy_static;
 use std::fs::File;
 use std::io;
-use std::os::unix::io::FromRawFd;
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::Duration;

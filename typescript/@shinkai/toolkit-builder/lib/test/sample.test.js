@@ -1,9 +1,8 @@
-const {ShinkaiTookitLib, Sample} = require('./../build/registry');
+const {ShinkaiToolkitLib, Sample} = require('./../build/registry');
 
 describe('Sample test', () => {
-
   test('Check if numbers equal', async () => {
-    await ShinkaiTookitLib.waitForLib();
+    await ShinkaiToolkitLib.waitForLib();
 
     const x = {number: 2, numberToCompare: 2};
     const result = await new Sample().run(x);
@@ -11,7 +10,7 @@ describe('Sample test', () => {
   });
 
   test('Check if number LT', async () => {
-    await ShinkaiTookitLib.waitForLib();
+    await ShinkaiToolkitLib.waitForLib();
 
     const x = {number: 2, numberToCompare: 10};
     const result = await new Sample().run(x);
@@ -19,7 +18,7 @@ describe('Sample test', () => {
   });
 
   test('Check if number GT', async () => {
-    await ShinkaiTookitLib.waitForLib();
+    await ShinkaiToolkitLib.waitForLib();
 
     const x = {number: 30, numberToCompare: 1};
     const result = await new Sample().run(x);

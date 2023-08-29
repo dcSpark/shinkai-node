@@ -39,14 +39,14 @@ export interface CalendarObject {
     {
       method: string;
       minutes: number;
-    }
+    },
   ];
   notificationSettings: {
     notifications: [
       {
         type: string;
         method: string;
-      }
+      },
     ];
   };
   primary: boolean;
@@ -155,7 +155,7 @@ export interface GoogleCalendarEvent {
         meetingCode: string;
         passcode: string;
         password: string;
-      }
+      },
     ];
     conferenceSolution: {
       key: {
@@ -192,7 +192,7 @@ export interface GoogleCalendarEvent {
       {
         method: string;
         minutes: BigInteger;
-      }
+      },
     ];
   };
   source: {
@@ -206,7 +206,7 @@ export interface GoogleCalendarEvent {
       mimeType: string;
       iconLink: string;
       fileId: string;
-    }
+    },
   ];
   eventType: string;
 }
@@ -223,7 +223,7 @@ export interface GoogleCalendarEventList {
     {
       method: string;
       minutes: BigInteger;
-    }
+    },
   ];
   nextPageToken: string;
   nextSyncToken: string;

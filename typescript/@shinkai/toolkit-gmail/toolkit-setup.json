@@ -1,8 +1,8 @@
 {
-  "toolkit-name": "@shinkai/toolkit-gmail",
+  "toolkitName": "@shinkai/toolkit-gmail",
   "author": "shinkai-dev",
   "version": "0.0.1",
-  "executionSetup": [
+  "toolkitHeaders": [
     {
       "name": "OAUTH",
       "oauth": {
@@ -11,9 +11,7 @@
         "authUrl": "https://accounts.google.com/o/oauth2/auth",
         "tokenUrl": "https://oauth2.googleapis.com/token",
         "required": true,
-        "scope": [
-          "https://www.googleapis.com/auth/gmail.send"
-        ],
+        "scope": ["https://www.googleapis.com/auth/gmail.send"],
         "cloudOAuth": "activepieces"
       },
       "type": "OAUTH",

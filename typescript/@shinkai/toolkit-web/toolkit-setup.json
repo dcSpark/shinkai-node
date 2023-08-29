@@ -1,8 +1,8 @@
 {
-  "toolkit-name": "@shinkai/toolkit-web",
+  "toolkitName": "@shinkai/toolkit-web",
   "author": "shinkai-dev",
   "version": "0.0.1",
-  "executionSetup": {},
+  "toolkitHeaders": {},
   "tools": [
     {
       "name": "HTTP",

@@ -1,8 +1,8 @@
 {
-  "toolkit-name": "Sample",
+  "toolkitName": "Sample",
   "author": "dev",
   "version": "0.0.1",
-  "executionSetup": {},
+  "toolkitHeaders": {},
   "tools": [
     {
       "name": "Sample",
@@ -32,11 +32,7 @@
           "description": "Result of the comparison.",
           "isOptional": false,
           "wrapperType": "none",
-          "enum": [
-            "GT",
-            "LT",
-            "EQ"
-          ],
+          "enum": ["GT", "LT", "EQ"],
           "ebnf": "(\"GT\" | \"LT\" | \"EQ\")"
         }
       ],

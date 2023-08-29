@@ -54,9 +54,10 @@ export class SMTP extends BaseTool<SMTPInput, SMTPOutput> {
 
   async run(
     input: SMTPInput,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     headers: Record<string, any>
   ): Promise<SMTPOutput> {
-    const x = smtp.actions[0].run({
+    const emailStatus = await smtp.actions[0].run({
       auth: {
         host: headers.HOST,
         port: headers.PORT,
@@ -76,7 +77,7 @@ export class SMTP extends BaseTool<SMTPInput, SMTPOutput> {
     });
 
     const out = new SMTPOutput();
-    out.result = x as any;
+    out.result = emailStatus;
     return out;
   }
 }

@@ -1,8 +1,8 @@
 {
-  "toolkit-name": "@shinkai/toolkit-example",
+  "toolkitName": "@shinkai/toolkit-example",
   "author": "shinkai-dev",
   "version": "0.0.1",
-  "executionSetup": {},
+  "toolkitHeaders": {},
   "tools": [
     {
       "name": "CompareNumbers",
@@ -57,7 +57,7 @@
       ],
       "output": [
         {
-          "name": "isEven",
+          "name": "isEvenOutput",
           "type": "BOOL",
           "description": "Result of the check. True if the number is even.",
           "isOptional": false,
@@ -65,7 +65,7 @@
           "ebnf": "(\"true\"|\"false\")"
         }
       ],
-      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")\nnumber ::= (-?[0-9]+)\nisEven ::= (\"true\"|\"false\")"
+      "inputEBNF": "number ::= (-?[0-9]+)\nnumberToCompare ::= (-?[0-9]+)\ncomparison ::= (\"GT\" | \"LT\" | \"EQ\")\nnumber ::= (-?[0-9]+)\nisEvenOutput ::= (\"true\"|\"false\")"
     }
   ]
 }

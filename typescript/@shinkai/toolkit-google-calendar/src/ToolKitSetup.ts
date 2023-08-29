@@ -9,11 +9,11 @@ import axios from 'axios';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
-  'toolkit-name' = '@shinkai/toolkit-google-calendar';
+  toolkitName = '@shinkai/toolkit-google-calendar';
   author = 'shinkai-dev';
   version = '0.0.1';
 
-  executionSetup = [
+  toolkitHeaders = [
     // Register OAuth
     {
       name: SHINKAI_OAUTH,
@@ -37,7 +37,7 @@ export class ToolKitSetup extends ShinkaiSetup {
       return response.status >= 200 && response.status < 300;
     } catch (e) {
       throw new Error(`Invalid "x-shinkai-oauth" header. 
-Please refresh the token or request a new one`);
+        Please refresh the token or request a new one`);
     }
   }
 }

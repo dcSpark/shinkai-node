@@ -18,7 +18,7 @@ class isEvenInput extends BaseInput {
 @isOutput('isEven')
 class isEvenOutput extends BaseOutput {
   @isBoolean('Result of the check. True if the number is even.')
-  isEven!: boolean;
+  isEvenOutput!: boolean;
 }
 
 @isTool
@@ -28,7 +28,7 @@ export class isEven extends BaseTool<isEvenInput, isEvenOutput> {
   async run(input: isEvenInput): Promise<isEvenOutput> {
     const isEven = (input.number || 0) % 2 === 0;
     const out = new isEvenOutput();
-    out.isEven = isEven;
+    out.isEvenOutput = isEven;
     return out;
   }
 }

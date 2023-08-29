@@ -1,13 +1,13 @@
 // Decorator for toolkit description
 
 import {BaseInput, BaseOutput} from './BaseTool';
-import {ShinkaiTookitLib} from './ShinkaiTookitLib';
+import {ShinkaiToolkitLib} from './ShinkaiToolkitLib';
 import {DATA_TYPES} from './types';
 import 'reflect-metadata';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isToolKit(classDef: any) {
-  ShinkaiTookitLib.registerToolKit(new classDef());
+  ShinkaiToolkitLib.registerToolKit(new classDef());
 }
 
 // Decorator for tool description
@@ -17,15 +17,15 @@ export function isTool(classDef: any) {
   // TODO Find a way to make it static.
   //      abstract static is not allowed by TS.
   const tool = new classDef();
-  ShinkaiTookitLib.registerTool(classDef.name, tool.description);
+  ShinkaiToolkitLib.registerTool(classDef.name, tool.description);
 }
 
 // Decorator for input class
 export function isInput(className: string) {
   return function (classDef: typeof BaseInput) {
     const key = classDef.name;
-    ShinkaiTookitLib.registerToolInput(key, className);
-    ShinkaiTookitLib.registerInputClass(className, classDef);
+    ShinkaiToolkitLib.registerToolInput(key, className);
+    ShinkaiToolkitLib.registerInputClass(className, classDef);
   };
 }
 
@@ -33,7 +33,7 @@ export function isInput(className: string) {
 export function isOutput(className: string) {
   return function (classDef: typeof BaseOutput) {
     const key = classDef.name;
-    ShinkaiTookitLib.registerToolOutput(key, className);
+    ShinkaiToolkitLib.registerToolOutput(key, className);
   };
 }
 
@@ -47,14 +47,14 @@ export function description(description: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldDescription(
+    ShinkaiToolkitLib.registerFieldDescription(
       fieldName,
       contextName,
       description
     );
     const type = extractTypeFromDecorator(context, propertyKey);
     if (type) {
-      ShinkaiTookitLib.registerFieldAutoType(fieldName, contextName, type);
+      ShinkaiToolkitLib.registerFieldAutoType(fieldName, contextName, type);
     }
   };
 }
@@ -67,7 +67,7 @@ function buildFieldName(context: Object, propertyKey: string) {
 export function isArray(context: Object, propertyKey: string) {
   const contextName = context.constructor.name;
   const fieldName = buildFieldName(context, propertyKey);
-  ShinkaiTookitLib.registerFieldArray(fieldName, contextName);
+  ShinkaiToolkitLib.registerFieldArray(fieldName, contextName);
 }
 
 // Decorator for String field
@@ -76,13 +76,13 @@ export function isString(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(
+    ShinkaiToolkitLib.registerFieldType(
       fieldName,
       contextName,
       DATA_TYPES.STRING
     );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -99,10 +99,14 @@ export function isEnum(enumValues: string[], description?: string) {
     const fieldName = buildFieldName(context, propertyKey);
 
     const contextName = context.constructor.name;
-    ShinkaiTookitLib.registerFieldType(fieldName, contextName, DATA_TYPES.ENUM);
-    ShinkaiTookitLib.registerFieldEnumData(fieldName, enumValues);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.ENUM
+    );
+    ShinkaiToolkitLib.registerFieldEnumData(fieldName, enumValues);
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -117,9 +121,13 @@ export function isChar(enumValues: string[], description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(fieldName, contextName, DATA_TYPES.CHAR);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.CHAR
+    );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -134,9 +142,13 @@ export function isJSON(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(fieldName, contextName, DATA_TYPES.JSON);
+    ShinkaiToolkitLib.registerFieldType(
+      fieldName,
+      contextName,
+      DATA_TYPES.JSON
+    );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -151,13 +163,13 @@ export function isBoolean(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(
+    ShinkaiToolkitLib.registerFieldType(
       fieldName,
       contextName,
       DATA_TYPES.BOOLEAN
     );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -172,13 +184,13 @@ export function isInteger(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(
+    ShinkaiToolkitLib.registerFieldType(
       fieldName,
       contextName,
       DATA_TYPES.INTEGER
     );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -193,13 +205,13 @@ export function isFloat(description?: string) {
     const contextName = context.constructor.name;
     const fieldName = buildFieldName(context, propertyKey);
 
-    ShinkaiTookitLib.registerFieldType(
+    ShinkaiToolkitLib.registerFieldType(
       fieldName,
       contextName,
       DATA_TYPES.FLOAT
     );
     if (description) {
-      ShinkaiTookitLib.registerFieldDescription(
+      ShinkaiToolkitLib.registerFieldDescription(
         fieldName,
         contextName,
         description
@@ -214,10 +226,10 @@ export function isOptional(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
   const fieldName = buildFieldName(context, propertyKey);
 
-  ShinkaiTookitLib.registerFieldOptional(fieldName, contextName);
+  ShinkaiToolkitLib.registerFieldOptional(fieldName, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
   if (type) {
-    ShinkaiTookitLib.registerFieldAutoType(fieldName, contextName, type);
+    ShinkaiToolkitLib.registerFieldAutoType(fieldName, contextName, type);
   }
 }
 
@@ -227,10 +239,10 @@ export function isRequired(context: Object, propertyKey: string): void {
   const contextName = context.constructor.name;
   const fieldName = buildFieldName(context, propertyKey);
 
-  ShinkaiTookitLib.registerFieldRequired(fieldName, contextName);
+  ShinkaiToolkitLib.registerFieldRequired(fieldName, contextName);
   const type = extractTypeFromDecorator(context, propertyKey);
   if (type) {
-    ShinkaiTookitLib.registerFieldAutoType(fieldName, contextName, type);
+    ShinkaiToolkitLib.registerFieldAutoType(fieldName, contextName, type);
   }
 }
 
