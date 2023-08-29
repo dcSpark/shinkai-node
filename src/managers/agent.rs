@@ -100,7 +100,7 @@ impl Agent {
             self.process_locally(content.clone(), context).await;
         } else {
             // Call external API
-            let response = self.call_external_api(&content.clone(), context).await; // Assuming the content doesn't change
+            let response = self.call_external_api(&content.clone(), context).await;
             match response {
                 Ok(message) => {
                     // Send the message to AgentManager

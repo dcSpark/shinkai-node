@@ -145,7 +145,7 @@ mod tests {
 
         // Process the JobCreationSchema message
         let mut job_created_id = String::new();
-        match job_manager.process_job_message(shinkai_message_creation, None).await {
+        match job_manager.process_job_message(shinkai_message_creation).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();
                 println!("Job ID: {}", job_id);
@@ -178,7 +178,7 @@ mod tests {
         .expect("Failed to decrypt body content");
 
         println!("shinkai_job_message: {:?}", shinkai_job_message);
-        match job_manager.process_job_message(shinkai_job_message, None).await {
+        match job_manager.process_job_message(shinkai_job_message).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();
                 println!("Job Message ID: {}", job_id);

@@ -1,10 +1,8 @@
-use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node, node_error::NodeError};
+use super::{node_api::APIError, node_error::NodeError, node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
-    network::{
-        node_message_handlers::{ping_pong, PingPong},
-    },
+    network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -24,8 +22,8 @@ use shinkai_message_wasm::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{
-            APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, MessageSchemaType,
-            RegistrationCodeRequest, RegistrationCodeType, APIAddAgentRequest,
+            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
+            MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -61,7 +59,8 @@ impl Node {
                 let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).ok();
 
                 if sender_encryption_pk.is_some() {
-                    msg = match potentially_encrypted_msg.clone()
+                    msg = match potentially_encrypted_msg
+                        .clone()
                         .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk.unwrap())
                     {
                         Ok(msg) => msg,
@@ -78,33 +77,41 @@ impl Node {
                         &potentially_encrypted_msg.clone(),
                     )?;
 
-                    let sender_encryption_pk = match self.identity_manager
-                    .lock()
-                    .await
-                    .search_identity(sender_name.clone().to_string().as_str())
-                    .await  // Add this line to await the Future
-                    {
-                    Some(identity) => {
-                        match identity {
-                            Identity::Standard(std_identity) => std_identity.node_encryption_public_key,
-                            Identity::Device(device) => device.node_encryption_public_key,
-                            Identity::Agent(_) => {
+                    let sender_encryption_pk =
+                        match self
+                            .identity_manager
+                            .lock()
+                            .await
+                            .search_identity(sender_name.clone().to_string().as_str())
+                            .await
+                        {
+                            Some(identity) => match identity {
+                                Identity::Standard(std_identity) => match std_identity.identity_type {
+                                    StandardIdentityType::Global => std_identity.node_encryption_public_key,
+                                    StandardIdentityType::Profile => std_identity
+                                        .profile_encryption_public_key
+                                        .unwrap_or_else(|| std_identity.node_encryption_public_key),
+                                },
+                                Identity::Device(device) => device.node_encryption_public_key,
+                                Identity::Agent(_) => return Err(APIError {
+                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                    error: "Bad Request".to_string(),
+                                    message:
+                                        "Failed to get sender encryption pk from message: Agent identity not supported"
+                                            .to_string(),
+                                }),
+                            },
+                            None => {
                                 return Err(APIError {
                                     code: StatusCode::BAD_REQUEST.as_u16(),
                                     error: "Bad Request".to_string(),
-                                    message: "Failed to get sender encryption pk from message: Agent identity not supported".to_string(),
+                                    message: "Failed to get sender encryption pk from message: Identity not found"
+                                        .to_string(),
                                 })
-                            },
-                        }
-                    },
-                    None => {
-                        return Err(APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Bad Request".to_string(),
-                            message: "Failed to get sender encryption pk from message: Identity not found".to_string(),
-                        })
-                    }};
-                    msg = match potentially_encrypted_msg.clone()
+                            }
+                        };
+                    msg = match potentially_encrypted_msg
+                        .clone()
                         .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)
                     {
                         Ok(msg) => msg,
@@ -146,6 +153,7 @@ impl Node {
                 })
             }
         };
+        println!("sender_name: {:?}", sender_name);
 
         // We (currently) don't proxy external messages from other nodes to other nodes
         if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
@@ -491,10 +499,7 @@ impl Node {
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::APIReadUpToTimeRequest),
-            )
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobCreationSchema))
             .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
@@ -505,7 +510,6 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-
         match self.internal_create_new_job(msg).await {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
@@ -996,16 +1000,13 @@ impl Node {
         Ok(())
     }
 
-    pub async fn api_add_agent(
+    pub async fn api_job_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = self
-            .validate_message(
-                potentially_encrypted_msg,
-                Some(MessageSchemaType::APIAddAgentRequest),
-            )
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobMessageSchema))
             .await;
         let (msg, sender_subidentity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
@@ -1014,13 +1015,51 @@ impl Node {
                 return Ok(());
             }
         };
-    
+
+        // TODO: add permissions to check if the sender has the right permissions to send the job message
+
+        match self.internal_job_message(msg).await {
+            Ok(_) => {
+                // If everything went well, send the job_id back with an empty string for error
+                let _ = res.send(Ok("Job message processed successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_add_agent(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-    
+
         let serialized_agent_string = msg.get_message_content()?;
-        let serialized_agent: APIAddAgentRequest = serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {
-            message: format!("Failed to parse APIAddAgentRequest: {}", e),
-        })?;
+        let serialized_agent: APIAddAgentRequest =
+            serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {
+                message: format!("Failed to parse APIAddAgentRequest: {}", e),
+            })?;
 
         match self.internal_add_agent(serialized_agent.agent).await {
             Ok(_) => {

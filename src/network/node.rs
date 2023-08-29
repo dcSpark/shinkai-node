@@ -328,7 +328,7 @@ impl Node {
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
+                            // Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.internal_job_message(job_id, shinkai_message, res).await,
                             Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints
@@ -344,6 +344,7 @@ impl Node {
                             // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
+                            Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             _ => break,
                         }
                     }

@@ -92,7 +92,7 @@ impl Provider for OpenAI {
                     .send()
                     .await?;
 
-                println!("Status: {}", res.status());
+                eprintln!("Status: {}", res.status());
                 let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
                 Ok(Self::extract_content(&data))
             } else {

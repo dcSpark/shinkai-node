@@ -229,14 +229,14 @@ impl ShinkaiName {
     }
 
     pub fn from_shinkai_message_using_sender_subidentity(message: &ShinkaiMessage) -> Result<Self, ShinkaiNameError> {
-        // Check if outer encrypted or inner encrypted and return error if so
+        // Check if outer encrypted and return error if so
         let body = match &message.body {
             MessageBody::Unencrypted(body) => body,
             _ => return Err(ShinkaiNameError::MessageBodyMissing),
         };
 
         let node = match Self::new(message.external_metadata.sender.clone()) {
-            Ok(name) => name.extract_node(),
+            Ok(name) => name,
             Err(_) => {
                 return Err(ShinkaiNameError::InvalidNameFormat(
                     message.external_metadata.sender.clone(),
@@ -269,7 +269,7 @@ impl ShinkaiName {
         };
     
         let node = match Self::new(message.external_metadata.recipient.clone()) {
-            Ok(name) => name.extract_node(),
+            Ok(name) => name,
             Err(_) => return Err(ShinkaiNameError::InvalidNameFormat(
                 message.external_metadata.recipient.clone(),
             )),

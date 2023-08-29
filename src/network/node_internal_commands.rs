@@ -223,11 +223,12 @@ impl Node {
     }
 
     pub async fn internal_create_new_job(&self, shinkai_message: ShinkaiMessage) -> Result<String, NodeError> {
+        println!("Creating new job");
         match self
             .job_manager
             .lock()
             .await
-            .process_job_message(shinkai_message, None)
+            .process_job_message(shinkai_message)
             .await
         {
             Ok(job_id) => {
@@ -241,24 +242,19 @@ impl Node {
         }
     }
 
-    pub async fn job_message(&self, job_id: String, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
-        // TODO: maybe I don't need the extra job_id param? it should be inside shinkai_message
+    pub async fn internal_job_message(&self, shinkai_message: ShinkaiMessage) -> Result<(), NodeError> {
         match self
             .job_manager
             .lock()
             .await
-            .process_job_message(shinkai_message, Some(job_id))
+            .process_job_message(shinkai_message)
             .await
         {
-            Ok(job_id) => {
-                // If everything went well, send the job_id back with an empty string for error
-                let _ = res.send((job_id, String::new())).await;
-            }
-            Err(err) => {
-                // If there was an error, send the error message
-                let _ = res.try_send((String::new(), format!("{}", err)));
-            }
-        };
+            Ok(_) => Ok(()),
+            Err(err) => Err(NodeError {
+                message: format!("Error with process job message: {}", err),
+            }),
+        }
     }
 
     pub async fn internal_add_agent(&self, agent: SerializedAgent) -> Result<(), NodeError> {

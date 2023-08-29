@@ -362,23 +362,27 @@ pub async fn api_create_job(
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
     subidentity_signature_sk: SignatureStaticKey,
-    node_name: &str,
-    subidentity_name: &str,
-) {
+    sender: &str,
+    sender_subidentity: &str,
+    recipient_subidentity: &str,
+) -> String {
     {
         let job_scope = JobScope {
             buckets: vec![],
             documents: vec![],
         };
 
+        let full_sender = format!("{}/{}", sender, sender_subidentity);
+        eprintln!("@@ full_sender: {}", full_sender);
+
         let job_creation = ShinkaiMessageBuilder::job_creation(
             job_scope,
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            node_name.to_string(),
-            node_name.to_string(),
-            subidentity_name.to_string(),
+            full_sender.to_string(),
+            sender.to_string(),
+            recipient_subidentity.to_string(),
         )
         .unwrap();
 
@@ -393,29 +397,50 @@ pub async fn api_create_job(
         let node_job_creation = res_create_job_receiver.recv().await.unwrap();
         eprintln!("node_job_creation: {:?}", node_job_creation);
 
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(node_job_creation.is_ok(), "Job was created");
 
-        // let (res_all_subidentities_sender, res_all_subidentities_receiver): (
-        //     async_channel::Sender<Result<Vec<Identity>, APIError>>,
-        //     async_channel::Receiver<Result<Vec<Identity>, APIError>>,
-        // ) = async_channel::bounded(1);
-        // node_commands_sender
-        //     .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
-        //         res_all_subidentities_sender,
-        //     ))
-        //     .await
-        //     .unwrap();
-        // let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
-        // eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
+        return node_job_creation.unwrap();
+    }
+}
 
-        // // Search in node2_all_subidentities for the agent
-        // let agent_identity = node2_all_subidentities.iter().find(|identity| {
-        //     identity.get_full_identity_name()
-        //         == ShinkaiName::new(format!("{}/main/agent/{}", node_name, agent.id))
-        //             .unwrap()
-        //             .to_string()
-        // });
+pub async fn api_message_job(
+    node_commands_sender: Sender<NodeCommand>,
+    subidentity_encryption_sk: EncryptionStaticKey,
+    node_encryption_pk: EncryptionPublicKey,
+    subidentity_signature_sk: SignatureStaticKey,
+    sender: &str,
+    sender_subidentity: &str,
+    recipient_subidentity: &str,
+    job_id: &str,
+    content: &str,
+) {
+    {
+        let full_sender = format!("{}/{}", sender, sender_subidentity);
+        eprintln!("@@ full_sender: {}", full_sender);
 
-        // assert!(agent_identity.is_some(), "Agent was added to the node");
+        let job_message = ShinkaiMessageBuilder::job_message(
+            job_id.to_string(),
+            content.to_string(),
+            subidentity_encryption_sk.clone(),
+            clone_signature_secret_key(&subidentity_signature_sk),
+            node_encryption_pk,
+            full_sender.to_string(),
+            sender.to_string(),
+            recipient_subidentity.to_string(),
+        )
+        .unwrap();
+
+        let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::APIJobMessage {
+                msg: job_message,
+                res: res_message_job_sender,
+            })
+            .await
+            .unwrap();
+        let node_job_message = res_message_job_receiver.recv().await.unwrap();
+        eprintln!("node_job_message: {:?}", node_job_message);
+
+        assert!(node_job_message.is_ok(), "Job message was successfully processed");
     }
 }

@@ -26,7 +26,7 @@ pub trait JobLike: Send + Sync {
     fn conversation_inbox_name(&self) -> &InboxName;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Job {
     // based on uuid
     pub job_id: String,
@@ -91,17 +91,10 @@ impl JobManager {
         job_manager
     }
 
-    pub async fn process_job_message(
-        &mut self,
-        shinkai_message: ShinkaiMessage,
-        job_id: Option<String>,
-    ) -> Result<String, JobManagerError> {
-        if self.agent_manager.lock().await.is_job_message(shinkai_message.clone()) {
-            self.agent_manager
-                .lock()
-                .await
-                .process_job_message(shinkai_message, job_id)
-                .await
+    pub async fn process_job_message(&mut self, shinkai_message: ShinkaiMessage) -> Result<String, JobManagerError> {
+        let mut agent_manager = self.agent_manager.lock().await;
+        if agent_manager.is_job_message(shinkai_message.clone()) {
+            agent_manager.process_job_message(shinkai_message).await
         } else {
             Err(JobManagerError::NotAJobMessage)
         }
@@ -210,8 +203,8 @@ impl AgentManager {
 
             match shinkai_db.get_job(&job_id) {
                 Ok(job) => {
+                    std::mem::drop(shinkai_db); // require to avoid deadlock
                     self.jobs.lock().await.insert(job_id.clone(), Box::new(job));
-
                     let mut agent_found = None;
                     for agent in &self.agents {
                         let locked_agent = agent.lock().await;
@@ -247,9 +240,12 @@ impl AgentManager {
     pub async fn handle_job_message_schema(&mut self, job_message: JobMessage) -> Result<String, JobManagerError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
+            let mut shinkai_db = self.db.lock().await;
+            shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &job_message.content.clone())?;
+            shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
+            std::mem::drop(shinkai_db); // require to avoid deadlock
 
-            let decision_phase_output = self.decision_phase(&**job).await?;
-
+            let _ = self.decision_phase(&**job).await?;
             return Ok(job_message.job_id.clone());
         } else {
             return Err(JobManagerError::JobNotFound);
@@ -262,11 +258,7 @@ impl AgentManager {
         Ok(String::new())
     }
 
-    pub async fn process_job_message(
-        &mut self,
-        message: ShinkaiMessage,
-        job_id: Option<String>,
-    ) -> Result<String, JobManagerError> {
+    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, JobManagerError> {
         match message.body {
             MessageBody::Unencrypted(body) => {
                 let internal_metadata = body.internal_metadata;
@@ -277,21 +269,18 @@ impl AgentManager {
                         let message_type = data.message_content_schema;
                         match message_type {
                             MessageSchemaType::JobCreationSchema => {
-                                let job_creation: JobCreation =
-                                    serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                let job_creation: JobCreation = serde_json::from_str(&data.message_raw_content)
+                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
                                 self.handle_job_creation_schema(job_creation, agent_id).await
                             }
                             MessageSchemaType::JobMessageSchema => {
-                                let job_message: JobMessage =
-                                    serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
+                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
                                 self.handle_job_message_schema(job_message).await
                             }
                             MessageSchemaType::PreMessageSchema => {
-                                let pre_message: JobPreMessage =
-                                    serde_json::from_str(&data.message_raw_content)
-                                        .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)
+                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
                                 self.handle_pre_message_schema(pre_message).await
                             }
                             _ => {
@@ -310,18 +299,14 @@ impl AgentManager {
     async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
         // When a new message is supplied to the job, the decision phase of the new step begins running
         // (with its existing step history as context) which triggers calling the Agent's LLM.
-        {
-            // Add current time as ISO8601 to step history
-            let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
-            self.db
-                .lock()
-                .await
-                .add_step_history(job.job_id().to_string(), time_with_comment)
-                .unwrap();
-        }
+
+        // Append current time as ISO8601 to step history
+        let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
 
         let full_job = { self.db.lock().await.get_job(job.job_id()).unwrap() };
-        let context = full_job.step_history;
+        let mut context = full_job.step_history.clone();
+        context.push(time_with_comment);
+        println!("decision_phase> context: {:?}", context);
 
         let agent_id = full_job.parent_agent_id;
         let mut agent_found = None;
@@ -337,9 +322,10 @@ impl AgentManager {
             Some(agent) => {
                 // Create a new async task where the agent's execute method will run
                 // Note: agent execute run in a separate thread
+                let last_message = full_job.step_history.last().ok_or(JobManagerError::ContentParseFailed)?.clone();
                 tokio::spawn(async move {
                     let mut agent = agent.lock().await;
-                    agent.execute("test".to_string(), context).await;
+                    agent.execute(last_message.to_string(), context).await;
                 })
                 .await?;
                 Ok(())
@@ -425,5 +411,11 @@ impl std::error::Error for JobManagerError {
 impl From<Box<dyn std::error::Error>> for JobManagerError {
     fn from(err: Box<dyn std::error::Error>) -> JobManagerError {
         JobManagerError::IO(err.to_string())
+    }
+}
+
+impl From<ShinkaiDBError> for JobManagerError {
+    fn from(err: ShinkaiDBError) -> JobManagerError {
+        JobManagerError::ShinkaiDB(err)
     }
 }

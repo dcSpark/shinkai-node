@@ -244,6 +244,19 @@ impl Node {
         };
     }
 
+    pub async fn local_job_message(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        match self.internal_job_message(shinkai_message).await {
+            Ok(job_id) => {
+                // If everything went well, send the job_id back with an empty string for error
+                let _ = res.send((String::new(), String::new())).await;
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let _ = res.try_send((String::new(), format!("{}", err)));
+            }
+        };
+    }
+
     pub async fn local_add_agent(&self, agent: SerializedAgent, res: Sender<String>) {
         let result = self.internal_add_agent(agent).await;
         let result_str = match result {
