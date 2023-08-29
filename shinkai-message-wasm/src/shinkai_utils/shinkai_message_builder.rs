@@ -5,7 +5,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{inbox_name::InboxName, registration_code::RegistrationCode, shinkai_time::ShinkaiTime},
+    schemas::{inbox_name::InboxName, registration_code::RegistrationCode, shinkai_time::ShinkaiTime, agents::serialized_agent::SerializedAgent},
     shinkai_message::{
         shinkai_message::{
             EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData,
@@ -13,7 +13,7 @@ use crate::{
         },
         shinkai_message_schemas::{
             APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreation, JobMessage,
-            JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, APIAddAgentRequest,
         },
     },
     shinkai_utils::{
@@ -29,6 +29,8 @@ use super::{
 
 pub type ProfileName = String;
 
+// TODO: refactor this so you don't need to give all the keys to the builder in new
+// but rather give them to the build function that way you can have the two level of encryptions
 pub struct ShinkaiMessageBuilder {
     message_raw_content: String,
     message_content_schema: MessageSchemaType,
@@ -459,7 +461,7 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
-        sender_profile_name: String,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let registration_code_request = RegistrationCodeRequest { permissions, code_type };
@@ -469,7 +471,7 @@ impl ShinkaiMessageBuilder {
             my_subidentity_signature_sk,
             receiver_public_key,
             registration_code_request,
-            sender_profile_name,
+            sender_subidentity,
             receiver,
             MessageSchemaType::CreateRegistrationCode,
         )
@@ -483,7 +485,7 @@ impl ShinkaiMessageBuilder {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender_profile_name: String,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
@@ -504,7 +506,7 @@ impl ShinkaiMessageBuilder {
             my_subidentity_signature_sk,
             receiver_public_key,
             registration_code,
-            sender_profile_name,
+            sender_subidentity,
             receiver,
             MessageSchemaType::TextContent,
         )
@@ -517,7 +519,7 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_profile_name: String,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -532,7 +534,7 @@ impl ShinkaiMessageBuilder {
             my_subidentity_signature_sk,
             receiver_public_key,
             get_last_messages_from_inbox,
-            sender_profile_name,
+            sender_subidentity,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
         )
@@ -545,7 +547,7 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_profile_name: String,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -560,9 +562,32 @@ impl ShinkaiMessageBuilder {
             my_subidentity_signature_sk,
             receiver_public_key,
             get_last_unread_messages_from_inbox,
-            sender_profile_name,
+            sender_subidentity,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
+        )
+    }
+
+    pub fn request_add_agent(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        agent: SerializedAgent,
+        sender_subidentity: String,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let add_agent = APIAddAgentRequest {
+            agent
+        };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            add_agent,
+            sender_subidentity,
+            receiver,
+            MessageSchemaType::APIAddAgentRequest,
         )
     }
 
@@ -572,7 +597,7 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         up_to_time: String,
-        sender_profile_name: String,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -583,7 +608,7 @@ impl ShinkaiMessageBuilder {
             my_subidentity_signature_sk,
             receiver_public_key,
             read_up_to_time,
-            sender_profile_name,
+            sender_subidentity,
             receiver,
             MessageSchemaType::APIReadUpToTimeRequest,
         )

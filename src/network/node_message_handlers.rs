@@ -20,7 +20,7 @@ use std::{io, net::SocketAddr};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::node::NodeError;
+use super::node_error::NodeError;
 
 pub enum PingPong {
     Ping,

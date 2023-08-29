@@ -2,6 +2,7 @@ set -e
 export CC=gcc
 export CXX=g++
 
+clear
 cargo test -- --test-threads=1
 cd shinkai-message-wasm
 wasm-pack build

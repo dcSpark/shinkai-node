@@ -1,6 +1,7 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -23,6 +24,7 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::ShinkaiDB;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::{JobManager, JobManagerError};
 use crate::managers::{job_manager, IdentityManager};
@@ -32,53 +34,7 @@ use crate::network::node_message_handlers::{
 use crate::schemas::identity::{Identity, StandardIdentity};
 
 use super::node_api::APIError;
-
-#[derive(Debug)]
-pub struct NodeError {
-    pub message: String,
-}
-
-impl std::fmt::Display for NodeError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl std::error::Error for NodeError {}
-
-impl From<Box<dyn std::error::Error + Send + Sync>> for NodeError {
-    fn from(err: Box<dyn std::error::Error + Send + Sync>) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<std::io::Error> for NodeError {
-    fn from(err: std::io::Error) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<ShinkaiMessageError> for NodeError {
-    fn from(err: ShinkaiMessageError) -> NodeError {
-        NodeError {
-            message: format!("{}", err),
-        }
-    }
-}
-
-impl From<JobManagerError> for NodeError {
-    fn from(error: JobManagerError) -> Self {
-        // Here you need to decide how to convert a JobManagerError into a NodeError.
-        // This is just an example, adjust it according to your needs.
-        NodeError {
-            message: format!("JobManagerError occurred: {}", error),
-        }
-    }
-}
+use super::node_error::NodeError;
 
 pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
@@ -149,8 +105,6 @@ pub enum NodeCommand {
         res: Sender<Vec<ShinkaiMessage>>,
     },
     APIMarkAsReadUpTo {
-        // inbox_name: String,
-        // up_to_time: String,
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
@@ -195,11 +149,11 @@ pub enum NodeCommand {
         identity: String,
         res: Sender<bool>,
     },
-    APICreateNewJob {
+    APICreateJob {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
-    CreateNewJob {
+    CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
@@ -208,7 +162,6 @@ pub enum NodeCommand {
         res: Sender<Result<String, APIError>>,
     },
     JobMessage {
-        job_id: String,
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
@@ -221,6 +174,14 @@ pub enum NodeCommand {
         content: String,
         recipient: String,
         res: Sender<(String, String)>,
+    },
+    APIAddAgent {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    AddAgent {
+        agent: SerializedAgent,
+        res: Sender<String>,
     },
 }
 
@@ -365,8 +326,9 @@ impl Node {
                             Some(NodeCommand::AddInboxPermission { inbox_name, perm_type, identity, res }) => self.local_add_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
-                            Some(NodeCommand::CreateNewJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { job_id, shinkai_message, res }) => self.job_message(job_id, shinkai_message, res).await,
+                            Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
+                            Some(NodeCommand::JobMessage { shinkai_message, res }) => self.internal_job_message(shinkai_message).await?,
+                            Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints
                             Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
@@ -377,9 +339,10 @@ impl Node {
                             Some(NodeCommand::APIMarkAsReadUpTo { msg, res }) => self.api_mark_as_read_up_to(msg, res).await?,
                             // Some(NodeCommand::APIAddInboxPermission { msg, res }) => self.api_add_inbox_permission(msg, res).await?,
                             // Some(NodeCommand::APIRemoveInboxPermission { msg, res }) => self.api_remove_inbox_permission(msg, res).await?,
-                            Some(NodeCommand::APICreateNewJob { msg, res }) => self.api_create_new_job(msg, res).await?,
-                            // Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
+                            Some(NodeCommand::APICreateJob { msg, res }) => self.api_create_new_job(msg, res).await?,
                             Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
+                            Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
+                            Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             _ => break,
                         }
                     }

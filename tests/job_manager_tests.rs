@@ -19,7 +19,7 @@ mod tests {
     use async_trait::async_trait;
     use mockito::Server;
     use shinkai_message_wasm::{
-        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName},
+        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, agents::serialized_agent::{SerializedAgent, OpenAI, AgentAPIModel}},
         shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
             encryption::{unsafe_deterministic_encryption_keypair},
@@ -31,11 +31,8 @@ mod tests {
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
-            agent::{Agent, AgentAPIModel},
-            agent_serialization::SerializedAgent,
             identity_manager,
             job_manager::{AgentManager, JobLike, JobManager},
-            providers::openai::OpenAI,
         },
     };
     use std::collections::HashMap;
@@ -148,7 +145,7 @@ mod tests {
 
         // Process the JobCreationSchema message
         let mut job_created_id = String::new();
-        match job_manager.process_job_message(shinkai_message_creation, None).await {
+        match job_manager.process_job_message(shinkai_message_creation).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();
                 println!("Job ID: {}", job_id);
@@ -181,7 +178,7 @@ mod tests {
         .expect("Failed to decrypt body content");
 
         println!("shinkai_job_message: {:?}", shinkai_job_message);
-        match job_manager.process_job_message(shinkai_job_message, None).await {
+        match job_manager.process_job_message(shinkai_job_message).await {
             Ok(job_id) => {
                 job_created_id = job_id.clone();
                 println!("Job Message ID: {}", job_id);

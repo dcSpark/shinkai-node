@@ -1,10 +1,11 @@
 use crate::db::ShinkaiDB;
-use crate::network::node::NodeError;
+use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
 use crate::schemas::identity::{
     DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
@@ -18,7 +19,6 @@ use std::sync::{Arc, Weak};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use super::agent_serialization::SerializedAgent;
 use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Clone)]
@@ -94,6 +94,7 @@ impl IdentityManager {
     }
 
     pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
+        println!("add_agent_subidentity > agent: {:?}", agent);
         self.local_identities.push(Identity::Agent(agent.clone()));
         Ok(())
     }
@@ -122,6 +123,7 @@ impl IdentityManager {
         }
 
         let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
+        println!("search_local_identity > node_in_question: {}", node_in_question);
 
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_in_question {
@@ -130,13 +132,14 @@ impl IdentityManager {
                 .filter_map(|identity| match identity {
                     Identity::Standard(standard_identity) => {
                         if standard_identity.full_identity_name.to_string() == full_identity_name {
+                            println!("FOUND! search_local_identity > standard_identity: {}", standard_identity);
                             Some(Identity::Standard(standard_identity.clone()))
                         } else {
                             None
                         }
                     }
                     Identity::Agent(agent) => {
-                        if agent.id == full_identity_name {
+                        if agent.full_identity_name.to_string() == full_identity_name {
                             Some(Identity::Agent(agent.clone()))
                         } else {
                             None
@@ -157,6 +160,7 @@ impl IdentityManager {
     }
 
     pub async fn search_local_agent(&self, agent_id: &str) -> Option<SerializedAgent> {
+        println!("search_local_agent > agent_id: {}", agent_id);
         let db = self.db.lock().await;
         db.get_agent(agent_id).ok().flatten()
     }
@@ -167,6 +171,7 @@ impl IdentityManager {
     }
 
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        println!("search_identity > full_identity_name: {}", full_identity_name);
         {
             let db = self.db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();

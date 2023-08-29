@@ -1,7 +1,7 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::{agent::Agent, agent_serialization::SerializedAgent};
 use rocksdb::{Error, Options};
 use serde_json::{from_slice, to_vec};
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 
 impl ShinkaiDB {
     // Fetches all agents from the Agents topic

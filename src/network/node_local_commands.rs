@@ -1,10 +1,14 @@
 use super::Node;
-use crate::{schemas::{identity::Identity, inbox_permission::InboxPermission}, network::node_api::APIError};
+use crate::{
+    network::node_api::APIError,
+    schemas::{identity::Identity, inbox_permission::InboxPermission},
+};
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::error;
 use shinkai_message_wasm::{
     schemas::{
+        agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiNameError},
     },
@@ -14,8 +18,8 @@ use shinkai_message_wasm::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
+            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+            string_to_encryption_public_key,
         },
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
@@ -103,7 +107,7 @@ impl Node {
     pub async fn local_get_all_subidentities_devices_and_agents(&self, res: Sender<Result<Vec<Identity>, APIError>>) {
         let mut identity_manager = self.identity_manager.lock().await;
         let result = identity_manager.get_all_subidentities_devices_and_agents();
-    
+
         if let Err(e) = res.send(Ok(result)).await {
             error!("Failed to send result: {}", e);
             let error = APIError {
@@ -238,5 +242,27 @@ impl Node {
                 let _ = res.try_send((String::new(), format!("{}", err)));
             }
         };
+    }
+
+    pub async fn local_job_message(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
+        match self.internal_job_message(shinkai_message).await {
+            Ok(job_id) => {
+                // If everything went well, send the job_id back with an empty string for error
+                let _ = res.send((String::new(), String::new())).await;
+            }
+            Err(err) => {
+                // If there was an error, send the error message
+                let _ = res.try_send((String::new(), format!("{}", err)));
+            }
+        };
+    }
+
+    pub async fn local_add_agent(&self, agent: SerializedAgent, res: Sender<String>) {
+        let result = self.internal_add_agent(agent).await;
+        let result_str = match result {
+            Ok(_) => "true".to_string(),
+            Err(e) => format!("Error: {:?}", e),
+        };
+        let _ = res.send(result_str).await;
     }
 }
