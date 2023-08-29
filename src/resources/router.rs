@@ -1,4 +1,4 @@
-use crate::resources::document::DocumentVectorResource;
+use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::*;
 use crate::resources::vector_resource::*;
 use crate::resources::resource_errors::*;

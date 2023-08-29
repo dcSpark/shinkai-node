@@ -1,5 +1,5 @@
 use crate::db::{ShinkaiDB, Topic};
-use crate::resources::document::DocumentVectorResource;
+use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::Embedding;
 use crate::resources::vector_resource::RetrievedDataChunk;
 use crate::resources::vector_resource::{VectorResource, VectorResourceType};

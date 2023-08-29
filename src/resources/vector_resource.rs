@@ -9,7 +9,7 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
 
-use super::document::DocumentVectorResource;
+use super::document_resource::DocumentVectorResource;
 use super::router::VectorResourcePointer;
 
 /// Enum used for all VectorResources to specify their type
@@ -127,7 +127,7 @@ pub trait VectorResource {
     fn resource_type(&self) -> VectorResourceType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
-    fn chunk_embeddings(&self) -> &Vec<Embedding>; // Maybe convert into hashmap in the future for efficiency
+    fn chunk_embeddings(&self) -> Vec<Embedding>; // Maybe convert into hashmap in the future for efficiency
     fn data_tag_index(&self) -> &DataTagIndex;
 
     // Note we cannot add from_json in the trait due to trait object limitations
@@ -244,7 +244,7 @@ pub trait VectorResource {
     /// the most similar data chunks.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
-        let scores = query.score_similarities(self.chunk_embeddings(), num_of_results);
+        let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
         // Fetch the RetrievedDataChunk matching the most similar embeddings
         let mut chunks: Vec<RetrievedDataChunk> = vec![];

@@ -3,8 +3,8 @@ use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
 use crate::resources::model_type::*;
-use crate::resources::vector_resource::*;
 use crate::resources::resource_errors::*;
+use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 
@@ -55,8 +55,8 @@ impl VectorResource for DocumentVectorResource {
         VectorResourceType::Document
     }
 
-    fn chunk_embeddings(&self) -> &Vec<Embedding> {
-        &self.chunk_embeddings
+    fn chunk_embeddings(&self) -> Vec<Embedding> {
+        self.chunk_embeddings.clone()
     }
 
     fn to_json(&self) -> Result<String, VectorResourceError> {
@@ -119,7 +119,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::LocalModel(LocalModel::GptNeoX),
+            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2),
         )
     }
 

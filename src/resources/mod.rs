@@ -1,6 +1,6 @@
 pub mod bert_cpp;
 pub mod data_tags;
-pub mod document;
+pub mod document_resource;
 pub mod embedding_generator;
 pub mod embeddings;
 pub mod file_parsing;
@@ -8,3 +8,4 @@ pub mod model_type;
 pub mod vector_resource;
 pub mod resource_errors;
 pub mod router;
+pub mod kv_resource;
