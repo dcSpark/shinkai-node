@@ -16,6 +16,7 @@ import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderW
 import { MergedSetupType } from "../pages/Connect";
 import { ApiConfig } from "./api_config";
 import { SetupDetailsState } from "../store/reducers";
+import { ShinkaiMessage } from "../models/ShinkaiMessage";
 
 // Helper function to handle HTTP errors
 export const handleHttpError = (response: any) => {
@@ -66,16 +67,20 @@ export const sendTextMessage =
         text_message
       );
 
-      const message = JSON.parse(messageStr);
+      const message: ShinkaiMessage = JSON.parse(messageStr);
       console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
       handleHttpError(response);
-      const inboxId = message.body.internal_metadata.inbox;
-      dispatch(addMessageToInbox(inboxId, message));
-      return inboxId;
+      if (message.body && 'unencrypted' in message.body) {
+        const inboxId = message.body.unencrypted.internal_metadata.inbox;
+        dispatch(addMessageToInbox(inboxId, message));
+        return inboxId;
+      } else {
+        console.error("Error: message body is null or encrypted");
+      }
     } catch (error) {
       console.error("Error sending text message:", error);
     }
@@ -105,16 +110,20 @@ export const sendTextMessageWithInbox =
           text_message
         );
 
-      const message = JSON.parse(messageStr);
+      const message: ShinkaiMessage = JSON.parse(messageStr);
       console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
       handleHttpError(response);
-      const inboxId = message.body.internal_metadata.inbox;
-      dispatch(addMessageToInbox(inboxId, message));
-      return inboxId;
+      if (message.body && 'unencrypted' in message.body) {
+        const inboxId = message.body.unencrypted.internal_metadata.inbox;
+        dispatch(addMessageToInbox(inboxId, message));
+        return inboxId;
+      } else {
+        console.error("Error: message body is null or encrypted");
+      }
     } catch (error) {
       console.error("Error sending text message:", error);
     }

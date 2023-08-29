@@ -11,6 +11,9 @@ import {
   IonLabel,
   IonItem,
   IonToast,
+  InputChangeEventDetail,
+  IonIcon,
+  IonSpinner,
 } from "@ionic/react";
 import { submitRegistrationCode } from "../api";
 import { BrowserQRCodeReader } from "@zxing/browser";
@@ -18,7 +21,7 @@ import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { useHistory } from "react-router-dom";
 import { toast } from "react-toastify";
 import type { AppDispatch, RootState } from "../store";
-import { QrScanner } from "@yudiel/react-qr-scanner";
+import { QrScanner, QrScannerProps } from "@yudiel/react-qr-scanner";
 import { BarcodeScanner } from "@capacitor-community/barcode-scanner";
 import { isPlatform } from "@ionic/react";
 import {
@@ -27,6 +30,12 @@ import {
 } from "../utils/wasm_helpers";
 import { QRSetupData } from "../models/QRSetupData";
 import { SetupDetailsState } from "../store/reducers";
+import { InputCustomEvent } from "@ionic/core/dist/types/components/input/input-interface";
+import { cn } from "../theme/lib/utils";
+import Button from "../components/ui/Button";
+import { IonHeaderCustom } from "../components/ui/Layout";
+import Input from "../components/ui/Input";
+import { scan, cloudUpload, checkmarkSharp } from "ionicons/icons";
 
 export type MergedSetupType = SetupDetailsState & QRSetupData;
 
@@ -46,6 +55,9 @@ const Connect: React.FC = () => {
     myIdentityPk: "",
     myIdentitySk: "",
   });
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "error" | "success"
+  >("idle");
   const [error, setError] = useState<string | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const history = useHistory();
@@ -61,7 +73,7 @@ const Connect: React.FC = () => {
           ...prevState,
           myEncryptionPk: my_encryption_pk_string,
           myEncryptionSk: my_encryption_sk_string,
-        }))
+        })),
     );
     generateSignatureKeys().then(
       ({ my_identity_pk_string, my_identity_sk_string }) =>
@@ -69,7 +81,7 @@ const Connect: React.FC = () => {
           ...prevState,
           myIdentityPk: my_identity_pk_string,
           myIdentitySk: my_identity_sk_string,
-        }))
+        })),
     );
   }, []);
 
@@ -85,7 +97,7 @@ const Connect: React.FC = () => {
       console.log("New QR Code Data:", setupData);
     }
   };
-
+  console.log(isPlatform("desktop"));
   const handleImageUpload = async () => {
     try {
       const image = await Camera.getPhoto({
@@ -106,7 +118,7 @@ const Connect: React.FC = () => {
     }
   };
 
-  const handleError = (err: any) => {
+  const handleError = (err: Error) => {
     console.error(err);
   };
 
@@ -120,12 +132,16 @@ const Connect: React.FC = () => {
   };
 
   const finishSetup = async () => {
+    setStatus("loading");
     const success = await dispatch(submitRegistrationCode(setupData));
 
     if (success) {
+      setStatus("success");
       localStorage.setItem("setupComplete", "true");
       history.push("/home");
     } else {
+      setStatus("error");
+
       console.log("Error from state:", errorFromState);
       toast.error(errorFromState);
     }
@@ -133,108 +149,207 @@ const Connect: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>Connect</IonTitle>
-        </IonToolbar>
-      </IonHeader>
+      {/*<IonHeaderCustom>*/}
+      {/*  <IonTitle className="container text-accent text-center">*/}
+      {/*    Connect*/}
+      {/*  </IonTitle>*/}
+      {/*</IonHeaderCustom>*/}
+
       <IonContent fullscreen>
         {error && <IonToast color="danger" message={error} duration={2000} />}
-        <IonItem>
-          <IonInput
-            value={setupData.registration_code}
-            onIonChange={(e) =>
-              updateSetupData({ registration_code: e.detail.value! })
-            }
-            label="Registration Code"
-            aria-label="Registration Code"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.registration_name}
-            onIonChange={(e) =>
-              updateSetupData({ registration_name: e.detail.value! })
-            }
-            label="Registration Name (Your choice)"
-            aria-label="Registration Name (Your choice)"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.node_address}
-            onIonChange={(e) =>
-              updateSetupData({ node_address: e.detail.value! })
-            }
-            label="Node Address (IP:PORT)"
-            aria-label="Node Address (IP:PORT)"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.shinkai_identity}
-            onIonChange={(e) =>
-              updateSetupData({ shinkai_identity: e.detail.value! })
-            }
-            label="Shinkai Identity (@@IDENTITY.shinkai)"
-            aria-label="Shinkai Identity (@@IDENTITY.shinkai)"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.node_encryption_pk}
-            onIonChange={(e) =>
-              updateSetupData({ node_encryption_pk: e.detail.value! })
-            }
-            label="Node Encryption Public Key"
-            aria-label="Node Encryption Public Key"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.node_signature_pk}
-            onIonChange={(e) =>
-              updateSetupData({ node_signature_pk: e.detail.value! })
-            }
-            label="Node Signature Public Key"
-            aria-label="Node Signature Public Key"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.myEncryptionPk}
-            onIonChange={(e) =>
-              updateSetupData({ myEncryptionPk: e.detail.value! })
-            }
-            label="My Encryption Public Key"
-            aria-label="My Encryption Public Key"
-          />
-        </IonItem>
-        <IonItem>
-          <IonInput
-            value={setupData.myIdentityPk}
-            onIonChange={(e) =>
-              updateSetupData({ myIdentityPk: e.detail.value! })
-            }
-            label="My Signature Public Key"
-            aria-label="My Signature Public Key"
-          />
-        </IonItem>
-        <IonButton onClick={handleImageUpload}>Upload Image</IonButton>
-        {isPlatform("capacitor") ? (
-          <IonButton onClick={handleQRScan}>Scan QR Code</IonButton>
-        ) : (
-          <QrScanner
-            scanDelay={300}
-            onError={handleError}
-            onDecode={handleScan}
-            containerStyle={{ width: "100%" }}
-          />
-        )}
-        <IonButton onClick={finishSetup}>Finish Setup</IonButton>
+        <div className="relative flex min-h-screen min-h-screen-ios lg:p-6 md:px-6 md:pt-16 md:pb-10 bg-slate-900">
+          <div className="relative hidden shrink-0 w-[40rem] p-20 overflow-hidden 2xl:w-[37.5rem] xl:w-[30rem] lg:p-10 lg:block">
+            <div className="max-w-[25.4rem]">
+              <div className="mb-4 text-7xl font-bold leading-none uppercase font-newake text-white">
+                AI AGENT OS THAT UNLOCKS THE POTENTIAL OF LLMS
+              </div>
+              <div className="text-lg text-slate-900">
+                For devices, identities, and digital money
+              </div>
+            </div>
+            <div className="h-[16rem] mt-20 flex justify-center">
+              <img
+                src="/messaging.png"
+                className="inline-block align-top opacity-0 transition-opacity opacity-100 object-contain h-full"
+                alt=""
+              />
+            </div>
+          </div>
+          <div className="flex grow p-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
+            <div className="w-full max-w-[31.5rem] m-auto">
+              <a href="https://shinkai.com/" target="_blank">
+                <img
+                  className="block dark:hidden mx-auto mb-10"
+                  src="/shinkai-logo.svg"
+                  alt=""
+                />
+                <img
+                  className="hidden dark:block mx-auto mb-10"
+                  src="/shinkai-logo-white.svg"
+                  alt=""
+                />
+              </a>
+              <div className="space-y-2">
+                <Button variant={"secondary"} onClick={handleImageUpload}>
+                  <IonIcon
+                    slot="icon-only"
+                    icon={cloudUpload}
+                    className="mr-4"
+                  />
+                  Upload QR Code
+                </Button>
+                {isPlatform("capacitor") ? (
+                  <Button onClick={handleQRScan}>Scan QR Code</Button>
+                ) : (
+                  <CustomQrScanner
+                    scanDelay={300}
+                    onError={handleError}
+                    onDecode={handleScan}
+                    containerStyle={{ width: "100%" }}
+                  />
+                )}
+              </div>
+              <hr className="w-full border-b border-gray-300 dark:border-slate-600/60 mt-6 mb-6" />
+              <div className="space-y-5">
+                <Input
+                  value={setupData.registration_code}
+                  onChange={(e) =>
+                    updateSetupData({ registration_code: e.detail.value! })
+                  }
+                  label="Registration Code"
+                />
+                <Input
+                  value={setupData.registration_name}
+                  onChange={(e) =>
+                    updateSetupData({ registration_name: e.detail.value! })
+                  }
+                  label="Registration Name (Your choice)"
+                />
+                <Input
+                  value={setupData.node_address}
+                  onChange={(e) =>
+                    updateSetupData({ node_address: e.detail.value! })
+                  }
+                  label="Node Address (IP:PORT)"
+                />
+                <Input
+                  value={setupData.shinkai_identity}
+                  onChange={(e) =>
+                    updateSetupData({ shinkai_identity: e.detail.value! })
+                  }
+                  label="Shinkai Identity (@@IDENTITY.shinkai)"
+                />
+                <Input
+                  value={setupData.node_encryption_pk}
+                  onChange={(e) =>
+                    updateSetupData({ node_encryption_pk: e.detail.value! })
+                  }
+                  label="Node Encryption Public Key"
+                />
+                <Input
+                  value={setupData.node_signature_pk}
+                  onChange={(e) =>
+                    updateSetupData({ node_signature_pk: e.detail.value! })
+                  }
+                  label="Node Signature Public Key"
+                />
+                <Input
+                  value={setupData.myEncryptionPk}
+                  onChange={(e) =>
+                    updateSetupData({ myEncryptionPk: e.detail.value! })
+                  }
+                  label="My Encryption Public Key"
+                />
+                <Input
+                  value={setupData.myIdentityPk}
+                  onChange={(e) =>
+                    updateSetupData({ myIdentityPk: e.detail.value! })
+                  }
+                  label="My Signature Public Key"
+                />
+                {status === "error" && (
+                  <p
+                    role={"alert"}
+                    className={"text-red-600 text-base text-center"}
+                  >
+                    Something went wrong. Please check your inputs and try again
+                  </p>
+                )}
+                <Button
+                  onClick={finishSetup}
+                  className="mt-6"
+                  disabled={status === "loading"}
+                >
+                  {status === "loading" ? (
+                    <IonSpinner
+                      name="bubbles"
+                      className={"w-10 h-10"}
+                    ></IonSpinner>
+                  ) : (
+                    "Sign In"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
       </IonContent>
     </IonPage>
   );
 };
 
 export default Connect;
+
+function CustomQrScanner({
+  onError,
+  onDecode,
+  scanDelay,
+  containerStyle,
+}: {
+  onError: QrScannerProps["onError"];
+  onDecode: QrScannerProps["onDecode"];
+  containerStyle: React.CSSProperties;
+  scanDelay: number;
+}) {
+  const [showScanner, setShowScanner] = useState(false);
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "error" | "success"
+  >("idle");
+
+  return showScanner ? (
+    <div className="relative">
+      <QrScanner
+        scanDelay={scanDelay}
+        onError={onError}
+        onDecode={onDecode}
+        containerStyle={containerStyle}
+        onResult={(result) => {
+          setStatus("success");
+          setShowScanner(false);
+        }}
+      />
+      <Button
+        variant={"tertiary"}
+        onClick={() => setShowScanner(false)}
+        className="absolute bottom-2 z-10 max-w-[80px] left-1/2 transform -translate-x-1/2"
+      >
+        Close
+      </Button>
+      <IonToast
+        message={"QR Code scanned successfully!"}
+        duration={5000}
+        icon={checkmarkSharp}
+        isOpen={status === "success"}
+      ></IonToast>
+    </div>
+  ) : (
+    <Button
+      variant={"secondary"}
+      onClick={() => setShowScanner(true)}
+      className="mt-6"
+    >
+      <IonIcon slot="icon-only" icon={scan} className="mr-4" />
+      Scan QR Code
+    </Button>
+  );
+}
