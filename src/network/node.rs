@@ -2,6 +2,7 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
 use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -35,6 +36,14 @@ use crate::schemas::identity::{Identity, StandardIdentity};
 
 use super::node_api::APIError;
 use super::node_error::NodeError;
+
+impl From<InboxNameError> for NodeError {
+    fn from(err: InboxNameError) -> NodeError {
+        NodeError {
+            message: format!("InboxNameError: {}", err),
+        }
+    }
+}
 
 pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.

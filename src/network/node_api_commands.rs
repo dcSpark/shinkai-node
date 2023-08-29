@@ -132,7 +132,6 @@ impl Node {
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
-            println!("schema: {:?}", schema);
             if let Err(e) = msg.validate_message_schema(schema) {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -214,7 +213,7 @@ impl Node {
     ) -> Result<bool, NodeError> {
         let db_lock = self.db.lock().await;
         let has_permission = db_lock
-            .has_permission(&inbox_name.get_value(), &std_identity, InboxPermission::Read)
+            .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
@@ -236,6 +235,7 @@ impl Node {
 
         let has_creation_permission = inbox_name.has_creation_access(sender_shinkai_name);
         if let Ok(true) = has_creation_permission {
+            println!("has_creation_permission: true");
             return Ok(true);
         }
 
@@ -249,7 +249,7 @@ impl Node {
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.get_value()
+                    inbox_name.to_string()
                 ),
             }),
         }
@@ -289,12 +289,23 @@ impl Node {
                 })
             }
         };
-        let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
-            serde_json::from_str(&content).map_err(|e| NodeError {
-                message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
-            })?;
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
+            serde_json::from_str(&content);
 
-        let inbox_name = last_messages_inbox_request.inbox;
+        let last_messages_inbox_request = match last_messages_inbox_request_result {
+            Ok(request) => request,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
         println!("offset: {:?}", offset);
@@ -305,7 +316,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_get_last_messages_from_inbox(inbox_name.get_value(), count, offset)
+                        .internal_get_last_messages_from_inbox(inbox_name.to_string(), count, offset)
                         .await;
                     let _ = res.send(Ok(response)).await;
                     return Ok(());
@@ -316,7 +327,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;
@@ -361,12 +372,23 @@ impl Node {
         };
 
         let content = msg.get_message_content()?;
-        let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
-            serde_json::from_str(&content).map_err(|e| NodeError {
-                message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
-            })?;
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
+            serde_json::from_str(&content);
 
-        let inbox_name = last_messages_inbox_request.inbox;
+        let last_messages_inbox_request = match last_messages_inbox_request_result {
+            Ok(request) => request,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
@@ -376,7 +398,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_get_last_unread_messages_from_inbox(inbox_name.get_value(), count, offset)
+                        .internal_get_last_unread_messages_from_inbox(inbox_name.to_string(), count, offset)
                         .await;
                     let _ = res.send(Ok(response)).await;
                     return Ok(());
@@ -387,7 +409,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;
@@ -562,7 +584,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_mark_as_read_up_to(inbox_name.get_value(), up_to_time.clone())
+                        .internal_mark_as_read_up_to(inbox_name.to_string(), up_to_time.clone())
                         .await;
                     match response {
                         Ok(true) => {
@@ -586,7 +608,7 @@ impl Node {
                                     error: "Don't have access".to_string(),
                                     message: format!(
                                         "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                        inbox_name.get_value()
+                                        inbox_name.to_string()
                                     ),
                                 }))
                                 .await;
@@ -601,7 +623,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;

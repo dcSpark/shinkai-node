@@ -179,7 +179,7 @@ impl InboxName {
         InboxName::new(inbox_name)
     }
 
-    pub fn get_value(&self) -> String {
+    pub fn to_string(&self) -> String {
         match self {
             InboxName::RegularInbox { value, .. } => value.clone(),
             InboxName::JobInbox { value, .. } => value.clone(),

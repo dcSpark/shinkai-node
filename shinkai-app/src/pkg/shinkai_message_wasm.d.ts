@@ -229,11 +229,9 @@ export class ShinkaiMessageBuilderWrapper {
 export class ShinkaiMessageWrapper {
   free(): void;
 /**
-* @param {any} body
-* @param {any} external_metadata
-* @param {number} encryption
+* @param {any} shinkai_message_js
 */
-  constructor(body: any, external_metadata: any, encryption: number);
+  constructor(shinkai_message_js: any);
 /**
 * @returns {any}
 */

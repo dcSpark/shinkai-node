@@ -125,6 +125,10 @@ impl ShinkaiDB {
         n: usize,
         offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
+        println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        println!("Offset key: {:?}", offset_key);
+        println!("n: {:?}", n);
+
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
             Some(cf) => cf,

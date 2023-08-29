@@ -424,7 +424,7 @@ impl ShinkaiMessageBuilder {
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
             .map_err(|_| "Failed to get job inbox name")?
-            .get_value();
+            .to_string();
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content(body)
@@ -524,7 +524,7 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };
@@ -552,7 +552,7 @@ impl ShinkaiMessageBuilder {
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };

@@ -187,7 +187,7 @@ impl JobRecipient {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
-    pub inbox: InboxName,
+    pub inbox: String,
     pub count: usize,
     pub offset: Option<String>,
 }

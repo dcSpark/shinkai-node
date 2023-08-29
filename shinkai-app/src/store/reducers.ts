@@ -133,9 +133,12 @@ const rootReducer = (state = initialState, action: Action): RootState => {
               ].external_metadata.scheduled_time
             )
           : null;
-      const firstNewMessageTimestamp = messages[0].external_metadata
-        ? new Date(messages[0].external_metadata.scheduled_time)
-        : null;
+      let firstNewMessageTimestamp = null;
+      if (messages.length > 0 && messages[0].external_metadata) {
+        firstNewMessageTimestamp = new Date(
+          messages[0].external_metadata.scheduled_time
+        );
+      }
 
       const newMessages =
         currentMessages.length === 0 ||

@@ -1186,14 +1186,12 @@ export class ShinkaiMessageWrapper {
         wasm.__wbg_shinkaimessagewrapper_free(ptr);
     }
     /**
-    * @param {any} body
-    * @param {any} external_metadata
-    * @param {number} encryption
+    * @param {any} shinkai_message_js
     */
-    constructor(body, external_metadata, encryption) {
+    constructor(shinkai_message_js) {
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-            wasm.shinkaimessagewrapper_new(retptr, addBorrowedObject(body), addBorrowedObject(external_metadata), encryption);
+            wasm.shinkaimessagewrapper_fromJsValue(retptr, addBorrowedObject(shinkai_message_js));
             var r0 = getInt32Memory0()[retptr / 4 + 0];
             var r1 = getInt32Memory0()[retptr / 4 + 1];
             var r2 = getInt32Memory0()[retptr / 4 + 2];
@@ -1203,7 +1201,6 @@ export class ShinkaiMessageWrapper {
             return ShinkaiMessageWrapper.__wrap(r0);
         } finally {
             wasm.__wbindgen_add_to_stack_pointer(16);
-            heap[stack_pointer++] = undefined;
             heap[stack_pointer++] = undefined;
         }
     }

@@ -404,7 +404,7 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };
@@ -436,7 +436,7 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };
@@ -593,7 +593,7 @@ impl ShinkaiMessageBuilderWrapper {
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
             .map_err(|e| JsValue::from_str(&e.to_string()))?
-            .get_value();
+            .to_string();
 
         let _ = builder.message_raw_content(body);
         let _ = builder.internal_metadata_with_schema(

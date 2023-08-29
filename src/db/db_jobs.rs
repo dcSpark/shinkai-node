@@ -271,7 +271,7 @@ impl ShinkaiDB {
     }
 
     pub fn add_message_to_job_inbox(&self, job_id: &str, content: &str) -> Result<(), ShinkaiDBError> {
-        let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.get_value();
+        let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.to_string();
         let cf_handle = self
             .db
             .cf_handle(&cf_conversation_inbox_name)

@@ -31,7 +31,6 @@ export function shinkaimessagebuilderwrapper_terminate_message(a: number, b: num
 export function shinkaimessagebuilderwrapper_error_message(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number): void;
 export function shinkaimessagebuilderwrapper_get_last_unread_messages_from_inbox(a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number): void;
 export function __wbg_shinkaimessagewrapper_free(a: number): void;
-export function shinkaimessagewrapper_new(a: number, b: number, c: number, d: number): void;
 export function shinkaimessagewrapper_message_body(a: number, b: number): void;
 export function shinkaimessagewrapper_set_message_body(a: number, b: number, c: number): void;
 export function shinkaimessagewrapper_external_metadata(a: number, b: number): void;
@@ -44,6 +43,7 @@ export function shinkaimessagewrapper_to_json_str(a: number, b: number): void;
 export function shinkaimessagewrapper_from_json_str(a: number, b: number, c: number): void;
 export function shinkaimessagewrapper_calculate_hash(a: number, b: number): void;
 export function shinkaimessagewrapper_generate_time_now(a: number): void;
+export function shinkaimessagewrapper_new(a: number, b: number): void;
 export function convert_encryption_sk_string_to_encryption_pk_string(a: number, b: number, c: number): void;
 export function __wbindgen_malloc(a: number, b: number): number;
 export function __wbindgen_realloc(a: number, b: number, c: number, d: number): number;
