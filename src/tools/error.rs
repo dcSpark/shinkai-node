@@ -19,6 +19,7 @@ pub enum ToolError {
     RequestError(ReqwestError),
     ToolNotFound(String),
     VectorResourceError(VectorResourceError),
+    ToolAlreadyInstalled(String),
 }
 
 impl fmt::Display for ToolError {
@@ -39,6 +40,7 @@ impl fmt::Display for ToolError {
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
             ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
             ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
+            ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
         }
     }
 }
@@ -77,5 +79,11 @@ impl From<SerdeError> for ToolError {
             serde_json::error::Category::Data => ToolError::ParseError(error.to_string()),
             serde_json::error::Category::Eof => ToolError::ParseError(error.to_string()),
         }
+    }
+}
+
+impl From<anyhow::Error> for ToolError {
+    fn from(err: anyhow::Error) -> ToolError {
+        ToolError::ParseError(err.to_string())
     }
 }

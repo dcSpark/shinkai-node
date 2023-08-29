@@ -1,6 +1,6 @@
-use crate::resources::embeddings::*;
 use crate::resources::map_resource::MapVectorResource;
 use crate::resources::vector_resource::*;
+use crate::resources::{embeddings::*, router};
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
@@ -18,7 +18,7 @@ impl ShinkaiTool {
     pub fn tool_router_key(&self) -> String {
         let (name, toolkit_name) = match self {
             ShinkaiTool::Rust(r) => (r.name.clone(), r.toolkit_name()),
-            ShinkaiTool::JS(j) => (j.name.clone(), j.toolkit_name),
+            ShinkaiTool::JS(j) => (j.name.clone(), j.toolkit_name.to_string()),
         };
 
         Self::gen_router_key(name, toolkit_name)
@@ -29,6 +29,17 @@ impl ShinkaiTool {
         // We include `tool_type` to prevent attackers trying to overwrite
         // the internal Rust tools with JS tools that have the same name
         format!("{}:{}", toolkit_name, name)
+    }
+
+    /// Convert to json
+    pub fn to_json(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    /// Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ToolError> {
+        let deserialized: Self = serde_json::from_str(json).map_err(|e| ToolError::ParseError(e.to_string()))?;
+        Ok(deserialized)
     }
 }
 
@@ -54,7 +65,7 @@ impl ToolRouter {
             routing_resource.insert_kv(
                 &ShinkaiTool::Rust(t.clone()).tool_router_key(),
                 &t.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
-                Some(metadata),
+                Some(metadata.clone()),
                 &t.tool_embedding,
                 &vec![],
             );
@@ -78,12 +89,15 @@ impl ToolRouter {
     }
 
     /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal DataChunk
-    /// within the ToolRouter. By default Rust tools just have their name stored in the metadata,
-    /// while JS tools are fully serialized into JSON and stored in the DataChunk.
+    /// within the ToolRouter.
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         let data_chunk = self.routing_resource.get_data_chunk(key)?;
+        self.parse_shinkai_tool_from_data_chunk(data_chunk)
+    }
 
+    /// Parses a fetched internal DataChunk from within the ToolRouter into a ShinkaiTool
+    fn parse_shinkai_tool_from_data_chunk(&self, data_chunk: DataChunk) -> Result<ShinkaiTool, ToolError> {
         if let Some(metadata) = data_chunk.metadata {
             if let Some(tool_type) = metadata.get(&Self::tool_type_metadata_key()) {
                 // If a rust tool, read the name and fetch the rust tool from that global static rust toolkit
@@ -98,7 +112,7 @@ impl ToolRouter {
                 }
             }
         }
-        Err(ToolError::ToolNotFound(tool_name.to_string()))
+        Err(ToolError::ToolNotFound(data_chunk.id))
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
@@ -119,72 +133,46 @@ impl ToolRouter {
         let chunks = self
             .routing_resource
             .syntactic_vector_search(query, num_of_results, data_tag_names);
-        self.ret_data_chunks_to_pointers(&chunks)
+        self.ret_data_chunks_to_tools(&chunks)
     }
 
     /// Returns a list of ShinkaiTools of the most similar.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ShinkaiTool> {
         let chunks = self.routing_resource.vector_search(query, num_of_results);
-        self.ret_data_chunks_to_pointers(&chunks)
+        self.ret_data_chunks_to_tools(&chunks)
     }
 
     /// Takes a list of RetrievedDataChunks and outputs a list of ShinkaiTools
-    /// that point to the real resource (not the resource router).
-    ///
-    /// Of note, if a chunk holds an invalid ToolType string then the chunk
-    /// is ignored.
-    fn ret_data_chunks_to_pointers(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<ShinkaiTool> {
-        let mut resource_pointers = vec![];
-        // for ret_chunk in ret_chunks {
-        //     // Ignore resources added to the router with invalid resource types
-        //     if let Ok(resource_type) = ToolType::from_str(&ret_chunk.chunk.data).map_err(|_| ToolError::InvalidToolType)
-        //     {
-        //         let id = &ret_chunk.chunk.id;
-        //         let embedding = self.routing_resource.get_chunk_embedding(id).ok();
-        //         let resource_pointer =
-        //             ShinkaiTool::new(&id, resource_type, embedding, ret_chunk.chunk.data_tag_names.clone());
-        //         resource_pointers.push(resource_pointer);
-        //     }
-        // }
-        resource_pointers
+    fn ret_data_chunks_to_tools(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<ShinkaiTool> {
+        let mut shinkai_tools = vec![];
+        for ret_chunk in ret_chunks {
+            // Ignores tools added to the router which are invalid by matching on the Ok()
+            if let Ok(shinkai_tool) = Self::parse_shinkai_tool_from_data_chunk(&self, ret_chunk.chunk.clone()) {
+                shinkai_tools.push(shinkai_tool);
+            }
+        }
+        shinkai_tools
     }
 
-    /// Adds a resource pointer into the ToolRouter instance.
-    /// The pointer is expected to have a valid resource embedding
-    /// and the matching resource having already been saved into the DB.
-    ///
-    /// If a resource pointer already exists with the same db_key, then
-    /// the old pointer will be replaced.
-    ///
-    /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the db_key as the id of the data chunk.
-    pub fn add_resource_pointer(&mut self, resource_pointer: &ShinkaiTool) -> Result<(), ToolError> {
-        let data = resource_pointer.resource_type.to_str();
-        let embedding = resource_pointer
-            .resource_embedding
-            .clone()
-            .ok_or(ToolError::NoEmbeddingProvided)?;
-        let db_key = resource_pointer.db_key.to_string();
-        let db_key_clone = db_key.clone();
+    /// Adds a tool into the ToolRouter instance.
+    pub fn add_shinkai_tool(&mut self, shinkai_tool: &ShinkaiTool, embedding: Embedding) -> Result<(), ToolError> {
+        let data = shinkai_tool.to_json()?;
         let metadata = None;
+        let router_key = shinkai_tool.tool_router_key();
 
-        match self.routing_resource.get_data_chunk(db_key_clone) {
-            Ok(old_chunk) => {
-                // If a resource pointer with matching db_key is found,
-                // replace the existing resource pointer with the new one.
-                self.replace_resource_pointer(&old_chunk.id, resource_pointer)?;
+        match self.routing_resource.get_data_chunk(router_key.clone()) {
+            Ok(_) => {
+                // If a Shinkai tool with same key is already found, error
+                return Err(ToolError::ToolAlreadyInstalled(data.to_string()));
             }
             Err(_) => {
-                // If no resource pointer with matching db_key is found,
-                // insert the new kv pair. We skip tag validation because the tags
-                // have already been previously validated when adding into the
-                // original resource.
+                // If no tool is found, insert new tool
                 self.routing_resource._insert_kv_without_tag_validation(
-                    &db_key,
+                    &router_key,
                     &data,
                     metadata,
                     &embedding,
-                    &resource_pointer.data_tag_names,
+                    &vec![],
                 );
             }
         }
@@ -192,31 +180,8 @@ impl ToolRouter {
         Ok(())
     }
 
-    /// Replaces an existing resource pointer with a new one
-    pub fn replace_resource_pointer(
-        &mut self,
-        old_pointer_id: &str,
-        resource_pointer: &ShinkaiTool,
-    ) -> Result<(), ToolError> {
-        let data = resource_pointer.resource_type.to_str();
-        let embedding = resource_pointer
-            .resource_embedding
-            .clone()
-            .ok_or(ToolError::NoEmbeddingProvided)?;
-        let metadata = None;
-
-        self.routing_resource._replace_kv_without_tag_validation(
-            old_pointer_id,
-            &data,
-            metadata,
-            &embedding,
-            &resource_pointer.data_tag_names,
-        )?;
-        Ok(())
-    }
-
     /// Deletes the resource pointer inside of the ToolRouter given a valid id
-    pub fn delete_resource_pointer(&mut self, old_pointer_id: &str) -> Result<(), ToolError> {
+    pub fn delete_shinkai_tool(&mut self, old_pointer_id: &str) -> Result<(), ToolError> {
         self.routing_resource.delete_kv(old_pointer_id)?;
         Ok(())
     }
@@ -224,12 +189,10 @@ impl ToolRouter {
     /// Acquire the resource_embedding for a given ShinkaiTool.
     /// If the pointer itself doesn't have the embedding attached to it,
     /// we use the id to fetch the embedding directly from the ToolRouter.
-    pub fn get_resource_embedding(&self, resource_pointer: &ShinkaiTool) -> Result<Embedding, ToolError> {
-        if let Some(embedding) = resource_pointer.resource_embedding.clone() {
-            Ok(embedding)
-        } else {
-            self.routing_resource.get_chunk_embedding(&resource_pointer.db_key)
-        }
+    pub fn get_tool_embedding(&self, shinkai_tool: &ShinkaiTool) -> Result<Embedding, ToolError> {
+        Ok(self
+            .routing_resource
+            .get_chunk_embedding(&shinkai_tool.tool_router_key())?)
     }
 
     pub fn from_json(json: &str) -> Result<Self, ToolError> {

@@ -24,8 +24,8 @@ lazy_static! {
     ];
     pub static ref RUST_TOOLKIT: RustToolkit = {
         let mut map = HashMap::new();
-        for tool in RUST_TOOLS.into_iter() {
-            map.insert(tool.name.clone(), tool);
+        for tool in RUST_TOOLS.iter() {
+            map.insert(tool.name.clone(), tool.clone());
         }
         RustToolkit { rust_tool_map: map }
     };
@@ -52,7 +52,6 @@ impl RustToolkit {
 pub struct RustTool {
     pub name: String,
     pub description: String,
-    // pub run_tool: Box<dyn Fn(JsonValue) -> Result<JsonValue, ToolError> + Send + Sync>,
     pub input_args: Vec<ToolArgument>,
     pub output_args: Vec<ToolArgument>,
     pub tool_embedding: Embedding,
@@ -101,3 +100,4 @@ impl RustTool {
 /// This is needed because we can't serialize functions into JSON, and so
 /// the ToolRouter won't work otherwise.
 pub struct RustToolExecutor {}
+// pub run_tool: Box<dyn Fn(JsonValue) -> Result<JsonValue, ToolError> + Send + Sync>,
