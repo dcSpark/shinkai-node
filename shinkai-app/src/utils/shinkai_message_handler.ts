@@ -1,4 +1,3 @@
-import SHA256 from "crypto-js/sha256";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { ShinkaiMessageWrapper } from "../lib/wasm/ShinkaiMessageWrapper";
 
