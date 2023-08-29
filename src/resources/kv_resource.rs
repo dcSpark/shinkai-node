@@ -71,9 +71,13 @@ impl VectorResource for KVVectorResource {
         self.resource_embedding = embedding;
     }
 
-    /// Efficiently retrieves a data chunk given its id
-    fn get_data_chunk(&self, key: String) -> Result<&DataChunk, VectorResourceError> {
-        self.data_chunks.get(&key).ok_or(VectorResourceError::InvalidChunkId)
+    /// Retrieves a data chunk given its id
+    fn get_data_chunk(&self, key: String) -> Result<DataChunk, VectorResourceError> {
+        Ok(self
+            .data_chunks
+            .get(&key)
+            .ok_or(VectorResourceError::InvalidChunkId)?
+            .clone())
     }
 }
 
@@ -161,8 +165,8 @@ impl KVVectorResource {
     }
 
     /// Insert a new data chunk and associated embeddings to the kv resource
-    /// without checking if tags are valid.
-    fn _insert_kv_without_tag_validation(
+    /// without checking if tags are valid. Also used by resource router.
+    pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
         value: &str,
@@ -197,8 +201,8 @@ impl KVVectorResource {
     }
 
     /// Replaces an existing data chunk & associated embedding and updates the data tags index
-    /// without checking if tags are valid.
-    fn _replace_kv_without_tag_validation(
+    /// without checking if tags are valid. Used for resource router.
+    pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
         new_data: &str,

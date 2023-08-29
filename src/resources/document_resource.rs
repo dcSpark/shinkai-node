@@ -72,13 +72,13 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a data chunk given its id by fetching it via index.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, VectorResourceError> {
+    fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError> {
         let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidChunkId)?;
         if id == 0 || id > self.chunk_count {
             return Err(VectorResourceError::InvalidChunkId);
         }
         let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
-        Ok(&self.data_chunks[index])
+        Ok(self.data_chunks[index].clone())
     }
 }
 

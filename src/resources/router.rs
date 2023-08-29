@@ -1,7 +1,7 @@
-use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::*;
-use crate::resources::vector_resource::*;
+use crate::resources::kv_resource::KVVectorResource;
 use crate::resources::resource_errors::*;
+use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 use std::convert::From;
@@ -17,8 +17,7 @@ use super::data_tags::DataTag;
 /// a different underlying internal model of how the resource pointer data is stored.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
-    pub id: String,     // Id of the VectorResourcePointer in the VectorResourceRouter (currently DataChunk id)
-    pub db_key: String, // Key of the resource in the Topic::VectorResources in the db
+    pub db_key: String,
     pub resource_type: VectorResourceType,
     data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
@@ -27,14 +26,12 @@ pub struct VectorResourcePointer {
 impl VectorResourcePointer {
     /// Create a new VectorResourcePointer
     pub fn new(
-        id: &str,
         db_key: &str,
         resource_type: VectorResourceType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
     ) -> Self {
         Self {
-            id: id.to_string(),
             db_key: db_key.to_string(),
             resource_type,
             resource_embedding: resource_embedding.clone(),
@@ -42,13 +39,13 @@ impl VectorResourcePointer {
         }
     }
 
-    /// Wraps the resource pointer's db_key into a hashmap ready to use for
-    /// the resource router's chunk metadata
-    pub fn _db_key_as_metadata_hashmap(&self) -> HashMap<String, String> {
-        let mut hmap = HashMap::new();
-        hmap.insert(VectorResourceRouter::router_chunk_metadata_key(), self.db_key.clone());
-        hmap
-    }
+    // Wraps the resource pointer's db_key into a hashmap ready to use for
+    // the resource router's chunk metadata
+    // pub fn _db_key_as_metadata_hashmap(&self) -> HashMap<String, String> {
+    //     let mut hmap = HashMap::new();
+    //     hmap.insert(VectorResourceRouter::router_chunk_metadata_key(), self.db_key.clone());
+    //     hmap
+    // }
 }
 
 impl From<Box<dyn VectorResource>> for VectorResourcePointer {
@@ -66,7 +63,7 @@ impl From<Box<dyn VectorResource>> for VectorResourcePointer {
 /// specifically for routing that is more effective if needed.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourceRouter {
-    routing_resource: DocumentVectorResource,
+    routing_resource: KVVectorResource,
 }
 
 impl VectorResourceRouter {
@@ -77,7 +74,7 @@ impl VectorResourceRouter {
         let source = None;
         let resource_id = "resource_router";
         VectorResourceRouter {
-            routing_resource: DocumentVectorResource::new_empty(name, desc, source, resource_id),
+            routing_resource: KVVectorResource::new_empty(name, desc, source, resource_id),
         }
     }
 
@@ -128,20 +125,10 @@ impl VectorResourceRouter {
             if let Ok(resource_type) = VectorResourceType::from_str(&ret_chunk.chunk.data)
                 .map_err(|_| VectorResourceError::InvalidVectorResourceType)
             {
-                let metadata = &ret_chunk.chunk.metadata.clone().unwrap_or_default();
-                let db_key: String = metadata
-                    .get(&VectorResourceRouter::router_chunk_metadata_key())
-                    .cloned()
-                    .unwrap_or_default();
                 let id = &ret_chunk.chunk.id;
                 let embedding = self.routing_resource.get_chunk_embedding(id).ok();
-                let resource_pointer = VectorResourcePointer::new(
-                    &id,
-                    &db_key,
-                    resource_type,
-                    embedding,
-                    ret_chunk.chunk.data_tag_names.clone(),
-                );
+                let resource_pointer =
+                    VectorResourcePointer::new(&id, resource_type, embedding, ret_chunk.chunk.data_tag_names.clone());
                 resource_pointers.push(resource_pointer);
             }
         }
@@ -156,7 +143,7 @@ impl VectorResourceRouter {
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the db_key in the `metadata` of the chunk.
+    /// of the chunk and the db_key as the id of the data chunk.
     pub fn add_resource_pointer(
         &mut self,
         resource_pointer: &VectorResourcePointer,
@@ -167,20 +154,22 @@ impl VectorResourceRouter {
             .clone()
             .ok_or(VectorResourceError::NoEmbeddingProvided)?;
         let db_key = resource_pointer.db_key.to_string();
-        let metadata = Some(resource_pointer._db_key_as_metadata_hashmap());
+        let db_key_clone = db_key.clone();
+        let metadata = None;
 
-        match self.db_key_search(&db_key) {
-            Ok(old_pointer) => {
+        match self.routing_resource.get_data_chunk(db_key_clone) {
+            Ok(old_chunk) => {
                 // If a resource pointer with matching db_key is found,
                 // replace the existing resource pointer with the new one.
-                self.replace_resource_pointer(&old_pointer.id, resource_pointer)?;
+                self.replace_resource_pointer(&old_chunk.id, resource_pointer)?;
             }
             Err(_) => {
                 // If no resource pointer with matching db_key is found,
-                // append the new data. We skip tag validation because the tags
+                // insert the new kv pair. We skip tag validation because the tags
                 // have already been previously validated when adding into the
                 // original resource.
-                self.routing_resource._append_data_without_tag_validation(
+                self.routing_resource._insert_kv_without_tag_validation(
+                    &db_key,
                     &data,
                     metadata,
                     &embedding,
@@ -217,12 +206,9 @@ impl VectorResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(VectorResourceError::NoEmbeddingProvided)?;
-        let metadata = Some(resource_pointer._db_key_as_metadata_hashmap());
-        let old_pointer_id = old_pointer_id
-            .parse::<u64>()
-            .map_err(|_| VectorResourceError::InvalidChunkId)?;
+        let metadata = None;
 
-        self.routing_resource._replace_data_without_tag_validation(
+        self.routing_resource._replace_kv_without_tag_validation(
             old_pointer_id,
             &data,
             metadata,
@@ -233,11 +219,8 @@ impl VectorResourceRouter {
     }
 
     /// Deletes the resource pointer inside of the VectorResourceRouter given a valid id
-    pub fn delete_resource_pointer(&mut self, old_pointer_id: String) -> Result<(), VectorResourceError> {
-        let id: u64 = old_pointer_id
-            .parse()
-            .map_err(|_| VectorResourceError::InvalidChunkId)?;
-        self.routing_resource.delete_data(id)?;
+    pub fn delete_resource_pointer(&mut self, old_pointer_id: &str) -> Result<(), VectorResourceError> {
+        self.routing_resource.delete_kv(old_pointer_id)?;
         Ok(())
     }
 
@@ -251,20 +234,13 @@ impl VectorResourceRouter {
         if let Some(embedding) = resource_pointer.resource_embedding.clone() {
             Ok(embedding)
         } else {
-            let id: usize = resource_pointer
-                .id
-                .parse()
-                .map_err(|_| VectorResourceError::InvalidChunkId)?;
-            match self.routing_resource.chunk_embeddings().get(id - 1) {
-                Some(embedding) => Ok(embedding.clone()),
-                None => Err(VectorResourceError::InvalidChunkId),
-            }
+            self.routing_resource.get_chunk_embedding(&resource_pointer.db_key)
         }
     }
 
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
         Ok(VectorResourceRouter {
-            routing_resource: DocumentVectorResource::from_json(json)?,
+            routing_resource: KVVectorResource::from_json(json)?,
         })
     }
     /// Convert to json
