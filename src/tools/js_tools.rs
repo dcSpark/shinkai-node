@@ -31,6 +31,17 @@ impl JSTool {
         )
     }
 
+    /// Convert to json
+    pub fn to_json(&self) -> Result<String, ToolError> {
+        serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    /// Convert from json
+    pub fn from_json(json: &str) -> Result<Self, ToolError> {
+        let deserialized: Self = serde_json::from_str(json)?;
+        Ok(deserialized)
+    }
+
     /// Parses a JSTool from a toolkit json
     pub fn from_toolkit_json(toolkit_name: &str, json: &JsonValue) -> Result<Self, ToolError> {
         let name = json["name"].as_str().ok_or(ToolError::ParseError("name".to_string()))?;

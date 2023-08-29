@@ -4,6 +4,8 @@ use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
+use crate::resources::resource_errors::VectorResourceError;
+
 #[derive(Debug)]
 pub enum ToolError {
     RocksDBError(RocksError),
@@ -15,6 +17,8 @@ pub enum ToolError {
     JSToolkitExecutorNotAvailable,
     JSToolkitExecutorFailedStarting,
     RequestError(ReqwestError),
+    ToolNotFound(String),
+    VectorResourceError(VectorResourceError),
 }
 
 impl fmt::Display for ToolError {
@@ -33,11 +37,19 @@ impl fmt::Display for ToolError {
             }
             ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
+            ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
+            ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
         }
     }
 }
 
 impl Error for ToolError {}
+
+impl From<VectorResourceError> for ToolError {
+    fn from(err: VectorResourceError) -> ToolError {
+        ToolError::VectorResourceError(err)
+    }
+}
 
 impl From<ReqwestError> for ToolError {
     fn from(err: ReqwestError) -> ToolError {
