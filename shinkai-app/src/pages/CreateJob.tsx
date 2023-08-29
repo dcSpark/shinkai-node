@@ -16,6 +16,9 @@ import {
   IonBackButton,
 } from "@ionic/react";
 import { useState } from "react";
+import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
+import Button from "../components/ui/Button";
+import Input from "../components/ui/Input";
 
 const CreateJob: React.FC = () => {
   const [jobName, setJobName] = useState("");
@@ -27,37 +30,37 @@ const CreateJob: React.FC = () => {
 
   return (
     <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonButtons slot="start">
-            <IonBackButton defaultHref="/home" />
-          </IonButtons>
-          <IonTitle>Create Job</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent className="ion-padding">
-        <IonGrid>
+      <IonHeaderCustom>
+        <IonButtons slot="start">
+          <IonBackButton defaultHref="/home" />
+        </IonButtons>
+        <IonTitle>Create Job</IonTitle>
+      </IonHeaderCustom>
+      <IonContentCustom>
+        <IonGrid
+          className={
+            "md:rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4"
+          }
+        >
           <IonRow>
             <IonCol>
-              <h2>New Job Details</h2>
-              <IonItem>
-                <IonInput
-                  value={jobName}
-                  label="Enter Job Name"
-                  aria-label="Enter Job Name"
-                  placeholder="Post as Satoshi"
-                  onIonChange={(e) => setJobName(e.detail.value!)}
-                />
-              </IonItem>
+              <h2 className={"text-lg mb-3 md:mb-8 text-center"}>
+                New Job Details
+              </h2>
+              <Input
+                value={jobName}
+                label="Enter Job Name"
+                aria-label="Enter Job Name"
+                onChange={(e) => setJobName(e.detail.value!)}
+              />
+
               <div style={{ marginTop: "20px" }}>
-                <IonButton expand="full" onClick={handleCreateJob}>
-                  Create Job
-                </IonButton>
+                <Button onClick={handleCreateJob}>Create Job</Button>
               </div>
             </IonCol>
           </IonRow>
         </IonGrid>
-      </IonContent>
+      </IonContentCustom>
     </IonPage>
   );
 };

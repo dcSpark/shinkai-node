@@ -1,6 +1,7 @@
 import {
   IonActionSheet,
   IonAlert,
+  IonAvatar,
   IonButton,
   IonButtons,
   IonContent,
@@ -9,18 +10,21 @@ import {
   IonItem,
   IonList,
   IonPage,
+  IonText,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
-import { addOutline } from "ionicons/icons";
+import { addOutline, arrowForward, cloudUpload } from "ionicons/icons";
 import "./Home.css";
 import { useHistory } from "react-router-dom";
 import { RootState } from "../store";
 import { useDispatch, useSelector } from "react-redux";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ApiConfig } from "../api/api_config";
 import { clearStore } from "../store/actions";
 import { getAllInboxesForProfile } from "../api";
+import Avatar from "../components/ui/Avatar";
+import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 
 const Home: React.FC = () => {
   const { setupDetailsState } = useSelector((state: RootState) => state);
@@ -29,7 +33,12 @@ const Home: React.FC = () => {
 
   const { shinkai_identity, profile, registration_name, permission_type } =
     setupDetailsState;
-  const displayString = `${shinkai_identity}/${profile}/${registration_name} (Device)`;
+  const displayString = (
+    <>
+      {`${shinkai_identity}/${profile}/${registration_name}`}{" "}
+      <span className="text-muted text-sm">(Device)</span>
+    </>
+  );
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showLogoutAlert, setShowLogoutAlert] = useState(false);
   const inboxes = useSelector((state: RootState) => state.inboxes);
@@ -59,25 +68,25 @@ const Home: React.FC = () => {
         sender_subidentity,
         receiver,
         target_shinkai_name_profile,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
   }, []);
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>{displayString}</IonTitle>
-          <IonButtons slot="end">
-            {" "}
-            {/* Add the "+" button to the right side of the toolbar */}
-            <IonButton onClick={() => setShowActionSheet(true)}>
-              <IonIcon slot="icon-only" icon={addOutline} />
-            </IonButton>
-          </IonButtons>
-        </IonToolbar>
-      </IonHeader>
+    <IonPage className="bg-slate-900">
+      <IonHeaderCustom>
+        <IonTitle className="text-center text-inherit">
+          {displayString}
+        </IonTitle>
+        <IonButtons slot="end">
+          {" "}
+          {/* Add the "+" button to the right side of the toolbar */}
+          <IonButton onClick={() => setShowActionSheet(true)}>
+            <IonIcon slot="icon-only" icon={addOutline} />
+          </IonButton>
+        </IonButtons>
+      </IonHeaderCustom>
       <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
@@ -85,25 +94,42 @@ const Home: React.FC = () => {
           </IonToolbar>
         </IonHeader>
         {/* <ExploreContainer /> */}
-        <IonContent fullscreen>
-          <IonList>
-            {Object.entries(inboxes).map(([position, inboxId]) => (
-              <IonItem
-                key={position}
-                button
-                onClick={() => {
-                  const encodedInboxId = position.toString().replace(/\./g, "~");
-                  history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
-                }}
-              >
-                {JSON.stringify(position)}
-              </IonItem>
-            ))}
-          </IonList>
-        </IonContent>
+
+        <IonContentCustom>
+          <div className="h-full flex flex-col">
+            <div className="flex-1 md:rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4">
+              {Object.entries(inboxes).map(([position, inboxId]) => (
+                <IonItem
+                  key={position}
+                  button
+                  className="ion-item-home"
+                  onClick={() => {
+                    const encodedInboxId = position
+                      .toString()
+                      .replace(/\./g, "~");
+                    history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
+                  }}
+                >
+                  <Avatar
+                    url={`https://ui-avatars.com/api/?name=${position}&background=FE6162&color=fff`}
+                    className="shrink-0"
+                  />
+                  <IonText className="ml-4 font-bold md:text-lg">
+                    {JSON.stringify(position)}
+                  </IonText>
+                  <IonIcon
+                    icon={arrowForward}
+                    className="hidden md:ml-auto md:block"
+                  />
+                </IonItem>
+              ))}
+            </div>
+          </div>
+        </IonContentCustom>
       </IonContent>
       {/* Action Sheet (popup) */}
       <IonActionSheet
+        className="ion-actionSheet-custom"
         isOpen={showActionSheet}
         onDidDismiss={() => setShowActionSheet(false)}
         buttons={[

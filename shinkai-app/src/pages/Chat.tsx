@@ -3,17 +3,21 @@ import {
   IonButton,
   IonButtons,
   IonContent,
+  IonFooter,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
   IonList,
   IonPage,
+  IonText,
+  IonTextarea,
   IonTitle,
   IonToolbar,
 } from "@ionic/react";
 import { useParams } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
@@ -28,6 +32,33 @@ import {
 } from "../utils/inbox_name_handler";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { calculateMessageHash } from "../utils/shinkai_message_handler";
+import Avatar from "../components/ui/Avatar";
+import { cn } from "../theme/lib/utils";
+import { send } from "ionicons/icons";
+import "./Chat.css";
+import {
+  IonContentCustom,
+  IonFooterCustom,
+  IonHeaderCustom,
+} from "../components/ui/Layout";
+
+const parseDate = (dateString: string) => {
+  const formattedDateString =
+    dateString.slice(0, 4) +
+    "-" +
+    dateString.slice(4, 6) +
+    "-" +
+    dateString.slice(6, 8) +
+    "T" +
+    dateString.slice(9, 11) +
+    ":" +
+    dateString.slice(11, 13) +
+    ":" +
+    dateString.slice(13, 15) +
+    "Z";
+
+  return new Date(Date.parse(formattedDateString));
+};
 
 const Chat: React.FC = () => {
   console.log("Loading Chat.tsx");
@@ -35,7 +66,7 @@ const Chat: React.FC = () => {
 
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetailsState,
   );
 
   const { id } = useParams<{ id: string }>();
@@ -46,19 +77,19 @@ const Chat: React.FC = () => {
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   const reduxMessages = useSelector(
-    (state: RootState) => state.inboxes[deserializedId]
+    (state: RootState) => state.inboxes[deserializedId],
   );
 
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const otherPersonIdentity = getOtherPersonIdentity(
     deserializedId,
-    setupDetailsState.shinkai_identity
+    setupDetailsState.shinkai_identity,
   );
 
   useEffect(() => {
     dispatch(
-      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
+      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState),
     );
   }, [id, dispatch, setupDetailsState]);
 
@@ -109,54 +140,100 @@ const Chat: React.FC = () => {
         receiver,
         inputMessage,
         deserializedId,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
     setInputMessage("");
   };
 
   return (
-    <IonPage>
-      <IonHeader>
-        <IonToolbar>
-          <IonButtons slot="start">
-            <IonBackButton defaultHref="/home" />
-          </IonButtons>
-          <IonTitle>Chat: {otherPersonIdentity}</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen>
-        {hasMoreMessages && (
-          <IonButton
-            onClick={() =>
-              dispatch(
-                getLastMessagesFromInbox(
-                  deserializedId,
-                  10,
-                  lastKey,
-                  setupDetailsState,
-                  true
+    <IonPage className="bg-slate-900">
+      <IonHeaderCustom>
+        <IonButtons slot="start">
+          <IonBackButton defaultHref="/home" />
+        </IonButtons>
+        <div className="flex gap-4 px-4">
+          <IonTitle className="w-auto text-accent text-center text-inherit">
+            {otherPersonIdentity}
+          </IonTitle>
+          {/*<Avatar className="shrink-0" />*/}
+        </div>
+      </IonHeaderCustom>
+
+      <IonContentCustom>
+        <div className="py-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
+          {hasMoreMessages && (
+            <IonButton
+              onClick={() =>
+                dispatch(
+                  getLastMessagesFromInbox(
+                    deserializedId,
+                    10,
+                    lastKey,
+                    setupDetailsState,
+                    true,
+                  ),
                 )
-              )
-            }
-          >
-            Load More
-          </IonButton>
-        )}
-        <IonList>
-          {messages &&
-            messages
-              .slice()
-              .reverse()
-              .map((message, index) => (
-                <IonItem key={index}>
-                  <IonLabel>
-                    <pre>{JSON.stringify(message, null, 2)}</pre>
-                  </IonLabel>
-                </IonItem>
-              ))}
-        </IonList>
+              }
+            >
+              Load More
+            </IonButton>
+          )}
+          <IonList class="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50 md:rounded=[1.25rem]  ">
+            {messages &&
+              messages
+                .slice()
+                .reverse()
+                .map((message, index) => {
+                  const { shinkai_identity, profile, registration_name } =
+                    setupDetailsState;
+
+                  const localIdentity = `${profile}/device/${registration_name}`;
+
+                  const isLocalMessage =
+                    message?.body?.internal_metadata?.sender_subidentity ===
+                    localIdentity;
+
+                  return (
+                    <IonItem
+                      key={index}
+                      lines="none"
+                      className={cn(
+                        "ion-item-chat relative w-full shadow",
+                        isLocalMessage && "isLocalMessage",
+                      )}
+                    >
+                      <div className="px-2 py-4 flex gap-4 pb-10 w-full">
+                        <Avatar
+                          className="shrink-0 mr-4"
+                          url={
+                            isLocalMessage
+                              ? "https://ui-avatars.com/api/?name=Me&background=FE6162&color=fff"
+                              : "https://ui-avatars.com/api/?name=O&background=363636&color=fff"
+                          }
+                        />
+
+                        <p>{message?.body?.content}</p>
+                        {message?.external_metadata?.scheduled_time && (
+                          <span className="absolute bottom-[5px] right-5 text-muted text-sm">
+                            {parseDate(
+                              message.external_metadata.scheduled_time,
+                            ).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                    </IonItem>
+                  );
+                })}
+          </IonList>
+          <div ref={bottomChatRef} />
+        </div>
+      </IonContentCustom>
+      <IonFooterCustom>
         <form
+          className={
+            "flex flex-col w-full py-2 flex-grow md:py-3 md:pl-4 relative"
+          }
           onSubmit={(e) => {
             e.preventDefault();
             if (inputMessage.trim() !== "") {
@@ -164,14 +241,33 @@ const Chat: React.FC = () => {
             }
           }}
         >
-          <IonInput
-            value={inputMessage}
-            onIonChange={(e) => setInputMessage(e.detail.value!)}
-          ></IonInput>
-          <IonButton onClick={sendMessage}>Send</IonButton>
+          <div className="m-2 relative flex h-full flex-1 md:flex-col">
+            <IonTextarea
+              class="ion-textarea-chat"
+              rows={1}
+              autoGrow
+              fill="outline"
+              className="m-0 w-full bg-transparent p-0 pl-2 pr-12 md:pl-0"
+              value={inputMessage}
+              onIonChange={(e) => setInputMessage(e.detail.value!)}
+              placeholder="Type a message"
+            ></IonTextarea>
+
+            <button
+              onClick={sendMessage}
+              aria-label="Send Message"
+              className={cn(
+                "absolute z-10 p-3 rounded-md text-gray-500 bottom-[1px] right-1",
+                "md:bottom-2.5 md:right-2",
+                "hover:bg-gray-100 disabled:hover:bg-transparent",
+                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent",
+              )}
+            >
+              <IonIcon size="" icon={send} />
+            </button>
+          </div>
         </form>
-        <div ref={bottomChatRef} />
-      </IonContent>
+      </IonFooterCustom>
     </IonPage>
   );
 };

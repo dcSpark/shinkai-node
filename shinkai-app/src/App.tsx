@@ -12,6 +12,8 @@ import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./store";
 
+import "./theme/global.css";
+
 /* Core CSS required for Ionic components to work properly */
 import "@ionic/react/css/core.css";
 
@@ -35,7 +37,7 @@ import CreateChat from "./pages/CreateChat";
 setupIonicReact();
 
 const App: React.FC = () => {
-  const setupComplete = localStorage.getItem("setupComplete") === "true"; 
+  const setupComplete = localStorage.getItem("setupComplete") === "true";
   console.log(`Setup complete: ${setupComplete}`);
 
   return (
