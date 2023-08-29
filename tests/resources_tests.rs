@@ -1,6 +1,6 @@
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::resources::document::DocumentVectorResource;
+use shinkai_node::resources::document_resource::DocumentVectorResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_node::resources::resource_errors::VectorResourceError;
 use shinkai_node::resources::vector_resource::VectorResource;

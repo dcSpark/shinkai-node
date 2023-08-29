@@ -3,11 +3,14 @@ use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
 use crate::resources::file_parsing::*;
 use crate::resources::model_type::*;
-use crate::resources::vector_resource::*;
 use crate::resources::resource_errors::*;
+use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 
+/// A VectorResource which uses an internal numbered/ordered list data model,  
+/// thus providing an ideal interface for document-like content such as PDFs,
+/// epubs, web content, written works, and more.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentVectorResource {
     name: String,
@@ -55,8 +58,8 @@ impl VectorResource for DocumentVectorResource {
         VectorResourceType::Document
     }
 
-    fn chunk_embeddings(&self) -> &Vec<Embedding> {
-        &self.chunk_embeddings
+    fn chunk_embeddings(&self) -> Vec<Embedding> {
+        self.chunk_embeddings.clone()
     }
 
     fn to_json(&self) -> Result<String, VectorResourceError> {
@@ -72,13 +75,13 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a data chunk given its id by fetching it via index.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, VectorResourceError> {
+    fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError> {
         let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidChunkId)?;
         if id == 0 || id > self.chunk_count {
             return Err(VectorResourceError::InvalidChunkId);
         }
         let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
-        Ok(&self.data_chunks[index])
+        Ok(self.data_chunks[index].clone())
     }
 }
 
@@ -119,7 +122,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::LocalModel(LocalModel::GptNeoX),
+            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2),
         )
     }
 

@@ -1,4 +1,3 @@
-use crate::db::ShinkaiDB;
 use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
@@ -9,22 +8,22 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
 
-use super::document::DocumentVectorResource;
 use super::router::VectorResourcePointer;
 
-/// Enum used for all VectorResources to specify their type
-/// when dealing with Trait objects.
+/// Enum used for all VectorResources to specify their type.
+/// Used primarily when dealing with Trait objects, and self-attesting
+/// JSON serialized VectorResources
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VectorResourceType {
     Document,
-    KeyValue,
+    Map,
 }
 
 impl VectorResourceType {
     pub fn to_str(&self) -> &str {
         match self {
             VectorResourceType::Document => "Document",
-            VectorResourceType::KeyValue => "KeyValue",
+            VectorResourceType::Map => "Map",
         }
     }
 }
@@ -35,7 +34,7 @@ impl FromStr for VectorResourceType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Document" => Ok(VectorResourceType::Document),
-            "KeyValue" => Ok(VectorResourceType::KeyValue),
+            "Map" => Ok(VectorResourceType::Map),
             _ => Err(VectorResourceError::InvalidVectorResourceType),
         }
     }
@@ -127,7 +126,7 @@ pub trait VectorResource {
     fn resource_type(&self) -> VectorResourceType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
-    fn chunk_embeddings(&self) -> &Vec<Embedding>; // Maybe convert into hashmap in the future for efficiency
+    fn chunk_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
 
     // Note we cannot add from_json in the trait due to trait object limitations
@@ -135,7 +134,7 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Retrieves a data chunk given its id.
-    fn get_data_chunk(&self, id: String) -> Result<&DataChunk, VectorResourceError>;
+    fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
 
     /// Naively searches through all chunk embeddings in the resource
     /// to find one with a matching id
@@ -244,7 +243,7 @@ pub trait VectorResource {
     /// the most similar data chunks.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
-        let scores = query.score_similarities(self.chunk_embeddings(), num_of_results);
+        let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
         // Fetch the RetrievedDataChunk matching the most similar embeddings
         let mut chunks: Vec<RetrievedDataChunk> = vec![];
@@ -310,12 +309,11 @@ pub trait VectorResource {
     fn get_resource_pointer(&self) -> VectorResourcePointer {
         let db_key = self.db_key();
         let resource_type = self.resource_type();
-        let id = "1"; // This will be replaced when the VectorResourcePointer is added into a VectorResourceRouter instance
         let embedding = self.resource_embedding().clone();
 
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
 
-        VectorResourcePointer::new(id, &db_key, resource_type, Some(embedding), tag_names)
+        VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
     }
 }
