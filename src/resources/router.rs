@@ -3,18 +3,10 @@ use crate::resources::kv_resource::KVVectorResource;
 use crate::resources::resource_errors::*;
 use crate::resources::vector_resource::*;
 use serde_json;
-use std::collections::HashMap;
 use std::convert::From;
-use std::convert::TryFrom;
 use std::str::FromStr;
 
-use super::data_tags::DataTag;
-
-/// Type which holds reference data about a resource in the DB.
-///
-/// This hides away the implementation details of the current underlying DocumentVectorResource
-/// and allows us to offer an equivalent interface in the future even if we swap to
-/// a different underlying internal model of how the resource pointer data is stored.
+/// Type which holds data about a stored resource in the DB.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
     pub db_key: String,
@@ -38,14 +30,6 @@ impl VectorResourcePointer {
             data_tag_names: data_tag_names,
         }
     }
-
-    // Wraps the resource pointer's db_key into a hashmap ready to use for
-    // the resource router's chunk metadata
-    // pub fn _db_key_as_metadata_hashmap(&self) -> HashMap<String, String> {
-    //     let mut hmap = HashMap::new();
-    //     hmap.insert(VectorResourceRouter::router_chunk_metadata_key(), self.db_key.clone());
-    //     hmap
-    // }
 }
 
 impl From<Box<dyn VectorResource>> for VectorResourcePointer {
@@ -54,13 +38,8 @@ impl From<Box<dyn VectorResource>> for VectorResourcePointer {
     }
 }
 
-/// A top level struct which indexes a series of resource pointers.
-/// This struct thus makes it possible to perform vector searches to find
-/// relevant VectorResources for users or agents.
-///
-/// For now we just implement this on top of DocumentVectorResource for speed of
-/// implementation, later on we can come around and design something
-/// specifically for routing that is more effective if needed.
+/// A top level struct which indexes a series of resource pointers
+/// using a KVVectorResource
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourceRouter {
     routing_resource: KVVectorResource,
@@ -78,15 +57,15 @@ impl VectorResourceRouter {
         }
     }
 
-    /// A hard-coded DB key for the Profile VectorResource router in Topic::VectorResources.
+    /// A hard-coded DB key for the profile-wide VectorResource Router in Topic::VectorResources.
     /// No other resource is allowed to use this db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn db_key() -> String {
+    pub fn profile_router_db_key() -> String {
         "profile_resource_router".to_string()
     }
 
-    /// Performs a syntactic vector search using a query embedding and list of data tag names.
-    /// Returns a list of VectorResourcePointers of the most similar VectorResources.
+    /// Returns a list of VectorResourcePointers of the most similar that
+    /// have matching data tag names.
     pub fn syntactic_vector_search(
         &self,
         query: Embedding,
@@ -99,17 +78,10 @@ impl VectorResourceRouter {
         self.ret_data_chunks_to_pointers(&chunks)
     }
 
-    /// Performs a vector search using a query embedding and returns
-    /// a list of VectorResourcePointers of the most similar VectorResources.
+    /// Returns a list of VectorResourcePointers of the most similar.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<VectorResourcePointer> {
         let chunks = self.routing_resource.vector_search(query, num_of_results);
         self.ret_data_chunks_to_pointers(&chunks)
-    }
-
-    /// A hardcoded key string used for the metadata hashmap of data chunks
-    /// in the router's internal resource
-    fn router_chunk_metadata_key() -> String {
-        "db_key".to_string()
     }
 
     /// Takes a list of RetrievedDataChunks and outputs a list of VectorResourcePointers
@@ -121,7 +93,6 @@ impl VectorResourceRouter {
         let mut resource_pointers = vec![];
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-
             if let Ok(resource_type) = VectorResourceType::from_str(&ret_chunk.chunk.data)
                 .map_err(|_| VectorResourceError::InvalidVectorResourceType)
             {
@@ -181,21 +152,7 @@ impl VectorResourceRouter {
         Ok(())
     }
 
-    /// Search through the resource pointers to find if one exists with
-    /// a matching db_key.
-    pub fn db_key_search(&self, db_key: &str) -> Result<VectorResourcePointer, VectorResourceError> {
-        let ret_data = self
-            .routing_resource
-            .metadata_search(&VectorResourceRouter::router_chunk_metadata_key(), db_key)?;
-
-        if let Some(res_pointer) = self.ret_data_chunks_to_pointers(&ret_data).get(0).cloned() {
-            return Ok(res_pointer);
-        } else {
-            Err(VectorResourceError::NoChunkFound)
-        }
-    }
-
-    /// Replaces an existing resource pointer with a new one.
+    /// Replaces an existing resource pointer with a new one
     pub fn replace_resource_pointer(
         &mut self,
         old_pointer_id: &str,

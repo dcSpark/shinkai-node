@@ -1,10 +1,10 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::Embedding;
-use crate::resources::vector_resource::RetrievedDataChunk;
-use crate::resources::vector_resource::{VectorResource, VectorResourceType};
 use crate::resources::resource_errors::VectorResourceError;
 use crate::resources::router::{VectorResourcePointer, VectorResourceRouter};
+use crate::resources::vector_resource::RetrievedDataChunk;
+use crate::resources::vector_resource::{VectorResource, VectorResourceType};
 use serde_json::{from_str, to_string};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
@@ -21,7 +21,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_profile_resource_router(router, profile)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(cf, &VectorResourceRouter::db_key(), bytes, profile)?;
+        self.put_cf_pb(cf, &VectorResourceRouter::profile_router_db_key(), bytes, profile)?;
 
         Ok(())
     }
@@ -115,7 +115,7 @@ impl ShinkaiDB {
             let pointer = resource.get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router, profile)?;
-            pb_batch.put_cf_pb(cf, &VectorResourceRouter::db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_db_key(), &bytes);
         }
 
         self.write_pb(pb_batch)?;
@@ -169,7 +169,11 @@ impl ShinkaiDB {
     /// Fetches the Global VectorResource Router from  the DB
     pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<VectorResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf_pb(Topic::VectorResources, &VectorResourceRouter::db_key(), profile)?;
+        let bytes = self.get_cf_pb(
+            Topic::VectorResources,
+            &VectorResourceRouter::profile_router_db_key(),
+            profile,
+        )?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a DocumentVectorResource object
