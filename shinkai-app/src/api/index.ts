@@ -74,7 +74,7 @@ export const sendTextMessage =
       const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
       handleHttpError(response);
-      if (message.body && 'unencrypted' in message.body) {
+      if (message.body && "unencrypted" in message.body) {
         const inboxId = message.body.unencrypted.internal_metadata.inbox;
         dispatch(addMessageToInbox(inboxId, message));
         return inboxId;
@@ -117,7 +117,7 @@ export const sendTextMessageWithInbox =
       const response = await axios.post(`${apiEndpoint}/v1/send`, message);
 
       handleHttpError(response);
-      if (message.body && 'unencrypted' in message.body) {
+      if (message.body && "unencrypted" in message.body) {
         const inboxId = message.body.unencrypted.internal_metadata.inbox;
         dispatch(addMessageToInbox(inboxId, message));
         return inboxId;
@@ -139,11 +139,6 @@ export const getAllInboxesForProfile =
   ) =>
   async (dispatch: AppDispatch) => {
     try {
-      let sender_profile_name =
-        setupDetailsState.profile +
-        "/device/" +
-        setupDetailsState.registration_name;
-
       const messageStr =
         ShinkaiMessageBuilderWrapper.get_all_inboxes_for_profile(
           setupDetailsState.my_device_encryption_sk,
@@ -269,19 +264,20 @@ export const submitRegistrationCode =
   (setupData: MergedSetupType): AppThunk =>
   async (dispatch: AppDispatch) => {
     try {
-      const messageStr = ShinkaiMessageBuilderWrapper.use_code_registration_for_device(
-        setupData.my_device_encryption_sk,
-        setupData.my_device_identity_sk,
-        setupData.profile_encryption_sk,
-        setupData.profile_identity_sk,
-        setupData.node_encryption_pk,
-        setupData.registration_code,
-        setupData.identity_type,
-        setupData.permission_type,
-        setupData.registration_name,
-        "", // sender_profile_name: it doesn't exist yet in the Node
-        setupData.shinkai_identity
-      );
+      const messageStr =
+        ShinkaiMessageBuilderWrapper.use_code_registration_for_device(
+          setupData.my_device_encryption_sk,
+          setupData.my_device_identity_sk,
+          setupData.profile_encryption_sk,
+          setupData.profile_identity_sk,
+          setupData.node_encryption_pk,
+          setupData.registration_code,
+          setupData.identity_type,
+          setupData.permission_type,
+          setupData.registration_name,
+          "", // sender_profile_name: it doesn't exist yet in the Node
+          setupData.shinkai_identity
+        );
 
       const message = JSON.parse(messageStr);
       console.log(

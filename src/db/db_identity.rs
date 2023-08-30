@@ -187,6 +187,7 @@ impl ShinkaiDB {
                                 let device_key_str = String::from_utf8(device_key.to_vec()).unwrap();
                                 let device_shinkai_name = ShinkaiName::new(device_key_str.clone())?;
                                 let device_identity = self.get_device(device_shinkai_name)?;
+                                eprintln!("\n\n self.get_device> device_identity: {}", device_identity);
                                 result.push(Identity::Device(device_identity));
                             }
                             Err(e) => return Err(e.into()),

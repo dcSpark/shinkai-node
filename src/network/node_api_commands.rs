@@ -169,8 +169,8 @@ impl Node {
         let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        println!(
-            "after find_by_identity_name> sender_subidentity: {:?}",
+        eprintln!(
+            "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
             sender_subidentity
         );
 
@@ -706,6 +706,8 @@ impl Node {
                 registration_name.as_str(),
                 &profile_identity_pk,
                 &profile_encryption_pk,
+                Some(&device_identity_pk),
+                Some(&device_encryption_pk),
             )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());

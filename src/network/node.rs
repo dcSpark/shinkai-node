@@ -599,7 +599,7 @@ impl Node {
             "{} > Sender Profile Name: {:?}",
             receiver_address, sender_profile_name_string
         );
-        debug!("{} > Node Sender Identity: {:?}", receiver_address, sender_identity);
+        debug!("{} > Node Sender Identity: {}", receiver_address, sender_identity);
         debug!("{} > Verified message signature", receiver_address);
 
         // Save to db

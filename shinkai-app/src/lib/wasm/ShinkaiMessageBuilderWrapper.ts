@@ -6,7 +6,7 @@ import {
 import {
   MessageSchemaType,
   EncryptionMethod as TSEncryptionMethod,
-} from "../../models/ShinkaiMessage.js";
+} from "../../models/SchemaTypes.js";
 
 export class ShinkaiMessageBuilderWrapper {
   private wasmBuilder: ShinkaiMessageBuilderWrapperWASM;

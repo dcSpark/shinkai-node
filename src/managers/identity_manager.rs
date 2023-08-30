@@ -42,7 +42,7 @@ impl IdentityManager {
                 .into_iter()
                 .collect()
         };
-        println!("identities_manager identities: {:?}", identities);
+        println!("\n\n ### identities_manager identities: {:?}", identities);
 
         let agents = {
             let db = db.lock().await;
@@ -291,11 +291,12 @@ impl IdentityManager {
         }
         // If we reach this point, it means that subidentity exists, so it's safe to unwrap
         let subidentity = sender_subidentity.unwrap();
+        eprintln!("signature check > subidentity: {:?}", subidentity);
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()),
+            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()), // 
             Identity::Agent(_) => {
                 eprintln!("signature check > Agent identities cannot send onionized messages");
                 return Ok(());

@@ -78,11 +78,14 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
             profile_name,
             &signature_public_key_to_string(profile_identity_pk),
             &encryption_public_key_to_string(profile_encryption_pk),
+            None,
+            None
         )
         .unwrap();
 
     // check in db
-    let profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
+    let profile_name =
+        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
     let permission_in_db = shinkai_db.get_profile_permission(profile_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 }
@@ -117,19 +120,23 @@ fn test_generate_and_use_registration_code_for_device() {
         .generate_registration_new_code(IdentityPermissions::Admin, RegistrationCodeType::Profile)
         .unwrap();
 
-    let profile_result = shinkai_db
-        .use_registration_code(
-            &registration_code,
-            node_profile_name,
-            profile_name,
-            &signature_public_key_to_string(profile_identity_pk),
-            &encryption_public_key_to_string(profile_encryption_pk),
-        );
+    let profile_result = shinkai_db.use_registration_code(
+        &registration_code,
+        node_profile_name,
+        profile_name,
+        &signature_public_key_to_string(profile_identity_pk),
+        &encryption_public_key_to_string(profile_encryption_pk),
+        Some(&signature_public_key_to_string(device_identity_pk)),
+        Some(&encryption_public_key_to_string(device_encryption_pk)),
+    );
 
     println!("profile_result: {:?}", profile_result);
     // registration code for device
     let registration_code = shinkai_db
-        .generate_registration_new_code(IdentityPermissions::Standard, RegistrationCodeType::Device(profile_name.to_string()))
+        .generate_registration_new_code(
+            IdentityPermissions::Standard,
+            RegistrationCodeType::Device(profile_name.to_string()),
+        )
         .unwrap();
 
     // Test use_registration_code
@@ -138,13 +145,16 @@ fn test_generate_and_use_registration_code_for_device() {
             &registration_code,
             node_profile_name,
             device_name,
-            &signature_public_key_to_string(device_identity_pk),
-            &encryption_public_key_to_string(device_encryption_pk),
+            &signature_public_key_to_string(profile_identity_pk),
+            &encryption_public_key_to_string(profile_encryption_pk),
+            Some(&signature_public_key_to_string(device_identity_pk)),
+            Some(&encryption_public_key_to_string(device_encryption_pk)),
         )
         .unwrap();
 
     // check in db
-    let profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
+    let profile_name =
+        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), profile_name.to_string()).unwrap();
     let permission_in_db = shinkai_db.get_profile_permission(profile_name.clone()).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Admin);
 
@@ -154,10 +164,10 @@ fn test_generate_and_use_registration_code_for_device() {
         profile_name.get_profile_name().unwrap().to_string(),
         ShinkaiSubidentityType::Device,
         device_name.to_string(),
-    ).unwrap();
+    )
+    .unwrap();
     let permission_in_db = shinkai_db.get_device_permission(device_name).unwrap();
     assert_eq!(permission_in_db, IdentityPermissions::Standard);
-
 }
 
 #[test]
@@ -168,6 +178,9 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
     let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     let device_name = "device_main";
     let (device_identity_sk, device_identity_pk) = unsafe_deterministic_signature_keypair(2);
@@ -183,21 +196,26 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
 
     // Generate a registration code for device with main as profile_name
     let registration_code = shinkai_db
-        .generate_registration_new_code(IdentityPermissions::Standard, RegistrationCodeType::Device("main".to_string()))
+        .generate_registration_new_code(
+            IdentityPermissions::Standard,
+            RegistrationCodeType::Device("main".to_string()),
+        )
         .unwrap();
 
     // Use the registration code to create the device and automatically the "main" profile if not exists
-    let device_result = shinkai_db
-        .use_registration_code(
-            &registration_code,
-            node_profile_name,
-            device_name,
-            &signature_public_key_to_string(device_identity_pk),
-            &encryption_public_key_to_string(device_encryption_pk),
-        );
+    let device_result = shinkai_db.use_registration_code(
+        &registration_code,
+        node_profile_name,
+        device_name,
+        &signature_public_key_to_string(profile_identity_pk),
+        &encryption_public_key_to_string(profile_encryption_pk),
+        Some(&signature_public_key_to_string(device_identity_pk)),
+        Some(&encryption_public_key_to_string(device_encryption_pk)),
+    );
 
     // Check if "main" profile exists in db
-    let main_profile_name = ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "main".to_string()).unwrap();
+    let main_profile_name =
+        ShinkaiName::from_node_and_profile(node_profile_name.to_string(), "main".to_string()).unwrap();
     let main_permission_in_db = shinkai_db.get_profile_permission(main_profile_name.clone()).unwrap();
     assert_eq!(main_permission_in_db, IdentityPermissions::Admin);
 
@@ -207,9 +225,25 @@ fn test_generate_and_use_registration_code_for_device_with_main_profile() {
         "main".to_string(),
         ShinkaiSubidentityType::Device,
         device_name.to_string(),
-    ).unwrap();
-    let device_permission_in_db = shinkai_db.get_device_permission(device_full_name).unwrap();
+    )
+    .unwrap();
+    let device_permission_in_db = shinkai_db.get_device_permission(device_full_name.clone()).unwrap();
     assert_eq!(device_permission_in_db, IdentityPermissions::Standard);
+
+    // Get the device from the database and check that it matches the expected values
+    let device_in_db = shinkai_db.get_device(device_full_name.clone()).unwrap();
+    assert_eq!(device_in_db.device_signature_public_key, device_identity_pk);
+    assert_eq!(device_in_db.device_encryption_public_key, device_encryption_pk);
+    assert_eq!(device_in_db.permission_type, IdentityPermissions::Standard);
+
+    assert_ne!(
+        device_in_db.profile_encryption_public_key,
+        device_in_db.device_encryption_public_key
+    );
+    assert_ne!(
+        device_in_db.profile_signature_public_key,
+        device_in_db.device_signature_public_key
+    );
 }
 
 #[test]
@@ -239,7 +273,10 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
 
     // registration code for device
     let registration_code = shinkai_db
-        .generate_registration_new_code(IdentityPermissions::Standard, RegistrationCodeType::Device(profile_name.to_string()))
+        .generate_registration_new_code(
+            IdentityPermissions::Standard,
+            RegistrationCodeType::Device(profile_name.to_string()),
+        )
         .unwrap();
 
     // Test use_registration_code
@@ -249,6 +286,8 @@ fn test_generate_and_use_registration_code_no_associated_profile() {
         device_name,
         &signature_public_key_to_string(device_identity_pk),
         &encryption_public_key_to_string(device_encryption_pk),
+        None,
+        None,
     );
 
     // Check if an error is returned as no profile is associated
@@ -338,11 +377,7 @@ fn test_update_local_node_keys() {
 
     // Test update_local_node_keys
     shinkai_db
-        .update_local_node_keys(
-            node_profile_name.clone(),
-            encryption_pk.clone(),
-            identity_pk.clone(),
-        )
+        .update_local_node_keys(node_profile_name.clone(), encryption_pk.clone(), identity_pk.clone())
         .unwrap();
 
     // check the encryption and identity keys in database
@@ -471,7 +506,10 @@ fn test_remove_profile() {
     let cf_encryption = shinkai_db.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
     let cf_permission = shinkai_db.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
 
-    let identity_in_db = shinkai_db.db.get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap()).unwrap();
+    let identity_in_db = shinkai_db
+        .db
+        .get_cf(cf_identity, identity.full_identity_name.get_profile_name().unwrap())
+        .unwrap();
     let encryption_in_db = shinkai_db
         .db
         .get_cf(cf_encryption, identity.full_identity_name.get_profile_name().unwrap())
