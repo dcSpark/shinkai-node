@@ -13,6 +13,38 @@ export enum EncryptionMethod {
 }
 /**
 */
+export class InboxNameWrapper {
+  free(): void;
+/**
+* @param {any} inbox_name_js
+*/
+  constructor(inbox_name_js: any);
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
+/**
+*/
+  readonly get_identities: any;
+/**
+*/
+  readonly get_is_e2e: boolean;
+/**
+*/
+  readonly get_unique_id: any;
+/**
+*/
+  readonly get_value: any;
+/**
+*/
+  readonly to_string: any;
+}
+/**
+*/
 export class ShinkaiMessageBuilderWrapper {
   free(): void;
 /**
@@ -113,8 +145,8 @@ export class ShinkaiMessageBuilderWrapper {
 */
   static request_code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, permissions: string, code_type: string, sender_profile_name: string, receiver: string): string;
 /**
-* @param {string} my_subidentity_encryption_sk
-* @param {string} my_subidentity_signature_sk
+* @param {string} profile_encryption_sk
+* @param {string} profile_signature_sk
 * @param {string} receiver_public_key
 * @param {string} code
 * @param {string} identity_type
@@ -124,7 +156,22 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} receiver
 * @returns {string}
 */
-  static use_code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string;
+  static use_code_registration_for_profile(profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string;
+/**
+* @param {string} my_device_encryption_sk
+* @param {string} my_device_signature_sk
+* @param {string} profile_encryption_sk
+* @param {string} profile_signature_sk
+* @param {string} receiver_public_key
+* @param {string} code
+* @param {string} identity_type
+* @param {string} permission_type
+* @param {string} registration_name
+* @param {string} sender_profile_name
+* @param {string} receiver
+* @returns {string}
+*/
+  static use_code_registration_for_device(my_device_encryption_sk: string, my_device_signature_sk: string, profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string;
 /**
 * @param {string} my_subidentity_encryption_sk
 * @param {string} my_subidentity_signature_sk
@@ -267,4 +314,45 @@ export class ShinkaiMessageWrapper {
 /**
 */
   message_body: any;
+}
+/**
+*/
+export class ShinkaiNameWrapper {
+  free(): void;
+/**
+* @param {any} shinkai_name_js
+*/
+  constructor(shinkai_name_js: any);
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
+/**
+*/
+  readonly get_full_name: any;
+/**
+*/
+  readonly get_node_name: any;
+/**
+*/
+  readonly get_profile_name: any;
+/**
+*/
+  readonly get_subidentity_name: any;
+/**
+*/
+  readonly get_subidentity_type: any;
+}
+/**
+*/
+export class ShinkaiTime {
+  free(): void;
+/**
+* @returns {string}
+*/
+  static generateTimeNow(): string;
 }

@@ -129,7 +129,31 @@ export class ShinkaiMessageBuilderWrapper {
     );
   }
 
-  static use_code_registration(
+  static use_code_registration_for_profile(
+    profile_encryption_sk: string,
+    profile_signature_sk: string,
+    receiver_public_key: string,
+    code: string,
+    identity_type: string,
+    permission_type: string,
+    registration_name: string,
+    sender_profile_name: string,
+    receiver: string
+  ): string {
+    return ShinkaiMessageBuilderWrapperWASM.use_code_registration_for_profile(
+      profile_encryption_sk,
+      profile_signature_sk,
+      receiver_public_key,
+      code,
+      identity_type,
+      permission_type,
+      registration_name,
+      sender_profile_name,
+      receiver
+    );
+  }
+
+  static use_code_registration_for_device(
     my_device_encryption_sk: string,
     my_device_signature_sk: string,
     profile_encryption_sk: string,
@@ -142,9 +166,11 @@ export class ShinkaiMessageBuilderWrapper {
     sender_profile_name: string,
     receiver: string
   ): string {
-    return ShinkaiMessageBuilderWrapperWASM.use_code_registration(
+    return ShinkaiMessageBuilderWrapperWASM.use_code_registration_for_device(
       my_device_encryption_sk,
       my_device_signature_sk,
+      profile_encryption_sk,
+      profile_signature_sk,
       receiver_public_key,
       code,
       identity_type,

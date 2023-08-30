@@ -355,7 +355,7 @@ mod tests {
         }
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_create_custom_shinkai_message_to_node() {
         // Initialize test data
@@ -414,7 +414,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_use_code_registration_for_device() {
         // Initialize test data
@@ -665,7 +665,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_messages_from_inbox() {
         // Initialize test data
@@ -732,7 +732,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_unread_messages_from_inbox() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");

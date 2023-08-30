@@ -352,8 +352,6 @@ impl ShinkaiMessageBuilderWrapper {
 
     #[wasm_bindgen]
     pub fn use_code_registration_for_profile(
-        my_subidentity_encryption_sk: String,
-        my_subidentity_signature_sk: String,
         profile_encryption_sk: String,
         profile_signature_sk: String,
         receiver_public_key: String,
@@ -384,8 +382,8 @@ impl ShinkaiMessageBuilderWrapper {
         let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
+            profile_encryption_sk,
+            profile_signature_sk,
             receiver_public_key,
             body,
             sender_profile_name,

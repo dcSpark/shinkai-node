@@ -480,8 +480,6 @@ impl ShinkaiMessageBuilder {
     }
 
     pub fn use_code_registration_for_profile(
-        my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
         profile_encryption_sk: EncryptionStaticKey,
         profile_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
@@ -508,8 +506,8 @@ impl ShinkaiMessageBuilder {
         };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
+            profile_encryption_sk,
+            profile_signature_sk,
             receiver_public_key,
             registration_code,
             sender_subidentity,

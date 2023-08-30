@@ -82,8 +82,10 @@ impl StandardIdentityType {
 pub struct RegistrationCode {
     pub code: String,
     pub registration_name: String,
-    pub identity_pk: String,
-    pub encryption_pk: String,
+    pub device_identity_pk: String,
+    pub device_encryption_pk: String,
+    pub profile_identity_pk: String,
+    pub profile_encryption_pk: String,
     pub identity_type: IdentityType,
     pub permission_type: IdentityPermissions,
 }

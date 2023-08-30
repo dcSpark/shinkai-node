@@ -29,7 +29,8 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
         println!("receiver_encryption_pk: {}", node2_encryption_pk_str);
 
         if let Some(code) = args.code_registration {
-            handle_code_registration(code, node_keys, global_identity_name, recipient, node2_encryption_pk);
+            println!("TODO: code_registration: {}", code);
+            // handle_code_registration(code, node_keys, global_identity_name, recipient, node2_encryption_pk);
         } else {
             handle_create_message(
                 node_keys,
@@ -45,39 +46,39 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
     }
 }
 
-fn handle_code_registration(
-    code: String,
-    node_keys: &NodeKeys,
-    global_identity_name: &str,
-    recipient: String,
-    node2_encryption_pk: EncryptionPublicKey,
-) {
-    let message = ShinkaiMessageBuilder::use_code_registration(
-        node_keys.encryption_secret_key.clone(),
-        clone_signature_secret_key(&node_keys.identity_secret_key),
-        node2_encryption_pk,
-        code.to_string(),
-        "device".to_string(),
-        "admin".to_string(),
-        "".to_string(),
-        global_identity_name.to_string().clone(),
-        recipient.to_string(),
-    )
-    .expect("Failed to create message with code registration");
+// fn handle_code_registration(
+//     code: String,
+//     node_keys: &NodeKeys,
+//     global_identity_name: &str,
+//     recipient: String,
+//     node2_encryption_pk: EncryptionPublicKey,
+// ) {
+//     let message = ShinkaiMessageBuilder::use_code_registration_for_device(
+//         node_keys.encryption_secret_key.clone(),
+//         clone_signature_secret_key(&node_keys.identity_secret_key),
+//         node2_encryption_pk,
+//         code.to_string(),
+//         "device".to_string(),
+//         "admin".to_string(),
+//         "".to_string(),
+//         global_identity_name.to_string().clone(),
+//         recipient.to_string(),
+//     )
+//     .expect("Failed to create message with code registration");
 
-    println!(
-        "Message's signature: {}",
-        message.clone().external_metadata.signature
-    );
+//     println!(
+//         "Message's signature: {}",
+//         message.clone().external_metadata.signature
+//     );
 
-    // Serialize the wrapper into JSON and print to stdout
-    let message_json = serde_json::to_string_pretty(&message);
+//     // Serialize the wrapper into JSON and print to stdout
+//     let message_json = serde_json::to_string_pretty(&message);
 
-    match message_json {
-        Ok(json) => println!("{}", json),
-        Err(e) => println!("Error creating JSON: {}", e),
-    }
-}
+//     match message_json {
+//         Ok(json) => println!("{}", json),
+//         Err(e) => println!("Error creating JSON: {}", e),
+//     }
+// }
 
 fn handle_create_message(
     node_keys: &NodeKeys,

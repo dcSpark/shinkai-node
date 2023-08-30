@@ -680,8 +680,8 @@ impl Node {
         // Extract values from the ShinkaiMessage
         let code = registration_code.code;
         let registration_name = registration_code.registration_name;
-        let identity_pk = registration_code.identity_pk;
-        let encryption_pk = registration_code.encryption_pk;
+        let identity_pk = registration_code.profile_identity_pk;
+        let encryption_pk = registration_code.profile_encryption_pk;
         let identity_type = registration_code.identity_type;
         println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
         // Comment (to me): this should be able to handle Device and Agent identities

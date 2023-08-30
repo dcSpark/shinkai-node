@@ -51,8 +51,11 @@ fn node_agent_registration() {
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
 
-        let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-        let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
+        let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
 
@@ -85,9 +88,11 @@ fn node_agent_registration() {
                     node1_commands_sender.clone(),
                     node1_subidentity_name,
                     node1_identity_name,
-                    node1_subencryption_sk.clone(),
                     node1_encryption_pk,
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node1_device_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_device_identity_sk),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_device_name,
                 )
                 .await;
@@ -151,9 +156,9 @@ fn node_agent_registration() {
                 };
                 api_agent_registration(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_subencryption_sk),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone(),
                     node1_subidentity_name.clone(),
                     agent,
@@ -177,9 +182,9 @@ fn node_agent_registration() {
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_subencryption_sk),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone(),
                     node1_subidentity_name.clone(),
                     &subidentity_name.get_agent_name().unwrap(),
@@ -193,9 +198,9 @@ fn node_agent_registration() {
                 let message = "Tell me. Who are you?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_subencryption_sk),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone(),
                     node1_subidentity_name.clone(),
                     &subidentity_name.get_agent_name().unwrap(),

@@ -28,7 +28,9 @@ use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod utils;
-use crate::utils::node_test_api::{api_try_re_register_profile_node, api_registration_device_node_profile_main, api_registration_profile_node};
+use crate::utils::node_test_api::{
+    api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
+};
 use crate::utils::node_test_local::local_registration_profile_node;
 
 #[test]
@@ -45,9 +47,9 @@ fn subidentity_registration() {
     rt.block_on(async {
         let node1_identity_name = "@@node1_test.shinkai";
         let node2_identity_name = "@@node2_test.shinkai";
-        let node1_subidentity_name = "main";
+        let node1_profile_name = "main";
         let node1_device_name = "node1_device";
-        let node2_subidentity_name = "main_profile_node2";
+        let node2_profile_name = "main_profile_node2";
 
         let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
@@ -61,17 +63,20 @@ fn subidentity_registration() {
         let node1_identity_sk_clone = clone_signature_secret_key(&node1_identity_sk);
         let node2_identity_sk_clone = clone_signature_secret_key(&node2_identity_sk);
 
-        let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-        let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+        let (node1_profile_identity_sk, node1_profile_identity_pk) = unsafe_deterministic_signature_keypair(100);
+        let (node1_profile_encryption_sk, node1_profile_encryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
         let (node2_subidentity_sk, node2_subidentity_pk) = unsafe_deterministic_signature_keypair(101);
         let (node2_subencryption_sk, node2_subencryption_pk) = unsafe_deterministic_encryption_keypair(101);
 
-        let node1_subencryption_sk_clone = node1_subencryption_sk.clone();
+        let node1_subencryption_sk_clone = node1_profile_encryption_sk.clone();
         let node2_subencryption_sk_clone = node2_subencryption_sk.clone();
 
-        let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_subidentity_sk);
+        let node1_subidentity_sk_clone = clone_signature_secret_key(&node1_profile_identity_sk);
         let node2_subidentity_sk_clone = clone_signature_secret_key(&node2_subidentity_sk);
+
+        let (node1_device_identity_sk, node1_device_identity_pk) = unsafe_deterministic_signature_keypair(200);
+        let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let (node1_commands_sender, node1_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) =
             bounded(100);
@@ -125,11 +130,11 @@ fn subidentity_registration() {
 
         eprintln!(
             "Node 1 subidentity sk: {:?}",
-            signature_secret_key_to_string(clone_signature_secret_key(&node1_subidentity_sk))
+            signature_secret_key_to_string(clone_signature_secret_key(&node1_profile_identity_sk))
         );
         eprintln!(
             "Node 1 subidentity pk: {:?}",
-            signature_public_key_to_string(node1_subidentity_pk)
+            signature_public_key_to_string(node1_profile_identity_pk)
         );
 
         eprintln!(
@@ -147,7 +152,7 @@ fn subidentity_registration() {
         );
         eprintln!(
             "Node 1 subencryption pk: {:?}",
-            encryption_public_key_to_string(node1_subencryption_pk)
+            encryption_public_key_to_string(node1_profile_encryption_pk)
         );
 
         eprintln!(
@@ -182,11 +187,13 @@ fn subidentity_registration() {
                 eprintln!("Register a Profile in Node1 and verify it");
                 api_registration_device_node_profile_main(
                     node1_commands_sender.clone(),
-                    node1_subidentity_name,
+                    node1_profile_name,
                     node1_identity_name,
-                    node1_subencryption_sk_clone.clone(),
-                    node1_encryption_pk,
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node1_encryption_pk.clone(),
+                    node1_device_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_device_identity_sk),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_device_name,
                 )
                 .await;
@@ -197,7 +204,7 @@ fn subidentity_registration() {
                 eprintln!("Register a Profile in Node2 and verify it");
                 local_registration_profile_node(
                     node2_commands_sender.clone(),
-                    node2_subidentity_name,
+                    node2_profile_name,
                     node2_identity_name,
                     node2_subencryption_sk_clone.clone(),
                     node2_encryption_pk,
@@ -234,8 +241,8 @@ fn subidentity_registration() {
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
-                    node2_subidentity_name.to_string().clone(),
-                    node1_subidentity_name.to_string(),
+                    node2_profile_name.to_string().clone(),
+                    node1_profile_name.to_string(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(
@@ -320,7 +327,7 @@ fn subidentity_registration() {
                     println!("Checking that the message has the right sender {:?}", message_to_check);
                     assert_eq!(
                         message_to_check.get_sender_subidentity().unwrap(),
-                        node2_subidentity_name.to_string(),
+                        node2_profile_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
                 }
@@ -331,7 +338,8 @@ fn subidentity_registration() {
 
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
-                    message_content, message_to_check_content_unencrypted.get_message_content().unwrap(),
+                    message_content,
+                    message_to_check_content_unencrypted.get_message_content().unwrap(),
                     "Node 2's profile send an encrypted message to Node 1"
                 );
 
@@ -353,11 +361,11 @@ fn subidentity_registration() {
             {
                 api_try_re_register_profile_node(
                     node1_commands_sender.clone(),
-                    node1_subidentity_name,
+                    node1_profile_name,
                     node1_identity_name,
                     node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                 )
                 .await;
             }
@@ -375,7 +383,7 @@ fn subidentity_registration() {
                     node1_identity_name,
                     node1_subencryption_sk_clone.clone(),
                     node1_encryption_pk,
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     2,
                 )
                 .await;
@@ -384,22 +392,22 @@ fn subidentity_registration() {
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
                 let unchanged_message = ShinkaiMessageBuilder::new(
-                    node1_subencryption_sk.clone(),
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_subencryption_pk_2,
                 )
                 .message_raw_content(message_content.clone())
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
-                    node1_subidentity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
                     node1_subidentity_name_2.to_string().clone(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(
                     node1_identity_name.to_string().clone(),
                     node1_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node1_subencryption_pk.clone()),
+                    encryption_public_key_to_string(node1_profile_encryption_pk.clone()),
                 )
                 .build()
                 .unwrap();
@@ -450,7 +458,7 @@ fn subidentity_registration() {
                 // Check the sender and recipient
                 assert_eq!(
                     message_to_check.get_sender_subidentity().unwrap(),
-                    node1_subidentity_name.to_string(),
+                    node1_profile_name.to_string(),
                     "Node 1 subidentity sent a message to Node 1 subidentity 2. The message has the right sender."
                 );
                 assert_eq!(
@@ -468,22 +476,22 @@ fn subidentity_registration() {
                 // let message_content = "test encrypted body content from node1 subidentity to node2 subidentity".to_string();
                 let message_content = std::iter::repeat("hola-").take(100_000).collect::<String>();
                 let unchanged_message = ShinkaiMessageBuilder::new(
-                    node1_subencryption_sk,
-                    clone_signature_secret_key(&node1_subidentity_sk),
+                    node1_profile_encryption_sk,
+                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node2_subencryption_pk,
                 )
                 .message_raw_content(message_content.clone())
                 .no_body_encryption()
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
-                    node1_subidentity_name.to_string().clone(),
-                    node2_subidentity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                    node2_profile_name.to_string().clone(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
                 .external_metadata_with_other(
                     node2_identity_name.to_string().clone(),
                     node1_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node1_subencryption_pk.clone()),
+                    encryption_public_key_to_string(node1_profile_encryption_pk.clone()),
                 )
                 .build()
                 .unwrap();
@@ -572,25 +580,26 @@ fn subidentity_registration() {
                 {
                     assert_eq!(
                         message_to_check.get_sender_subidentity().unwrap(),
-                        node1_subidentity_name.to_string(),
+                        node1_profile_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
 
                     assert_eq!(
                         message_to_check.get_recipient_subidentity().unwrap(),
-                        node2_subidentity_name.to_string(),
+                        node2_profile_name.to_string(),
                         "Node 2's profile send an encrypted message to Node 1. The message has the right sender."
                     );
                 }
 
                 let message_to_check_content_unencrypted = message_to_check
                     .clone()
-                    .decrypt_inner_layer(&node2_subencryption_sk_clone.clone(), &node1_subencryption_pk)
+                    .decrypt_inner_layer(&node2_subencryption_sk_clone.clone(), &node1_profile_encryption_pk)
                     .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated
                 assert_eq!(
-                    message_content, message_to_check_content_unencrypted.get_message_content().unwrap(),
+                    message_content,
+                    message_to_check_content_unencrypted.get_message_content().unwrap(),
                     "Node 1's profile send an encrypted message to Node 1's profile"
                 );
             }
@@ -600,6 +609,3 @@ fn subidentity_registration() {
         let _ = tokio::try_join!(node1_handler, node2_handler, interactions_handler).unwrap();
     });
 }
-
-
-

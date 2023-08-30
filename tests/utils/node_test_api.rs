@@ -33,10 +33,12 @@ pub async fn api_registration_device_node_profile_main(
     node_commands_sender: Sender<NodeCommand>,
     node_profile_name: &str,
     node_identity_name: &str,
-    subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
-    profile_name_with_device: &str,
+    device_encryption_sk: EncryptionStaticKey,
+    device_signature_sk: SignatureStaticKey,
+    profile_encryption_sk: EncryptionStaticKey,
+    profile_signature_sk: SignatureStaticKey,
+    device_name_for_profile: &str,
 ) {
     {
         let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
@@ -50,15 +52,18 @@ pub async fn api_registration_device_node_profile_main(
             .unwrap();
         let node_registration_code = res_registraton_receiver.recv().await.unwrap();
 
-        let code_message = ShinkaiMessageBuilder::use_code_registration(
-            subidentity_encryption_sk.clone(),
-            clone_signature_secret_key(&subidentity_signature_sk),
+        let code_message = ShinkaiMessageBuilder::use_code_registration_for_device(
+            device_encryption_sk.clone(),
+            clone_signature_secret_key(&device_signature_sk),
+            profile_encryption_sk.clone(),
+            clone_signature_secret_key(&profile_signature_sk),
             node_encryption_pk,
             node_registration_code.to_string(),
             IdentityType::Device.to_string(),
             IdentityPermissions::Admin.to_string(),
-            profile_name_with_device.to_string().clone(),
+            device_name_for_profile.to_string().clone(),
             "".to_string(),
+            node_identity_name.to_string(),
             node_identity_name.to_string(),
         )
         .unwrap();
@@ -111,7 +116,7 @@ pub async fn api_registration_device_node_profile_main(
         );
         assert_eq!(
             node2_all_subidentities[1].get_full_identity_name(),
-            format!("{}/main/device/{}", node_identity_name, profile_name_with_device),
+            format!("{}/main/device/{}", node_identity_name, device_name_for_profile),
             "Node has the right subidentity"
         );
     }
@@ -138,6 +143,7 @@ pub async fn api_registration_profile_node(
             code_type,
             "main".to_string().clone(),
             node_identity_name.to_string().clone(),
+            node_identity_name.to_string().clone(),
         )
         .expect("Failed to create registration message");
 
@@ -161,7 +167,7 @@ pub async fn api_registration_profile_node(
 
         eprintln!("node_registration_code: {:?}", node_registration_code);
 
-        let code_message = ShinkaiMessageBuilder::use_code_registration(
+        let code_message = ShinkaiMessageBuilder::use_code_registration_for_profile(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
@@ -170,6 +176,7 @@ pub async fn api_registration_profile_node(
             IdentityPermissions::Admin.to_string(),
             node_profile_name.to_string().clone(),
             node_profile_name.to_string().clone(),
+            node_identity_name.to_string(),
             node_identity_name.to_string(),
         )
         .unwrap();
@@ -247,7 +254,7 @@ pub async fn api_try_re_register_profile_node(
         .unwrap();
     let node_registration_code = res1_registraton_receiver.recv().await.unwrap();
 
-    let code_message = ShinkaiMessageBuilder::use_code_registration(
+    let code_message = ShinkaiMessageBuilder::use_code_registration_for_profile(
         node_profile_encryption_sk.clone(),
         clone_signature_secret_key(&node_subidentity_sk),
         node_encryption_pk,
@@ -256,6 +263,7 @@ pub async fn api_try_re_register_profile_node(
         IdentityPermissions::Admin.to_string(),
         node_profile_name.to_string().clone(),
         node_profile_name.to_string().clone(),
+        node_identity_name.to_string(),
         node_identity_name.to_string(),
     )
     .unwrap();
@@ -315,6 +323,7 @@ pub async fn api_agent_registration(
             node_encryption_pk,
             agent.clone(),
             subidentity_name.to_string(),
+            node_name.to_string(),
             node_name.to_string(),
         )
         .unwrap();

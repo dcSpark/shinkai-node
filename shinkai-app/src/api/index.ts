@@ -269,9 +269,11 @@ export const submitRegistrationCode =
   (setupData: MergedSetupType): AppThunk =>
   async (dispatch: AppDispatch) => {
     try {
-      const messageStr = ShinkaiMessageBuilderWrapper.use_code_registration(
+      const messageStr = ShinkaiMessageBuilderWrapper.use_code_registration_for_device(
         setupData.my_device_encryption_sk,
         setupData.my_device_identity_sk,
+        setupData.profile_encryption_sk,
+        setupData.profile_identity_sk,
         setupData.node_encryption_pk,
         setupData.registration_code,
         setupData.identity_type,
