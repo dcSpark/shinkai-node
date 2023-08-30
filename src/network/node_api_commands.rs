@@ -680,8 +680,10 @@ impl Node {
         // Extract values from the ShinkaiMessage
         let code = registration_code.code;
         let registration_name = registration_code.registration_name;
-        let identity_pk = registration_code.profile_identity_pk;
-        let encryption_pk = registration_code.profile_encryption_pk;
+        let profile_identity_pk = registration_code.profile_identity_pk;
+        let profile_encryption_pk = registration_code.profile_encryption_pk;
+        let device_identity_pk = registration_code.device_identity_pk;
+        let device_encryption_pk = registration_code.device_encryption_pk;
         let identity_type = registration_code.identity_type;
         println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
         // Comment (to me): this should be able to handle Device and Agent identities
@@ -695,7 +697,6 @@ impl Node {
         println!("permission_type: {:?}", permission_type);
 
         let db = self.db.lock().await;
-        // TODO: remove this
         println!("handle_registration_code_usage> before use_registration_code");
         db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
@@ -703,13 +704,12 @@ impl Node {
                 &code.clone(),
                 self.node_profile_name.get_node_name().as_str(),
                 registration_name.as_str(),
-                &identity_pk,
-                &encryption_pk,
+                &profile_identity_pk,
+                &profile_encryption_pk,
             )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
 
-        // TODO: remove this eventually or make it a debug
         println!("handle_registration_code_usage> after use_registration_code");
         db.debug_print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
@@ -719,8 +719,8 @@ impl Node {
                 match identity_type {
                     IdentityType::Profile | IdentityType::Global => {
                         // Existing logic for handling profile identity
-                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile(
@@ -779,8 +779,8 @@ impl Node {
                         };
                         std::mem::drop(db);
 
-                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
 
                         // Check if the profile exists in the identity_manager
                         {
@@ -819,13 +819,20 @@ impl Node {
                         )
                         .unwrap();
 
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
+
+                        let device_signature_pk_obj = string_to_signature_public_key(device_identity_pk.as_str()).unwrap();
+                        let device_encryption_pk_obj = string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
+
                         let device_identity = DeviceIdentity {
                             full_identity_name,
                             node_encryption_public_key: self.encryption_public_key.clone(),
                             node_signature_public_key: self.identity_public_key.clone(),
-                            profile_encryption_public_key: Some(encryption_pk_obj),
-                            profile_signature_public_key: Some(signature_pk_obj),
-                            device_signature_public_key: None, // NOTE: This assumes you don't have the device signature PK in the RegistrationCode. Adjust if necessary.
+                            profile_encryption_public_key: encryption_pk_obj,
+                            profile_signature_public_key: signature_pk_obj,
+                            device_encryption_public_key: device_encryption_pk_obj,
+                            device_signature_public_key: device_signature_pk_obj,
                             permission_type,
                         };
 

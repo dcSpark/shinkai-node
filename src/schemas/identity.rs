@@ -2,14 +2,18 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use regex::Regex;
+use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
-use serde::ser::{Serializer, SerializeStruct};
 use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
-use shinkai_message_wasm::shinkai_utils::encryption::{encryption_public_key_to_string, encryption_public_key_to_string_ref};
-use shinkai_message_wasm::shinkai_utils::signatures::{signature_public_key_to_string, signature_public_key_to_string_ref};
+use shinkai_message_wasm::shinkai_utils::encryption::{
+    encryption_public_key_to_string, encryption_public_key_to_string_ref,
+};
+use shinkai_message_wasm::shinkai_utils::signatures::{
+    signature_public_key_to_string, signature_public_key_to_string_ref,
+};
 use std::sync::Arc;
 use std::{fmt, net::SocketAddr};
 use tokio::sync::Mutex;
@@ -49,7 +53,7 @@ impl IdentityType {
         match self {
             Self::Global => Some(StandardIdentityType::Global),
             Self::Profile => Some(StandardIdentityType::Profile),
-            _ => None,  // Agent and Device types don't have a StandardIdentityType equivalent
+            _ => None, // Agent and Device types don't have a StandardIdentityType equivalent
         }
     }
 }
@@ -128,23 +132,24 @@ pub struct DeviceIdentity {
     pub full_identity_name: ShinkaiName,
     pub node_encryption_public_key: EncryptionPublicKey,
     pub node_signature_public_key: SignaturePublicKey,
-    pub profile_encryption_public_key: Option<EncryptionPublicKey>,
-    pub profile_signature_public_key: Option<SignaturePublicKey>,
-    pub device_signature_public_key: Option<SignaturePublicKey>,
+    pub profile_encryption_public_key: EncryptionPublicKey,
+    pub profile_signature_public_key: SignaturePublicKey,
+    pub device_encryption_public_key: EncryptionPublicKey,
+    pub device_signature_public_key: SignaturePublicKey,
     pub permission_type: IdentityPermissions,
 }
 
 impl DeviceIdentity {
     pub fn to_standard_identity(&self) -> Option<StandardIdentity> {
         let full_identity_name = self.full_identity_name.extract_profile().ok()?;
-        
+
         Some(StandardIdentity {
             full_identity_name,
             addr: None,
             node_encryption_public_key: self.node_encryption_public_key.clone(),
             node_signature_public_key: self.node_signature_public_key.clone(),
-            profile_encryption_public_key: self.profile_encryption_public_key.clone(),
-            profile_signature_public_key: self.profile_signature_public_key.clone(),
+            profile_encryption_public_key: Some(self.profile_encryption_public_key.clone()),
+            profile_signature_public_key: Some(self.profile_signature_public_key.clone()),
             identity_type: StandardIdentityType::Profile,
             permission_type: self.permission_type.clone(),
         })
@@ -159,10 +164,22 @@ impl Serialize for StandardIdentity {
         let mut s = serializer.serialize_struct("StandardIdentity", 7)?;
         s.serialize_field("full_identity_name", &self.full_identity_name)?;
         s.serialize_field("addr", &self.addr)?;
-        s.serialize_field("node_encryption_public_key", &encryption_public_key_to_string_ref(&self.node_encryption_public_key))?;
-        s.serialize_field("node_signature_public_key", &signature_public_key_to_string_ref(&self.node_signature_public_key))?;
-        s.serialize_field("profile_encryption_public_key", &self.profile_encryption_public_key.map(encryption_public_key_to_string))?;
-        s.serialize_field("profile_signature_public_key", &self.profile_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field(
+            "node_encryption_public_key",
+            &encryption_public_key_to_string_ref(&self.node_encryption_public_key),
+        )?;
+        s.serialize_field(
+            "node_signature_public_key",
+            &signature_public_key_to_string_ref(&self.node_signature_public_key),
+        )?;
+        s.serialize_field(
+            "profile_encryption_public_key",
+            &self.profile_encryption_public_key.map(encryption_public_key_to_string),
+        )?;
+        s.serialize_field(
+            "profile_signature_public_key",
+            &self.profile_signature_public_key.map(signature_public_key_to_string),
+        )?;
         s.serialize_field("identity_type", &self.identity_type)?;
         s.serialize_field("permission_type", &self.permission_type)?;
         s.end()
@@ -242,11 +259,30 @@ impl Serialize for DeviceIdentity {
     {
         let mut s = serializer.serialize_struct("DeviceIdentity", 6)?;
         s.serialize_field("full_identity_name", &self.full_identity_name)?;
-        s.serialize_field("node_encryption_public_key", &encryption_public_key_to_string_ref(&self.node_encryption_public_key))?;
-        s.serialize_field("node_signature_public_key", &signature_public_key_to_string_ref(&self.node_signature_public_key))?;
-        s.serialize_field("profile_encryption_public_key", &self.profile_encryption_public_key.map(encryption_public_key_to_string))?;
-        s.serialize_field("profile_signature_public_key", &self.profile_signature_public_key.map(signature_public_key_to_string))?;
-        s.serialize_field("device_signature_public_key", &self.device_signature_public_key.map(signature_public_key_to_string))?;
+        s.serialize_field(
+            "node_encryption_public_key",
+            &encryption_public_key_to_string_ref(&self.node_encryption_public_key),
+        )?;
+        s.serialize_field(
+            "node_signature_public_key",
+            &signature_public_key_to_string_ref(&self.node_signature_public_key),
+        )?;
+        s.serialize_field(
+            "profile_encryption_public_key",
+            &encryption_public_key_to_string(self.profile_encryption_public_key),
+        )?;
+        s.serialize_field(
+            "profile_signature_public_key",
+            &signature_public_key_to_string(self.profile_signature_public_key),
+        )?;
+        s.serialize_field(
+            "device_encryption_public_key",
+            &encryption_public_key_to_string(self.device_encryption_public_key),
+        )?;
+        s.serialize_field(
+            "device_signature_public_key",
+            &signature_public_key_to_string(self.device_signature_public_key),
+        )?;
         s.serialize_field("permission_type", &self.permission_type)?;
         s.end()
     }
@@ -257,28 +293,18 @@ impl fmt::Display for DeviceIdentity {
         let node_encryption_public_key = encryption_public_key_to_string(self.node_encryption_public_key);
         let node_signature_public_key = signature_public_key_to_string(self.node_signature_public_key);
 
-        let profile_encryption_public_key = self
-            .profile_encryption_public_key
-            .as_ref()
-            .map(encryption_public_key_to_string_ref)
-            .unwrap_or_else(|| "None".to_string());
-        let profile_signature_public_key = self
-            .profile_signature_public_key
-            .as_ref()
-            .map(signature_public_key_to_string_ref)
-            .unwrap_or_else(|| "None".to_string());
-        let device_signature_public_key = self
-            .device_signature_public_key
-            .as_ref()
-            .map(signature_public_key_to_string_ref)
-            .unwrap_or_else(|| "None".to_string());
+        let profile_encryption_public_key = encryption_public_key_to_string_ref(&self.profile_encryption_public_key);
+        let profile_signature_public_key = signature_public_key_to_string_ref(&self.profile_signature_public_key);
+        let device_encryption_public_key = encryption_public_key_to_string_ref(&self.device_encryption_public_key);
+        let device_signature_public_key = signature_public_key_to_string_ref(&self.device_signature_public_key);
 
-        write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {}, profile_signature_public_key: {}, device_signature_public_key: {}, permission_type: {:?} }}",
+        write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {}, profile_signature_public_key: {}, device_encryption_public_key: {}, device_signature_public_key: {}, permission_type: {:?} }}",
             self.full_identity_name,
             node_encryption_public_key,
             node_signature_public_key,
             profile_encryption_public_key,
             profile_signature_public_key,
+            device_encryption_public_key,
             device_signature_public_key,
             self.permission_type
         )
@@ -290,27 +316,29 @@ impl fmt::Debug for Identity {
         match self {
             Identity::Standard(std_identity) => {
                 write!(f, "Standard({})", std_identity)
-            },
+            }
             Identity::Agent(agent) => {
                 // Assuming you have implemented Debug for SerializedAgent
                 write!(f, "Agent({:?})", agent)
-            },
+            }
             Identity::Device(device) => {
                 let node_encryption_public_key = encryption_public_key_to_string(device.node_encryption_public_key);
                 let node_signature_public_key = signature_public_key_to_string(device.node_signature_public_key);
-                let device_signature_public_key = device
-                    .device_signature_public_key
-                    .as_ref()
-                    .map(signature_public_key_to_string_ref)
-                    .unwrap_or_else(|| "None".to_string());
+                let profile_encryption_public_key = encryption_public_key_to_string_ref(&device.profile_encryption_public_key);
+                let profile_signature_public_key = signature_public_key_to_string_ref(&device.profile_signature_public_key);
+                let device_encryption_public_key = encryption_public_key_to_string_ref(&device.device_encryption_public_key);
+                let device_signature_public_key = signature_public_key_to_string_ref(&device.device_signature_public_key);
 
-                write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, device_signature_public_key: {}, permission_type: {:?} }}",
+                write!(f, "DeviceIdentity {{ full_identity_name: {}, node_encryption_public_key: {:?}, node_signature_public_key: {:?}, profile_encryption_public_key: {:?}, profile_signature_public_key: {:?}, device_encryption_public_key: {:?}, device_signature_public_key: {:?}, permission_type: {:?} }}",
                     device.full_identity_name,
                     node_encryption_public_key,
                     node_signature_public_key,
+                    profile_encryption_public_key,
+                    profile_signature_public_key,
+                    device_encryption_public_key,
                     device_signature_public_key,
                     device.permission_type)
-            },
+            }
         }
     }
 }

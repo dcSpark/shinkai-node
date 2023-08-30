@@ -184,7 +184,7 @@ fn subidentity_registration() {
 
             // Register a Profile in Node1 and verifies it
             {
-                eprintln!("Register a Profile in Node1 and verify it");
+                eprintln!("Register a Device with main profile in Node1 and verify it");
                 api_registration_device_node_profile_main(
                     node1_commands_sender.clone(),
                     node1_profile_name,

@@ -267,13 +267,34 @@ impl ShinkaiDB {
                     }
                 };
 
+                let device_encryption_public_key = match string_to_encryption_public_key(encryption_public_key) {
+                    Ok(key) => key,
+                    Err(_) => return Err(ShinkaiDBError::SomeError("Invalid encryption public key".to_string())),
+                };
+                
+                let device_signature_public_key = match string_to_signature_public_key(identity_public_key) {
+                    Ok(key) => key,
+                    Err(_) => return Err(ShinkaiDBError::SomeError("Invalid signature public key".to_string())),
+                };
+
+                let profile_encryption_public_key = match profile.profile_encryption_public_key {
+                    Some(key) => key,
+                    None => return Err(ShinkaiDBError::SomeError("Profile encryption public key is missing".to_string())),
+                };
+
+                let profile_signature_public_key = match profile.profile_signature_public_key {
+                    Some(key) => key,
+                    None => return Err(ShinkaiDBError::SomeError("Profile signature public key is missing".to_string())),
+                };
+
                 let device = DeviceIdentity {
                     full_identity_name,
                     node_encryption_public_key: profile.node_encryption_public_key,
                     node_signature_public_key: profile.node_signature_public_key,
-                    profile_encryption_public_key: profile.profile_encryption_public_key,
-                    profile_signature_public_key: profile.profile_signature_public_key,
-                    device_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                    profile_encryption_public_key,
+                    profile_signature_public_key,
+                    device_encryption_public_key,
+                    device_signature_public_key,
                     permission_type: code_info.permission,
                 };
 
