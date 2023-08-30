@@ -77,7 +77,7 @@ fn test_js_toolkit_execution_and_installing() {
     let db_path = format!("db_tests/{}", "embeddings");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let profile = default_test_profile();
-    shinkai_db.init_profile_toolkit_map(&profile).unwrap();
+    shinkai_db.init_profile_tool_structs(&profile).unwrap();
     shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 
