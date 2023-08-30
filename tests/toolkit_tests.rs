@@ -131,7 +131,7 @@ fn test_tool_router() {
 
     // Set headers and activate the toolkit to add it to the tool router
     let mut header_values = HashMap::new();
-    header_values.insert("api-key".to_string(), "test".to_string()).unwrap();
+    header_values.insert("api-key".to_string(), "example".to_string()).unwrap();
     shinkai_db
         .set_toolkit_header_values(&toolkit.name, &profile, &header_values)
         .unwrap();
