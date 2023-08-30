@@ -74,4 +74,28 @@ impl InboxNameWrapper {
         let json_str = serde_json::to_string(self).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(json_str)
     }
+
+    #[wasm_bindgen]
+    pub fn get_regular_inbox_name_from_params(
+        sender: String,
+        sender_subidentity: String,
+        recipient: String,
+        recipient_subidentity: String,
+        is_e2e: bool,
+    ) -> Result<InboxNameWrapper, JsValue> {
+        let inbox_name = InboxName::get_regular_inbox_name_from_params(
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            is_e2e,
+        )?;
+        Ok(InboxNameWrapper { inner: inbox_name })
+    }
+
+    #[wasm_bindgen]
+    pub fn get_job_inbox_name_from_params(unique_id: String) -> Result<InboxNameWrapper, JsValue> {
+        let inbox_name = InboxName::get_job_inbox_name_from_params(unique_id)?;
+        Ok(InboxNameWrapper { inner: inbox_name })
+    }
 }

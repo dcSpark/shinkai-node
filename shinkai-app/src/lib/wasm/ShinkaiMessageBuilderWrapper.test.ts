@@ -6,7 +6,7 @@ import * as ed from "@noble/ed25519";
 import {
   EncryptionMethod,
   MessageSchemaType,
-} from "../../models/ShinkaiMessage.js";
+} from "../../models/SchemaTypes";
 import { toHexString } from "../../utils/wasm_helpers";
 
 // Enable synchronous methods

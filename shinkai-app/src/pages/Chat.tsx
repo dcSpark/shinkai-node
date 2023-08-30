@@ -21,7 +21,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
-  sendTextMessage,
+  createChatWithMessage,
   sendTextMessageWithInbox,
 } from "../api/index";
 import { RootState } from "../store";

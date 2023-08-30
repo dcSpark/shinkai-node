@@ -57,6 +57,7 @@ pub enum InboxName {
 
 impl InboxName {
     pub fn new(inbox_name: String) -> Result<Self, InboxNameError> {
+        let inbox_name = inbox_name.to_lowercase();
         let parts: Vec<&str> = inbox_name.split("::").collect();
         if parts.len() < 3 || parts.len() > 101 {
             return Err(InboxNameError::InvalidFormat(inbox_name.clone()));

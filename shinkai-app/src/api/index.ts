@@ -17,6 +17,8 @@ import { MergedSetupType } from "../pages/Connect";
 import { ApiConfig } from "./api_config";
 import { SetupDetailsState } from "../store/reducers";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
+import { ShinkaiNameWrapper } from "../lib/wasm/ShinkaiNameWrapper";
+import { InboxNameWrapper } from "../pkg/shinkai_message_wasm";
 
 // Helper function to handle HTTP errors
 export const handleHttpError = (response: any) => {
@@ -38,7 +40,7 @@ export const fetchPublicKey = () => async (dispatch: AppDispatch) => {
   }
 };
 
-export const sendTextMessage =
+export const createChatWithMessage =
   (
     sender: string,
     sender_subidentity: string,
@@ -48,15 +50,29 @@ export const sendTextMessage =
     setupDetailsState: SetupDetailsState
   ) =>
   async (dispatch: AppDispatch) => {
-    console.log("sender: ", sender);
-    console.log("sender_subidentity: ", sender_subidentity);
-    console.log("receiver: ", receiver);
-    console.log("receiver_subidentity: ", receiver_subidentity);
-    console.log("text_message: ", text_message);
-    console.log("setupDetailsState: ", setupDetailsState);
+    // console.log("sender: ", sender);
+    // console.log("sender_subidentity: ", sender_subidentity);
+    // console.log("receiver: ", receiver);
+    // console.log("receiver_subidentity: ", receiver_subidentity);
+    // console.log("text_message: ", text_message);
+    // console.log("setupDetailsState: ", setupDetailsState);
 
+    const senderShinkaiName = new ShinkaiNameWrapper(sender + "/" + sender_subidentity);
+    const receiverShinkaiName = new ShinkaiNameWrapper(receiver + "/" + receiver_subidentity);
+
+    const senderProfile = senderShinkaiName.extract_profile();
+    const receiverProfile = receiverShinkaiName.extract_profile();
+    
+    let inbox = InboxNameWrapper.get_regular_inbox_name_from_params(
+      senderProfile.get_node_name,
+      senderProfile.get_profile_name,
+      receiverProfile.get_node_name,
+      receiverProfile.get_profile_name,
+      true
+    );
+    
     try {
-      const messageStr = ShinkaiMessageBuilderWrapper.send_text_message(
+      const messageStr = ShinkaiMessageBuilderWrapper.create_chat_with_message(
         setupDetailsState.my_device_encryption_sk,
         setupDetailsState.my_device_identity_sk,
         setupDetailsState.node_encryption_pk,
@@ -64,7 +80,8 @@ export const sendTextMessage =
         sender_subidentity,
         receiver,
         receiver_subidentity,
-        text_message
+        text_message,
+        inbox.get_value
       );
 
       const message: ShinkaiMessage = JSON.parse(messageStr);

@@ -28,6 +28,20 @@ export class InboxNameWrapper {
 */
   to_json_str(): string;
 /**
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
+* @param {boolean} is_e2e
+* @returns {InboxNameWrapper}
+*/
+  static get_regular_inbox_name_from_params(sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string, is_e2e: boolean): InboxNameWrapper;
+/**
+* @param {string} unique_id
+* @returns {InboxNameWrapper}
+*/
+  static get_job_inbox_name_from_params(unique_id: string): InboxNameWrapper;
+/**
 */
   readonly get_identities: any;
 /**
@@ -331,6 +345,14 @@ export class ShinkaiNameWrapper {
 * @returns {string}
 */
   to_json_str(): string;
+/**
+* @returns {ShinkaiNameWrapper}
+*/
+  extract_profile(): ShinkaiNameWrapper;
+/**
+* @returns {ShinkaiNameWrapper}
+*/
+  extract_node(): ShinkaiNameWrapper;
 /**
 */
   readonly get_full_name: any;

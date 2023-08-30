@@ -65,4 +65,16 @@ impl ShinkaiNameWrapper {
         let json_str = serde_json::to_string(self).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(json_str)
     }
+
+    #[wasm_bindgen]
+    pub fn extract_profile(&self) -> Result<ShinkaiNameWrapper, JsValue> {
+        let profile = self.inner.extract_profile().map_err(|e| JsValue::from_str(&e))?;
+        Ok(ShinkaiNameWrapper { inner: profile })
+    }
+
+    #[wasm_bindgen]
+    pub fn extract_node(&self) -> ShinkaiNameWrapper {
+        let node = self.inner.extract_node();
+        ShinkaiNameWrapper { inner: node }
+    }
 }

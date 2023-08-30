@@ -349,7 +349,7 @@ export class ShinkaiMessageBuilderWrapper {
     );
   }
 
-  static send_text_message(
+  static create_chat_with_message(
     my_encryption_secret_key: string,
     my_signature_secret_key: string,
     receiver_public_key: string,
@@ -357,7 +357,8 @@ export class ShinkaiMessageBuilderWrapper {
     sender_subidentity: string,
     receiver: string,
     receiver_subidentity: string,
-    text_message: string
+    text_message: string,
+    inbox: string
   ): string {
     const builder = new ShinkaiMessageBuilderWrapperWASM(
       my_encryption_secret_key,
@@ -367,9 +368,10 @@ export class ShinkaiMessageBuilderWrapper {
 
     builder.message_raw_content(text_message);
     builder.message_schema_type(MessageSchemaType.TextContent.toString());
-    builder.internal_metadata(
+    builder.internal_metadata_with_inbox(
       sender_subidentity,
       receiver_subidentity,
+      inbox,
       EncryptionMethod.None.toString()
     );
     builder.external_metadata(receiver, sender);
