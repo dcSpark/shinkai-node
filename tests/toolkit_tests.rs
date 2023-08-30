@@ -1,3 +1,4 @@
+use reqwest::header;
 use serde_json::Value as JsonValue;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
@@ -24,6 +25,13 @@ fn default_toolkit_json() -> JsonValue {
     parsed_json
 }
 
+fn default_toolkit_header_values() -> HashMap<String, String> {
+    let mut header_values = HashMap::new();
+    header_values.insert("x-shinkai-api-key".to_string(), "example".to_string());
+
+    header_values
+}
+
 fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
     let path = "./files/packaged-shinkai-toolkit.js";
     let data = std::fs::read_to_string(path)?;
@@ -47,6 +55,7 @@ fn test_default_js_toolkit_json_parsing() {
 
 #[test]
 fn test_js_toolkit_execution() {
+    setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
@@ -59,7 +68,7 @@ fn test_js_toolkit_execution() {
     assert_eq!(toolkit.tools.len(), 2);
 
     // Test submit_headers_validation_request
-    let header_values = HashMap::new();
+    let header_values = &default_toolkit_header_values();
     let headers_validation_result = executor
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
         .unwrap();
@@ -78,6 +87,7 @@ fn test_js_toolkit_execution() {
 
 #[test]
 fn test_toolkit_installation_and_retrieval() {
+    setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
@@ -130,10 +140,8 @@ fn test_tool_router() {
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 
     // Set headers and activate the toolkit to add it to the tool router
-    let mut header_values = HashMap::new();
-    header_values.insert("api-key".to_string(), "example".to_string()).unwrap();
     shinkai_db
-        .set_toolkit_header_values(&toolkit.name, &profile, &header_values)
+        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values())
         .unwrap();
     shinkai_db.activate_toolkit(&toolkit.name, &profile).unwrap();
 

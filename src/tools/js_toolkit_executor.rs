@@ -95,7 +95,9 @@ impl JSToolkitExecutor {
         if let Some(JsonValue::Bool(result)) = response.get("result") {
             Ok(*result)
         } else {
-            Err(ToolError::JSToolkitExecutorNotAvailable)
+            // TODO: Once executor returns optional error message from validation
+            // include it in error
+            Err(ToolError::JSToolkitHeaderValidationFailed("".to_string()))
         }
     }
 

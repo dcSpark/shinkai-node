@@ -19,8 +19,9 @@ export class ToolKitSetup extends ShinkaiSetup {
   public async validateHeaders(
     headers: Record<string, string>
   ): Promise<boolean> {
-
-    headers['api-key'] == "example"
+    if (headers['x-shinkai-api-key'] !== 'example') {
+      throw new Error("Invalid 'api-key' header");
+    }
     return true;
   }
 }

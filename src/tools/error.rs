@@ -20,6 +20,7 @@ pub enum ToolError {
     ToolNotFound(String),
     VectorResourceError(VectorResourceError),
     ToolAlreadyInstalled(String),
+    JSToolkitHeaderValidationFailed(String),
 }
 
 impl fmt::Display for ToolError {
@@ -41,6 +42,7 @@ impl fmt::Display for ToolError {
             ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
             ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
             ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
+            ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
         }
     }
 }
