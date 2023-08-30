@@ -8,7 +8,6 @@ export class ToolKitSetup extends ShinkaiSetup {
 
 
 
-
   // Define Headers
   toolkitHeaders = [
     // Register Auth & Keys
