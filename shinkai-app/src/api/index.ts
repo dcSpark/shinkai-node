@@ -57,8 +57,8 @@ export const sendTextMessage =
 
     try {
       const messageStr = ShinkaiMessageBuilderWrapper.send_text_message(
-        setupDetailsState.myEncryptionSk,
-        setupDetailsState.myIdentitySk,
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
         setupDetailsState.node_encryption_pk,
         sender,
         sender_subidentity,
@@ -99,8 +99,8 @@ export const sendTextMessageWithInbox =
     try {
       const messageStr =
         ShinkaiMessageBuilderWrapper.send_text_message_with_inbox(
-          setupDetailsState.myEncryptionSk,
-          setupDetailsState.myIdentitySk,
+          setupDetailsState.my_device_encryption_sk,
+          setupDetailsState.my_device_identity_sk,
           setupDetailsState.node_encryption_pk,
           sender,
           sender_subidentity,
@@ -146,8 +146,8 @@ export const getAllInboxesForProfile =
 
       const messageStr =
         ShinkaiMessageBuilderWrapper.get_all_inboxes_for_profile(
-          setupDetailsState.myEncryptionSk,
-          setupDetailsState.myIdentitySk,
+          setupDetailsState.my_device_encryption_sk,
+          setupDetailsState.my_device_identity_sk,
           setupDetailsState.node_encryption_pk,
           sender,
           sender_subidentity,
@@ -189,8 +189,8 @@ export const getLastMessagesFromInbox =
 
       const messageStr =
         ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
-          setupDetailsState.myEncryptionSk,
-          setupDetailsState.myIdentitySk,
+          setupDetailsState.my_device_encryption_sk,
+          setupDetailsState.my_device_identity_sk,
           setupDetailsState.node_encryption_pk,
           inbox,
           count,
@@ -240,8 +240,8 @@ export const submitRequestRegistrationCode =
       console.log("identity_permissions:", identity_permissions);
       console.log("code_type:", code_type);
       const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(
-        setupDetailsState.myEncryptionSk,
-        setupDetailsState.myIdentitySk,
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
         setupDetailsState.node_encryption_pk,
         identity_permissions,
         code_type,
@@ -270,8 +270,8 @@ export const submitRegistrationCode =
   async (dispatch: AppDispatch) => {
     try {
       const messageStr = ShinkaiMessageBuilderWrapper.use_code_registration(
-        setupData.myEncryptionSk,
-        setupData.myIdentitySk,
+        setupData.my_device_encryption_sk,
+        setupData.my_device_identity_sk,
         setupData.node_encryption_pk,
         setupData.registration_code,
         setupData.identity_type,

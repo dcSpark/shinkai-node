@@ -50,10 +50,14 @@ const Connect: React.FC = () => {
     shinkai_identity: "",
     node_encryption_pk: "",
     node_signature_pk: "",
-    myEncryptionPk: "",
-    myEncryptionSk: "",
-    myIdentityPk: "",
-    myIdentitySk: "",
+    profile_encryption_sk: "",
+    profile_encryption_pk: "",
+    profile_identity_sk: "",
+    profile_identity_pk: "",
+    my_device_encryption_sk: "",
+    my_device_encryption_pk: "",
+    my_device_identity_sk: "",
+    my_device_identity_pk: "",
   });
   const [status, setStatus] = useState<
     "idle" | "loading" | "error" | "success"
@@ -66,22 +70,42 @@ const Connect: React.FC = () => {
   // Generate keys when the component mounts
   useEffect(() => {
     // Assuming the seed is a random 32 bytes array.
-    const seed = crypto.getRandomValues(new Uint8Array(32));
+    // Device Keys
+    let seed = crypto.getRandomValues(new Uint8Array(32));
     generateEncryptionKeys(seed).then(
       ({ my_encryption_sk_string, my_encryption_pk_string }) =>
         setSetupData((prevState) => ({
           ...prevState,
-          myEncryptionPk: my_encryption_pk_string,
-          myEncryptionSk: my_encryption_sk_string,
-        })),
+          my_device_encryption_pk: my_encryption_pk_string,
+          my_device_encryption_sk: my_encryption_sk_string,
+        }))
     );
     generateSignatureKeys().then(
       ({ my_identity_pk_string, my_identity_sk_string }) =>
         setSetupData((prevState) => ({
           ...prevState,
-          myIdentityPk: my_identity_pk_string,
-          myIdentitySk: my_identity_sk_string,
-        })),
+          my_device_identity_pk: my_identity_pk_string,
+          my_device_identity_sk: my_identity_sk_string,
+        }))
+    );
+
+    // Profile Keys
+    seed = crypto.getRandomValues(new Uint8Array(32));
+    generateEncryptionKeys(seed).then(
+      ({ my_encryption_sk_string, my_encryption_pk_string }) =>
+        setSetupData((prevState) => ({
+          ...prevState,
+          profile_encryption_pk: my_encryption_pk_string,
+          profile_encryption_sk: my_encryption_sk_string,
+        }))
+    );
+    generateSignatureKeys().then(
+      ({ my_identity_pk_string, my_identity_sk_string }) =>
+        setSetupData((prevState) => ({
+          ...prevState,
+          profile_identity_pk: my_identity_pk_string,
+          profile_identity_sk: my_identity_sk_string,
+        }))
     );
   }, []);
 
@@ -254,16 +278,34 @@ const Connect: React.FC = () => {
                   label="Node Signature Public Key"
                 />
                 <Input
-                  value={setupData.myEncryptionPk}
+                  value={setupData.profile_encryption_pk}
                   onChange={(e) =>
-                    updateSetupData({ myEncryptionPk: e.detail.value! })
+                    updateSetupData({
+                      profile_encryption_pk: e.detail.value!,
+                    })
+                  }
+                  label="Profile Encryption Public Key"
+                />
+                <Input
+                  value={setupData.profile_identity_pk}
+                  onChange={(e) =>
+                    updateSetupData({ profile_identity_pk: e.detail.value! })
+                  }
+                  label="Profile Signature Public Key"
+                />
+                <Input
+                  value={setupData.my_device_encryption_pk}
+                  onChange={(e) =>
+                    updateSetupData({
+                      my_device_encryption_pk: e.detail.value!,
+                    })
                   }
                   label="My Encryption Public Key"
                 />
                 <Input
-                  value={setupData.myIdentityPk}
+                  value={setupData.my_device_identity_pk}
                   onChange={(e) =>
-                    updateSetupData({ myIdentityPk: e.detail.value! })
+                    updateSetupData({ my_device_identity_pk: e.detail.value! })
                   }
                   label="My Signature Public Key"
                 />

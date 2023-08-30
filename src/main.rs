@@ -54,8 +54,6 @@ fn main() {
     let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key);
 
-    // old code from here:
-
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());

@@ -64,34 +64,35 @@ pub async fn generate_qr_codes(
         display_qr(&qr_data);
     }
 
-    // Generate QR codes for profiles
-    for i in 0..node_env.starting_num_qr_profiles {
-        let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
-        node_commands_sender
-            .send(NodeCommand::LocalCreateRegistrationCode {
-                permissions: IdentityPermissions::Admin,
-                code_type: RegistrationCodeType::Profile,
-                res: res1_registration_sender,
-            })
-            .await?;
-        let node_registration_code = res1_registraton_receiver.recv().await?;
+    // TODO: Decide if we actually need this
+    // // Generate QR codes for profiles
+    // for i in 0..node_env.starting_num_qr_profiles {
+    //     let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
+    //     node_commands_sender
+    //         .send(NodeCommand::LocalCreateRegistrationCode {
+    //             permissions: IdentityPermissions::Admin,
+    //             code_type: RegistrationCodeType::Profile,
+    //             res: res1_registration_sender,
+    //         })
+    //         .await?;
+    //     let node_registration_code = res1_registraton_receiver.recv().await?;
 
-        let qr_data = QRSetupData {
-            registration_code: node_registration_code,
-            profile: "".to_string(),
-            identity_type: "profile".to_string(),
-            permission_type: "admin".to_string(),
-            node_address: node_address.clone(),
-            shinkai_identity: global_identity_name.to_string(),
-            node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
-            node_signature_pk: identity_public_key_string.to_string(),
-        };
+    //     let qr_data = QRSetupData {
+    //         registration_code: node_registration_code,
+    //         profile: "".to_string(),
+    //         identity_type: "profile".to_string(),
+    //         permission_type: "admin".to_string(),
+    //         node_address: node_address.clone(),
+    //         shinkai_identity: global_identity_name.to_string(),
+    //         node_encryption_pk: encryption_public_key_to_string(node_keys.encryption_public_key.clone()),
+    //         node_signature_pk: identity_public_key_string.to_string(),
+    //     };
 
-        let qr_code_name = format!("qr_code_profile_{}", i);
-        save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
-        print_qr_data_to_console(qr_data.clone(), "profile");
-        display_qr(&qr_data);
-    }
+    //     let qr_code_name = format!("qr_code_profile_{}", i);
+    //     save_qr_data_to_local_image(qr_data.clone(), qr_code_name.clone());
+    //     print_qr_data_to_console(qr_data.clone(), "profile");
+    //     display_qr(&qr_data);
+    // }
 
     Ok(())
 }

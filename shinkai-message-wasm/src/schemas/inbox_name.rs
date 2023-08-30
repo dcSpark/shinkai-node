@@ -1,10 +1,10 @@
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
 use super::shinkai_name::{ShinkaiName, ShinkaiNameError};
-use crate::shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody};
+use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
+use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use wasm_bindgen::prelude::*;
 
 #[derive(Debug, PartialEq)]
 pub enum InboxNameError {
@@ -30,6 +30,12 @@ impl fmt::Display for InboxNameError {
 impl From<ShinkaiNameError> for InboxNameError {
     fn from(error: ShinkaiNameError) -> Self {
         InboxNameError::ShinkaiNameError(error)
+    }
+}
+
+impl From<InboxNameError> for wasm_bindgen::JsValue {
+    fn from(error: InboxNameError) -> Self {
+        JsValue::from_str(&error.to_string())
     }
 }
 
@@ -102,7 +108,7 @@ impl InboxName {
             MessageBody::Unencrypted(body) => {
                 let inbox_name = body.internal_metadata.inbox.clone();
                 InboxName::new(inbox_name)
-            },
+            }
             _ => Err(InboxNameError::InvalidFormat("Expected Unencrypted MessageBody".into())),
         }
     }
@@ -184,6 +190,26 @@ impl InboxName {
             InboxName::RegularInbox { value, .. } => value.clone(),
             InboxName::JobInbox { value, .. } => value.clone(),
         }
+    }
+}
+
+impl InboxName {
+    pub fn to_jsvalue(&self) -> Result<JsValue, JsValue> {
+        Ok(serde_wasm_bindgen::to_value(&self).map_err(|e| JsValue::from_str(&e.to_string()))?)
+    }
+
+    pub fn from_jsvalue(j: &JsValue) -> Result<Self, JsValue> {
+        Ok(serde_wasm_bindgen::from_value(j.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?)
+    }
+
+    pub fn to_json_str(&self) -> Result<String, JsValue> {
+        let json_str = serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(json_str)
+    }
+
+    pub fn from_json_str(j: &str) -> Result<Self, JsValue> {
+        let inbox_name = serde_json::from_str(j).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(inbox_name)
     }
 }
 

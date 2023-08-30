@@ -23,10 +23,14 @@ export type SetupDetailsState = {
   shinkai_identity: string;
   node_encryption_pk: Base58String;
   node_signature_pk: Base58String;
-  myEncryptionSk: Base58String;
-  myEncryptionPk: Base58String;
-  myIdentitySk: Base58String;
-  myIdentityPk: Base58String;
+  profile_encryption_sk: Base58String;
+  profile_encryption_pk: Base58String;
+  profile_identity_sk: Base58String;
+  profile_identity_pk: Base58String;
+  my_device_encryption_sk: Base58String;
+  my_device_encryption_pk: Base58String;
+  my_device_identity_sk: Base58String;
+  my_device_identity_pk: Base58String;
 };
 
 const setupInitialState: SetupDetailsState = {
@@ -37,10 +41,14 @@ const setupInitialState: SetupDetailsState = {
   shinkai_identity: "",
   node_encryption_pk: "",
   node_signature_pk: "",
-  myEncryptionSk: "",
-  myEncryptionPk: "",
-  myIdentitySk: "",
-  myIdentityPk: "",
+  profile_encryption_sk: "",
+  profile_encryption_pk: "",
+  profile_identity_sk: "",
+  profile_identity_pk: "",
+  my_device_encryption_sk: "",
+  my_device_encryption_pk: "",
+  my_device_identity_sk: "",
+  my_device_identity_pk: "",
 };
 
 export interface RootState {

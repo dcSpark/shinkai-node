@@ -462,6 +462,7 @@ impl ShinkaiMessageBuilder {
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let registration_code_request = RegistrationCodeRequest { permissions, code_type };
@@ -472,31 +473,36 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             registration_code_request,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::CreateRegistrationCode,
         )
     }
 
-    pub fn use_code_registration(
+    pub fn use_code_registration_for_profile(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SignatureStaticKey,
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
         identity_type: String,
         permission_type: String,
         registration_name: String,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
-        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
 
         let registration_code = RegistrationCode {
             code,
             registration_name: registration_name.clone(),
-            identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
-            encryption_pk: other.clone(),
+            device_identity_pk: "".to_string(),
+            device_encryption_pk: "".to_string(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
             identity_type,
             permission_type,
         };
@@ -507,8 +513,53 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             registration_code,
             sender_subidentity,
+            sender,
             receiver,
-            MessageSchemaType::TextContent,
+            MessageSchemaType::UseRegistrationCode,
+        )
+    }
+
+
+    pub fn use_code_registration_for_device(
+        my_device_encryption_sk: EncryptionStaticKey,
+        my_device_signature_sk: SignatureStaticKey,
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        code: String,
+        identity_type: String,
+        permission_type: String,
+        registration_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk);
+        let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
+        let other = encryption_public_key_to_string(my_device_encryption_pk);
+
+        let registration_code = RegistrationCode {
+            code,
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_device_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_device_encryption_sk,
+            my_device_signature_sk,
+            receiver_public_key,
+            registration_code,
+            sender_subidentity,
+            sender,
+            receiver,
+            MessageSchemaType::UseRegistrationCode,
         )
     }
 
@@ -520,6 +571,7 @@ impl ShinkaiMessageBuilder {
         count: usize,
         offset: Option<String>,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -535,6 +587,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             get_last_messages_from_inbox,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
         )
@@ -548,6 +601,7 @@ impl ShinkaiMessageBuilder {
         count: usize,
         offset: Option<String>,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -563,6 +617,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             get_last_unread_messages_from_inbox,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
         )
@@ -574,6 +629,7 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         agent: SerializedAgent,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let add_agent = APIAddAgentRequest {
@@ -586,6 +642,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             add_agent,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIAddAgentRequest,
         )
@@ -598,6 +655,7 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         up_to_time: String,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -609,6 +667,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             read_up_to_time,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIReadUpToTimeRequest,
         )
@@ -619,7 +678,8 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         data: T,
-        sender_profile_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
         schema: MessageSchemaType,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -635,7 +695,7 @@ impl ShinkaiMessageBuilder {
         .message_raw_content(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .internal_metadata_with_schema(
-            sender_profile_name,
+            sender_subidentity,
             "".to_string(),
             "".to_string(),
             schema,
@@ -848,24 +908,31 @@ mod tests {
     fn test_builder_use_code_registration() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-        let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+        let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
         let recipient = "@@other_node.shinkai".to_string();
-        let sender = "main".to_string();
+        let sender = recipient.clone();
+        let sender_subidentity = "main".to_string();
 
         let code = "registration_code".to_string();
         let identity_type = IdentityPermissions::Admin.to_string();
         let permission_type = "profile".to_string();
         let registration_name = "registration_name".to_string();
 
-        let message_result = ShinkaiMessageBuilder::use_code_registration(
+        let message_result = ShinkaiMessageBuilder::use_code_registration_for_device(
             my_encryption_sk.clone(),
             my_identity_sk,
+            profile_encryption_sk,
+            profile_identity_sk,
             node2_encryption_pk,
             code,
             identity_type,
             permission_type,
             registration_name,
+            sender_subidentity.clone(),
             sender.clone(),
             recipient.clone(),
         );
@@ -900,7 +967,7 @@ mod tests {
                 assert_eq!(registration_code.permission_type, "profile");
                 assert_eq!(registration_code.identity_type, "admin");
             }
-            assert_eq!(shinkai_body.internal_metadata.sender_subidentity, sender);
+            assert_eq!(shinkai_body.internal_metadata.sender_subidentity, sender_subidentity);
         }
 
         let external_metadata = message.external_metadata;

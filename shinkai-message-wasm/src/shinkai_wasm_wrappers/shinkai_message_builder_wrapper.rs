@@ -351,9 +351,11 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn use_code_registration(
+    pub fn use_code_registration_for_profile(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
+        profile_encryption_sk: String,
+        profile_signature_sk: String,
         receiver_public_key: String,
         code: String,
         identity_type: String,
@@ -362,18 +364,19 @@ impl ShinkaiMessageBuilderWrapper {
         sender_profile_name: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
-        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
-        let my_subidentity_signature_sk_type = string_to_signature_secret_key(&my_subidentity_signature_sk)?;
+        let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
+        let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
-        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
         let registration_code = RegistrationCode {
             code,
             registration_name: registration_name.clone(),
-            identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
-            encryption_pk: other.clone(),
+            device_identity_pk: "".to_string(),
+            device_encryption_pk: "".to_string(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
             identity_type,
             permission_type,
         };
@@ -383,6 +386,55 @@ impl ShinkaiMessageBuilderWrapper {
         ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender_profile_name,
+            receiver,
+            MessageSchemaType::TextContent.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn use_code_registration_for_device(
+        my_device_encryption_sk: String,
+        my_device_signature_sk: String,
+        profile_encryption_sk: String,
+        profile_signature_sk: String,
+        receiver_public_key: String,
+        code: String,
+        identity_type: String,
+        permission_type: String,
+        registration_name: String,
+        sender_profile_name: String,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_device_encryption_sk)?;
+        let my_subidentity_signature_sk_type = string_to_signature_secret_key(&my_device_signature_sk)?;
+        let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
+        let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
+
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
+
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+        let registration_code = RegistrationCode {
+            code,
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_device_encryption_sk,
+            my_device_signature_sk,
             receiver_public_key,
             body,
             sender_profile_name,

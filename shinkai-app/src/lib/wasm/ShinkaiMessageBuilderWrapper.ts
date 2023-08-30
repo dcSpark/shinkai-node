@@ -130,8 +130,10 @@ export class ShinkaiMessageBuilderWrapper {
   }
 
   static use_code_registration(
-    my_subidentity_encryption_sk: string,
-    my_subidentity_signature_sk: string,
+    my_device_encryption_sk: string,
+    my_device_signature_sk: string,
+    profile_encryption_sk: string,
+    profile_signature_sk: string,
     receiver_public_key: string,
     code: string,
     identity_type: string,
@@ -141,8 +143,8 @@ export class ShinkaiMessageBuilderWrapper {
     receiver: string
   ): string {
     return ShinkaiMessageBuilderWrapperWASM.use_code_registration(
-      my_subidentity_encryption_sk,
-      my_subidentity_signature_sk,
+      my_device_encryption_sk,
+      my_device_signature_sk,
       receiver_public_key,
       code,
       identity_type,

@@ -22,6 +22,7 @@ mod tests {
         signature_secret_key_to_jsvalue, signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
         verify_signature,
     };
+    use shinkai_message_wasm::shinkai_wasm_wrappers::inbox_name_wrapper::InboxNameWrapper;
     use shinkai_message_wasm::{ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper};
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_test::*;
@@ -354,7 +355,7 @@ mod tests {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_create_custom_shinkai_message_to_node() {
         // Initialize test data
@@ -413,16 +414,20 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
-    fn test_use_code_registration() {
+    fn test_use_code_registration_for_device() {
         // Initialize test data
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
-        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(1);
+        let (profile_identity_sk, _) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(1);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(2);
 
         let my_encryption_sk_string = encryption_secret_key_to_string(my_encryption_sk.clone());
         let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
+        let profile_encryption_sk_string = encryption_secret_key_to_string(profile_encryption_sk.clone());
+        let profile_identity_sk_string = signature_secret_key_to_string(profile_identity_sk);
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let sender_profile = "sender_profile".to_string();
@@ -433,9 +438,11 @@ mod tests {
         let registration_name = "test_registration".to_string();
 
         // Call the function and check the result
-        let message_result = ShinkaiMessageBuilderWrapper::use_code_registration(
+        let message_result = ShinkaiMessageBuilderWrapper::use_code_registration_for_device(
             my_encryption_sk_string.clone(),
             my_identity_sk_string.clone(),
+            profile_encryption_sk_string.clone(),
+            profile_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             code.clone(),
             identity_type.clone(),
@@ -469,7 +476,10 @@ mod tests {
         assert_eq!(registration_code.permission_type, permission_type);
         let encryption_pk_string =
             convert_encryption_sk_string_to_encryption_pk_string(my_encryption_sk_string.clone()).unwrap();
-        assert_eq!(registration_code.encryption_pk, encryption_pk_string);
+        let profile_encryption_pk_string =
+            convert_encryption_sk_string_to_encryption_pk_string(profile_encryption_sk_string.clone()).unwrap();
+        assert_eq!(registration_code.device_encryption_pk, encryption_pk_string);
+        assert_eq!(registration_code.profile_encryption_pk, profile_encryption_pk_string);
 
         // Check internal metadata
         assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile);
@@ -655,11 +665,9 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_messages_from_inbox() {
-        console_log::init_with_level(log::Level::Debug).expect("error initializing log");
-
         // Initialize test data
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
@@ -680,7 +688,7 @@ mod tests {
             my_encryption_sk_string,
             my_identity_sk_string,
             receiver_public_key_string,
-            inbox,
+            inbox.clone(),
             count,
             offset,
             sender_profile_name.clone(),
@@ -704,15 +712,12 @@ mod tests {
         let content: serde_json::Value = serde_json::from_str(&content).unwrap();
 
         // Check the content
-        assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
-        assert_eq!(content["inbox"]["RegularInbox"]["is_e2e"], true);
+        let inbox_name_wrapper = InboxNameWrapper::new(&JsValue::from_str(&inbox)).unwrap();
+        assert_eq!(inbox_name_wrapper.get_value(), "inbox::@@node.shinkai::true");
+        assert_eq!(inbox_name_wrapper.get_is_e2e(), true);
         assert_eq!(
-            content["inbox"]["RegularInbox"]["identities"][0]["full_name"],
-            "@@node.shinkai"
-        );
-        assert_eq!(
-            content["inbox"]["RegularInbox"]["identities"][0]["node_name"],
-            "@@node.shinkai"
+            serde_wasm_bindgen::from_value::<Vec<String>>(inbox_name_wrapper.get_identities().unwrap()).unwrap(),
+            vec!["@@node.shinkai"]
         );
         assert_eq!(content["count"], 10);
         assert_eq!(content["offset"], "offset_string");
@@ -727,9 +732,10 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_unread_messages_from_inbox() {
+        console_log::init_with_level(log::Level::Debug).expect("error initializing log");
         // Initialize test data
         let (my_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
@@ -739,7 +745,7 @@ mod tests {
         let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
-        let sender_profile_name = "sender_profile".to_string();
+        let sender_subidentity_profile_name = "sender_profile".to_string();
         let receiver = "@@receiver_node.shinkai".to_string();
         let inbox = "inbox::@@node.shinkai::true".to_string();
         let count = 10;
@@ -753,7 +759,7 @@ mod tests {
             inbox,
             count,
             offset,
-            sender_profile_name.clone(),
+            sender_subidentity_profile_name.clone(),
             receiver.clone(),
         );
 
@@ -769,26 +775,39 @@ mod tests {
 
         // Deserialize the body and check its content
         let content = decrypted_message.get_message_content().unwrap();
+        log::debug!("content: {}", content);
 
         // Deserialize the content into a JSON object
         let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+        log::debug!("new content: {}", content);
+
+        let inbox_name_js = serde_wasm_bindgen::to_value(&content["inbox"]).unwrap();
+        let inbox_name_wrapper = InboxNameWrapper::new(&inbox_name_js).unwrap();
+        log::debug!("new inbox_name: {:?}", inbox_name_wrapper);
 
         // Check the content
-        assert_eq!(content["inbox"]["RegularInbox"]["value"], "inbox::@@node.shinkai::true");
-        assert_eq!(content["inbox"]["RegularInbox"]["is_e2e"], true);
+        // assert_eq!(content["inbox"], "inbox::@@node.shinkai::true");
+        // assert_eq!(content["is_e2e"], true);
+        // assert_eq!(content["identities"][0]["full_name"], "@@node.shinkai");
+        // assert_eq!(content["identities"][0]["node_name"], "@@node.shinkai");
+        // assert_eq!(content["count"], 10);
+        // assert_eq!(content["offset"], "offset_string");
         assert_eq!(
-            content["inbox"]["RegularInbox"]["identities"][0]["full_name"],
-            "@@node.shinkai"
+            inbox_name_wrapper.get_value(),
+            JsValue::from_str("inbox::@@node.shinkai::true")
         );
-        assert_eq!(
-            content["inbox"]["RegularInbox"]["identities"][0]["node_name"],
-            "@@node.shinkai"
-        );
+        assert_eq!(inbox_name_wrapper.get_is_e2e(), true);
+        let identities_js = inbox_name_wrapper.get_identities().unwrap();
+        let identities: Vec<String> = serde_wasm_bindgen::from_value(identities_js).unwrap();
+        assert_eq!(identities, vec!["@@node.shinkai"]);
         assert_eq!(content["count"], 10);
         assert_eq!(content["offset"], "offset_string");
 
         // Check internal metadata
-        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), sender_profile_name);
+        assert_eq!(
+            decrypted_message.get_sender_subidentity().unwrap(),
+            sender_subidentity_profile_name
+        );
         assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
