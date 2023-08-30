@@ -16,12 +16,31 @@ pub enum ShinkaiTool {
 impl ShinkaiTool {
     /// The key that this tool will be stored under in the tool router
     pub fn tool_router_key(&self) -> String {
-        let (name, toolkit_name) = match self {
-            ShinkaiTool::Rust(r) => (r.name.clone(), r.toolkit_name()),
-            ShinkaiTool::JS(j) => (j.name.clone(), j.toolkit_name.to_string()),
-        };
+        let (name, toolkit_name) = (
+            self.name(),
+            match self {
+                ShinkaiTool::Rust(r) => r.toolkit_name(),
+                ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
+            },
+        );
 
         Self::gen_router_key(name, toolkit_name)
+    }
+
+    /// Tool name
+    pub fn name(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r) => r.name.clone(),
+            ShinkaiTool::JS(j) => j.name.clone(),
+        }
+    }
+
+    /// Toolkit name the tool is from
+    pub fn toolkit_name(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r) => r.toolkit_name().clone(),
+            ShinkaiTool::JS(j) => j.toolkit_name.clone(),
+        }
     }
 
     /// Generate the key that this tool will be stored under in the tool router

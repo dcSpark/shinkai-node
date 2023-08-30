@@ -1,6 +1,8 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
+use shinkai_node::resources::bert_cpp::BertCPPProcess;
+use shinkai_node::resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use std::collections::HashMap;
@@ -44,7 +46,7 @@ fn test_default_js_toolkit_json_parsing() {
 }
 
 #[test]
-fn test_js_toolkit_execution_and_installing() {
+fn test_js_toolkit_execution() {
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
@@ -72,18 +74,74 @@ fn test_js_toolkit_execution_and_installing() {
 
     assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
     assert_eq!(tool_execution_result.tool, "isEven");
+}
+
+#[test]
+fn test_toolkit_installation_and_retrieval() {
+    // Load the toolkit
+    let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
+
+    // Create the executor
+    let executor = JSToolkitExecutor::new_local().unwrap();
+
+    // Test submit_toolkit_json_request
+    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
 
     // Install the toolkit
-    let db_path = format!("db_tests/{}", "embeddings");
+    let db_path = format!("db_tests/{}", "toolkit");
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let profile = default_test_profile();
     shinkai_db.init_profile_tool_structs(&profile).unwrap();
     shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 
+    // Assert that the retrieved toolkit is equivalent to the original one
+    let retrieved_toolkit = shinkai_db.get_toolkit(&toolkit.name, &profile).unwrap();
+    assert_eq!(toolkit, retrieved_toolkit);
+
     // Uninstall and check via the toolkit map and db key (TODO: later add deactivation checks too)
     shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
     assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap() == false);
     let fetched_toolkit = shinkai_db.get_toolkit(&toolkit.name, &profile);
     assert!(fetched_toolkit.is_err());
+}
+
+#[test]
+fn test_tool_router() {
+    setup();
+    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    // Load the toolkit
+    let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
+
+    // Create the executor
+    let executor = JSToolkitExecutor::new_local().unwrap();
+
+    // Test submit_toolkit_json_request
+    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
+
+    // Install the toolkit
+    let db_path = format!("db_tests/{}", "toolkit");
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    let profile = default_test_profile();
+    shinkai_db.init_profile_tool_structs(&profile).unwrap();
+    shinkai_db.install_toolkit(&toolkit, &profile).unwrap();
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
+
+    // Set headers and activate the toolkit to add it to the tool router
+    let mut header_values = HashMap::new();
+    header_values.insert("api-key".to_string(), "test".to_string()).unwrap();
+    shinkai_db
+        .set_toolkit_header_values(&toolkit.name, &profile, &header_values)
+        .unwrap();
+    shinkai_db.activate_toolkit(&toolkit.name, &profile).unwrap();
+
+    // Retrieve the tool router
+    let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
+
+    // Vector Search
+    // let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
+    // let results = tool_router.vector_search(query, 10);
+    // assert_eq!(results[0].name(), "isEven")
 }
