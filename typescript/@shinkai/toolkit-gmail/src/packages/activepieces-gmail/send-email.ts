@@ -75,7 +75,7 @@ export class GmailSendEmail extends BaseTool<APGmailInput, APGmailOutput> {
 
     const setup: Context = {
       auth: {
-        access_token: headers['x-shinkai-oauth'] || headers[SHINKAI_OAUTH],
+        access_token: headers['oauth'] || headers[SHINKAI_OAUTH],
       },
       propsValue: {
         receiver: input.receiver,

@@ -1,5 +1,5 @@
 {
-  "toolkitName": "@shinkai/toolkit-google-calendar",
+  "toolkitName": "@shinkai/toolkit-gmail",
   "author": "shinkai-dev",
   "version": "0.0.1",
   "toolkitHeaders": [
@@ -11,60 +11,95 @@
         "authUrl": "https://accounts.google.com/o/oauth2/auth",
         "tokenUrl": "https://oauth2.googleapis.com/token",
         "required": true,
-        "pkce": true,
-        "scope": [
-          "https://www.googleapis.com/auth/calendar.events",
-          "https://www.googleapis.com/auth/calendar.readonly"
-        ],
+        "scope": ["https://www.googleapis.com/auth/gmail.send"],
         "cloudOAuth": "activepieces"
       },
       "type": "OAUTH",
-      "header": "x-shinkai-oauth",
+      "header": "oauth",
       "description": ""
     }
   ],
   "tools": [
     {
-      "name": "GoogleCalendarQuickEvent",
-      "description": "Activepieces Create Quick Event at Google Calendar",
+      "name": "GmailSendEmail",
+      "description": "Activepieces Gmail Send Email",
       "input": [
         {
-          "name": "calendar_id",
+          "name": "receiver",
           "type": "STRING",
-          "description": "Calendar ID. Primary calendar used if not specified",
-          "isOptional": true,
-          "wrapperType": "none",
-          "ebnf": "([a-zA-Z0-9_]+)?"
+          "description": "Recipients' email addresses",
+          "isOptional": false,
+          "wrapperType": "array",
+          "ebnf": "[([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]"
         },
         {
-          "name": "text",
+          "name": "subject",
           "type": "STRING",
-          "description": "Summary: The text describing the event to be created",
+          "description": "Email's subject",
           "isOptional": false,
           "wrapperType": "none",
           "ebnf": "([a-zA-Z0-9_]+)"
         },
         {
-          "name": "send_updates",
-          "type": "ENUM",
-          "description": "Send Updates: Guests who should receive notifications about the creation of the new event.",
+          "name": "body_text",
+          "type": "STRING",
+          "description": "Email's body in plain text",
+          "isOptional": false,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)"
+        },
+        {
+          "name": "reply_to",
+          "type": "STRING",
+          "description": "Sender",
+          "isOptional": false,
+          "wrapperType": "array",
+          "ebnf": "[([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]"
+        },
+        {
+          "name": "body_html",
+          "type": "STRING",
+          "description": "Email's body in HTML format",
           "isOptional": true,
           "wrapperType": "none",
-          "enum": ["all", "externalOnly", "none"],
-          "ebnf": "(\"all\" | \"externalOnly\" | \"none\")?"
+          "ebnf": "([a-zA-Z0-9_]+)?"
+        },
+        {
+          "name": "attachment_filename",
+          "type": "STRING",
+          "description": "Attachment Filename",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)?"
+        },
+        {
+          "name": "attachment_base64",
+          "type": "STRING",
+          "description": "Attachment content in base64 format",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)?"
+        },
+        {
+          "name": "attachment_extension",
+          "type": "STRING",
+          "description": "Attachement file extension",
+          "isOptional": true,
+          "wrapperType": "none",
+          "ebnf": "([a-zA-Z0-9_]+)?"
         }
       ],
       "output": [
         {
           "name": "response",
           "type": "STRING",
-          "description": "Network Response",
+          "description": "Response",
           "isOptional": false,
           "wrapperType": "none",
           "ebnf": "([a-zA-Z0-9_]+)"
         }
       ],
-      "inputEBNF": "calendar_id ::= ([a-zA-Z0-9_]+)?\ntext ::= ([a-zA-Z0-9_]+)\nsend_updates ::= (\"all\" | \"externalOnly\" | \"none\")?\nresponse ::= ([a-zA-Z0-9_]+)"
+      "inputEBNF": "receiver ::= [([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]\nsubject ::= ([a-zA-Z0-9_]+)\nbody_text ::= ([a-zA-Z0-9_]+)\nreply_to ::= [([a-zA-Z0-9_]+) {, ([a-zA-Z0-9_]+)}]\nbody_html ::= ([a-zA-Z0-9_]+)?\nattachment_filename ::= ([a-zA-Z0-9_]+)?\nattachment_base64 ::= ([a-zA-Z0-9_]+)?\nattachment_extension ::= ([a-zA-Z0-9_]+)?\nresponse ::= ([a-zA-Z0-9_]+)"
     }
   ]
 }

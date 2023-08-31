@@ -6,9 +6,6 @@ export class ToolKitSetup extends ShinkaiSetup {
   author = 'shinkai-dev';
   version = '0.0.1';
 
-  // Register OAuth
-  oauth = undefined;
-
-  // Register Setup Keys
+  // Define Headers
   toolkitHeaders = undefined;
 }
