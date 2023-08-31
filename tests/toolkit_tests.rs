@@ -28,6 +28,7 @@ fn default_toolkit_json() -> JsonValue {
 fn default_toolkit_header_values() -> HashMap<String, String> {
     let mut header_values = HashMap::new();
     header_values.insert("x-shinkai-api-key".to_string(), "example".to_string());
+    header_values.insert("x-shinkai-example-bool".to_string(), "true".to_string());
 
     header_values
 }

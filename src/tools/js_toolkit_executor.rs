@@ -92,13 +92,19 @@ impl JSToolkitExecutor {
     ) -> Result<bool, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self.submit_post_request("/validate_headers", &input_data_json, header_values)?;
+        println!("{:?}", response);
         if let Some(JsonValue::Bool(result)) = response.get("result") {
-            Ok(*result)
-        } else {
-            // TODO: Once executor returns optional error message from validation
-            // include it in error
-            Err(ToolError::JSToolkitHeaderValidationFailed("".to_string()))
+            if *result {
+                return Ok(*result);
+            }
+        } else if let Some(JsonValue::Object(result)) = response.get("result") {
+            if let Some(JsonValue::String(error)) = result.get("error") {
+                return Err(ToolError::JSToolkitHeaderValidationFailed(error.clone()));
+            }
         }
+        Err(ToolError::JSToolkitHeaderValidationFailed(
+            "Not all required headers provided".to_string(),
+        ))
     }
 
     // Submits a tool execution request to the JS Toolkit Executor
