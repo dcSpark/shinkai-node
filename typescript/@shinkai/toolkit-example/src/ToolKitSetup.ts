@@ -1,4 +1,4 @@
-import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
+import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
@@ -19,7 +19,6 @@ export class ToolKitSetup extends ShinkaiSetup {
       type: DATA_TYPES.BOOLEAN,
     },
   ];
-
 
   public async validateHeaders(
     headers: Record<string, string>
