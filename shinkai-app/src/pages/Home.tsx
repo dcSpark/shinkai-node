@@ -157,6 +157,12 @@ const Home: React.FC = () => {
             },
           },
           {
+            text: "Add Agent",
+            handler: () => {
+              history.push("/add-agent");
+            },
+          },
+          {
             text: "Logout",
             role: "destructive",
             handler: () => {

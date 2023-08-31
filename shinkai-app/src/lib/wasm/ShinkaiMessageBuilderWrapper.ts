@@ -349,6 +349,35 @@ export class ShinkaiMessageBuilderWrapper {
     );
   }
 
+  static get_profile_agents(
+    my_encryption_secret_key: string,
+    my_signature_secret_key: string,
+    receiver_public_key: string,
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+  ): string {
+    const builder = new ShinkaiMessageBuilderWrapperWASM(
+      my_encryption_secret_key,
+      my_signature_secret_key,
+      receiver_public_key
+    );
+
+    builder.message_raw_content("");
+    builder.message_schema_type(MessageSchemaType.Empty.toString());
+    builder.internal_metadata(
+      sender_subidentity,
+      "",
+      EncryptionMethod.None.toString()
+    );
+    builder.external_metadata(receiver, sender);
+    builder.body_encryption(
+      EncryptionMethod.DiffieHellmanChaChaPoly1305.toString()
+    );
+    const message = builder.build_to_string();
+    return message;
+  }
+
   static create_chat_with_message(
     my_encryption_secret_key: string,
     my_signature_secret_key: string,

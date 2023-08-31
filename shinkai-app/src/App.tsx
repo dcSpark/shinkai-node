@@ -6,6 +6,8 @@ import Chat from "./pages/Chat";
 import ChatList from "./pages/ChatList";
 import Settings from "./pages/Settings";
 import Connect from "./pages/Connect";
+import CreateChat from "./pages/CreateChat";
+import AddAgent from "./pages/AddAgent";
 import CreateJob from "./pages/CreateJob";
 import AdminCommands from "./pages/AdminCommands";
 import { Provider } from "react-redux";
@@ -32,7 +34,6 @@ import "@ionic/react/css/display.css";
 
 /* Theme variables */
 import "./theme/variables.css";
-import CreateChat from "./pages/CreateChat";
 
 setupIonicReact();
 
@@ -51,6 +52,7 @@ const App: React.FC = () => {
               <Route exact path="/admin-commands" component={AdminCommands} />
               <Route exact path="/create-job" component={CreateJob} />
               <Route exact path="/create-chat" component={CreateChat} />
+              <Route exact path="/add-agent" component={AddAgent} />
               <Route path="/chatlist" component={ChatList} />
               <Route exact path="/chat/:id" component={Chat} />
               <Route path="/settings" component={Settings} />

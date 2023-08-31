@@ -240,7 +240,7 @@ export const submitRequestRegistrationCode =
   async (dispatch: AppDispatch) => {
     try {
       // TODO: refactor the profile name to be a constant
-      // maybe we should add ShinkaiName and InboxName to the wasm library
+      // maybe we should add ShinkaiName and InboxName to the wasm library (just ADDED them this needs refactor)
       let sender_profile_name =
         setupDetailsState.profile +
         "/device/" +
@@ -248,6 +248,7 @@ export const submitRequestRegistrationCode =
       console.log("sender_profile_name:", sender_profile_name);
       console.log("identity_permissions:", identity_permissions);
       console.log("code_type:", code_type);
+
       const messageStr = ShinkaiMessageBuilderWrapper.request_code_registration(
         setupDetailsState.my_device_encryption_sk,
         setupDetailsState.my_device_identity_sk,
@@ -413,6 +414,42 @@ export const sendMessageToJob =
 
       handleHttpError(response);
       dispatch(response.data);
+    } catch (error) {
+      console.error("Error sending message to job:", error);
+    }
+  };
+
+  export const getProfileAgents =
+  (
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      const messageStr = ShinkaiMessageBuilderWrapper.get_profile_agents(
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.node_encryption_pk,
+        sender,
+        sender_subidentity,
+        receiver
+      );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/available_agents`,
+        message
+      );
+
+      console.log("getProfileAgents Response:", response.data);
+      handleHttpError(response);
+      dispatch(response.data);
+      return response.data;
     } catch (error) {
       console.error("Error sending message to job:", error);
     }

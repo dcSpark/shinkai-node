@@ -14,15 +14,19 @@ import {
   IonCol,
   IonButtons,
   IonBackButton,
+  IonSelect,
+  IonSelectOption,
+  IonTextarea,
 } from "@ionic/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
-import { createJob, sendMessageToJob } from "../api";
+import { createJob, getProfileAgents, sendMessageToJob } from "../api";
 import { useSetup } from "../hooks/usetSetup";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../store";
+import { SerializedAgent } from "../models/SchemaTypes";
 
 const CreateJob: React.FC = () => {
   useSetup();
@@ -31,6 +35,25 @@ const CreateJob: React.FC = () => {
     (state: RootState) => state.setupDetailsState
   );
   const [jobContent, setJobContent] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [agents, setAgents] = useState<SerializedAgent[]>([]);
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      const { shinkai_identity, profile, registration_name } = setupDetailsState;
+      let node_name = shinkai_identity;
+      let sender_subidentity = `${profile}/device/${registration_name}`;
+  
+      const agentsData = await getProfileAgents(node_name, sender_subidentity, node_name, setupDetailsState)(dispatch);
+      if (Array.isArray(agentsData)) {
+        dispatch(setAgents(agentsData));
+      } else {
+        console.error("Received data is not an array of agents");
+      }
+    };
+  
+    fetchAgents();
+  }, [dispatch, setupDetailsState]);
 
   const handleCreateJob = () => {
     // try {
@@ -84,12 +107,29 @@ const CreateJob: React.FC = () => {
               <h2 className={"text-lg mb-3 md:mb-8 text-center"}>
                 New Job Details
               </h2>
-              <Input
-                value={jobContent}
-                label="Tell me the job to do"
-                aria-label="Tell me the job to do"
-                onChange={(e) => setJobContent(e.detail.value!)}
-              />
+
+              <IonItem>
+                <IonLabel>Select Agent</IonLabel>
+                <IonSelect
+                  value={selectedAgent}
+                  placeholder="Select One"
+                  onIonChange={(e) => setSelectedAgent(e.detail.value)}
+                >
+                  {agents.map((agent, index) => (
+                    <IonSelectOption key={index} value={agent}>
+                      {agent.id}
+                    </IonSelectOption>
+                  ))}
+                </IonSelect>
+              </IonItem>
+
+              <IonItem>
+                <IonLabel position="floating">Tell me the job to do</IonLabel>
+                <IonTextarea
+                  value={jobContent}
+                  onIonChange={(e) => setJobContent(e.detail.value!)}
+                />
+              </IonItem>
 
               <div style={{ marginTop: "20px" }}>
                 <Button onClick={handleCreateJob}>Create Job</Button>
