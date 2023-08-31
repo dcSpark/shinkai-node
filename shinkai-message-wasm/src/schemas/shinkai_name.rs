@@ -229,14 +229,14 @@ impl ShinkaiName {
     }
 
     pub fn from_shinkai_message_using_sender_subidentity(message: &ShinkaiMessage) -> Result<Self, ShinkaiNameError> {
-        // Check if outer encrypted or inner encrypted and return error if so
+        // Check if outer encrypted and return error if so
         let body = match &message.body {
             MessageBody::Unencrypted(body) => body,
             _ => return Err(ShinkaiNameError::MessageBodyMissing),
         };
 
         let node = match Self::new(message.external_metadata.sender.clone()) {
-            Ok(name) => name.extract_node(),
+            Ok(name) => name,
             Err(_) => {
                 return Err(ShinkaiNameError::InvalidNameFormat(
                     message.external_metadata.sender.clone(),
@@ -269,7 +269,7 @@ impl ShinkaiName {
         };
     
         let node = match Self::new(message.external_metadata.recipient.clone()) {
-            Ok(name) => name.extract_node(),
+            Ok(name) => name,
             Err(_) => return Err(ShinkaiNameError::InvalidNameFormat(
                 message.external_metadata.recipient.clone(),
             )),
@@ -321,6 +321,13 @@ impl ShinkaiName {
         }
     }
 
+    pub fn has_agent(&self) -> bool {
+        match self.subidentity_type {
+            Some(ShinkaiSubidentityType::Agent) => true,
+            _ => false,
+        }
+    }
+
     pub fn has_no_subidentities(&self) -> bool {
         self.profile_name.is_none() && self.subidentity_type.is_none()
     }
@@ -335,6 +342,14 @@ impl ShinkaiName {
 
     pub fn get_device_name(&self) -> Option<String> {
         if self.has_device() {
+            self.subidentity_name.clone()
+        } else {
+            None
+        }
+    }
+
+    pub fn get_agent_name(&self) -> Option<String> {
+        if self.has_agent() {
             self.subidentity_name.clone()
         } else {
             None

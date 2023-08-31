@@ -1,5 +1,4 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::agent_serialization::SerializedAgent;
 use crate::managers::IdentityManager;
 use crate::schemas::identity::{
     DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType,

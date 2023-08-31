@@ -1,14 +1,8 @@
-use super::{node_api::APIError, node_message_handlers::verify_message_signature, Node};
+use super::{node_api::APIError, node_error::NodeError, node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
-    managers::{
-        identity_manager::{self, IdentityManager},
-        job_manager::Job,
-    },
-    network::{
-        node::NodeError,
-        node_message_handlers::{ping_pong, PingPong},
-    },
+    managers::identity_manager::{self, IdentityManager},
+    network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
         inbox_permission::InboxPermission,
@@ -21,6 +15,7 @@ use log::{debug, error, info, trace, warn};
 use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{
+        agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiNameError},
     },
@@ -32,8 +27,8 @@ use shinkai_message_wasm::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
+            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+            string_to_encryption_public_key,
         },
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
@@ -97,16 +92,8 @@ impl Node {
         result
     }
 
-    pub async fn internal_get_all_inboxes_for_profile(
-        &self,
-        profile_name: String,
-    ) -> Vec<String> {
-        let result = match self
-            .db
-            .lock()
-            .await
-            .get_inboxes_for_profile(profile_name)
-        {
+    pub async fn internal_get_all_inboxes_for_profile(&self, profile_name: String) -> Vec<String> {
+        let result = match self.db.lock().await.get_inboxes_for_profile(profile_name) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 error!("Failed to get inboxes for profile: {}", e);
@@ -138,25 +125,6 @@ impl Node {
         };
 
         result
-    }
-
-    pub async fn internal_create_new_job(&self, shinkai_message: ShinkaiMessage) -> Result<String, NodeError> {
-        match self
-            .job_manager
-            .lock()
-            .await
-            .process_job_message(shinkai_message, None)
-            .await
-        {
-            Ok(job_id) => {
-                // If everything went well, return Ok(true)
-                Ok(job_id)
-            }
-            Err(err) => {
-                // If there was an error, return the error
-                Err(NodeError::from(err))
-            }
-        }
     }
 
     pub async fn send_public_keys(&self, res: Sender<(SignaturePublicKey, EncryptionPublicKey)>) -> Result<(), Error> {
@@ -254,24 +222,57 @@ impl Node {
         }
     }
 
-    pub async fn job_message(&self, job_id: String, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
-        // TODO: maybe I don't need the extra job_id param? it should be inside shinkai_message
+    pub async fn internal_create_new_job(&self, shinkai_message: ShinkaiMessage) -> Result<String, NodeError> {
+        println!("Creating new job");
         match self
             .job_manager
             .lock()
             .await
-            .process_job_message(shinkai_message, Some(job_id))
+            .process_job_message(shinkai_message)
             .await
         {
             Ok(job_id) => {
-                // If everything went well, send the job_id back with an empty string for error
-                let _ = res.send((job_id, String::new())).await;
+                // If everything went well, return Ok(true)
+                Ok(job_id)
             }
             Err(err) => {
-                // If there was an error, send the error message
-                let _ = res.try_send((String::new(), format!("{}", err)));
+                // If there was an error, return the error
+                Err(NodeError::from(err))
             }
-        };
+        }
+    }
+
+    pub async fn internal_job_message(&self, shinkai_message: ShinkaiMessage) -> Result<(), NodeError> {
+        match self
+            .job_manager
+            .lock()
+            .await
+            .process_job_message(shinkai_message)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err) => Err(NodeError {
+                message: format!("Error with process job message: {}", err),
+            }),
+        }
+    }
+
+    pub async fn internal_add_agent(&self, agent: SerializedAgent) -> Result<(), NodeError> {
+        match self.db.lock().await.add_agent(agent.clone()) {
+            Ok(()) => {
+                let mut subidentity_manager = self.identity_manager.lock().await;
+                match subidentity_manager.add_agent_subidentity(agent).await {
+                    Ok(_) => Ok(()),
+                    Err(err) => {
+                        error!("Failed to add subidentity: {}", err);
+                        Err(NodeError {
+                            message: format!("Failed to add device subidentity: {}", err),
+                        })
+                    }
+                }
+            }
+            Err(e) => Err(NodeError::from(e)),
+        }
     }
 
     pub async fn ping_all(&self) -> io::Result<()> {
@@ -290,7 +291,7 @@ impl Node {
             let receiver_public_key = receiver_profile_identity.node_encryption_public_key;
 
             // Important: the receiver doesn't really matter per se as long as it's valid because we are testing the connection
-            ping_pong(
+            let _ = ping_pong(
                 peer,
                 PingPong::Ping,
                 clone_static_secret_key(&self.encryption_secret_key),

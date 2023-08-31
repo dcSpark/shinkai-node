@@ -58,7 +58,9 @@ export async function validate(
       const toolkit = new ToolKitSetup();
       const rawHeaders = {};
       Object.assign(rawHeaders, ${headers || '{}'});
-      const response = await toolkit.validateHeaders(rawHeaders);
+      const headers = await toolkit.processRawHeaderValues(rawHeaders);
+
+      const response = await toolkit.validateHeaders(headers);
       parentPort?.postMessage(response);
     })();
   `;

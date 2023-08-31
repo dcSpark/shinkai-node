@@ -4,11 +4,8 @@ use super::Provider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient};
+use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::agents::serialized_agent::SleepAPI};
 use tokio::time::Duration;
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct SleepAPI {}
 
 #[async_trait]
 impl Provider for SleepAPI {

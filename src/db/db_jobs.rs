@@ -269,4 +269,15 @@ impl ShinkaiDB {
         self.db.put_cf(cf_handle, current_time.as_bytes(), step.as_bytes())?;
         Ok(())
     }
+
+    pub fn add_message_to_job_inbox(&self, job_id: &str, content: &str) -> Result<(), ShinkaiDBError> {
+        let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.get_value();
+        let cf_handle = self
+            .db
+            .cf_handle(&cf_conversation_inbox_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name))?;
+        let current_time = ShinkaiTime::generate_time_now();
+        self.db.put_cf(cf_handle, current_time.as_bytes(), content.as_bytes())?;
+        Ok(())
+    }
 }

@@ -1,10 +1,7 @@
-use super::agent_serialization::SerializedAgent;
-use super::providers::openai::OpenAI;
-use super::providers::sleep_api::SleepAPI;
 use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::shinkai_name::ShinkaiName};
+use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{AgentAPIModel, SerializedAgent}}};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -25,16 +22,9 @@ pub struct Agent {
     pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub enum AgentAPIModel {
-    OpenAI(OpenAI),
-    Sleep(SleepAPI),
-}
-
 impl Agent {
     pub fn new(
         id: String,
-        // name: String,
         full_identity_name: ShinkaiName,
         job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
         perform_locally: bool,
@@ -110,7 +100,7 @@ impl Agent {
             self.process_locally(content.clone(), context).await;
         } else {
             // Call external API
-            let response = self.call_external_api(&content.clone(), context).await; // Assuming the content doesn't change
+            let response = self.call_external_api(&content.clone(), context).await;
             match response {
                 Ok(message) => {
                     // Send the message to AgentManager
@@ -176,6 +166,7 @@ impl From<reqwest::Error> for AgentError {
 mod tests {
     use super::*;
     use mockito::Server;
+    use shinkai_message_wasm::schemas::agents::serialized_agent::{SleepAPI, OpenAI};
     use tokio::sync::mpsc;
 
     #[tokio::test]
