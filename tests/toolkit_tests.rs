@@ -118,7 +118,7 @@ fn test_toolkit_installation_and_retrieval() {
 }
 
 #[test]
-fn test_tool_router() {
+fn test_tool_router_and_toolkit_flow() {
     setup();
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -153,12 +153,27 @@ fn test_tool_router() {
 
     // Vector Search
     let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
-    let results = tool_router.vector_search(query, 10);
-    assert_eq!(results[0].name(), "isEven");
+    let results1 = tool_router.vector_search(query, 10);
+    assert_eq!(results1[0].name(), "isEven");
 
     let query = generator
         .generate_embedding("I want to multiply 500 x 1523 and see if it is greater than 50000")
         .unwrap();
-    let results = tool_router.vector_search(query, 10);
-    assert_eq!(results[0].name(), "CompareNumbers");
+    let results2 = tool_router.vector_search(query, 10);
+    assert_eq!(results2[0].name(), "CompareNumbers");
+
+    // Deactivate toolkit and check to make sure tools are removed from Tool Router
+    shinkai_db.deactivate_toolkit(&toolkit.name, &profile).unwrap();
+    let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
+    assert!(tool_router
+        .get_shinkai_tool(&results1[0].toolkit_name(), &results1[0].name())
+        .is_err());
+    assert!(tool_router
+        .get_shinkai_tool(&results2[0].toolkit_name(), &results2[0].name())
+        .is_err());
+
+    // Check toolkit is still installed, then uninstall, and check again
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
+    shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
+    assert!(!shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 }

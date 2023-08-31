@@ -100,12 +100,13 @@ impl ShinkaiDB {
 
     /// Uninstalls (and deactivates) a JSToolkit based on its name, and removes it from the profile-wide Installed Toolkit List.
     /// Note, any Toolkit headers (ie. API keys) will not be removed, and will stay in the DB.
+    /// TODO: Make this atomic with a batch, not extremely important here due to ordering
     pub fn uninstall_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
-        // TODO: Make this atomic with a batch, not extremely important here due to ordering
-
         let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
-        // 1. Deactivate the toolkit
-        self.deactivate_toolkit(toolkit_name, profile)?;
+        // 1. Deactivate the toolkit if it is active (to remove tools from ToolRouter)
+        if toolkit_map.get_toolkit_info(&toolkit_name)?.activated {
+            self.deactivate_toolkit(toolkit_name, profile)?;
+        }
         // 2. Delete toolkit from toolkit map
         toolkit_map.remove_toolkit_info(toolkit_name)?;
         self._save_profile_toolkit_map(&toolkit_map, profile)?;
