@@ -1,12 +1,10 @@
-import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
+import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
   toolkitName = '@shinkai/toolkit-smtp';
   author = 'shinakai-dev';
   version = '0.0.1';
-
-
 
   // Define Headers
   toolkitHeaders = [

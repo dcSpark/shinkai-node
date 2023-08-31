@@ -31,6 +31,6 @@ cd $tookit_root/toolkit-lib \
 && cd $tookit_root/toolkit-gmail \
 && npm ci \
 && npm run compile \
-&& npm run test
+&& npm run test \
 && echo "All test passed"
 
