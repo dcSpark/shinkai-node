@@ -8,12 +8,44 @@ pub enum HeaderDefinition {
     GenericHeader(GenericHeader),
 }
 
+impl HeaderDefinition {
+    /// User-facing name of the header. To be used by frontend with input box
+    /// when user is required to input header values
+    pub fn name(&self) -> String {
+        match self {
+            HeaderDefinition::OAuth(oauth) => oauth.name.clone(),
+            HeaderDefinition::GenericHeader(header) => header.name.clone(),
+        }
+    }
+
+    /// Description of the header, to be used in frontend
+    pub fn description(&self) -> String {
+        match self {
+            HeaderDefinition::OAuth(oauth) => oauth.description.clone(),
+            HeaderDefinition::GenericHeader(header) => header.description.clone(),
+        }
+    }
+
+    /// The header key to be used when making the request
+    pub fn header(&self) -> String {
+        match self {
+            HeaderDefinition::OAuth(oauth) => oauth.header.clone(),
+            HeaderDefinition::GenericHeader(header) => header.header.clone(),
+        }
+    }
+
+    /// Generates the db_key that this header is stored at for the given toolkit_name
+    pub fn db_key(&self, toolkit_name: &str) -> String {
+        format!("{}:{}", self.header(), toolkit_name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GenericHeader {
     name: String,
     description: String,
     header_datatype: String,
-    is_optional: bool,
+    required: bool,
     header: String,
 }
 
@@ -124,7 +156,7 @@ impl HeaderDefinition {
                 name: name.to_string(),
                 description: description.to_string(),
                 header_datatype: header_datatype.to_string(),
-                is_optional,
+                required: !is_optional,
                 header: header.to_string(),
             };
 

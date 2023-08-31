@@ -4,6 +4,7 @@ use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
+use crate::tools::js_toolkit_executor::JSToolkitExecutor;
 use crate::tools::router::ToolRouter;
 use rocksdb::IteratorMode;
 use rocksdb::{Error, Options};
@@ -144,12 +145,32 @@ impl ShinkaiDB {
         toolkit_name: &str,
         profile: &ShinkaiName,
         header_values: &HashMap<String, String>,
+        toolkit_executor: JSToolkitExecutor,
     ) -> Result<(), ShinkaiDBError> {
-        // 1. Validate that all of the header_values keys match the definitions in the toolkit
-        // 2. Test the header values by using them with the validation function in the TS executor
-        // 3. Save the header values in the DB using the toolkit name + header name as the key
+        let toolkit = self.get_toolkit(toolkit_name, profile)?;
+        // 1. Test the header values by using them with the validation function in the TS executor
+        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values)?;
 
-        // ...
+        // 2. Validate that the header_values keys cover the header definitions in the toolkit
+        // and save the header values in the db
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
+        for header in toolkit.header_definitions {
+            let value_opt = header_values.get(&header.header());
+            if let Some(value) = value_opt {
+                let bytes = value.to_string().as_bytes().to_vec(); // Clone the bytes here
+                let cf = self.get_cf_handle(Topic::Toolkits)?;
+                pb_batch.put_cf_pb(cf, &header.db_key(&toolkit_name), &bytes);
+            } else {
+                return Err(ToolError::JSToolkitHeaderValidationFailed(format!(
+                    "Not all required header values have been provided while setting for toolkit: {}",
+                    toolkit_name
+                )))?;
+            }
+        }
+
+        // 3. Write the batch to the DB
+        self.write_pb(pb_batch)?;
+
         Ok(())
     }
 
