@@ -270,13 +270,10 @@ pub trait VectorResource {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
         for name in data_tag_names {
-            println!("\nData tag name: {}", name);
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
-                println!("Matching data tag chunk ids: {:?}", ids);
                 if !ids.is_empty() {
                     for id in ids {
                         if let Ok(embedding) = self.get_chunk_embedding(&id) {
-                            println!("Appending embedding");
                             matching_data_tag_embeddings.push(embedding.clone());
                         }
                     }
@@ -297,8 +294,6 @@ pub trait VectorResource {
                 });
             }
         }
-
-        println!("Syntactic vector search results: {:?}", results);
 
         results
     }

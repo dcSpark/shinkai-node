@@ -163,26 +163,7 @@ impl ToolRouter {
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         let data_chunk = self.routing_resource.get_data_chunk(key)?;
-        self.parse_shinkai_tool_from_data_chunk(data_chunk)
-    }
-
-    /// Parses a fetched internal DataChunk from within the ToolRouter into a ShinkaiTool
-    fn parse_shinkai_tool_from_data_chunk(&self, data_chunk: DataChunk) -> Result<ShinkaiTool, ToolError> {
-        if let Some(metadata) = data_chunk.metadata {
-            if let Some(tool_type) = metadata.get(&Self::tool_type_metadata_key()) {
-                // If a rust tool, read the name and fetch the rust tool from that global static rust toolkit
-                if tool_type.to_string() == Self::tool_type_rust_value() {
-                    let tool = RustTool::from_json(&data_chunk.data)?;
-                    return Ok(ShinkaiTool::Rust(tool));
-                }
-                // Else a JSTool
-                else {
-                    let tool = JSTool::from_json(&data_chunk.data)?;
-                    return Ok(ShinkaiTool::JS(tool));
-                }
-            }
-        }
-        Err(ToolError::ToolNotFound(data_chunk.id))
+        Ok(ShinkaiTool::from_json(&data_chunk.data)?)
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
@@ -217,7 +198,7 @@ impl ToolRouter {
         let mut shinkai_tools = vec![];
         for ret_chunk in ret_chunks {
             // Ignores tools added to the router which are invalid by matching on the Ok()
-            if let Ok(shinkai_tool) = Self::parse_shinkai_tool_from_data_chunk(&self, ret_chunk.chunk.clone()) {
+            if let Ok(shinkai_tool) = ShinkaiTool::from_json(&ret_chunk.chunk.data) {
                 shinkai_tools.push(shinkai_tool);
             }
         }
@@ -227,8 +208,10 @@ impl ToolRouter {
     /// Adds a tool into the ToolRouter instance.
     pub fn add_shinkai_tool(&mut self, shinkai_tool: &ShinkaiTool, embedding: Embedding) -> Result<(), ToolError> {
         let data = shinkai_tool.to_json()?;
-        let metadata = None;
         let router_key = shinkai_tool.tool_router_key();
+        let mut metadata = None;
+
+        // Setup the metadata based on tool type
 
         match self.routing_resource.get_data_chunk(router_key.clone()) {
             Ok(_) => {

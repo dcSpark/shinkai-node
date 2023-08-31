@@ -152,9 +152,13 @@ fn test_tool_router() {
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
 
     // Vector Search
-    // let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
-    // let results = tool_router.vector_search(query, 10);
-    // println!("Tool Router: {:?}", tool_router.routing_resource.to_json());
-    // println!("Results: {:?}", results);
-    // assert_eq!(results[0].name(), "isEven")
+    let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
+    let results = tool_router.vector_search(query, 10);
+    assert_eq!(results[0].name(), "isEven");
+
+    let query = generator
+        .generate_embedding("I want to multiply 500 x 1523 and see if it is greater than 50000")
+        .unwrap();
+    let results = tool_router.vector_search(query, 10);
+    assert_eq!(results[0].name(), "CompareNumbers");
 }

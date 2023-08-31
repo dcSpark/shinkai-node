@@ -93,7 +93,6 @@ impl JSToolkitExecutor {
     ) -> Result<(), ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self.submit_post_request("/validate_headers", &input_data_json, header_values)?;
-        println!("{:?}", response);
         if let Some(JsonValue::Bool(result)) = response.get("result") {
             if *result {
                 return Ok(());
