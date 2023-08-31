@@ -69,7 +69,7 @@ const AddAgent: React.FC = () => {
                 <IonLabel>Full Identity Name</IonLabel>
                 <IonInput
                   id="full_identity_name"
-                  value={agent.full_identity_name}
+                  value={agent.full_identity_name?.toString()}
                   onIonChange={handleInputChange}
                 />
               </IonItem>
