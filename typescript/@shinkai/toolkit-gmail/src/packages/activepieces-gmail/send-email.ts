@@ -10,9 +10,9 @@ import {
   SHINKAI_OAUTH,
   isArray,
 } from '@shinkai/toolkit-lib';
-import { gmail } from '../../lib/gmail/src/index';
-import { Context } from '@activepieces/pieces-framework';
-import { SHINKAI_AP_INPUT } from '../../lib/@activepieces/shinkai-activepieces-interface';
+import {gmail} from '../../lib/gmail/src/index';
+import {Context} from '@activepieces/pieces-framework';
+import {SHINKAI_AP_INPUT} from '../../lib/@activepieces/shinkai-activepieces-interface';
 
 @isInput('GmailSendEmail')
 class APGmailInput extends BaseInput {
@@ -64,13 +64,13 @@ export class GmailSendEmail extends BaseTool<APGmailInput, APGmailOutput> {
 
     const attachment =
       input.attachment_base64 &&
-        input.attachment_extension &&
-        input.attachment_filename
+      input.attachment_extension &&
+      input.attachment_filename
         ? {
-          filename: input.attachment_filename,
-          base64: input.attachment_base64,
-          extension: input.attachment_extension,
-        }
+            filename: input.attachment_filename,
+            base64: input.attachment_base64,
+            extension: input.attachment_extension,
+          }
         : undefined;
 
     const setup: Context = {

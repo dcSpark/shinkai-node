@@ -1,55 +1,36 @@
 #!/bin/bash
 
-cd toolkit-lib \
-&& npm ci \
-&& npm run test
-cd ..
+ tookit_root=`pwd`
 
-cd toolkit-executor \
+cd $tookit_root/toolkit-lib \
 && npm ci \
-&& npm run test
-pwd
-cd ..
-
-cd toolkit-builder/lib \
+&& npm run test \
+&& cd $tookit_root/toolkit-executor \
+&& npm ci \
+&& npm run test \
+&& cd $tookit_root/toolkit-builder/lib \
 && npm i \
 && npm run compile \
-&& npm run test
-pwd
-cd ..
-cd ..
-
-cd toolkit-smtp \
+&& npm run test \
+&& cd $tookit_root/toolkit-smtp \
+&& npm ci \
+&& npm run compile \
+&& npm run test \
+&& cd $tookit_root/toolkit-example \
+&& npm ci \
+&& npm run compile \
+&& npm run test \
+&& cd $tookit_root/toolkit-google-calendar \
+&& npm ci \
+&& npm run compile \
+&& npm run test \
+&& cd $tookit_root/toolkit-web \
+&& npm ci \
+&& npm run compile \
+&& npm run test \
+&& cd $tookit_root/toolkit-gmail \
 && npm ci \
 && npm run compile \
 && npm run test
-pwd
-cd ..
+&& echo "All test passed"
 
-cd toolkit-example \
-&& npm ci \
-&& npm run compile \
-&& npm run test
-pwd
-cd ..
-
-cd toolkit-google-calendar \
-&& npm ci \
-&& npm run compile \
-&& npm run test
-pwd
-cd ..
-
-cd toolkit-web \
-&& npm ci \
-&& npm run compile \
-&& npm run test
-pwd
-cd ..
-
-cd toolkit-gmail \
-&& npm ci \
-&& npm run compile \
-&& npm run test
-pwd
-cd ..

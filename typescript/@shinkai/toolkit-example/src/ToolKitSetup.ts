@@ -1,4 +1,4 @@
-import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
+import {DATA_TYPES, ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
@@ -14,7 +14,6 @@ export class ToolKitSetup extends ShinkaiSetup {
       description: 'An example api-key header',
     },
   ];
-
 
   public async validateHeaders(
     headers: Record<string, string>

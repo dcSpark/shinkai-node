@@ -10,8 +10,8 @@ import {
   BaseOutput,
   SHINKAI_OAUTH,
 } from '@shinkai/toolkit-lib';
-import { googleCalendar } from '../../lib/google-calendar/src/index';
-import { Context } from '@activepieces/pieces-framework';
+import {googleCalendar} from '../../lib/google-calendar/src/index';
+import {Context} from '@activepieces/pieces-framework';
 
 @isInput('GoogleCalendarQuickEvent')
 class APGoogleCalendarInput extends BaseInput {
