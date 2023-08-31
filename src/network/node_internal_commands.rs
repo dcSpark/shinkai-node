@@ -224,13 +224,7 @@ impl Node {
 
     pub async fn internal_create_new_job(&self, shinkai_message: ShinkaiMessage) -> Result<String, NodeError> {
         println!("Creating new job");
-        match self
-            .job_manager
-            .lock()
-            .await
-            .process_job_message(shinkai_message)
-            .await
-        {
+        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(job_id) => {
                 // If everything went well, return Ok(true)
                 Ok(job_id)
@@ -242,14 +236,30 @@ impl Node {
         }
     }
 
+    pub async fn internal_get_agents_for_profile(&self, profile: String) -> Result<Vec<SerializedAgent>, NodeError> {
+        let profile_name = match ShinkaiName::from_node_and_profile(self.node_profile_name.node_name.clone(), profile) {
+            Ok(profile_name) => profile_name,
+            Err(e) => {
+                return Err(NodeError {
+                    message: format!("Failed to create profile name: {}", e),
+                })
+            }
+        };
+
+        let result = match self.db.lock().await.get_agents_for_profile(profile_name) {
+            Ok(agents) => agents,
+            Err(e) => {
+                return Err(NodeError {
+                    message: format!("Failed to get agents for profile: {}", e),
+                })
+            }
+        };
+
+        Ok(result)
+    }
+
     pub async fn internal_job_message(&self, shinkai_message: ShinkaiMessage) -> Result<(), NodeError> {
-        match self
-            .job_manager
-            .lock()
-            .await
-            .process_job_message(shinkai_message)
-            .await
-        {
+        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(_) => Ok(()),
             Err(err) => Err(NodeError {
                 message: format!("Error with process job message: {}", err),

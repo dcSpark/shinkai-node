@@ -1,7 +1,7 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use rocksdb::{Error, Options};
 use serde_json::{from_slice, to_vec};
-use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_wasm::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 
 impl ShinkaiDB {
     // Fetches all agents from the Agents topic
@@ -226,5 +226,32 @@ impl ShinkaiDB {
         }
 
         Ok(data)
+    }
+
+    pub fn get_agents_for_profile(&self, profile_name: ShinkaiName) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+        let profile = profile_name
+            .get_profile_name()
+            .ok_or(ShinkaiDBError::DataConversionError(
+                "Profile name not found".to_string(),
+            ))?;
+        let all_agents = self.get_all_agents()?;
+        let mut result = Vec::new();
+    
+        for agent in all_agents {
+            let cf_name = format!("agent_{}_profiles_with_access", agent.id);
+            let cf = self.db.cf_handle(&cf_name).unwrap();
+            let profiles = self.get_column_family_data(cf)?;
+    
+            if profiles.contains(&profile) {
+                result.push(agent);
+            } else {
+                // Check for creation access
+                if profile_name.contains(&agent.full_identity_name) {
+                    result.push(agent);
+                }
+            }
+        }
+    
+        Ok(result)
     }
 }

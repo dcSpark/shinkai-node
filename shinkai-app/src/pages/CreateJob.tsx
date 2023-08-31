@@ -19,13 +19,50 @@ import { useState } from "react";
 import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 import Button from "../components/ui/Button";
 import Input from "../components/ui/Input";
+import { createJob, sendMessageToJob } from "../api";
+import { useSetup } from "../hooks/usetSetup";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../store";
 
 const CreateJob: React.FC = () => {
-  const [jobName, setJobName] = useState("");
+  useSetup();
+  const dispatch = useDispatch();
+  const setupDetailsState = useSelector(
+    (state: RootState) => state.setupDetailsState
+  );
+  const [jobContent, setJobContent] = useState("");
 
   const handleCreateJob = () => {
-    // Perform your API request here
-    console.log("Creating job with name:", jobName);
+    // try {
+    //   // Perform your API request here
+    console.log("Creating job with content:", jobContent);
+    //   // We should show a list of all the available agents
+
+    //   // Split shinkaiIdentity into sender and the rest
+    // let [receiver, ...rest] = shinkaiIdentity.split("/");
+
+    // // Join the rest back together to form sender_subidentity
+    // let receiver_subidentity = rest.join("/");
+
+    //   const { shinkai_identity, profile, registration_name } = setupDetailsState;
+
+    //   // Define your parameters for createJob
+    //   const scope = {};
+    //   let sender = shinkai_identity;
+    // let sender_subidentity = `${profile}/device/${registration_name}`;
+
+    //   const receiver = ...;
+    //   const receiver_subidentity = ...;
+    //   const setupDetailsState = ...;
+
+    //   // Call createJob
+    //   const jobId = await dispatch(createJob(scope, sender, receiver, receiver_subidentity, setupDetailsState));
+
+    //   await dispatch(sendMessageToJob(jobId, jobContent, sender, receiver, receiver_subidentity, setupDetailsState));
+
+    // } catch (error) {
+    //   console.error("Error in handleCreateJob:", error);
+    // }
   };
 
   return (
@@ -48,10 +85,10 @@ const CreateJob: React.FC = () => {
                 New Job Details
               </h2>
               <Input
-                value={jobName}
-                label="Enter Job Name"
-                aria-label="Enter Job Name"
-                onChange={(e) => setJobName(e.detail.value!)}
+                value={jobContent}
+                label="Tell me the job to do"
+                aria-label="Tell me the job to do"
+                onChange={(e) => setJobContent(e.detail.value!)}
               />
 
               <div style={{ marginTop: "20px" }}>

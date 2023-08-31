@@ -79,7 +79,6 @@ test("InboxNameWrapper get_job_inbox_name_from_params", () => {
       unique_id: "123",
       expected: "job_inbox::123::false",
     },
-    // Add more test cases as needed
   ];
 
   for (const { unique_id, expected } of params) {

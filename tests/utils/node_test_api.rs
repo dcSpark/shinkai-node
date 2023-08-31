@@ -363,6 +363,40 @@ pub async fn api_agent_registration(
         });
 
         assert!(agent_identity.is_some(), "Agent was added to the node");
+
+        let available_agents_msg = ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            subidentity_encryption_sk.clone(),
+            clone_signature_secret_key(&subidentity_signature_sk),
+            node_encryption_pk,
+            "".to_string(),
+            subidentity_name.to_string(),
+            node_name.to_string(),
+            node_name.to_string(),
+            MessageSchemaType::Empty,
+        )
+        .unwrap();
+        eprintln!("available_agents_msg: {:?}", available_agents_msg);
+
+        let (res_available_agents_sender, res_available_agents_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::APIAvailableAgents {
+                msg: available_agents_msg.clone(),
+                res: res_available_agents_sender,
+            })
+            .await
+            .unwrap();
+        let available_agents = res_available_agents_receiver.recv().await.unwrap();
+
+        // Check if the result is Ok and extract the agents
+        if let Ok(agents) = &available_agents {
+            // Extract the agent IDs from the available agents
+            let available_agent_ids: Vec<String> = agents.iter().map(|agent| agent.id.clone()).collect();
+
+            // Check if the added agent's ID is in the list of available agent IDs
+            assert!(available_agent_ids.contains(&agent.id), "Agent is not available");
+        } else {
+            panic!("Failed to get available agents");
+        }
     }
 }
 

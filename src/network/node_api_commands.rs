@@ -16,6 +16,7 @@ use mupdf::Device;
 use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{
+        agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
     },
@@ -722,7 +723,8 @@ impl Node {
                     IdentityType::Profile | IdentityType::Global => {
                         // Existing logic for handling profile identity
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile(
@@ -782,7 +784,8 @@ impl Node {
                         std::mem::drop(db);
 
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
 
                         // Check if the profile exists in the identity_manager
                         {
@@ -822,10 +825,13 @@ impl Node {
                         .unwrap();
 
                         let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
 
-                        let device_signature_pk_obj = string_to_signature_public_key(device_identity_pk.as_str()).unwrap();
-                        let device_encryption_pk_obj = string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
+                        let device_signature_pk_obj =
+                            string_to_signature_public_key(device_identity_pk.as_str()).unwrap();
+                        let device_encryption_pk_obj =
+                            string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
 
                         let device_identity = DeviceIdentity {
                             full_identity_name,
@@ -1068,6 +1074,44 @@ impl Node {
         }
     }
 
+    pub async fn api_available_agents(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::Empty))
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?
+            .get_profile_name()
+            .ok_or(NodeError {
+                message: "Profile name not found".to_string(),
+            })?;
+
+        match self.internal_get_agents_for_profile(profile).await {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn api_add_agent(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1085,7 +1129,6 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-
         let serialized_agent_string = msg.get_message_content()?;
         let serialized_agent: APIAddAgentRequest =
             serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {

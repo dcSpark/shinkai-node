@@ -50,19 +50,16 @@ export const createChatWithMessage =
     setupDetailsState: SetupDetailsState
   ) =>
   async (dispatch: AppDispatch) => {
-    // console.log("sender: ", sender);
-    // console.log("sender_subidentity: ", sender_subidentity);
-    // console.log("receiver: ", receiver);
-    // console.log("receiver_subidentity: ", receiver_subidentity);
-    // console.log("text_message: ", text_message);
-    // console.log("setupDetailsState: ", setupDetailsState);
-
-    const senderShinkaiName = new ShinkaiNameWrapper(sender + "/" + sender_subidentity);
-    const receiverShinkaiName = new ShinkaiNameWrapper(receiver + "/" + receiver_subidentity);
+    const senderShinkaiName = new ShinkaiNameWrapper(
+      sender + "/" + sender_subidentity
+    );
+    const receiverShinkaiName = new ShinkaiNameWrapper(
+      receiver + "/" + receiver_subidentity
+    );
 
     const senderProfile = senderShinkaiName.extract_profile();
     const receiverProfile = receiverShinkaiName.extract_profile();
-    
+
     let inbox = InboxNameWrapper.get_regular_inbox_name_from_params(
       senderProfile.get_node_name,
       senderProfile.get_profile_name,
@@ -70,7 +67,7 @@ export const createChatWithMessage =
       receiverProfile.get_profile_name,
       true
     );
-    
+
     try {
       const messageStr = ShinkaiMessageBuilderWrapper.create_chat_with_message(
         setupDetailsState.my_device_encryption_sk,
@@ -344,3 +341,79 @@ export const pingAllNodes = () => async (dispatch: AppDispatch) => {
     console.error("Error pinging all nodes:", error);
   }
 };
+
+export const createJob =
+  (
+    scope: any,
+    sender: string,
+    receiver: string,
+    receiver_subidentity: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      const messageStr = ShinkaiMessageBuilderWrapper.job_creation(
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.node_encryption_pk,
+        scope,
+        sender,
+        receiver,
+        receiver_subidentity
+      );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/job_creation`,
+        message
+      );
+      handleHttpError(response);
+      dispatch(response.data.jobId);
+      const jobId = response.data.jobId;
+
+      return jobId;
+    } catch (error) {
+      console.error("Error creating job:", error);
+    }
+  };
+
+export const sendMessageToJob =
+  (
+    jobId: string,
+    content: string,
+    sender: string,
+    receiver: string,
+    receiver_subidentity: string,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      const messageStr = ShinkaiMessageBuilderWrapper.job_message(
+        jobId,
+        content,
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.node_encryption_pk,
+        sender,
+        receiver,
+        receiver_subidentity
+      );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/job_message`,
+        message
+      );
+
+      handleHttpError(response);
+      dispatch(response.data);
+    } catch (error) {
+      console.error("Error sending message to job:", error);
+    }
+  };

@@ -265,4 +265,19 @@ impl Node {
         };
         let _ = res.send(result_str).await;
     }
+
+    pub async fn local_available_agents(
+        &self,
+        full_profile_name: String,
+        res: Sender<Result<Vec<SerializedAgent>, String>>,
+    ) {
+        match self.internal_get_agents_for_profile(full_profile_name).await {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(format!("Internal Server Error: {}", err))).await;
+            }
+        }
+    }
 }

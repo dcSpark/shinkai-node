@@ -1,4 +1,4 @@
-use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
+use shinkai_message_wasm::{shinkai_message::shinkai_message_error::ShinkaiMessageError, schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError}};
 use crate::{managers::job_manager::JobManagerError, db::db_errors::ShinkaiDBError};
 
 
@@ -51,6 +51,22 @@ impl From<ShinkaiDBError> for NodeError {
     fn from(error: ShinkaiDBError) -> Self {
         NodeError {
             message: format!("Database error: {}", error),
+        }
+    }
+}
+
+impl From<InboxNameError> for NodeError {
+    fn from(err: InboxNameError) -> NodeError {
+        NodeError {
+            message: format!("InboxNameError: {}", err),
+        }
+    }
+}
+
+impl From<ShinkaiNameError> for NodeError {
+    fn from(error: ShinkaiNameError) -> Self {
+        NodeError {
+            message: format!("ShinkaiNameError: {}", error.to_string()),
         }
     }
 }
