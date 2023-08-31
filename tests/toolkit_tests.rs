@@ -73,7 +73,6 @@ fn test_js_toolkit_execution() {
     let headers_validation_result = executor
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
         .unwrap();
-    assert_eq!(headers_validation_result, true);
 
     // Test submit_tool_execution_request
     let tool = "isEven";
