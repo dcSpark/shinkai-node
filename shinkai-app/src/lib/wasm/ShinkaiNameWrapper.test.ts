@@ -18,7 +18,7 @@ test("ShinkaiNameWrapper", () => {
 
   for (const name of validNames) {
     const wrapper = new ShinkaiNameWrapper(name);
-    expect(wrapper.get_full_name()).toBe(name.toLowerCase());
+    expect(wrapper.get_full_name).toBe(name.toLowerCase());
   }
 
   for (const name of invalidNames) {
