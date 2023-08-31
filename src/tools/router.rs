@@ -1,6 +1,8 @@
+use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resources::map_resource::MapVectorResource;
 use crate::resources::vector_resource::*;
 use crate::resources::{embeddings::*, router};
+use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
@@ -34,6 +36,13 @@ impl ShinkaiTool {
             ShinkaiTool::JS(j) => j.name.clone(),
         }
     }
+    /// Tool description
+    pub fn description(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r) => r.description.clone(),
+            ShinkaiTool::JS(j) => j.description.clone(),
+        }
+    }
 
     /// Toolkit name the tool is from
     pub fn toolkit_name(&self) -> String {
@@ -41,6 +50,47 @@ impl ShinkaiTool {
             ShinkaiTool::Rust(r) => r.toolkit_name().clone(),
             ShinkaiTool::JS(j) => j.toolkit_name.clone(),
         }
+    }
+
+    /// Returns the input arguments of the tool
+    pub fn input_args(&self) -> Vec<ToolArgument> {
+        match self {
+            ShinkaiTool::Rust(r) => r.input_args.clone(),
+            ShinkaiTool::JS(j) => j.input_args.clone(),
+        }
+    }
+
+    /// Returns the output arguments of the tool
+    pub fn output_args(&self) -> Vec<ToolArgument> {
+        match self {
+            ShinkaiTool::Rust(r) => r.output_args.clone(),
+            ShinkaiTool::JS(j) => j.output_args.clone(),
+        }
+    }
+
+    /// Formats the tool's info into a String to be used for generating the tool's embedding.
+
+    pub fn format_embedding_string(&self) -> String {
+        let mut embedding_string = format!("{}:{}\n", self.name(), self.description());
+
+        embedding_string.push_str("Input Args:\n");
+
+        for arg in self.input_args() {
+            embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
+        }
+
+        embedding_string.push_str("Output Args:\n");
+
+        for arg in self.output_args() {
+            embedding_string.push_str(&format!("-{}:{}\n", arg.name, arg.description));
+        }
+
+        // Cut the string off at MAX_EMBEDDING_STRING_SIZE characters
+        if embedding_string.len() > MAX_EMBEDDING_STRING_SIZE {
+            embedding_string.truncate(MAX_EMBEDDING_STRING_SIZE);
+        }
+
+        embedding_string
     }
 
     /// Generate the key that this tool will be stored under in the tool router
@@ -65,7 +115,7 @@ impl ShinkaiTool {
 /// A top level struct which indexes JSTools installed in the Shinkai Node
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRouter {
-    routing_resource: MapVectorResource,
+    pub routing_resource: MapVectorResource,
 }
 
 impl ToolRouter {
@@ -80,7 +130,8 @@ impl ToolRouter {
         let mut routing_resource = MapVectorResource::new_empty(name, desc, source, resource_id);
         let mut metadata = HashMap::new();
         metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
-        RUST_TOOLKIT.rust_tool_map.values().into_iter().map(|t| {
+
+        for t in RUST_TOOLKIT.rust_tool_map.values() {
             routing_resource.insert_kv(
                 &ShinkaiTool::Rust(t.clone()).tool_router_key(),
                 &t.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
@@ -88,7 +139,7 @@ impl ToolRouter {
                 &t.tool_embedding,
                 &vec![],
             );
-        });
+        }
 
         ToolRouter {
             routing_resource: routing_resource,
@@ -199,15 +250,14 @@ impl ToolRouter {
         Ok(())
     }
 
-    /// Deletes the resource pointer inside of the ToolRouter given a valid id
-    pub fn delete_shinkai_tool(&mut self, old_pointer_id: &str) -> Result<(), ToolError> {
-        self.routing_resource.delete_kv(old_pointer_id)?;
+    /// Deletes the tool inside of the ToolRouter given a valid id
+    pub fn delete_shinkai_tool(&mut self, tool_name: &str, toolkit_name: &str) -> Result<(), ToolError> {
+        let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
+        self.routing_resource.delete_kv(&key)?;
         Ok(())
     }
 
-    /// Acquire the resource_embedding for a given ShinkaiTool.
-    /// If the pointer itself doesn't have the embedding attached to it,
-    /// we use the id to fetch the embedding directly from the ToolRouter.
+    /// Acquire the tool embedding for a given ShinkaiTool.
     pub fn get_tool_embedding(&self, shinkai_tool: &ShinkaiTool) -> Result<Embedding, ToolError> {
         Ok(self
             .routing_resource

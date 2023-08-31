@@ -3,6 +3,11 @@ use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+/// TODO: This is set at 500 chars to be safe for 512 token limit on embedding models. Later
+/// make this more flexible based on embedding model used (important when larger
+/// context window models arrive)
+pub const MAX_EMBEDDING_STRING_SIZE: usize = 500;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embedding {
     pub id: String,

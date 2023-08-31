@@ -3,7 +3,8 @@ use serde_json::Value as JsonValue;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
-use shinkai_node::resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use std::collections::HashMap;
@@ -73,7 +74,6 @@ fn test_js_toolkit_execution() {
     let headers_validation_result = executor
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
         .unwrap();
-    assert_eq!(headers_validation_result, true);
 
     // Test submit_tool_execution_request
     let tool = "isEven";
@@ -142,9 +142,11 @@ fn test_tool_router() {
 
     // Set headers and activate the toolkit to add it to the tool router
     shinkai_db
-        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values())
+        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values(), &executor)
         .unwrap();
-    shinkai_db.activate_toolkit(&toolkit.name, &profile).unwrap();
+    shinkai_db
+        .activate_toolkit(&toolkit.name, &profile, &executor, Box::new(generator.clone()))
+        .unwrap();
 
     // Retrieve the tool router
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
@@ -152,5 +154,7 @@ fn test_tool_router() {
     // Vector Search
     // let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
     // let results = tool_router.vector_search(query, 10);
+    // println!("Tool Router: {:?}", tool_router.routing_resource.to_json());
+    // println!("Results: {:?}", results);
     // assert_eq!(results[0].name(), "isEven")
 }

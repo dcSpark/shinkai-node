@@ -2,7 +2,7 @@ use reqwest::Error as ReqwestError;
 use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
-use std::fmt;
+use std::fmt::{self, write};
 
 use crate::resources::resource_errors::VectorResourceError;
 
@@ -21,6 +21,8 @@ pub enum ToolError {
     VectorResourceError(VectorResourceError),
     ToolAlreadyInstalled(String),
     JSToolkitHeaderValidationFailed(String),
+    ToolkitAlreadyActivated(String),
+    ToolkitAlreadyDeactivated(String),
 }
 
 impl fmt::Display for ToolError {
@@ -43,6 +45,8 @@ impl fmt::Display for ToolError {
             ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
             ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
             ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
+            ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
+            ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
         }
     }
 }
