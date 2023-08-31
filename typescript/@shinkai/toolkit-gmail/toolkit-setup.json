@@ -15,7 +15,7 @@
         "cloudOAuth": "activepieces"
       },
       "type": "OAUTH",
-      "header": "x-shinkai-oauth",
+      "header": "oauth",
       "description": ""
     }
   ],

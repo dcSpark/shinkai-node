@@ -1,4 +1,4 @@
-import {ShinkaiSetup, isToolKit} from '@shinkai/toolkit-lib';
+import { DATA_TYPES, ShinkaiSetup, isToolKit } from '@shinkai/toolkit-lib';
 
 @isToolKit
 export class ToolKitSetup extends ShinkaiSetup {
@@ -6,9 +6,22 @@ export class ToolKitSetup extends ShinkaiSetup {
   author = 'shinkai-dev';
   version = '0.0.1';
 
-  // Register OAuth
-  oauth = undefined;
+  // Define Headers
+  toolkitHeaders = [
+    {
+      name: 'api-key',
+      type: DATA_TYPES.STRING,
+      description: 'An example api-key header',
+    },
+  ];
 
-  // Register Setup Keys
-  toolkitHeaders = undefined;
+
+  public async validateHeaders(
+    headers: Record<string, string>
+  ): Promise<boolean> {
+    if (headers['x-shinkai-api-key'] !== 'example') {
+      throw new Error("Invalid 'api-key' header");
+    }
+    return true;
+  }
 }

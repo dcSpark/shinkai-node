@@ -4,6 +4,7 @@ use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
+use crate::tools::router::ToolRouter;
 use rocksdb::IteratorMode;
 use rocksdb::{Error, Options};
 use serde_json::{from_str, to_string};
@@ -23,17 +24,6 @@ impl ShinkaiDB {
         Ok((bytes, cf))
     }
 
-    /// Saves the `InstalledJSToolkitMap` into the database
-    fn _save_profile_toolkit_map(
-        &self,
-        toolkit_map: &InstalledJSToolkitMap,
-        profile: &ShinkaiName,
-    ) -> Result<(), ShinkaiDBError> {
-        let (bytes, cf) = self._prepare_profile_toolkit_map(toolkit_map, profile)?;
-        self.put_cf_pb(cf, &InstalledJSToolkitMap::db_key(), bytes, profile)?;
-        Ok(())
-    }
-
     /// Prepares the `InstalledJSToolkitMap` for saving into the ShinkaiDB as the profile toolkits map.
     fn _prepare_profile_toolkit_map(
         &self,
@@ -45,6 +35,46 @@ impl ShinkaiDB {
         let bytes = json.as_bytes().to_vec(); // Clone the bytes here
         let cf = self.get_cf_handle(Topic::Toolkits)?;
         Ok((bytes, cf))
+    }
+
+    /// Saves the `InstalledJSToolkitMap` into the database
+    fn _save_profile_toolkit_map(
+        &self,
+        toolkit_map: &InstalledJSToolkitMap,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_profile_toolkit_map(toolkit_map, profile)?;
+        self.put_cf_pb(cf, &InstalledJSToolkitMap::db_key(), bytes, profile)?;
+        Ok(())
+    }
+
+    /// Prepares the `ToolRouter` for saving into the ShinkaiDB as the profile tool router.
+    fn _prepare_profile_tool_router(
+        &self,
+        tool_router: &ToolRouter,
+        profile: &ShinkaiName,
+    ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
+        // Convert JSON to bytes for storage
+        let json = tool_router.to_json()?;
+        let bytes = json.as_bytes().to_vec(); // Clone the bytes here
+        let cf = self.get_cf_handle(Topic::Toolkits)?;
+        Ok((bytes, cf))
+    }
+
+    /// Saves the `ToolRouter` into the database (overwriting the old saved instance)
+    fn _save_profile_tool_router(&self, tool_router: &ToolRouter, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_profile_tool_router(tool_router, profile)?;
+        self.put_cf_pb(cf, &ToolRouter::profile_router_db_key(), bytes, profile)?;
+        Ok(())
+    }
+
+    /// Fetches the `ToolRouter` from the DB (for the provided profile)
+    pub fn get_tool_router(&self, profile: &ShinkaiName) -> Result<ToolRouter, ShinkaiDBError> {
+        let bytes = self.get_cf_pb(Topic::Toolkits, &ToolRouter::profile_router_db_key(), profile)?;
+        let json_str = std::str::from_utf8(&bytes)?;
+
+        let tool_router: ToolRouter = from_str(json_str)?;
+        Ok(tool_router)
     }
 
     /// Fetches the `InstalledJSToolkitMap` from the DB (for the provided profile)
@@ -216,11 +246,15 @@ impl ShinkaiDB {
         Ok(false)
     }
 
-    /// Initializes a `InstalledJSToolkitMap` if one does not exist in the DB.
-    pub fn init_profile_toolkit_map(&self, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    /// Initializes a `InstalledJSToolkitMap` and a `ToolRouter` if they do not exist in the DB.
+    pub fn init_profile_tool_structs(&self, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         if let Err(_) = self.get_installed_toolkit_map(profile) {
             let toolkit_map = InstalledJSToolkitMap::new();
             self._save_profile_toolkit_map(&toolkit_map, profile)?;
+        }
+        if let Err(_) = self.get_tool_router(profile) {
+            let router = ToolRouter::new();
+            self._save_profile_tool_router(&router, profile)?;
         }
         Ok(())
     }

@@ -10,8 +10,8 @@ import {
   BaseOutput,
   SHINKAI_OAUTH,
 } from '@shinkai/toolkit-lib';
-import {googleCalendar} from '../../lib/google-calendar/src/index';
-import {Context} from '@activepieces/pieces-framework';
+import { googleCalendar } from '../../lib/google-calendar/src/index';
+import { Context } from '@activepieces/pieces-framework';
 
 @isInput('GoogleCalendarQuickEvent')
 class APGoogleCalendarInput extends BaseInput {
@@ -50,7 +50,7 @@ export class GoogleCalendarQuickEvent extends BaseTool<
 
     const setup: Context = {
       auth: {
-        access_token: headers['x-shinkai-oauth'] || headers[SHINKAI_OAUTH],
+        access_token: headers['oauth'] || headers[SHINKAI_OAUTH],
       },
       propsValue: {
         calendar_id: input.calendar_id,
