@@ -73,7 +73,16 @@ impl VectorResource for MapVectorResource {
         self.resource_embedding = embedding;
     }
 
-    /// Retrieves a data chunk given its id
+    /// Retrieves a data chunk's embedding given its key (id)
+    fn get_chunk_embedding(&self, key: String) -> Result<Embedding, VectorResourceError> {
+        Ok(self
+            .chunk_embeddings
+            .get(&key)
+            .ok_or(VectorResourceError::InvalidChunkId)?
+            .clone())
+    }
+
+    /// Retrieves a data chunk given its key (id)
     fn get_data_chunk(&self, key: String) -> Result<DataChunk, VectorResourceError> {
         Ok(self
             .data_chunks

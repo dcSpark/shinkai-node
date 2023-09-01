@@ -74,6 +74,17 @@ impl VectorResource for DocumentVectorResource {
         self.resource_embedding = embedding;
     }
 
+    /// Naively searches through all chunk embeddings in the resource
+    /// to find one with a matching id
+    fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError> {
+        for embedding in self.chunk_embeddings() {
+            if embedding.id == id {
+                return Ok(embedding.clone());
+            }
+        }
+        Err(VectorResourceError::InvalidChunkId)
+    }
+
     /// Efficiently retrieves a data chunk given its id by fetching it via index.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError> {
         let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidChunkId)?;

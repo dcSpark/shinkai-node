@@ -8,8 +8,7 @@ use crate::resources::embeddings::*;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use ordered_float::NotNan;
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 /// Contents of a DataChunk. Either the String data itself, or
@@ -169,6 +168,7 @@ pub trait VectorResource {
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn chunk_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
+    fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
 
     // Note we cannot add from_json in the trait due to trait object limitations
     // with &self.
@@ -177,18 +177,8 @@ pub trait VectorResource {
     /// Retrieves a data chunk given its id.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
 
-    /// Naively searches through all chunk embeddings in the resource
-    /// to find one with a matching id
-    fn get_chunk_embedding(&self, id: &str) -> Result<Embedding, VectorResourceError> {
-        for embedding in self.chunk_embeddings() {
-            if embedding.id == id {
-                return Ok(embedding.clone());
-            }
-        }
-        Err(VectorResourceError::InvalidChunkId)
-    }
-
     /// Returns a String representing the Key that this VectorResource
+    ///
     /// will be/is saved to in the Topic::VectorResources in the DB.
     /// The db key is: `{name}.{resource_id}`
     fn db_key(&self) -> String {
@@ -301,7 +291,7 @@ pub trait VectorResource {
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
                 if !ids.is_empty() {
                     for id in ids {
-                        if let Ok(embedding) = self.get_chunk_embedding(&id) {
+                        if let Ok(embedding) = self.get_chunk_embedding(id.to_string()) {
                             matching_data_tag_embeddings.push(embedding.clone());
                         }
                     }

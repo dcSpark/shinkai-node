@@ -98,7 +98,7 @@ impl VectorResourceRouter {
                     VectorResourceType::from_str(data).map_err(|_| VectorResourceError::InvalidVectorResourceType)
                 {
                     let id = &ret_chunk.chunk.id;
-                    let embedding = self.routing_resource.get_chunk_embedding(id).ok();
+                    let embedding = self.routing_resource.get_chunk_embedding(id.to_string()).ok();
                     let resource_pointer = VectorResourcePointer::new(
                         &id,
                         resource_type,
@@ -197,7 +197,8 @@ impl VectorResourceRouter {
         if let Some(embedding) = resource_pointer.resource_embedding.clone() {
             Ok(embedding)
         } else {
-            self.routing_resource.get_chunk_embedding(&resource_pointer.db_key)
+            self.routing_resource
+                .get_chunk_embedding(resource_pointer.db_key.to_string())
         }
     }
 
