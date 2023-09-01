@@ -175,6 +175,7 @@ test("ShinkaiMessageBuilderWrapper should get last messages from inbox", async (
       inbox,
       count,
       offset,
+      shinkaiIdentity,
       senderProfileName,
       shinkaiIdentity
     );
