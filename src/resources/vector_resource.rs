@@ -1,3 +1,6 @@
+use super::base_vector_resources::BaseVectorResource;
+
+use super::router::VectorResourcePointer;
 use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
@@ -9,7 +12,13 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use std::str::FromStr;
 
-use super::router::VectorResourcePointer;
+/// Contents of a DataChunk. Either the String data itself, or
+/// another VectorResource
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum DataContent {
+    Data(String),
+    Resource(BaseVectorResource),
+}
 
 /// Enum used for all VectorResources to specify their type.
 /// Used primarily when dealing with Trait objects, and self-attesting
@@ -85,7 +94,7 @@ impl RetrievedDataChunk {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataChunk {
     pub id: String,
-    pub data: String,
+    pub data: DataContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>, // `DataTag` type is excessively heavy when we convert to JSON, thus we just use the names here
 }
@@ -99,7 +108,7 @@ impl DataChunk {
     ) -> Self {
         Self {
             id,
-            data: data.to_string(),
+            data: DataContent::Data(data.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
         }
@@ -112,6 +121,35 @@ impl DataChunk {
         data_tag_names: &Vec<String>,
     ) -> Self {
         Self::new(id.to_string(), data, metadata, data_tag_names)
+    }
+
+    pub fn new_with_vector_resource(
+        id: u64,
+        vector_resource: &BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Self {
+        DataChunk {
+            id: id.to_string(),
+            data: DataContent::Resource(vector_resource.clone()),
+            metadata: metadata,
+            data_tag_names: vector_resource.trait_object().data_tag_index().data_tag_names(),
+        }
+    }
+
+    /// Attempts to read the data String from the DataChunk. Errors if data is a VectorResource
+    pub fn get_data_string(&self) -> Result<String, VectorResourceError> {
+        match &self.data {
+            DataContent::Data(s) => Ok(s.clone()),
+            DataContent::Resource(_) => Err(VectorResourceError::DataIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to read the BaseVectorResource from the DataChunk. Errors if data is an actual String
+    pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VectorResourceError> {
+        match &self.data {
+            DataContent::Data(_) => Err(VectorResourceError::DataIsNonMatchingType),
+            DataContent::Resource(resource) => Ok(resource.clone()),
+        }
     }
 }
 
@@ -215,7 +253,7 @@ pub trait VectorResource {
     }
 
     /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks within a specific range of the top similarity score.
+    /// the most similar data chunks within a specific range of the provided top similarity score.
     ///
     /// * `top_similarity_score` - A float that represents the top similarity score.
     fn vector_search_tolerance_ranged_score(
@@ -298,8 +336,7 @@ pub trait VectorResource {
         results
     }
 
-    /// Generates a pointer out of the resource. Of note this is required to get around
-    /// the fact that this is a trait object.
+    /// Generates a pointer out of the resource.
     fn get_resource_pointer(&self) -> VectorResourcePointer {
         let db_key = self.db_key();
         let resource_type = self.resource_type();

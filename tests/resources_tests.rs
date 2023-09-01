@@ -86,17 +86,17 @@ fn test_manual_document_resource_vector_search() {
     let query_string = "What animal barks?";
     let query_embedding = generator.generate_embedding(query_string).unwrap();
     let res = doc.vector_search(query_embedding, 1);
-    assert_eq!(fact1, res[0].chunk.data);
+    assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding(query_string2).unwrap();
     let res2 = doc.vector_search(query_embedding2, 3);
-    assert_eq!(fact2, res2[0].chunk.data);
+    assert_eq!(fact2, res2[0].chunk.get_data_string().unwrap());
 
     let query_string3 = "What animal swims in the ocean?";
     let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
-    assert_eq!(fact3, res3[0].chunk.data);
+    assert_eq!(fact3, res3[0].chunk.get_data_string().unwrap());
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com July 21, 2023 1 Introduction With LLMs proving themselves to be very capable in performing many of the core computing tasks we manually/programmatically perform every day, we are entering into a new world where an AI coordinated computing paradigm is inevitable.",
-            res[0].chunk.data
+            res[0].chunk.get_data_string().unwrap()
         );
 
     let query_string = "What about up-front costs?";
@@ -125,7 +125,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "No longer will we need heavy up front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].chunk.data
+            res[0].chunk.get_data_string().unwrap()
         );
 
     let query_string = "Does this relate to crypto?";
@@ -133,7 +133,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
-            res[0].chunk.data
+            res[0].chunk.get_data_string().unwrap()
         );
 }
 
@@ -222,7 +222,7 @@ fn test_multi_resource_db_vector_search() {
     let query = generator.generate_embedding("Camels").unwrap();
     let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
-    assert_eq!(fact2, &ret_data_chunk.chunk.data);
+    assert_eq!(fact2, &ret_data_chunk.chunk.get_data_string().unwrap());
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Does this relate to crypto?").unwrap();
@@ -230,7 +230,7 @@ fn test_multi_resource_db_vector_search() {
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
-            &ret_data_chunk.chunk.data
+            &ret_data_chunk.chunk.get_data_string().unwrap()
         );
 
     // Camel DataChunk proximity vector search
@@ -241,9 +241,9 @@ fn test_multi_resource_db_vector_search() {
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
     let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
-    assert_eq!(fact1, &ret_data_chunk.chunk.data);
-    assert_eq!(fact2, &ret_data_chunk2.chunk.data);
-    assert_eq!(fact3, &ret_data_chunk3.chunk.data);
+    assert_eq!(fact1, &ret_data_chunk.chunk.get_data_string().unwrap());
+    assert_eq!(fact2, &ret_data_chunk2.chunk.get_data_string().unwrap());
+    assert_eq!(fact3, &ret_data_chunk3.chunk.get_data_string().unwrap());
 
     // Animal tolerance range vector search
     let query = generator.generate_embedding("Animals that peform actions").unwrap();
@@ -254,13 +254,13 @@ fn test_multi_resource_db_vector_search() {
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
 
-    assert_eq!(fact1, &ret_data_chunk.chunk.data);
-    assert_eq!(fact2, &ret_data_chunk2.chunk.data);
+    assert_eq!(fact1, &ret_data_chunk.chunk.get_data_string().unwrap());
+    assert_eq!(fact2, &ret_data_chunk2.chunk.get_data_string().unwrap());
 
     // for ret_data in &ret_data_chunks {
     //         println!(
     //             "Origin: {}\nData: {}\nScore: {}\n\n",
-    //             ret_data.resource_pointer.db_key, ret_data.chunk.data, ret_data.score
+    //             ret_data.resource_pointer.db_key, ret_data.chunk.get_data_string().unwrap(), ret_data.score
     //         )
     //     }
 }

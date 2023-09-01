@@ -93,14 +93,20 @@ impl VectorResourceRouter {
         let mut resource_pointers = vec![];
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-            if let Ok(resource_type) = VectorResourceType::from_str(&ret_chunk.chunk.data)
-                .map_err(|_| VectorResourceError::InvalidVectorResourceType)
-            {
-                let id = &ret_chunk.chunk.id;
-                let embedding = self.routing_resource.get_chunk_embedding(id).ok();
-                let resource_pointer =
-                    VectorResourcePointer::new(&id, resource_type, embedding, ret_chunk.chunk.data_tag_names.clone());
-                resource_pointers.push(resource_pointer);
+            if let DataContent::Data(data) = &ret_chunk.chunk.data {
+                if let Ok(resource_type) =
+                    VectorResourceType::from_str(data).map_err(|_| VectorResourceError::InvalidVectorResourceType)
+                {
+                    let id = &ret_chunk.chunk.id;
+                    let embedding = self.routing_resource.get_chunk_embedding(id).ok();
+                    let resource_pointer = VectorResourcePointer::new(
+                        &id,
+                        resource_type,
+                        embedding,
+                        ret_chunk.chunk.data_tag_names.clone(),
+                    );
+                    resource_pointers.push(resource_pointer);
+                }
             }
         }
         resource_pointers

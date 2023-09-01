@@ -164,7 +164,7 @@ impl ToolRouter {
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         let data_chunk = self.routing_resource.get_data_chunk(key)?;
-        Ok(ShinkaiTool::from_json(&data_chunk.data)?)
+        Ok(ShinkaiTool::from_json(&data_chunk.get_data_string()?)?)
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
@@ -199,9 +199,10 @@ impl ToolRouter {
         let mut shinkai_tools = vec![];
         for ret_chunk in ret_chunks {
             // Ignores tools added to the router which are invalid by matching on the Ok()
-            let check = ShinkaiTool::from_json(&ret_chunk.chunk.data).unwrap();
-            if let Ok(shinkai_tool) = ShinkaiTool::from_json(&ret_chunk.chunk.data) {
-                shinkai_tools.push(shinkai_tool);
+            if let Ok(data_string) = ret_chunk.chunk.get_data_string() {
+                if let Ok(shinkai_tool) = ShinkaiTool::from_json(&data_string) {
+                    shinkai_tools.push(shinkai_tool);
+                }
             }
         }
         shinkai_tools
