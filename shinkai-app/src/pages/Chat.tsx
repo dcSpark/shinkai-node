@@ -81,7 +81,9 @@ const Chat: React.FC = () => {
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
+      console.log("Redux Messages:", reduxMessages);
       const lastMessage = reduxMessages[reduxMessages.length - 1];
+      console.log("Last Message:", lastMessage);
       const timeKey = lastMessage.external_metadata.scheduled_time;
       const hashKey = calculateMessageHash(lastMessage);
       const lastMessageKey = `${timeKey}:${hashKey}`;
@@ -177,7 +179,7 @@ const Chat: React.FC = () => {
                     setupDetailsState;
 
                   const localIdentity = `${profile}/device/${registration_name}`;
-                  console.log("Message:", message);
+                  // console.log("Message:", message);
                   let isLocalMessage = false;
                   if (message.body && "unencrypted" in message.body) {
                     isLocalMessage =

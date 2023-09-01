@@ -84,7 +84,7 @@ export const createChatWithMessage =
       );
 
       const message: ShinkaiMessage = JSON.parse(messageStr);
-      console.log("Message:", message);
+      // console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(`${apiEndpoint}/v1/send`, message);
@@ -366,7 +366,7 @@ export const createJob =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("Message:", message);
+      // console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(
@@ -406,7 +406,7 @@ export const sendMessageToJob =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("Message:", message);
+      // console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(
@@ -440,7 +440,7 @@ export const getProfileAgents =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("Message:", message);
+      // console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(
@@ -478,7 +478,7 @@ export const addAgent =
       );
 
       const message = JSON.parse(messageStr);
-      console.log("Message:", message);
+      // console.log("Message:", message);
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(`${apiEndpoint}/v1/add_agent`, message);

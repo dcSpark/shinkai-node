@@ -154,9 +154,12 @@ impl ShinkaiDB {
 
         // Skip the first entry if an offset_key was provided and it matches the current key
         if let Some(offset_key) = &offset_key {
+            println!("offset inside loop: {}", offset_key);
             if let Some(Ok((key, _))) = iter.next() {
                 let key_str = String::from_utf8_lossy(&key);
+                println!("Key str inside loop: {}", key_str);
                 if key_str != *offset_key {
+                    println!("Key didn't match offset key");
                     // If the key didn't match the offset_key, recreate the iterator to start from the end
                     iter = self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End);
                 }
