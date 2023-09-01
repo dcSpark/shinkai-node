@@ -107,7 +107,7 @@ const rootReducer = (state = initialState, action: Action): RootState => {
         ...state,
         inboxes: {
           ...state.inboxes,
-          [inboxId]: [...uniqueNewMessages, ...currentMessages],
+          [inboxId]: [...currentMessages, ...uniqueNewMessages],
         },
         messageHashes: {
           ...state.messageHashes,

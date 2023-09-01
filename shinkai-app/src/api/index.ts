@@ -220,7 +220,7 @@ export const getLastMessagesFromInbox =
       );
 
       handleHttpError(response);
-      let results = previous ? response.data.reverse() : response.data;
+      let results = response.data;
       if (previous) {
         console.log("receiveLoadMoreMessagesFromInbox Response:", results);
         dispatch(receiveLoadMoreMessagesFromInbox(inbox, results));
