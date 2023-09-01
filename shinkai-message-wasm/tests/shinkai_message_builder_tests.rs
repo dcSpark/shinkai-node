@@ -369,6 +369,7 @@ mod tests {
 
         let sender_profile = "sender_profile".to_string();
         let receiver_node = "@@receiver_node.shinkai".to_string();
+        let sender = format!("{}/{}", receiver_node.clone(), sender_profile);
         let data = "Test data".to_string();
         let schema = "TextContent".to_string();
 
@@ -378,8 +379,8 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             data.clone(),
-            receiver_node.clone(),
-            sender_profile.clone(),
+            sender.clone(),
+            "".to_string(),
             receiver_node.clone(),
             "".to_string(),
             "",
@@ -408,12 +409,12 @@ mod tests {
         assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
         assert_eq!(
             decrypted_message.get_sender_subidentity().unwrap(),
-            "sender_profile".to_string()
+            "".to_string()
         );
 
         // Check external metadata
         let external_metadata = decrypted_message.external_metadata;
-        assert_eq!(external_metadata.sender, receiver_node);
+        assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 

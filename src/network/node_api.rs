@@ -149,7 +149,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     };
 
     // POST v1/add_agent
-    let available_agents = {
+    let add_agent = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "add_agent")
             .and(warp::post())
@@ -262,6 +262,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(connect)
         .or(get_all_inboxes_for_profile)
         .or(available_agents)
+        .or(add_agent)
         .or(get_last_messages_from_inbox)
         .or(get_last_unread_messages)
         .or(create_job)

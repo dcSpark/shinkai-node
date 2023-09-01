@@ -466,15 +466,13 @@ export const addAgent =
   ) =>
   async (dispatch: AppDispatch) => {
     try {
-      console.log("addAgent agent:", agent);
-      console.log("sender: ", node_name + "/" + sender_subidentity);
       let agent_wrapped = SerializedAgentWrapper.fromSerializedAgent(agent);
       const messageStr = ShinkaiMessageBuilderWrapper.request_add_agent(
-        setupDetailsState.my_device_encryption_sk,
-        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.profile_encryption_sk,
+        setupDetailsState.profile_identity_sk,
         setupDetailsState.node_encryption_pk,
-        node_name,
         node_name + "/" + sender_subidentity,
+        "",
         node_name,
         agent_wrapped
       );

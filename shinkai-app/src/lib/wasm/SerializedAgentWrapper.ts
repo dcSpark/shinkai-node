@@ -29,6 +29,19 @@ export class SerializedAgentWrapper {
     } else {
       throw new Error("Invalid model: " + JSON.stringify(agent.model));
     }
+    const toolkitPermissionsStr =
+      agent.toolkit_permissions.length > 0
+        ? agent.toolkit_permissions.join(",")
+        : "";
+    const storageBucketPermissionsStr =
+      agent.storage_bucket_permissions.length > 0
+        ? agent.storage_bucket_permissions.join(",")
+        : "";
+    const allowedMessageSendersStr =
+      agent.allowed_message_senders.length > 0
+        ? agent.allowed_message_senders.join(",")
+        : "";
+
     const wasmWrapper = SerializedAgentWrapperWASM.fromStrings(
       agent.id,
       agent.full_identity_name,
@@ -36,9 +49,9 @@ export class SerializedAgentWrapper {
       agent.external_url || "",
       agent.api_key || "",
       modelStr,
-      agent.toolkit_permissions.join(","),
-      agent.storage_bucket_permissions.join(","),
-      agent.allowed_message_senders.join(",")
+      toolkitPermissionsStr,
+      storageBucketPermissionsStr,
+      allowedMessageSendersStr
     );
     return new SerializedAgentWrapper(wasmWrapper.to_jsvalue());
   }

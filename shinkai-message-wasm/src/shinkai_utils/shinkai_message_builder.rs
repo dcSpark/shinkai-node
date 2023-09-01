@@ -699,7 +699,7 @@ impl ShinkaiMessageBuilder {
             schema,
             EncryptionMethod::None,
         )
-        .external_metadata_with_other(receiver.clone(), receiver, other)
+        .external_metadata_with_other(receiver.clone(), sender, other)
         .build()
     }
 

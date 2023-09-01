@@ -89,9 +89,21 @@ impl SerializedAgent {
         let model = model
             .parse::<AgentAPIModel>()
             .map_err(|_| JsValue::from_str("Invalid model"))?;
-        let toolkit_permissions = toolkit_permissions.split(',').map(|s| s.to_string()).collect();
-        let storage_bucket_permissions = storage_bucket_permissions.split(',').map(|s| s.to_string()).collect();
-        let allowed_message_senders = allowed_message_senders.split(',').map(|s| s.to_string()).collect();
+        let toolkit_permissions = if toolkit_permissions.is_empty() {
+            Vec::new()
+        } else {
+            toolkit_permissions.split(',').map(|s| s.to_string()).collect()
+        };
+        let storage_bucket_permissions = if storage_bucket_permissions.is_empty() {
+            Vec::new()
+        } else {
+            storage_bucket_permissions.split(',').map(|s| s.to_string()).collect()
+        };
+        let allowed_message_senders = if allowed_message_senders.is_empty() {
+            Vec::new()
+        } else {
+            allowed_message_senders.split(',').map(|s| s.to_string()).collect()
+        };
 
         Ok(SerializedAgent {
             id,
