@@ -318,22 +318,42 @@ pub trait VectorResource {
                 }
             }
         }
-        // Acquires similarity score of the embeddings within the temp doc
-        // let scores = temp_doc._vector_search_score_results(query, num_of_results);
+        // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
-        // Manually fetches the correct data chunks in the temp doc via iterative fetching
-        let mut results: Vec<RetrievedDataChunk> = vec![];
+
+        // Go through the scores, fetch the chunks, and check if any of the chunks are BaseVectorResources
+        let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
+        let mut vector_resource_count = 0;
         for (score, id) in scores {
             if let Ok(chunk) = self.get_data_chunk(id) {
-                results.push(RetrievedDataChunk {
-                    chunk: chunk.clone(),
-                    score,
-                    resource_pointer: self.get_resource_pointer(),
-                });
+                match chunk.data {
+                    DataContent::Resource(resource) => {
+                        vector_resource_count += 1;
+                        let sub_results = resource.trait_object().syntactic_vector_search(
+                            query.clone(),
+                            num_of_results,
+                            &chunk.data_tag_names,
+                        );
+                        first_level_results.extend(sub_results);
+                    }
+                    DataContent::Data(_) => {
+                        first_level_results.push(RetrievedDataChunk {
+                            chunk: chunk.clone(),
+                            score,
+                            resource_pointer: self.get_resource_pointer(),
+                        });
+                    }
+                }
             }
         }
 
-        results
+        // If there was at least one BaseVectorResource found, then there will be new results
+        // added, so we must sort them (and cut off the extras) once again
+        if vector_resource_count > 1 {
+            return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
+        }
+        // Else none were found, then the results are already ordered correctly
+        first_level_results
     }
 
     /// Generates a pointer out of the resource.
