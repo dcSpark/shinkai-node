@@ -177,7 +177,7 @@ const Home: React.FC = () => {
             },
           },
         ]}
-      ></IonActionSheet>
+      />
       <IonAlert
         isOpen={showLogoutAlert}
         onDidDismiss={() => setShowLogoutAlert(false)}

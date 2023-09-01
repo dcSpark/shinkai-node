@@ -20,11 +20,14 @@ import { submitRequestRegistrationCode } from "../api";
 import { RootState } from "../store";
 import { clearRegistrationCode } from "../store/actions";
 import { useSetup } from "../hooks/usetSetup";
+import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
+import Button from "../components/ui/Button";
+import Modal from "../components/ui/Modal";
 
 const AdminCommands: React.FC = () => {
   useSetup();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetailsState,
   );
   const [showCodeRegistrationActionSheet, setShowCodeRegistrationActionSheet] =
     useState(false);
@@ -36,7 +39,7 @@ const AdminCommands: React.FC = () => {
   const [profileName, setProfileName] = useState("");
   const dispatch = useDispatch();
   const registrationCode = useSelector(
-    (state: RootState) => state.registrationCode
+    (state: RootState) => state.registrationCode,
   );
   const commands = [
     "Get Peers",
@@ -78,7 +81,13 @@ const AdminCommands: React.FC = () => {
       // Serialize permissionsType as "device:PROFILE_NAME" when "Device" is selected
       finalCodeType = `device:${profileName}`;
     }
-    await dispatch(submitRequestRegistrationCode(permissionsType, finalCodeType, setupDetailsState));
+    await dispatch(
+      submitRequestRegistrationCode(
+        permissionsType,
+        finalCodeType,
+        setupDetailsState,
+      ),
+    );
     setCodeRegistrationShowModal(true);
     return true;
   };
@@ -88,6 +97,7 @@ const AdminCommands: React.FC = () => {
       <IonActionSheet
         isOpen={showIdentityTypeActionSheet}
         onDidDismiss={() => setShowIdentityTypeActionSheet(false)}
+        className="ion-actionSheet-custom"
         buttons={[
           {
             text: "Profile",
@@ -105,6 +115,7 @@ const AdminCommands: React.FC = () => {
         ]}
       />
       <IonActionSheet
+        className="ion-actionSheet-custom"
         isOpen={showCodeRegistrationActionSheet}
         onDidDismiss={() => setShowCodeRegistrationActionSheet(false)}
         buttons={[
@@ -126,44 +137,36 @@ const AdminCommands: React.FC = () => {
           },
         ]}
       />
-      <IonModal isOpen={showCodeRegistrationModal}>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle>Code Registration Successful</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        <IonContent className="ion-padding">
-          <IonLabel>Code: {registrationCode}</IonLabel>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              marginTop: "20px",
-            }}
-          >
-            <IonButton
-              onClick={copyToClipboard}
-              style={{ marginRight: "10px" }}
-            >
-              Copy
-            </IonButton>
-            <IonButton onClick={() => setCodeRegistrationShowModal(false)}>
-              Dismiss
-            </IonButton>
+      <Modal
+        isOpen={showCodeRegistrationModal}
+        header={'Code Registration Successful'}
+        content={
+          <div className="p-6 md:py-8">
+            <IonLabel className={"text-slate-700 dark:text-white "}>
+              Code: {registrationCode}
+            </IonLabel>
+            <div className={"flex flex-col gap-4 md:flex-row md:gap-6 mt-5 "}>
+              <Button onClick={copyToClipboard}>Copy</Button>
+              <Button
+                variant={"secondary"}
+                onClick={() => setCodeRegistrationShowModal(false)}
+              >
+                Dismiss
+              </Button>
+            </div>
           </div>
-        </IonContent>
-      </IonModal>
+        }
+      />
+
       <IonPage>
-        <IonHeader>
-          <IonToolbar>
-            <IonButtons slot="start">
-              <IonBackButton defaultHref="/home" />
-            </IonButtons>
-            <IonTitle>Admin Commands</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        <IonContent>
-          <IonList>
+        <IonHeaderCustom>
+          <IonButtons slot="start">
+            <IonBackButton defaultHref="/home" />
+          </IonButtons>
+          <IonTitle>Admin Commands</IonTitle>
+        </IonHeaderCustom>
+        <IonContentCustom>
+          <IonList className="ion-list-chat p-0 divide-y divide-slate-200 dark:divide-slate-500/50 md:rounded=[1.25rem]  ">
             {commands.map((command) => (
               <IonItem
                 button
@@ -174,7 +177,7 @@ const AdminCommands: React.FC = () => {
               </IonItem>
             ))}
           </IonList>
-        </IonContent>
+        </IonContentCustom>
       </IonPage>
     </>
   );
