@@ -91,12 +91,14 @@ impl RetrievedDataChunk {
 }
 
 /// Represents a data chunk with an id, data, and optional metadata.
+/// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
+/// data tag names instead in the DataChunk.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataChunk {
     pub id: String,
     pub data: DataContent,
     pub metadata: Option<HashMap<String, String>>,
-    pub data_tag_names: Vec<String>, // `DataTag` type is excessively heavy when we convert to JSON, thus we just use the names here
+    pub data_tag_names: Vec<String>,
 }
 
 impl DataChunk {
@@ -282,19 +284,7 @@ pub trait VectorResource {
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
-        // Fetch the RetrievedDataChunk matching the most similar embeddings
-        let mut chunks: Vec<RetrievedDataChunk> = vec![];
-        for (score, id) in scores {
-            if let Ok(chunk) = self.get_data_chunk(id) {
-                chunks.push(RetrievedDataChunk {
-                    chunk: chunk.clone(),
-                    score,
-                    resource_pointer: self.get_resource_pointer(),
-                });
-            }
-        }
-
-        chunks
+        self._order_vector_search_results(scores, query, num_of_results, &vec![])
     }
 
     /// Performs a syntactic vector search using a query embedding and a list of data tag names
@@ -321,7 +311,19 @@ pub trait VectorResource {
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
-        // Go through the scores, fetch the chunks, and check if any of the chunks are BaseVectorResources
+        self._order_vector_search_results(scores, query, num_of_results, data_tag_names)
+    }
+
+    /// Internal method shared by vector_search() and syntactic_vector_search() that
+    /// orders all scores, and importantly resolves any BaseVectorResources which were
+    /// in the DataChunks of the most similar results.
+    fn _order_vector_search_results(
+        &self,
+        scores: Vec<(f32, String)>,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+    ) -> Vec<RetrievedDataChunk> {
         let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
         let mut vector_resource_count = 0;
         for (score, id) in scores {
@@ -329,11 +331,17 @@ pub trait VectorResource {
                 match chunk.data {
                     DataContent::Resource(resource) => {
                         vector_resource_count += 1;
-                        let sub_results = resource.trait_object().syntactic_vector_search(
-                            query.clone(),
-                            num_of_results,
-                            &chunk.data_tag_names,
-                        );
+
+                        // If no data tag names provided, it means we are doing a normal vector search
+                        let sub_results = if data_tag_names.is_empty() {
+                            resource.trait_object().vector_search(query.clone(), num_of_results)
+                        } else {
+                            resource.trait_object().syntactic_vector_search(
+                                query.clone(),
+                                num_of_results,
+                                data_tag_names,
+                            )
+                        };
                         first_level_results.extend(sub_results);
                     }
                     DataContent::Data(_) => {
@@ -347,12 +355,9 @@ pub trait VectorResource {
             }
         }
 
-        // If there was at least one BaseVectorResource found, then there will be new results
-        // added, so we must sort them (and cut off the extras) once again
         if vector_resource_count > 1 {
             return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
         }
-        // Else none were found, then the results are already ordered correctly
         first_level_results
     }
 
