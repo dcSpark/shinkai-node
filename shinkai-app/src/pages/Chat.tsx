@@ -46,8 +46,6 @@ const parseDate = (dateString: string) => {
   return new Date(dateString);
 };
 
-export const CHAT_MESSAGES_PAGINATION_LIMIT = 10;
-
 const Chat: React.FC = () => {
   console.log("Loading Chat.tsx");
   useSetup();
@@ -76,11 +74,10 @@ const Chat: React.FC = () => {
   );
 
   useEffect(() => {
-    console.log(lastKey, 'lastKey')
     dispatch(
-      getLastMessagesFromInbox(deserializedId, CHAT_MESSAGES_PAGINATION_LIMIT, lastKey, setupDetailsState)
+      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
     );
-  }, [id, dispatch, setupDetailsState,lastKey]);
+  }, [id, dispatch, setupDetailsState]);
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
