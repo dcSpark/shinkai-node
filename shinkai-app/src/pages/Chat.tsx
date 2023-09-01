@@ -253,6 +253,11 @@ const Chat: React.FC = () => {
               value={inputMessage}
               onIonChange={(e) => setInputMessage(e.detail.value!)}
               placeholder="Type a message"
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  sendMessage();
+                }
+              }}
             ></IonTextarea>
 
             <button
