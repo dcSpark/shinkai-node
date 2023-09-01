@@ -76,15 +76,14 @@ impl VectorResource for DocumentVectorResource {
         self.resource_embedding = embedding;
     }
 
-    /// Naively searches through all chunk embeddings in the resource
-    /// to find one with a matching id
+    /// Efficiently retrieves a DataChunk's matching embedding given its id by fetching it via index.
     fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError> {
-        for embedding in self.chunk_embeddings() {
-            if embedding.id == id {
-                return Ok(embedding.clone());
-            }
+        let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidChunkId)?;
+        if id == 0 || id > self.chunk_count {
+            return Err(VectorResourceError::InvalidChunkId);
         }
-        Err(VectorResourceError::InvalidChunkId)
+        let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
+        Ok(self.chunk_embeddings[index].clone())
     }
 
     /// Efficiently retrieves a data chunk given its id by fetching it via index.
@@ -268,6 +267,25 @@ impl DocumentVectorResource {
         self.chunk_embeddings.push(embedding);
     }
 
+    /// Replaces an existing data chunk and associated embedding in the Document resource
+    /// with a BaseVectorResource in the new DataChunk, and updates the data tags index.
+    pub fn replace_vector_resource(
+        &mut self,
+        id: u64,
+        new_resource: BaseVectorResource,
+        new_metadata: Option<HashMap<String, String>>,
+    ) -> Result<DataChunk, VectorResourceError> {
+        let embedding = new_resource.trait_object().resource_embedding().clone();
+        let tag_names = new_resource.trait_object().data_tag_index().data_tag_names();
+        self._replace_data_without_tag_validation(
+            id,
+            DataContent::Resource(new_resource),
+            new_metadata,
+            &embedding,
+            &tag_names,
+        )
+    }
+
     /// Replaces an existing data chunk & associated embedding and updates the data tags index.
     /// * `id` - The id of the data chunk to be replaced.
     pub fn replace_data(
@@ -281,39 +299,13 @@ impl DocumentVectorResource {
         // Validate which tags will be saved with the new data
         let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._replace_data_without_tag_validation(id, new_data, new_metadata, embedding, &data_tag_names)
-    }
-
-    /// Replaces an existing data chunk & associated embedding and updates the data tags index
-    /// without checking if tags are valid. Used for internal purposes/the routing resource.
-    pub fn _replace_data_without_tag_validation(
-        &mut self,
-        id: u64,
-        new_data: &str,
-        new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
-        new_tag_names: &Vec<String>,
-    ) -> Result<DataChunk, VectorResourceError> {
-        // Id + index
-        if id > self.chunk_count {
-            return Err(VectorResourceError::InvalidChunkId);
-        }
-        let index = (id - 1) as usize;
-
-        // Next create the new chunk, and replace the old chunk in the data_chunks list
-        let new_chunk = DataChunk::new_with_integer_id(id, &new_data, new_metadata, &new_tag_names);
-        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk.clone());
-
-        // Then deletion of old chunk from index and addition of new chunk
-        self.data_tag_index.remove_chunk(&old_chunk);
-        self.data_tag_index.add_chunk(&new_chunk);
-
-        // Finally replacing the embedding
-        let mut embedding = embedding.clone();
-        embedding.set_id_with_integer(id);
-        self.chunk_embeddings[index] = embedding;
-
-        Ok(old_chunk)
+        self._replace_data_without_tag_validation(
+            id,
+            DataContent::Data(new_data.to_string()),
+            new_metadata,
+            embedding,
+            &data_tag_names,
+        )
     }
 
     /// Pops and returns the last data chunk and associated embedding
@@ -331,6 +323,45 @@ impl DocumentVectorResource {
             }
             _ => Err(VectorResourceError::VectorResourceEmpty),
         }
+    }
+
+    /// Replaces an existing data chunk & associated embedding in the Document resource
+    /// without checking if tags are valid. Used for resource router.
+    pub fn _replace_data_without_tag_validation(
+        &mut self,
+        id: u64,
+        new_data: DataContent,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+        new_tag_names: &Vec<String>,
+    ) -> Result<DataChunk, VectorResourceError> {
+        // Id + index
+        if id > self.chunk_count {
+            return Err(VectorResourceError::InvalidChunkId);
+        }
+        let index = (id - 1) as usize;
+
+        // Next create the new chunk, and replace the old chunk in the data_chunks list
+        let new_chunk = match new_data {
+            DataContent::Data(data_string) => {
+                DataChunk::new_with_integer_id(id, &data_string, new_metadata.clone(), new_tag_names)
+            }
+            DataContent::Resource(resource) => {
+                DataChunk::new_vector_resource_with_integer_id(id, &resource, new_metadata.clone())
+            }
+        };
+        let old_chunk = std::mem::replace(&mut self.data_chunks[index], new_chunk.clone());
+
+        // Then deletion of old chunk from index and addition of new chunk
+        self.data_tag_index.remove_chunk(&old_chunk);
+        self.data_tag_index.add_chunk(&new_chunk);
+
+        // Finally replacing the embedding
+        let mut embedding = embedding.clone();
+        embedding.set_id_with_integer(id);
+        self.chunk_embeddings[index] = embedding;
+
+        Ok(old_chunk)
     }
 
     /// Deletes a data chunk and associated embedding from the resource

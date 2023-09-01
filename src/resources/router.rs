@@ -173,7 +173,7 @@ impl VectorResourceRouter {
 
         self.routing_resource._replace_kv_without_tag_validation(
             old_pointer_id,
-            &data,
+            DataContent::Data(data.to_string()),
             metadata,
             &embedding,
             &resource_pointer.data_tag_names,
