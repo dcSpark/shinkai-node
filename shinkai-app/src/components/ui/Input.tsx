@@ -16,22 +16,16 @@ export default function Input({
   className?: string;
 }) {
   return (
-    <IonItem
-      className={cn("ion-input-item-custom", className)}
+    <IonInput
+      className={cn("ion-input-custom", className)}
+      class={"native-input"}
+      value={value}
       shape={"round"}
+      onIonChange={onChange}
+      labelPlacement={undefined}
+      placeholder={label}
       fill={"outline"}
-      lines={"none"}
-    >
-      <IonInput
-        className="ion-input-custom flex gap-10"
-        class={"native-input"}
-        value={value}
-        onIonChange={onChange}
-        labelPlacement={undefined}
-        placeholder={label}
-        // label={label}
-        aria-label={label}
-      />
-    </IonItem>
+      aria-label={label}
+    />
   );
 }
