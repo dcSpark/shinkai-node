@@ -43,15 +43,15 @@ pub enum JSToolkitExecutor {
 }
 
 impl JSToolkitExecutor {
-    // Starts the JS Toolkit Executor locally at default path `./files/shinkai-toolkit-executor.js`
-    // Primarily intended for local testing (executor should be sandboxed for production)
+    /// Starts the JS Toolkit Executor locally at default path `./files/shinkai-toolkit-executor.js`
+    /// Primarily intended for local testing (executor should be sandboxed for production)
     pub fn new_local() -> Result<Self, ToolError> {
         let executor = JSToolkitExecutor::new_local_custom_path("./files/shinkai-toolkit-executor.js")?;
         Ok(executor)
     }
 
-    // Starts the JS Toolkit Executor locally at a custom path
-    // Primarily intended for local testing (executor should be sandboxed for production)
+    /// Starts the JS Toolkit Executor locally at a custom path
+    /// Primarily intended for local testing (executor should be sandboxed for production)
     pub fn new_local_custom_path(executor_file_path: &str) -> Result<Self, ToolError> {
         let executor = JSToolkitExecutorProcess::start(executor_file_path)
             .map_err(|_| ToolError::JSToolkitExecutorFailedStarting)?;
@@ -59,14 +59,14 @@ impl JSToolkitExecutor {
         Ok(executor)
     }
 
-    // Establishes connection to a remotely ran JS Toolkit Executor
+    /// Establishes connection to a remotely ran JS Toolkit Executor
     pub fn new_remote(address: String) -> Result<Self, ToolError> {
         let executor = JSToolkitExecutor::Remote(RemoteJSToolkitExecutor { address });
         executor.submit_health_check()?;
         Ok(executor)
     }
 
-    // Submits a health check request to /health_check and checks the response
+    /// Submits a health check request to /health_check and checks the response
     pub fn submit_health_check(&self) -> Result<(), ToolError> {
         let response = self.submit_get_request("/health_check")?;
         if let Some(_) = response.get("status") {
@@ -76,26 +76,26 @@ impl JSToolkitExecutor {
         }
     }
 
-    // Submits a toolkit json request to the JS Toolkit Executor
-    // and parses the response into a JSToolkit struct
+    /// Submits a toolkit json request to the JS Toolkit Executor
+    /// and parses the response into a JSToolkit struct
     pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())?;
         JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
 
-    // Submits a headers validation request to the JS Toolkit Executor
+    /// Submits a headers validation request to the JS Toolkit Executor.
+    /// If header validation is successful returns `Ok(())`, else returns error with reason.
     pub fn submit_headers_validation_request(
         &self,
         toolkit_js_code: &str,
         header_values: &HashMap<String, String>,
-    ) -> Result<bool, ToolError> {
+    ) -> Result<(), ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self.submit_post_request("/validate_headers", &input_data_json, header_values)?;
-        println!("{:?}", response);
         if let Some(JsonValue::Bool(result)) = response.get("result") {
             if *result {
-                return Ok(*result);
+                return Ok(());
             }
         } else if let Some(JsonValue::Object(result)) = response.get("result") {
             if let Some(JsonValue::String(error)) = result.get("error") {

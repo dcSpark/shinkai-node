@@ -3,9 +3,12 @@ use serde_json::Value as JsonValue;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
-use shinkai_node::resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
+use shinkai_node::tools::router::ShinkaiTool;
+use shinkai_node::tools::rust_tools::RUST_TOOLKIT;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -117,7 +120,7 @@ fn test_toolkit_installation_and_retrieval() {
 }
 
 #[test]
-fn test_tool_router() {
+fn test_tool_router_and_toolkit_flow() {
     setup();
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -141,15 +144,69 @@ fn test_tool_router() {
 
     // Set headers and activate the toolkit to add it to the tool router
     shinkai_db
-        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values())
+        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values(), &executor)
         .unwrap();
-    shinkai_db.activate_toolkit(&toolkit.name, &profile).unwrap();
+    shinkai_db
+        .activate_toolkit(&toolkit.name, &profile, &executor, Box::new(generator.clone()))
+        .unwrap();
 
     // Retrieve the tool router
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
 
     // Vector Search
-    // let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
-    // let results = tool_router.vector_search(query, 10);
-    // assert_eq!(results[0].name(), "isEven")
+    let query = generator.generate_embedding("Is 25 an odd or even number?").unwrap();
+    let results1 = tool_router.vector_search(query, 10);
+    assert_eq!(results1[0].name(), "isEven");
+
+    let query = generator
+        .generate_embedding("I want to multiply 500 x 1523 and see if it is greater than 50000")
+        .unwrap();
+    let results2 = tool_router.vector_search(query, 1);
+    assert_eq!(results2[0].name(), "CompareNumbers");
+
+    let query = generator
+        .generate_embedding("Send a message to @@alice.shinkai asking her what the status is on the project estimates.")
+        .unwrap();
+    let results3 = tool_router.vector_search(query, 10);
+    assert_eq!(results3[0].name(), "Send_Message");
+
+    let query = generator
+        .generate_embedding("Search through my documents and find the pdf with the March company financial report.")
+        .unwrap();
+    let results4 = tool_router.vector_search(query, 10);
+    assert_eq!(results4[0].name(), "User_Data_Vector_Search");
+
+    // Deactivate toolkit and check to make sure tools are removed from Tool Router
+    shinkai_db.deactivate_toolkit(&toolkit.name, &profile).unwrap();
+    let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
+    assert!(tool_router
+        .get_shinkai_tool(&results1[0].toolkit_name(), &results1[0].name())
+        .is_err());
+    assert!(tool_router
+        .get_shinkai_tool(&results2[0].toolkit_name(), &results2[0].name())
+        .is_err());
+
+    // Check toolkit is still installed, then uninstall, and check again
+    assert!(shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
+    shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
+    assert!(!shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 }
+
+// A fake test which purposefully fails so that we can generate embeddings
+// for all existing rust tools and print them into console (so we can copy-paste)
+// and hard-code them in rust_tools.rs
+// #[test]
+// fn generate_rust_tool_embeddings() {
+//     setup();
+//     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+//     let generator = RemoteEmbeddingGenerator::new_default();
+
+//     for t in RUST_TOOLKIT.rust_tool_map.values() {
+//         let tool = ShinkaiTool::Rust(t.clone());
+//         let embedding = generator.generate_embedding(&tool.format_embedding_string()).unwrap();
+
+//         println!("{}\n{:?}\n\n", tool.name(), embedding.vector)
+//     }
+
+//     assert_eq!(1, 2);
+// }

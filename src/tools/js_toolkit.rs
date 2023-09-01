@@ -18,6 +18,29 @@ impl InstalledJSToolkitMap {
         }
     }
 
+    /// Sets a given toolkit to active state
+    pub fn activate_toolkit(&mut self, toolkit_name: &str) -> Result<(), ToolError> {
+        let toolkit_info = self
+            .toolkits_info
+            .get_mut(toolkit_name)
+            .ok_or(ToolError::ToolkitNotFound)?;
+
+        toolkit_info.activated = true;
+
+        Ok(())
+    }
+
+    /// Sets a given toolkit to deactivated state
+    pub fn deactivate_toolkit(&mut self, toolkit_name: &str) -> Result<(), ToolError> {
+        let toolkit_info = self
+            .toolkits_info
+            .get_mut(toolkit_name)
+            .ok_or(ToolError::ToolkitNotFound)?;
+
+        toolkit_info.activated = false;
+
+        Ok(())
+    }
 
     /// DB Key For the Installed JS Toolkits Map
     pub fn db_key() -> String {

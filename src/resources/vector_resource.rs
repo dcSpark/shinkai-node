@@ -1,5 +1,6 @@
 use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
+use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resources::embeddings::*;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
@@ -162,7 +163,7 @@ pub trait VectorResource {
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
     ) -> Result<(), VectorResourceError> {
-        let formatted = self.resource_embedding_data_formatted(keywords);
+        let formatted = self.format_embedding_string(keywords);
         let new_embedding = generator
             .generate_embedding_with_id(&formatted, "RE")
             .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
@@ -171,10 +172,8 @@ pub trait VectorResource {
     }
 
     /// Generates a formatted string that represents the data to be used for the
-    /// resource embedding. This string includes the resource's name,
-    /// description, source, and the maximum number of keywords which can be
-    /// fit.
-    fn resource_embedding_data_formatted(&self, keywords: Vec<String>) -> String {
+    /// resource embedding.
+    fn format_embedding_string(&self, keywords: Vec<String>) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
             .description()
@@ -185,12 +184,12 @@ pub trait VectorResource {
             .map(|source| format!(", Source: {}", source))
             .unwrap_or_default();
 
-        // Take keywords until we hit an upper 495 character cap to ensure
+        // Take keywords until we hit an upper 500 character cap to ensure
         // we do not go past the embedding LLM context window.
         let pre_keyword_length = name.len() + desc.len() + source.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
-            if pre_keyword_length + keyword_string.len() + phrase.len() <= 495 {
+            if pre_keyword_length + keyword_string.len() + phrase.len() <= MAX_EMBEDDING_STRING_SIZE {
                 keyword_string = format!("{}, {}", keyword_string, phrase);
             }
         }
@@ -271,13 +270,10 @@ pub trait VectorResource {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
         for name in data_tag_names {
-            println!("\nData tag name: {}", name);
             if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
-                println!("Matching data tag chunk ids: {:?}", ids);
                 if !ids.is_empty() {
                     for id in ids {
                         if let Ok(embedding) = self.get_chunk_embedding(&id) {
-                            println!("Appending embedding");
                             matching_data_tag_embeddings.push(embedding.clone());
                         }
                     }
@@ -298,8 +294,6 @@ pub trait VectorResource {
                 });
             }
         }
-
-        println!("Syntactic vector search results: {:?}", results);
 
         results
     }
