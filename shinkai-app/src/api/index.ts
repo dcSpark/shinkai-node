@@ -19,6 +19,8 @@ import { SetupDetailsState } from "../store/reducers";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { ShinkaiNameWrapper } from "../lib/wasm/ShinkaiNameWrapper";
 import { InboxNameWrapper } from "../pkg/shinkai_message_wasm";
+import { SerializedAgent } from "../models/SchemaTypes";
+import { SerializedAgentWrapper } from "../lib/wasm/SerializedAgentWrapper";
 
 // Helper function to handle HTTP errors
 export const handleHttpError = (response: any) => {
@@ -419,7 +421,7 @@ export const sendMessageToJob =
     }
   };
 
-  export const getProfileAgents =
+export const getProfileAgents =
   (
     sender: string,
     sender_subidentity: string,
@@ -452,5 +454,42 @@ export const sendMessageToJob =
       return response.data;
     } catch (error) {
       console.error("Error sending message to job:", error);
+    }
+  };
+
+export const addAgent =
+  (
+    sender_subidentity: string,
+    node_name: string,
+    agent: SerializedAgent,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      console.log("addAgent agent:", agent);
+      console.log("sender: ", node_name + "/" + sender_subidentity);
+      let agent_wrapped = SerializedAgentWrapper.fromSerializedAgent(agent);
+      const messageStr = ShinkaiMessageBuilderWrapper.request_add_agent(
+        setupDetailsState.my_device_encryption_sk,
+        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.node_encryption_pk,
+        node_name,
+        node_name + "/" + sender_subidentity,
+        node_name,
+        agent_wrapped
+      );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(`${apiEndpoint}/v1/add_agent`, message);
+
+      console.log("addAgent Response:", response.data);
+      handleHttpError(response);
+      dispatch(response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Error sending message to add agent:", error);
     }
   };

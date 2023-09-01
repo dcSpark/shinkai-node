@@ -378,8 +378,11 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             data.clone(),
+            receiver_node.clone(),
             sender_profile.clone(),
             receiver_node.clone(),
+            "".to_string(),
+            "",
             schema.clone(),
         );
 
@@ -448,8 +451,10 @@ mod tests {
             identity_type.clone(),
             permission_type.clone(),
             registration_name.clone(),
+            receiver_node.clone(),
             sender_profile.clone(),
             receiver_node.clone(),
+            "".to_string(),
         );
 
         if let Err(e) = &message_result {
@@ -515,8 +520,10 @@ mod tests {
             receiver_public_key_string.clone(),
             permissions.clone(),
             code_type.clone(),
+            receiver_node.clone(),
             sender_profile.clone(),
             receiver_node.clone(),
+            "".to_string(),
         );
 
         if let Err(e) = &message_result {
@@ -691,8 +698,10 @@ mod tests {
             inbox.clone(),
             count,
             offset,
+            receiver.clone(),
             sender_profile_name.clone(),
             receiver.clone(),
+            "".to_string(),
         );
 
         assert!(message_result.is_ok());
@@ -759,8 +768,10 @@ mod tests {
             inbox,
             count,
             offset,
+            receiver.clone(),
             sender_subidentity_profile_name.clone(),
             receiver.clone(),
+            "".to_string(),
         );
 
         assert!(message_result.is_ok());
@@ -840,8 +851,10 @@ mod tests {
             receiver_public_key_string,
             inbox,
             up_to_time,
+            receiver.clone(),
             sender_profile_name.clone(),
             receiver.clone(),
+            "".to_string(),
         );
 
         assert!(message_result.is_ok());

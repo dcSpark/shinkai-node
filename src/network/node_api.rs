@@ -139,15 +139,22 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     //         })
     // };
 
-    // POST
+    // POST v1/available_agents
     let available_agents = {
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "available_agents")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                available_agents_handler(node_commands_sender.clone(), message)
-            })
+            .and_then(move |message: ShinkaiMessage| available_agents_handler(node_commands_sender.clone(), message))
+    };
+
+    // POST v1/add_agent
+    let available_agents = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_agent")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| add_agent_handler(node_commands_sender.clone(), message))
     };
 
     // POST v1/last_messages_from_inbox?limit={number}&offset={key}
@@ -455,6 +462,21 @@ async fn create_job_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APICreateJob {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn add_agent_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIAddAgent {
             msg: message,
             res: res_sender,
         },

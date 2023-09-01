@@ -1,8 +1,9 @@
+use crate::schemas::agents::serialized_agent::SerializedAgent;
 use crate::schemas::inbox_name::InboxName;
 use crate::schemas::registration_code::RegistrationCode;
 use crate::shinkai_message::shinkai_message_schemas::{
-    APIGetMessagesFromInboxRequest, IdentityPermissions, JobCreation, JobMessage, JobScope, RegistrationCodeRequest,
-    RegistrationCodeType, APIReadUpToTimeRequest,
+    APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreation,
+    JobMessage, JobScope, RegistrationCodeRequest, RegistrationCodeType,
 };
 use crate::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, string_to_encryption_public_key,
@@ -329,8 +330,10 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         permissions: String,
         code_type: String,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let permissions =
             IdentityPermissions::from_str(&permissions).ok_or_else(|| JsValue::from_str("Invalid permissions"))?;
@@ -344,8 +347,11 @@ impl ShinkaiMessageBuilderWrapper {
             my_subidentity_signature_sk,
             receiver_public_key,
             data,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
             MessageSchemaType::CreateRegistrationCode.to_str().to_string(),
         )
     }
@@ -359,8 +365,10 @@ impl ShinkaiMessageBuilderWrapper {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
         let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
@@ -380,14 +388,18 @@ impl ShinkaiMessageBuilderWrapper {
         };
 
         let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let other = encryption_public_key_to_string(profile_encryption_pk);
 
         ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
             profile_encryption_sk,
             profile_signature_sk,
             receiver_public_key,
             body,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            other.as_str(),
             MessageSchemaType::TextContent.to_str().to_string(),
         )
     }
@@ -403,8 +415,10 @@ impl ShinkaiMessageBuilderWrapper {
         identity_type: String,
         permission_type: String,
         registration_name: String,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_device_encryption_sk)?;
         let my_subidentity_signature_sk_type = string_to_signature_secret_key(&my_device_signature_sk)?;
@@ -429,14 +443,18 @@ impl ShinkaiMessageBuilderWrapper {
         };
 
         let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
 
         ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
             my_device_encryption_sk,
             my_device_signature_sk,
             receiver_public_key,
             body,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            other.as_str(),
             MessageSchemaType::TextContent.to_str().to_string(),
         )
     }
@@ -449,8 +467,10 @@ impl ShinkaiMessageBuilderWrapper {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
@@ -467,8 +487,11 @@ impl ShinkaiMessageBuilderWrapper {
             my_subidentity_signature_sk,
             receiver_public_key,
             body,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
             MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
         )
     }
@@ -481,8 +504,10 @@ impl ShinkaiMessageBuilderWrapper {
         inbox: String,
         count: usize,
         offset: Option<String>,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
@@ -499,9 +524,43 @@ impl ShinkaiMessageBuilderWrapper {
             my_subidentity_signature_sk,
             receiver_public_key,
             body,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
             MessageSchemaType::APIGetMessagesFromInboxRequest.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
+    pub fn request_add_agent(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        agent_json: &str,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
+    ) -> Result<String, JsValue> {
+        let agent: SerializedAgent =
+            serde_json::from_str(agent_json).map_err(|_| "Failed to deserialize agent from JSON")?;
+
+        let add_agent_request = APIAddAgentRequest { agent };
+        let body = serde_json::to_string(&add_agent_request).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            body,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
+            MessageSchemaType::APIAddAgentRequest.to_str().to_string(),
         )
     }
 
@@ -512,8 +571,10 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         inbox: String,
         up_to_time: String,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
     ) -> Result<String, JsValue> {
         let inbox_name = InboxName::new(inbox.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let read_up_to_time = APIReadUpToTimeRequest { inbox_name, up_to_time };
@@ -525,25 +586,28 @@ impl ShinkaiMessageBuilderWrapper {
             my_subidentity_signature_sk,
             receiver_public_key,
             body,
-            sender_profile_name,
-            receiver,
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
             MessageSchemaType::APIReadUpToTimeRequest.to_str().to_string(),
         )
     }
 
+    #[wasm_bindgen]
     pub fn create_custom_shinkai_message_to_node(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
         receiver_public_key: String,
         data: String,
-        sender_profile_name: String,
-        receiver: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
+        other: &str,
         schema: String,
     ) -> Result<String, JsValue> {
-        let my_subidentity_encryption_sk_type = string_to_encryption_static_key(&my_subidentity_encryption_sk)?;
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
-        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
-
         let mut builder = ShinkaiMessageBuilderWrapper::new(
             my_subidentity_encryption_sk,
             my_subidentity_signature_sk,
@@ -555,10 +619,10 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(data);
         let _ = builder.body_encryption(body_encryption);
-        let _ = builder.external_metadata_with_other(receiver.clone(), receiver, other);
+        let _ = builder.external_metadata_with_other(recipient, sender, other.to_string());
         let _ = builder.internal_metadata_with_schema(
-            sender_profile_name,
-            "".to_string(),
+            sender_subidentity,
+            recipient_subidentity,
             "".to_string(),
             schema_jsvalue,
             internal_encryption,

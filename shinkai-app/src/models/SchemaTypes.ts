@@ -58,20 +58,9 @@ export interface APIReadUpToTimeRequest {
   up_to_time: string;
 }
 
-export interface OpenAI {
-    model_type: string;
-  }
-  
-  export interface SleepAPI {}
-  
-  export enum AgentAPIModel {
-    OpenAI = "OpenAI",
-    Sleep = "SleepAPI",
-  }
-
 export interface SerializedAgent {
   id: string;
-  full_identity_name: String; // ShinkaiName
+  full_identity_name: string; // ShinkaiName
   perform_locally: boolean;
   external_url?: string;
   api_key?: string;
@@ -80,6 +69,16 @@ export interface SerializedAgent {
   storage_bucket_permissions: string[];
   allowed_message_senders: string[];
 }
+export interface AgentAPIModel {
+  OpenAI?: OpenAI;
+  SleepAPI?: SleepAPI;
+}
+
+export interface OpenAI {
+  model_type: string;
+}
+
+export interface SleepAPI {}
 
 export interface APIAddAgentRequest {
   agent: SerializedAgent;

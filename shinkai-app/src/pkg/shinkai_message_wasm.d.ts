@@ -59,6 +59,49 @@ export class InboxNameWrapper {
 }
 /**
 */
+export class SerializedAgentWrapper {
+  free(): void;
+/**
+* @param {any} serialized_agent_js
+*/
+  constructor(serialized_agent_js: any);
+/**
+* @param {string} id
+* @param {string} full_identity_name
+* @param {string} perform_locally
+* @param {string} external_url
+* @param {string} api_key
+* @param {string} model
+* @param {string} toolkit_permissions
+* @param {string} storage_bucket_permissions
+* @param {string} allowed_message_senders
+* @returns {SerializedAgentWrapper}
+*/
+  static fromStrings(id: string, full_identity_name: string, perform_locally: string, external_url: string, api_key: string, model: string, toolkit_permissions: string, storage_bucket_permissions: string, allowed_message_senders: string): SerializedAgentWrapper;
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @param {any} j
+* @returns {SerializedAgentWrapper}
+*/
+  static fromJsValue(j: any): SerializedAgentWrapper;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
+/**
+* @param {string} s
+* @returns {SerializedAgentWrapper}
+*/
+  static from_json_str(s: string): SerializedAgentWrapper;
+/**
+*/
+  readonly inner: any;
+}
+/**
+*/
 export class ShinkaiMessageBuilderWrapper {
   free(): void;
 /**
@@ -153,11 +196,13 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} receiver_public_key
 * @param {string} permissions
 * @param {string} code_type
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static request_code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, permissions: string, code_type: string, sender_profile_name: string, receiver: string): string;
+  static request_code_registration(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, permissions: string, code_type: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} profile_encryption_sk
 * @param {string} profile_signature_sk
@@ -166,11 +211,13 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} identity_type
 * @param {string} permission_type
 * @param {string} registration_name
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static use_code_registration_for_profile(profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string;
+  static use_code_registration_for_profile(profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} my_device_encryption_sk
 * @param {string} my_device_signature_sk
@@ -181,11 +228,13 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} identity_type
 * @param {string} permission_type
 * @param {string} registration_name
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static use_code_registration_for_device(my_device_encryption_sk: string, my_device_signature_sk: string, profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender_profile_name: string, receiver: string): string;
+  static use_code_registration_for_device(my_device_encryption_sk: string, my_device_signature_sk: string, profile_encryption_sk: string, profile_signature_sk: string, receiver_public_key: string, code: string, identity_type: string, permission_type: string, registration_name: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} my_subidentity_encryption_sk
 * @param {string} my_subidentity_signature_sk
@@ -193,11 +242,13 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} inbox
 * @param {number} count
 * @param {string | undefined} offset
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static get_last_messages_from_inbox(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, count: number, offset: string | undefined, sender_profile_name: string, receiver: string): string;
+  static get_last_messages_from_inbox(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, count: number, offset: string | undefined, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} my_subidentity_encryption_sk
 * @param {string} my_subidentity_signature_sk
@@ -205,33 +256,52 @@ export class ShinkaiMessageBuilderWrapper {
 * @param {string} inbox
 * @param {number} count
 * @param {string | undefined} offset
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static get_last_unread_messages_from_inbox(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, count: number, offset: string | undefined, sender_profile_name: string, receiver: string): string;
+  static get_last_unread_messages_from_inbox(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, count: number, offset: string | undefined, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
+/**
+* @param {string} my_subidentity_encryption_sk
+* @param {string} my_subidentity_signature_sk
+* @param {string} receiver_public_key
+* @param {string} agent_json
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
+* @returns {string}
+*/
+  static request_add_agent(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, agent_json: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} my_subidentity_encryption_sk
 * @param {string} my_subidentity_signature_sk
 * @param {string} receiver_public_key
 * @param {string} inbox
 * @param {string} up_to_time
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
 * @returns {string}
 */
-  static read_up_to_time(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, up_to_time: string, sender_profile_name: string, receiver: string): string;
+  static read_up_to_time(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, inbox: string, up_to_time: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string): string;
 /**
 * @param {string} my_subidentity_encryption_sk
 * @param {string} my_subidentity_signature_sk
 * @param {string} receiver_public_key
 * @param {string} data
-* @param {string} sender_profile_name
-* @param {string} receiver
+* @param {string} sender
+* @param {string} sender_subidentity
+* @param {string} recipient
+* @param {string} recipient_subidentity
+* @param {string} other
 * @param {string} schema
 * @returns {string}
 */
-  static create_custom_shinkai_message_to_node(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, data: string, sender_profile_name: string, receiver: string, schema: string): string;
+  static create_custom_shinkai_message_to_node(my_subidentity_encryption_sk: string, my_subidentity_signature_sk: string, receiver_public_key: string, data: string, sender: string, sender_subidentity: string, recipient: string, recipient_subidentity: string, other: string, schema: string): string;
 /**
 * @param {string} message
 * @param {string} my_encryption_secret_key

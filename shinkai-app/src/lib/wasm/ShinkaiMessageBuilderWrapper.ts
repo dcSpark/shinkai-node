@@ -5,8 +5,10 @@ import {
 } from "../../pkg/shinkai_message_wasm.js";
 import {
   MessageSchemaType,
+  SerializedAgent,
   EncryptionMethod as TSEncryptionMethod,
 } from "../../models/SchemaTypes.js";
+import { SerializedAgentWrapper } from "./SerializedAgentWrapper.js";
 
 export class ShinkaiMessageBuilderWrapper {
   private wasmBuilder: ShinkaiMessageBuilderWrapperWASM;
@@ -148,8 +150,10 @@ export class ShinkaiMessageBuilderWrapper {
       identity_type,
       permission_type,
       registration_name,
+      receiver,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
     );
   }
 
@@ -164,7 +168,7 @@ export class ShinkaiMessageBuilderWrapper {
     permission_type: string,
     registration_name: string,
     sender_profile_name: string,
-    receiver: string
+    node_name: string
   ): string {
     return ShinkaiMessageBuilderWrapperWASM.use_code_registration_for_device(
       my_device_encryption_sk,
@@ -176,8 +180,10 @@ export class ShinkaiMessageBuilderWrapper {
       identity_type,
       permission_type,
       registration_name,
+      node_name,
       sender_profile_name,
-      receiver
+      node_name,
+      ""
     );
   }
 
@@ -196,8 +202,10 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key,
       permission_type,
       code_type,
+      receiver,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
     );
   }
 
@@ -268,8 +276,10 @@ export class ShinkaiMessageBuilderWrapper {
       inbox,
       count,
       offset,
+      receiver,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
     );
   }
 
@@ -348,6 +358,29 @@ export class ShinkaiMessageBuilderWrapper {
       error_msg
     );
   }
+
+  static request_add_agent(
+    my_encryption_secret_key: string,
+    my_signature_secret_key: string,
+    receiver_public_key: string,
+    sender: string,
+    sender_subidentity: string,
+    recipient: string,
+    agent: SerializedAgentWrapper
+  ): string {
+    let agentJson = agent.to_json_str();
+    return ShinkaiMessageBuilderWrapperWASM.request_add_agent(
+      my_encryption_secret_key,
+      my_signature_secret_key,
+      receiver_public_key,
+      agentJson,
+      sender,
+      sender_subidentity,
+      recipient,
+      ""
+    );
+  }
+
 
   static get_profile_agents(
     my_encryption_secret_key: string,
