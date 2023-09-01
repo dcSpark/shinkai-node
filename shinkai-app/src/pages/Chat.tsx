@@ -113,8 +113,10 @@ const Chat: React.FC = () => {
 
     // Local Identity
     const { shinkai_identity, profile, registration_name } = setupDetailsState;
-    let sender = shinkai_identity;
-    let sender_subidentity = `${profile}/device/${registration_name}`;
+    // let sender = shinkai_identity;
+    let sender = `${shinkai_identity}/${profile}/device/${registration_name}`;
+
+    console.log("Sender:", sender);
 
     const receiver = extractReceiverShinkaiName(deserializedId, sender);
     console.log("Receiver:", receiver);
@@ -122,7 +124,7 @@ const Chat: React.FC = () => {
     dispatch(
       sendTextMessageWithInbox(
         sender,
-        sender_subidentity,
+        "",
         receiver,
         inputMessage,
         deserializedId,

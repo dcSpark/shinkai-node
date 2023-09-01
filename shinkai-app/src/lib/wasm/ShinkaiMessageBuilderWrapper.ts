@@ -266,6 +266,7 @@ export class ShinkaiMessageBuilderWrapper {
     inbox: string,
     count: number,
     offset: string | undefined,
+    sender: string,
     sender_profile_name: string,
     receiver: string
   ): string {
@@ -276,7 +277,7 @@ export class ShinkaiMessageBuilderWrapper {
       inbox,
       count,
       offset,
-      receiver,
+      sender,
       sender_profile_name,
       receiver,
       ""

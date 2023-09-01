@@ -193,20 +193,20 @@ export const getLastMessagesFromInbox =
   ) =>
   async (dispatch: AppDispatch) => {
     try {
-      let sender_profile_name =
-        setupDetailsState.profile +
-        "/device/" +
-        setupDetailsState.registration_name;
+      console.log("lastKey: ", lastKey);
+      let sender =
+        setupDetailsState.shinkai_identity + "/" + setupDetailsState.profile;
 
       const messageStr =
         ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
-          setupDetailsState.my_device_encryption_sk,
-          setupDetailsState.my_device_identity_sk,
+          setupDetailsState.profile_encryption_sk,
+          setupDetailsState.profile_identity_sk,
           setupDetailsState.node_encryption_pk,
           inbox,
           count,
           lastKey,
-          sender_profile_name,
+          sender,
+          "",
           setupDetailsState.shinkai_identity
         );
 
