@@ -1,3 +1,4 @@
+use crate::resources::base_vector_resources::BaseVectorResource;
 use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
@@ -160,7 +161,20 @@ impl MapVectorResource {
         Ok(matching_chunks)
     }
 
-    /// Inserts a new data chunk and associated embeddings to the kv resource
+    /// Inserts a new data chunk (with a BaseVectorResource) and associated embeddings to the Map resource
+    /// and updates the data tags index.
+    pub fn insert_vector_resource(
+        &mut self,
+        key: &str,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+    ) {
+        let embedding = resource.trait_object().resource_embedding().clone();
+        let tag_names = resource.trait_object().data_tag_index().data_tag_names();
+        self._insert_kv_without_tag_validation(key, DataContent::Resource(resource), metadata, &embedding, &tag_names)
+    }
+
+    /// Inserts a new data chunk (with a string value) and associated embeddings to the Map resource
     /// and updates the data tags index.
     pub fn insert_kv(
         &mut self,
@@ -172,20 +186,33 @@ impl MapVectorResource {
     ) {
         let validated_data_tags = DataTag::validate_tag_list(value, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._insert_kv_without_tag_validation(key, value, metadata, embedding, &data_tag_names)
+        self._insert_kv_without_tag_validation(
+            key,
+            DataContent::Data(value.to_string()),
+            metadata,
+            embedding,
+            &data_tag_names,
+        )
     }
 
-    /// Insert a new data chunk and associated embeddings to the kv resource
+    /// Insert a new data chunk and associated embeddings to the Map resource
     /// without checking if tags are valid. Also used by resource router.
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
-        value: &str,
+        data: DataContent,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
-        let data_chunk = DataChunk::new(key.to_string(), value, metadata.clone(), tag_names);
+        let data_chunk = match data {
+            DataContent::Data(data_string) => {
+                DataChunk::new(key.to_string(), &data_string, metadata.clone(), tag_names)
+            }
+            DataContent::Resource(resource) => {
+                DataChunk::new_vector_resource(key.to_string(), &resource, metadata.clone())
+            }
+        };
         self.data_tag_index.add_chunk(&data_chunk);
 
         // Embedding details

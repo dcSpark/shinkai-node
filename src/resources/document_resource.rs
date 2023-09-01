@@ -8,6 +8,8 @@ use crate::resources::vector_resource::*;
 use serde_json;
 use std::collections::HashMap;
 
+use super::base_vector_resources::BaseVectorResource;
+
 /// A VectorResource which uses an internal numbered/ordered list data model,  
 /// thus providing an ideal interface for document-like content such as PDFs,
 /// epubs, web content, written works, and more.
@@ -211,31 +213,52 @@ impl DocumentVectorResource {
         Ok(matching_chunks)
     }
 
-    /// Appends a new data chunk and associated embeddings to the document
+    /// Appends a new data chunk (with a BaseVectorResource) to the document
+    /// and updates the data tags index. Of note, we use the resource's data tags
+    /// and resource embedding.
+    pub fn append_vector_resource(&mut self, resource: BaseVectorResource, metadata: Option<HashMap<String, String>>) {
+        let embedding = resource.trait_object().resource_embedding().clone();
+        let tag_names = resource.trait_object().data_tag_index().data_tag_names();
+        self._append_data_without_tag_validation(DataContent::Resource(resource), metadata, &embedding, &tag_names)
+    }
+
+    /// Appends a new data chunk (with a data_string) and an associated embedding to the document
     /// and updates the data tags index.
     pub fn append_data(
         &mut self,
-        data: &str,
+        data_string: &str,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
-        let validated_data_tags = DataTag::validate_tag_list(data, parsing_tags);
+        let validated_data_tags = DataTag::validate_tag_list(data_string, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._append_data_without_tag_validation(data, metadata, embedding, &data_tag_names)
+        self._append_data_without_tag_validation(
+            DataContent::Data(data_string.to_string()),
+            metadata,
+            embedding,
+            &data_tag_names,
+        )
     }
 
-    /// Appends a new data chunk and associated embeddings to the document
+    /// Appends a new data chunk and associated embedding to the document
     /// without checking if tags are valid. Used for internal purposes/the routing resource.
     pub fn _append_data_without_tag_validation(
         &mut self,
-        data: &str,
+        data: DataContent,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
         let id = self.chunk_count + 1;
-        let data_chunk = DataChunk::new_with_integer_id(id, data, metadata.clone(), tag_names);
+        let data_chunk = match data {
+            DataContent::Data(data_string) => {
+                DataChunk::new_with_integer_id(id, &data_string, metadata.clone(), tag_names)
+            }
+            DataContent::Resource(resource) => {
+                DataChunk::new_vector_resource_with_integer_id(id, &resource, metadata.clone())
+            }
+        };
         self.data_tag_index.add_chunk(&data_chunk);
 
         // Embedding details

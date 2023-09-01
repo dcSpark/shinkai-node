@@ -225,7 +225,7 @@ impl ToolRouter {
                 // If no tool is found, insert new tool
                 self.routing_resource._insert_kv_without_tag_validation(
                     &router_key,
-                    &data,
+                    DataContent::Data(data),
                     metadata,
                     &embedding,
                     &vec![],

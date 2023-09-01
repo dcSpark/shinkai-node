@@ -147,7 +147,7 @@ impl VectorResourceRouter {
                 // original resource.
                 self.routing_resource._insert_kv_without_tag_validation(
                     &db_key,
-                    &data,
+                    DataContent::Data(data.to_string()),
                     metadata,
                     &embedding,
                     &resource_pointer.data_tag_names,

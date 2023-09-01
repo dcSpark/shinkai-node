@@ -124,17 +124,25 @@ impl DataChunk {
         Self::new(id.to_string(), data, metadata, data_tag_names)
     }
 
-    pub fn new_with_vector_resource(
-        id: u64,
+    pub fn new_vector_resource(
+        id: String,
         vector_resource: &BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
         DataChunk {
-            id: id.to_string(),
+            id: id,
             data: DataContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.trait_object().data_tag_index().data_tag_names(),
         }
+    }
+
+    pub fn new_vector_resource_with_integer_id(
+        id: u64,
+        vector_resource: &BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Self {
+        Self::new_vector_resource(id.to_string(), vector_resource, metadata)
     }
 
     /// Attempts to read the data String from the DataChunk. Errors if data is a VectorResource
@@ -169,16 +177,12 @@ pub trait VectorResource {
     fn chunk_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
     fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
-
-    // Note we cannot add from_json in the trait due to trait object limitations
-    // with &self.
-    fn to_json(&self) -> Result<String, VectorResourceError>;
-
     /// Retrieves a data chunk given its id.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
+    // Note we cannot add from_json in the trait due to trait object limitations
+    fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Returns a String representing the Key that this VectorResource
-    ///
     /// will be/is saved to in the Topic::VectorResources in the DB.
     /// The db key is: `{name}.{resource_id}`
     fn db_key(&self) -> String {
@@ -227,45 +231,16 @@ pub trait VectorResource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
     }
 
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks within a specific range.
-    ///
-    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
-    ///   determines the range of acceptable similarity scores as a percentage
-    ///   of the highest score.
-    fn vector_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedDataChunk> {
-        // Get top 100 results
-        let results = self.vector_search(query.clone(), 100);
+    /// Generates a pointer out of the resource.
+    fn get_resource_pointer(&self) -> VectorResourcePointer {
+        let db_key = self.db_key();
+        let resource_type = self.resource_type();
+        let embedding = self.resource_embedding().clone();
 
-        // Calculate the top similarity score
-        let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
+        // Fetch list of data tag names from the index
+        let tag_names = self.data_tag_index().data_tag_names();
 
-        // Find the range of acceptable similarity scores
-        self.vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
-    }
-
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks within a specific range of the provided top similarity score.
-    ///
-    /// * `top_similarity_score` - A float that represents the top similarity score.
-    fn vector_search_tolerance_ranged_score(
-        &self,
-        query: Embedding,
-        tolerance_range: f32,
-        top_similarity_score: f32,
-    ) -> Vec<RetrievedDataChunk> {
-        // Clamp the tolerance_range to be between 0 and 1
-        let tolerance_range = tolerance_range.max(0.0).min(1.0);
-
-        let mut results = self.vector_search(query, 100);
-
-        // Calculate the range of acceptable similarity scores
-        let lower_bound = top_similarity_score * (1.0 - tolerance_range);
-
-        // Filter the results to only include those within the range of the top similarity score
-        results.retain(|ret_chunk| ret_chunk.score >= lower_bound && ret_chunk.score <= top_similarity_score);
-
-        results
+        VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
     }
 
     /// Performs a vector search using a query embedding and returns
@@ -351,15 +326,44 @@ pub trait VectorResource {
         first_level_results
     }
 
-    /// Generates a pointer out of the resource.
-    fn get_resource_pointer(&self) -> VectorResourcePointer {
-        let db_key = self.db_key();
-        let resource_type = self.resource_type();
-        let embedding = self.resource_embedding().clone();
+    /// Performs a vector search using a query embedding and returns
+    /// the most similar data chunks within a specific range.
+    ///
+    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
+    ///   determines the range of acceptable similarity scores as a percentage
+    ///   of the highest score.
+    fn vector_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedDataChunk> {
+        // Get top 100 results
+        let results = self.vector_search(query.clone(), 100);
 
-        // Fetch list of data tag names from the index
-        let tag_names = self.data_tag_index().data_tag_names();
+        // Calculate the top similarity score
+        let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
 
-        VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
+        // Find the range of acceptable similarity scores
+        self.vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
+    }
+
+    /// Performs a vector search using a query embedding and returns
+    /// the most similar data chunks within a specific range of the provided top similarity score.
+    ///
+    /// * `top_similarity_score` - A float that represents the top similarity score.
+    fn vector_search_tolerance_ranged_score(
+        &self,
+        query: Embedding,
+        tolerance_range: f32,
+        top_similarity_score: f32,
+    ) -> Vec<RetrievedDataChunk> {
+        // Clamp the tolerance_range to be between 0 and 1
+        let tolerance_range = tolerance_range.max(0.0).min(1.0);
+
+        let mut results = self.vector_search(query, 100);
+
+        // Calculate the range of acceptable similarity scores
+        let lower_bound = top_similarity_score * (1.0 - tolerance_range);
+
+        // Filter the results to only include those within the range of the top similarity score
+        results.retain(|ret_chunk| ret_chunk.score >= lower_bound && ret_chunk.score <= top_similarity_score);
+
+        results
     }
 }
