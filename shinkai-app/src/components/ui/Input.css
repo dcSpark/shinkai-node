@@ -7,9 +7,9 @@
   --highlight-color-focused: theme("colors.gray.300");
   --color: theme("colors.slate.800");
   @media (prefers-color-scheme: dark) {
-    --background: theme("colors.slate.800");
+    --background: theme("colors.slate.900");
     --color: theme("colors.slate.200");
-    --border-color: theme("colors.slate.800/20");
+    --border-color: theme("colors.slate.300") !important;
     --placeholder-color: theme("colors.slate.300");
     --highlight-color: theme("colors.gray.300");
     --highlight-color-focused: theme("colors.white");
