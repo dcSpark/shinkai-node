@@ -132,9 +132,10 @@ impl ToolRouter {
         metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 
         for t in RUST_TOOLKIT.rust_tool_map.values() {
+            let tool = ShinkaiTool::Rust(t.clone());
             routing_resource.insert_kv(
-                &ShinkaiTool::Rust(t.clone()).tool_router_key(),
-                &t.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
+                &tool.tool_router_key(),
+                &tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
                 Some(metadata.clone()),
                 &t.tool_embedding,
                 &vec![],
@@ -198,6 +199,7 @@ impl ToolRouter {
         let mut shinkai_tools = vec![];
         for ret_chunk in ret_chunks {
             // Ignores tools added to the router which are invalid by matching on the Ok()
+            let check = ShinkaiTool::from_json(&ret_chunk.chunk.data).unwrap();
             if let Ok(shinkai_tool) = ShinkaiTool::from_json(&ret_chunk.chunk.data) {
                 shinkai_tools.push(shinkai_tool);
             }

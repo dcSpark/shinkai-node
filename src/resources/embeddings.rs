@@ -31,8 +31,8 @@ impl Embedding {
         self.id = id.to_string();
     }
 
-    /// Print embedding.
-    pub fn print(&self) {
+    /// Pretty print embedding info
+    pub fn pretty_print(&self) {
         println!("Embedding ID: {}", self.id);
         println!("  Embeddings length: {}", self.vector.len());
         println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);

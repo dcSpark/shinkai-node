@@ -7,6 +7,8 @@ use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmb
 use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
+use shinkai_node::tools::router::ShinkaiTool;
+use shinkai_node::tools::rust_tools::RUST_TOOLKIT;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -159,8 +161,20 @@ fn test_tool_router_and_toolkit_flow() {
     let query = generator
         .generate_embedding("I want to multiply 500 x 1523 and see if it is greater than 50000")
         .unwrap();
-    let results2 = tool_router.vector_search(query, 10);
+    let results2 = tool_router.vector_search(query, 1);
     assert_eq!(results2[0].name(), "CompareNumbers");
+
+    let query = generator
+        .generate_embedding("Send a message to @@alice.shinkai asking her what the status is on the project estimates.")
+        .unwrap();
+    let results3 = tool_router.vector_search(query, 10);
+    assert_eq!(results3[0].name(), "Send_Message");
+
+    let query = generator
+        .generate_embedding("Search through my documents and find the pdf with the March company financial report.")
+        .unwrap();
+    let results4 = tool_router.vector_search(query, 10);
+    assert_eq!(results4[0].name(), "User_Data_Vector_Search");
 
     // Deactivate toolkit and check to make sure tools are removed from Tool Router
     shinkai_db.deactivate_toolkit(&toolkit.name, &profile).unwrap();
@@ -177,3 +191,22 @@ fn test_tool_router_and_toolkit_flow() {
     shinkai_db.uninstall_toolkit(&toolkit.name, &profile).unwrap();
     assert!(!shinkai_db.check_if_toolkit_installed(&toolkit, &profile).unwrap());
 }
+
+// A fake test which purposefully fails so that we can generate embeddings
+// for all existing rust tools and print them into console (so we can copy-paste)
+// and hard-code them in rust_tools.rs
+// #[test]
+// fn generate_rust_tool_embeddings() {
+//     setup();
+//     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+//     let generator = RemoteEmbeddingGenerator::new_default();
+
+//     for t in RUST_TOOLKIT.rust_tool_map.values() {
+//         let tool = ShinkaiTool::Rust(t.clone());
+//         let embedding = generator.generate_embedding(&tool.format_embedding_string()).unwrap();
+
+//         println!("{}\n{:?}\n\n", tool.name(), embedding.vector)
+//     }
+
+//     assert_eq!(1, 2);
+// }
