@@ -237,11 +237,12 @@ impl AgentManager {
         }
     }
 
-    pub async fn handle_job_message_schema(&mut self, job_message: JobMessage) -> Result<String, JobManagerError> {
+    pub async fn handle_job_message_schema(&mut self, message: ShinkaiMessage, job_message: JobMessage) -> Result<String, JobManagerError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
             let mut shinkai_db = self.db.lock().await;
-            shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &job_message.content.clone())?;
+            println!("handle_job_message_schema> job_message: {:?}", job_message);
+            shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
             shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
@@ -275,7 +276,7 @@ impl AgentManager {
                             MessageSchemaType::JobMessageSchema => {
                                 let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_job_message_schema(job_message).await
+                                self.handle_job_message_schema(message, job_message).await
                             }
                             MessageSchemaType::PreMessageSchema => {
                                 let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)

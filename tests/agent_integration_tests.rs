@@ -228,8 +228,10 @@ fn node_agent_registration() {
                     .send(NodeCommand::APIGetLastMessagesFromInbox { msg, res: res2_sender })
                     .await
                     .unwrap();
-                let node2_last_messages = res2_receiver.recv().await.unwrap();
+                let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                 println!("node2_last_messages: {:?}", node2_last_messages);
+
+                assert!(node2_last_messages.len() == 1);
             }
         });
 

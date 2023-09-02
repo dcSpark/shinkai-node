@@ -4,6 +4,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use rand::RngCore;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
 use shinkai_message_wasm::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
+use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobScope;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -273,16 +274,31 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn add_message_to_job_inbox(&self, job_id: &str, content: &str) -> Result<(), ShinkaiDBError> {
+    pub fn add_message_to_job_inbox(&self, job_id: &str, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.to_string();
-        println!("add_message_to_job_inbox: cf_conversation_inbox_name: {}", cf_conversation_inbox_name);
         let cf_handle = self
             .db
             .cf_handle(&cf_conversation_inbox_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name))?;
-        let current_time = ShinkaiTime::generate_time_now();
-        // TODO: update it so it can use composite keys
-        self.db.put_cf(cf_handle, current_time.as_bytes(), content.as_bytes())?;
+    
+        // Insert the message to AllMessages column family
+        self.insert_message_to_all(message)?;
+    
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash();
+    
+        // Get the scheduled time or calculate current time
+        let time_key = match message.external_metadata.scheduled_time.is_empty() {
+            true => ShinkaiTime::generate_time_now(),
+            false => message.external_metadata.scheduled_time.clone(),
+        };
+    
+        // Create the composite key by concatenating the time_key and the hash_key, with a separator
+        let composite_key = format!("{}:::{}", time_key, hash_key);
+    
+        // Use the composite_key as the key and hash_key as the value in the inbox
+        self.db.put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes())?;
+    
         Ok(())
     }
 }
