@@ -1,7 +1,6 @@
 use super::base_vector_resources::BaseVectorResource;
-
 use super::router::VectorResourcePointer;
-use crate::resources::data_tags::{DataTag, DataTagIndex};
+use crate::resources::data_tags::DataTagIndex;
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resources::embeddings::*;
@@ -63,16 +62,19 @@ impl RetrievedDataChunk {
     /// Sorts the list of RetrievedDataChunks based on their scores.
     /// Uses a binary heap for efficiency, returns num_results of highest scored.
     pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {
-        // Create a HashMap to store the RetrievedDataChunk instances by their id
+        // Create a HashMap to store the RetrievedDataChunk instances for post-scoring retrieval
         let mut data_chunks: HashMap<String, RetrievedDataChunk> = HashMap::new();
 
-        // Map the retrieved_data to a vector of tuples (NotNan<f32>, id)
+        // Map the retrieved_data to a vector of tuples (NotNan<f32>, id_db_key)
+        // We create id_db_key to support sorting RetrievedDataChunks from
+        // different Resources together and avoid chunk id collision problems.
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|data_chunk| {
-                let id = data_chunk.chunk.id.clone();
-                data_chunks.insert(id.clone(), data_chunk.clone());
-                (NotNan::new(data_chunks[&id].score).unwrap(), id)
+                let db_key = data_chunk.resource_pointer.db_key.clone();
+                let id_db_key = format!("{}-{}", data_chunk.chunk.id.clone(), db_key);
+                data_chunks.insert(id_db_key.clone(), data_chunk.clone());
+                (NotNan::new(data_chunks[&id_db_key].score).unwrap(), id_db_key)
             })
             .collect();
 
@@ -82,7 +84,7 @@ impl RetrievedDataChunk {
         // Map the sorted_scores back to a vector of RetrievedDataChunk
         let sorted_data: Vec<RetrievedDataChunk> = sorted_scores
             .into_iter()
-            .map(|(_, id)| data_chunks[&id].clone())
+            .map(|(_, id_db_key)| data_chunks[&id_db_key].clone())
             .collect();
 
         sorted_data
@@ -295,8 +297,7 @@ pub trait VectorResource {
             if let Ok(chunk) = self.get_data_chunk(id) {
                 match chunk.data {
                     DataContent::Resource(resource) => {
-                        vector_resource_count += 1;
-
+                        // vector_resource_count += 1;
                         // If no data tag names provided, it means we are doing a normal vector search
                         let sub_results = if data_tag_names.is_empty() {
                             resource.trait_object().vector_search(query.clone(), num_of_results)
@@ -307,6 +308,7 @@ pub trait VectorResource {
                                 data_tag_names,
                             )
                         };
+                        println!("sub results: {:?}", sub_results);
                         first_level_results.extend(sub_results);
                     }
                     DataContent::Data(_) => {
@@ -320,10 +322,11 @@ pub trait VectorResource {
             }
         }
 
-        if vector_resource_count > 1 {
-            return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
-        }
-        first_level_results
+        return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
+        //   if vector_resource_count > 1 {
+        //             return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
+        //         }
+        //         first_level_results
     }
 
     /// Performs a vector search using a query embedding and returns
