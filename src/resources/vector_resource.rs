@@ -245,8 +245,9 @@ pub trait VectorResource {
         VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
     }
 
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks.
+    /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all
+    /// Vector Resources held inside of self, and only searches inside of them if their resource embedding is sufficiently
+    /// similar to meet the `num_of_results` at that given level of depth.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
@@ -254,8 +255,10 @@ pub trait VectorResource {
         self._order_vector_search_results(scores, query, num_of_results, &vec![])
     }
 
-    /// Performs a syntactic vector search using a query embedding and a list of data tag names
-    /// and returns the most similar data chunks.
+    /// Performs a syntactic vector search, efficiently filtering out all data chunks based on the list of data tag names,
+    /// and performs a vector search to return the most similar. Of note this goes over all Vector Resources held inside of self,
+    /// and only searches inside of them if they both have matching data tags and their resource embedding is sufficiently
+    /// similar to meet the `num_of_results` at that given level of depth.
     fn syntactic_vector_search(
         &self,
         query: Embedding,
@@ -264,21 +267,56 @@ pub trait VectorResource {
     ) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
-        for name in data_tag_names {
-            if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
-                if !ids.is_empty() {
-                    for id in ids {
-                        if let Ok(embedding) = self.get_chunk_embedding(id.to_string()) {
-                            matching_data_tag_embeddings.push(embedding.clone());
-                        }
-                    }
-                }
+        let ids = self._syntactic_search_id_fetch(data_tag_names);
+        for id in ids {
+            if let Ok(embedding) = self.get_chunk_embedding(id) {
+                matching_data_tag_embeddings.push(embedding);
             }
         }
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
         self._order_vector_search_results(scores, query, num_of_results, data_tag_names)
+    }
+
+    /// Fetches all data chunks which contain tags matching the input name list
+    /// (including fetching inside all levels of Vector Resources, akin to vector searches)
+    fn syntactic_search(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedDataChunk> {
+        // Fetch all data chunks with matching data tags
+        let mut matching_data_chunks = vec![];
+        let ids = self._syntactic_search_id_fetch(data_tag_names);
+        for id in ids {
+            if let Ok(data_chunk) = self.get_data_chunk(id.clone()) {
+                match data_chunk.data {
+                    DataContent::Resource(resource) => {
+                        let sub_results = resource.trait_object().syntactic_search(data_tag_names);
+                        matching_data_chunks.extend(sub_results);
+                    }
+                    DataContent::Data(_) => {
+                        let resource_pointer = self.get_resource_pointer();
+                        let retrieved_data_chunk = RetrievedDataChunk {
+                            chunk: data_chunk,
+                            score: 0.0,
+                            resource_pointer,
+                        };
+                        matching_data_chunks.push(retrieved_data_chunk);
+                    }
+                }
+            }
+        }
+
+        matching_data_chunks
+    }
+
+    /// Internal method to fetch all chunk ids for syntactic searches
+    fn _syntactic_search_id_fetch(&self, data_tag_names: &Vec<String>) -> Vec<String> {
+        let mut ids = vec![];
+        for name in data_tag_names {
+            if let Some(chunk_ids) = self.data_tag_index().get_chunk_ids(&name) {
+                ids.extend(chunk_ids.iter().map(|id| id.to_string()));
+            }
+        }
+        ids
     }
 
     /// Internal method shared by vector_search() and syntactic_vector_search() that
