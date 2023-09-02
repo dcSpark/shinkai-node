@@ -14,6 +14,7 @@ import {
   RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
   GET_AVAILABLE_AGENTS,
   CLEAR_MESSAGES,
+  ADD_AGENTS,
 } from "./types";
 
 export const getPublicKey = (publicKey: string) => ({
@@ -82,7 +83,14 @@ export const receiveAllInboxesForProfile = (inboxes: string[]) => ({
   payload: inboxes,
 });
 
-export const setAgents = (agents: SerializedAgent[]) => ({
-  type: GET_AVAILABLE_AGENTS,
-  payload: agents,
-});
+export interface AddAgentsAction {
+  type: typeof ADD_AGENTS;
+  payload: SerializedAgent[];
+}
+
+export function addAgents(agents: SerializedAgent[]): AddAgentsAction {
+  return {
+    type: ADD_AGENTS,
+    payload: agents,
+  };
+}

@@ -26,7 +26,11 @@ import { createJob, getProfileAgents, sendMessageToJob } from "../api";
 import { useSetup } from "../hooks/usetSetup";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../store";
+import { History } from "history";
+import { useHistory } from "react-router-dom";
 import { SerializedAgent } from "../models/SchemaTypes";
+import { JobScopeWrapper } from "../lib/wasm/JobScopeWrapper";
+import { InboxNameWrapper, JobCreationWrapper } from "../pkg/shinkai_message_wasm";
 
 const CreateJob: React.FC = () => {
   useSetup();
@@ -35,57 +39,64 @@ const CreateJob: React.FC = () => {
     (state: RootState) => state.setupDetailsState
   );
   const [jobContent, setJobContent] = useState("");
-  const [selectedAgent, setSelectedAgent] = useState("");
-  const [agents, setAgents] = useState<SerializedAgent[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<SerializedAgent | null>(null);
+  const agents = useSelector((state: RootState) => state.agents);
+  const history: History<unknown> = useHistory();
 
   useEffect(() => {
     const fetchAgents = async () => {
-      const { shinkai_identity, profile, registration_name } = setupDetailsState;
+      const { shinkai_identity, profile, registration_name } =
+        setupDetailsState;
       let node_name = shinkai_identity;
       let sender_subidentity = `${profile}/device/${registration_name}`;
-  
-      const agentsData = await getProfileAgents(node_name, sender_subidentity, node_name, setupDetailsState)(dispatch);
-      if (Array.isArray(agentsData)) {
-        dispatch(setAgents(agentsData));
-      } else {
-        console.error("Received data is not an array of agents");
-      }
+
+      await getProfileAgents(
+        node_name,
+        sender_subidentity,
+        node_name,
+        setupDetailsState
+      )(dispatch);
     };
-  
+
     fetchAgents();
   }, [dispatch, setupDetailsState]);
 
-  const handleCreateJob = () => {
-    // try {
-    //   // Perform your API request here
+  const handleCreateJob = async () => {
     console.log("Creating job with content:", jobContent);
-    //   // We should show a list of all the available agents
 
-    //   // Split shinkaiIdentity into sender and the rest
-    // let [receiver, ...rest] = shinkaiIdentity.split("/");
+    const { shinkai_identity, profile } = setupDetailsState;
+    let sender = shinkai_identity + "/" + profile;
+  
+    const job_creation = JobCreationWrapper.empty().get_scope;
+    console.log("buckets: ", job_creation.buckets);
+    console.log("scope:", job_creation);
 
-    // // Join the rest back together to form sender_subidentity
-    // let receiver_subidentity = rest.join("/");
+    const scope = new JobScopeWrapper(job_creation.buckets, job_creation.documents);
+    console.log("scope:", scope.to_jsvalue());
 
-    //   const { shinkai_identity, profile, registration_name } = setupDetailsState;
+    console.log("Selected agent:", selectedAgent);
 
-    //   // Define your parameters for createJob
-    //   const scope = {};
-    //   let sender = shinkai_identity;
-    // let sender_subidentity = `${profile}/device/${registration_name}`;
+    const receiver = shinkai_identity;
+    const receiver_subidentity = `${profile}/agent/${selectedAgent?.id}`;
+  
+    // Call createJob
+    const jobId = await dispatch(
+      createJob(
+        scope.to_jsvalue(),
+        sender,
+        receiver,
+        receiver_subidentity,
+        setupDetailsState
+      )
+    );
+    console.log("Job created with id:", jobId);
 
-    //   const receiver = ...;
-    //   const receiver_subidentity = ...;
-    //   const setupDetailsState = ...;
-
-    //   // Call createJob
-    //   const jobId = await dispatch(createJob(scope, sender, receiver, receiver_subidentity, setupDetailsState));
-
-    //   await dispatch(sendMessageToJob(jobId, jobContent, sender, receiver, receiver_subidentity, setupDetailsState));
-
-    // } catch (error) {
-    //   console.error("Error in handleCreateJob:", error);
-    // }
+    if (jobId) {
+      // Hacky solution because react-router can't handle dots in the URL
+      const jobInboxName = InboxNameWrapper.get_job_inbox_name_from_params(jobId.toString());
+      const encodedJobId = jobInboxName.get_value.replace(/\./g, "~");
+      history.push(`/chat/${encodeURIComponent(encodedJobId)}`);
+    }
   };
 
   return (
@@ -115,7 +126,7 @@ const CreateJob: React.FC = () => {
                   placeholder="Select One"
                   onIonChange={(e) => setSelectedAgent(e.detail.value)}
                 >
-                  {agents.map((agent, index) => (
+                  {Object.values(agents).map((agent, index) => (
                     <IonSelectOption key={index} value={agent}>
                       {agent.id}
                     </IonSelectOption>

@@ -10,6 +10,7 @@ import {
   addMessageToInbox,
   receiveAllInboxesForProfile,
   receiveLoadMoreMessagesFromInbox,
+  addAgents,
 } from "../store/actions";
 import { AppThunk } from "../types";
 import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
@@ -356,8 +357,8 @@ export const createJob =
   async (dispatch: AppDispatch) => {
     try {
       const messageStr = ShinkaiMessageBuilderWrapper.job_creation(
-        setupDetailsState.my_device_encryption_sk,
-        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.profile_encryption_sk,
+        setupDetailsState.profile_identity_sk,
         setupDetailsState.node_encryption_pk,
         scope,
         sender,
@@ -370,12 +371,14 @@ export const createJob =
 
       const apiEndpoint = ApiConfig.getInstance().getEndpoint();
       const response = await axios.post(
-        `${apiEndpoint}/v1/job_creation`,
+        `${apiEndpoint}/v1/create_job`,
         message
       );
       handleHttpError(response);
-      dispatch(response.data.jobId);
-      const jobId = response.data.jobId;
+      // TODO: connect to redux if needed
+      // dispatch({ type: 'CREATE_JOB_SUCCESS', jobId: response.data.jobId });
+      console.log("createJob Response:", response.data);
+      const jobId = response.data;
 
       return jobId;
     } catch (error) {
@@ -450,7 +453,7 @@ export const getProfileAgents =
 
       console.log("getProfileAgents Response:", response.data);
       handleHttpError(response);
-      dispatch(response.data);
+      dispatch(addAgents(response.data));
       return response.data;
     } catch (error) {
       console.error("Error sending message to job:", error);

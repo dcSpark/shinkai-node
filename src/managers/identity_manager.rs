@@ -51,11 +51,12 @@ impl IdentityManager {
                 .map(Identity::Agent)
                 .collect::<Vec<_>>()
         };
+        println!("\n\n ## identities_manager agents: {:?}", agents);
 
         {
             let db = db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
-            println!("identities_manager agents: {:?}", identities);
+            println!("identities_manager identities: {:?}", identities);
         }
 
         identities.extend(agents);

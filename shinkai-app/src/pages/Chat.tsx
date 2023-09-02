@@ -74,6 +74,7 @@ const Chat: React.FC = () => {
   );
 
   useEffect(() => {
+    console.log("deserializedId:", deserializedId);
     dispatch(
       getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState),
     );

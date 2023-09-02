@@ -261,6 +261,12 @@ impl ShinkaiMessageBuilder {
             if internal_metadata.inbox.is_empty() {
                 if let Some(external_metadata) = &new_self.external_metadata {
                     // Generate a new inbox name
+                    // Print the value of external_metadata.sender to the browser console
+                    web_sys::console::log_1(&format!("external_metadata.sender: {}", external_metadata.sender).into());
+                    web_sys::console::log_1(&format!("internal_metadata.sender_subidentity: {}", internal_metadata.sender_subidentity).into()); 
+                    web_sys::console::log_1(&format!("external_metadata.recipient: {}", external_metadata.recipient).into());
+                    web_sys::console::log_1(&format!("internal_metadata.recipient_subidentity: {}", internal_metadata.recipient_subidentity).into());
+                    
                     let new_inbox_name = InboxName::get_regular_inbox_name_from_params(
                         external_metadata.sender.clone(),
                         internal_metadata.sender_subidentity.clone(),

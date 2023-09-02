@@ -11,6 +11,7 @@ export const ADD_MESSAGE_TO_INBOX = 'ADD_MESSAGE_TO_INBOX';
 export const RECEIVE_ALL_INBOXES_FOR_PROFILE = 'RECEIVE_ALL_INBOXES_FOR_PROFILE';
 export const GET_AVAILABLE_AGENTS = 'GET_AVAILABLE_AGENTS';
 export const CLEAR_MESSAGES = "CLEAR_MESSAGES";
+export const ADD_AGENTS = 'ADD_AGENTS';
 
 export interface Action {
     type: string;

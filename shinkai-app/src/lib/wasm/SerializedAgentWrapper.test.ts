@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import { SerializedAgentWrapper } from "./SerializedAgentWrapper";
 import { ShinkaiNameWrapper } from "./ShinkaiNameWrapper";
+import { SerializedAgent } from "../../models/SchemaTypes";
 
 test("SerializedAgentWrapper conversion", async () => {
   // Create a SerializedAgentWrapper using fromStrings
@@ -38,7 +39,7 @@ test("SerializedAgentWrapper conversion", async () => {
 
 test("SerializedAgent to SerializedAgentWrapper conversion", async () => {
   // Create a SerializedAgent
-  const serializedAgent = {
+  const serializedAgent: SerializedAgent = {
     id: "test_agent",
     full_identity_name: "@@node.shinkai/main/agent/test_agent",
     perform_locally: false,
