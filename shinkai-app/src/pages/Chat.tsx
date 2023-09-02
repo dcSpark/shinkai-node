@@ -17,7 +17,12 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useParams } from "react-router-dom";
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  createRef,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
@@ -52,8 +57,9 @@ const Chat: React.FC = () => {
 
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetailsState,
   );
+  const chatContainerRef = createRef<HTMLIonContentElement>();
 
   const { id } = useParams<{ id: string }>();
   const bottomChatRef = useRef<HTMLDivElement>(null);
@@ -63,21 +69,27 @@ const Chat: React.FC = () => {
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   const reduxMessages = useSelector(
-    (state: RootState) => state.inboxes[deserializedId]
+    (state: RootState) => state.inboxes[deserializedId],
   );
 
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const otherPersonIdentity = getOtherPersonIdentity(
     deserializedId,
-    setupDetailsState.shinkai_identity
+    setupDetailsState.shinkai_identity,
   );
 
   useEffect(() => {
     dispatch(
-      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
+      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState),
     );
   }, [id, dispatch, setupDetailsState]);
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      void chatContainerRef.current.scrollToBottom(100);
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
@@ -111,6 +123,7 @@ const Chat: React.FC = () => {
   }, [messages]);
 
   const sendMessage = () => {
+    if (inputMessage.trim() === "") return;
     console.log("Sending message: ", inputMessage);
 
     // Local Identity
@@ -130,8 +143,8 @@ const Chat: React.FC = () => {
         receiver,
         inputMessage,
         deserializedId,
-        setupDetailsState
-      )
+        setupDetailsState,
+      ),
     );
     setInputMessage("");
   };
@@ -150,7 +163,7 @@ const Chat: React.FC = () => {
         </div>
       </IonHeaderCustom>
 
-      <IonContentCustom>
+      <IonContentCustom ref={chatContainerRef}>
         <div className="py-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
           {hasMoreMessages && (
             <IonButton
@@ -161,8 +174,8 @@ const Chat: React.FC = () => {
                     10,
                     lastKey,
                     setupDetailsState,
-                    true
-                  )
+                    true,
+                  ),
                 )
               }
             >
@@ -193,7 +206,7 @@ const Chat: React.FC = () => {
                       lines="none"
                       className={cn(
                         "ion-item-chat relative w-full shadow",
-                        isLocalMessage && "isLocalMessage"
+                        isLocalMessage && "isLocalMessage",
                       )}
                     >
                       <div className="px-2 py-4 flex gap-4 pb-10 w-full">
@@ -219,7 +232,7 @@ const Chat: React.FC = () => {
                         {message?.external_metadata?.scheduled_time && (
                           <span className="absolute bottom-[5px] right-5 text-muted text-sm">
                             {parseDate(
-                              message.external_metadata.scheduled_time
+                              message.external_metadata.scheduled_time,
                             ).toLocaleTimeString()}
                           </span>
                         )}
@@ -238,9 +251,7 @@ const Chat: React.FC = () => {
           }
           onSubmit={(e) => {
             e.preventDefault();
-            if (inputMessage.trim() !== "") {
-              sendMessage();
-            }
+            sendMessage();
           }}
         >
           <div className="m-2 relative flex h-full flex-1 md:flex-col">
@@ -254,7 +265,8 @@ const Chat: React.FC = () => {
               onIonChange={(e) => setInputMessage(e.detail.value!)}
               placeholder="Type a message"
               onKeyDown={(event) => {
-                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                  event.preventDefault();
                   sendMessage();
                 }
               }}
@@ -267,7 +279,7 @@ const Chat: React.FC = () => {
                 "absolute z-10 p-3 rounded-md text-gray-500 bottom-[1px] right-1",
                 "md:bottom-2.5 md:right-2",
                 "hover:bg-gray-100 disabled:hover:bg-transparent",
-                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent"
+                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent",
               )}
             >
               <IonIcon size="" icon={send} />
