@@ -23,6 +23,10 @@ impl BertCPPProcess {
             File::open("/dev/null").unwrap()
         };
 
+        // Wait for for previous tests bert.cpp to close
+        let duration = Duration::from_millis(100);
+        thread::sleep(duration);
+
         let child = Command::new("./bert-cpp-server")
             .arg("--model")
             .arg("models/all-MiniLM-L12-v2.bin")
@@ -36,8 +40,9 @@ impl BertCPPProcess {
 
         // Wait for for the BertCPP process to boot up/initialize its
         // web server
-        let duration = Duration::from_millis(250);
+        let duration = Duration::from_millis(150);
         thread::sleep(duration);
+
         Ok(BertCPPProcess { child })
     }
 }
