@@ -64,13 +64,21 @@ impl Embedding {
         let num_of_results = num_of_results as usize;
 
         // Calculate the similarity scores for all chunk embeddings and skip any that
-        // are NaN
+        // are NaN or less than 0
         let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()
             .filter_map(|embedding| {
                 let similarity = self.cosine_similarity(embedding);
                 match NotNan::new(similarity) {
-                    Ok(not_nan_similarity) => Some((not_nan_similarity, embedding.id.clone())),
+                    Ok(not_nan_similarity) => {
+                        // If the similarity is a negative, set it to 0 to ensure sorting works properly
+                        let final_simliarity = if similarity < 0.0 {
+                            NotNan::new(0.0).unwrap() // Safe unwrap
+                        } else {
+                            not_nan_similarity
+                        };
+                        return Some((final_simliarity, embedding.id.clone()));
+                    }
                     Err(_) => None, // Skip this embedding if similarity is NaN
                 }
             })

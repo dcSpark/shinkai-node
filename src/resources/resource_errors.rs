@@ -18,6 +18,7 @@ pub enum VectorResourceError {
     RegexError(regex::Error),
     RequestFailed(String),
     NoEmbeddingProvided,
+    DataIsNonMatchingType,
 }
 
 impl fmt::Display for VectorResourceError {
@@ -38,6 +39,9 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
             VectorResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
+            VectorResourceError::DataIsNonMatchingType => {
+                write!(f, "Data inside of the DataChunk is of a different type than requested.")
+            }
         }
     }
 }

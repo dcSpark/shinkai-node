@@ -93,14 +93,20 @@ impl VectorResourceRouter {
         let mut resource_pointers = vec![];
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-            if let Ok(resource_type) = VectorResourceType::from_str(&ret_chunk.chunk.data)
-                .map_err(|_| VectorResourceError::InvalidVectorResourceType)
-            {
-                let id = &ret_chunk.chunk.id;
-                let embedding = self.routing_resource.get_chunk_embedding(id).ok();
-                let resource_pointer =
-                    VectorResourcePointer::new(&id, resource_type, embedding, ret_chunk.chunk.data_tag_names.clone());
-                resource_pointers.push(resource_pointer);
+            if let DataContent::Data(data) = &ret_chunk.chunk.data {
+                if let Ok(resource_type) =
+                    VectorResourceType::from_str(data).map_err(|_| VectorResourceError::InvalidVectorResourceType)
+                {
+                    let id = &ret_chunk.chunk.id;
+                    let embedding = self.routing_resource.get_chunk_embedding(id.to_string()).ok();
+                    let resource_pointer = VectorResourcePointer::new(
+                        &id,
+                        resource_type,
+                        embedding,
+                        ret_chunk.chunk.data_tag_names.clone(),
+                    );
+                    resource_pointers.push(resource_pointer);
+                }
             }
         }
         resource_pointers
@@ -141,7 +147,7 @@ impl VectorResourceRouter {
                 // original resource.
                 self.routing_resource._insert_kv_without_tag_validation(
                     &db_key,
-                    &data,
+                    DataContent::Data(data.to_string()),
                     metadata,
                     &embedding,
                     &resource_pointer.data_tag_names,
@@ -167,7 +173,7 @@ impl VectorResourceRouter {
 
         self.routing_resource._replace_kv_without_tag_validation(
             old_pointer_id,
-            &data,
+            DataContent::Data(data.to_string()),
             metadata,
             &embedding,
             &resource_pointer.data_tag_names,
@@ -191,7 +197,8 @@ impl VectorResourceRouter {
         if let Some(embedding) = resource_pointer.resource_embedding.clone() {
             Ok(embedding)
         } else {
-            self.routing_resource.get_chunk_embedding(&resource_pointer.db_key)
+            self.routing_resource
+                .get_chunk_embedding(resource_pointer.db_key.to_string())
         }
     }
 
