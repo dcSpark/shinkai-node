@@ -1,7 +1,9 @@
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
+use shinkai_node::resources::base_vector_resources::BaseVectorResource;
 use shinkai_node::resources::document_resource::DocumentVectorResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_node::resources::map_resource::MapVectorResource;
 use shinkai_node::resources::resource_errors::VectorResourceError;
 use shinkai_node::resources::vector_resource::VectorResource;
 use shinkai_node::resources::{bert_cpp::BertCPPProcess, data_tags::DataTag};
@@ -57,14 +59,18 @@ fn test_manual_document_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
+    //
+    // Create a first resource
+    //
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         Some("animalwildlife.com"),
         "animal_resource",
     );
-
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
+        .unwrap();
 
     // Prepare embeddings + data, then add it to the doc
     let fact1 = "Dogs are creatures with 4 legs that bark.";
@@ -85,7 +91,7 @@ fn test_manual_document_resource_vector_search() {
     // Testing vector search works
     let query_string = "What animal barks?";
     let query_embedding = generator.generate_embedding(query_string).unwrap();
-    let res = doc.vector_search(query_embedding, 1);
+    let res = doc.vector_search(query_embedding.clone(), 1);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
     let query_string2 = "What animal is slow?";
@@ -97,6 +103,82 @@ fn test_manual_document_resource_vector_search() {
     let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
     assert_eq!(fact3, res3[0].chunk.get_data_string().unwrap());
+
+    //
+    // Create a 2nd resource, a MapVectorResource
+    //
+    let mut map_resource = MapVectorResource::new_empty(
+        "Tech Facts",
+        Some("A collection of facts about technology"),
+        Some("veryrealtechfacts.com"),
+        "tech_resource",
+    );
+
+    map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    map_resource
+        .update_resource_embedding(&generator, vec!["technology".to_string(), "phones".to_string()])
+        .unwrap();
+
+    // Prepare embeddings + data, then add it to the map resource
+    let fact4 = "Phones provide the power of the internet in your pocket.";
+    let fact4_embeddings = generator.generate_embedding(fact4).unwrap();
+    map_resource.insert_kv("some_key", fact4, None, &fact4_embeddings, &vec![]);
+
+    // Insert the document resource into the map resource
+    let doc_resource = BaseVectorResource::Document(doc);
+    map_resource.insert_vector_resource("doc_key", doc_resource, None);
+
+    //
+    // Create a third resource, a DocumentVectorResource about fruits
+    //
+    let mut fruit_doc = DocumentVectorResource::new_empty(
+        "Fruit Facts",
+        Some("A collection of facts about fruits"),
+        Some("ostensiblyrealfruitfacts.com"),
+        "fruit_resource",
+    );
+    fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+
+    // Prepare embeddings + data, then add it to the fruit doc
+    let fact5 = "Apples are sweet and crunchy.";
+    let fact5_embeddings = generator.generate_embedding(fact5).unwrap();
+    let fact6 = "Bananas are tasty and come in their own natural packaging.";
+    let fact6_embeddings = generator.generate_embedding(fact6).unwrap();
+    fruit_doc.append_data(fact5, None, &fact5_embeddings, &vec![]);
+    fruit_doc.append_data(fact6, None, &fact6_embeddings, &vec![]);
+
+    // Insert the map resource into the fruit doc
+    let map_resource = BaseVectorResource::Map(map_resource);
+    fruit_doc.append_vector_resource(map_resource, None);
+
+    // Perform a vector search for data 2 levels lower on the fruit doc to ensure
+    // that vector searches propagate inwards through all resources
+    let res = fruit_doc.vector_search(query_embedding, 5);
+    assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
+
+    // Perform a vector search for data 1 level lower on the fruit doc to ensure
+    // that vector searches propagate inwards through all resources
+    let query_string = "What can I use to access the internet?";
+    let query_embedding = generator.generate_embedding(query_string).unwrap();
+    let res = fruit_doc.vector_search(query_embedding, 5);
+    assert_eq!(fact4, res[0].chunk.get_data_string().unwrap());
+
+    // Perform a vector search on the fruit doc
+    // for data on the base level
+    let query_string = "What fruit has its own packaging?";
+    let query_embedding = generator.generate_embedding(query_string).unwrap();
+    let res = fruit_doc.vector_search(query_embedding, 10);
+
+    for ret_data in &res {
+        println!(
+            "Origin: {}\nData: {}\nScore: {}\n\n",
+            ret_data.resource_pointer.db_key,
+            ret_data.chunk.get_data_string().unwrap(),
+            ret_data.score
+        )
+    }
+
+    assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
 }
 
 #[test]
@@ -256,13 +338,6 @@ fn test_multi_resource_db_vector_search() {
 
     assert_eq!(fact1, &ret_data_chunk.chunk.get_data_string().unwrap());
     assert_eq!(fact2, &ret_data_chunk2.chunk.get_data_string().unwrap());
-
-    // for ret_data in &ret_data_chunks {
-    //         println!(
-    //             "Origin: {}\nData: {}\nScore: {}\n\n",
-    //             ret_data.resource_pointer.db_key, ret_data.chunk.get_data_string().unwrap(), ret_data.score
-    //         )
-    //     }
 }
 
 #[test]
@@ -309,7 +384,7 @@ fn test_db_syntactic_vector_search() {
     let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
     shinkai_db.save_resources(vec![resource1], &profile).unwrap();
 
-    println!("Doc data tag index: {:?}", doc.data_tag_index());
+    // println!("Doc data tag index: {:?}", doc.data_tag_index());
 
     // Email syntactic vector search
     let query = generator.generate_embedding("Fetch me emails.").unwrap();

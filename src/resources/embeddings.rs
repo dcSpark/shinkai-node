@@ -68,7 +68,6 @@ impl Embedding {
         let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()
             .filter_map(|embedding| {
-                embedding.pretty_print();
                 let similarity = self.cosine_similarity(embedding);
                 match NotNan::new(similarity) {
                     Ok(not_nan_similarity) => {

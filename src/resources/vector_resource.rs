@@ -308,7 +308,6 @@ pub trait VectorResource {
                                 data_tag_names,
                             )
                         };
-                        println!("sub results: {:?}", sub_results);
                         first_level_results.extend(sub_results);
                     }
                     DataContent::Data(_) => {
