@@ -36,7 +36,7 @@ impl BertCPPProcess {
 
         // Wait for for the BertCPP process to boot up/initialize its
         // web server
-        let duration = Duration::from_millis(200);
+        let duration = Duration::from_millis(250);
         thread::sleep(duration);
         Ok(BertCPPProcess { child })
     }
@@ -46,7 +46,7 @@ impl Drop for BertCPPProcess {
     fn drop(&mut self) {
         match self.child.kill() {
             Ok(_) => {
-                let duration = Duration::from_millis(100);
+                let duration = Duration::from_millis(150);
                 thread::sleep(duration);
                 println!("Successfully killed the bert-cpp server process.")
             }

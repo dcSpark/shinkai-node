@@ -169,15 +169,6 @@ fn test_manual_document_resource_vector_search() {
     let query_embedding = generator.generate_embedding(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 10);
 
-    for ret_data in &res {
-        println!(
-            "Origin: {}\nData: {}\nScore: {}\n\n",
-            ret_data.resource_pointer.db_key,
-            ret_data.chunk.get_data_string().unwrap(),
-            ret_data.score
-        )
-    }
-
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
 }
 
