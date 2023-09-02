@@ -17,12 +17,7 @@ import {
   IonToolbar,
 } from "@ionic/react";
 import { useParams } from "react-router-dom";
-import React, {
-  createRef,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import React, { createRef, useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
@@ -62,7 +57,6 @@ const Chat: React.FC = () => {
   const chatContainerRef = createRef<HTMLIonContentElement>();
 
   const { id } = useParams<{ id: string }>();
-  const bottomChatRef = useRef<HTMLDivElement>(null);
   const deserializedId = decodeURIComponent(id).replace(/~/g, ".");
   const [lastKey, setLastKey] = useState<string | undefined>(undefined);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -109,19 +103,6 @@ const Chat: React.FC = () => {
     }
   }, [reduxMessages]);
 
-  useEffect(() => {
-    // Check if the user is at the bottom of the chat
-    const isUserAtBottom =
-      bottomChatRef.current &&
-      bottomChatRef.current.getBoundingClientRect().bottom <=
-        window.innerHeight;
-
-    // If the user is at the bottom, scroll to the bottom
-    if (isUserAtBottom) {
-      bottomChatRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
-
   const sendMessage = () => {
     if (inputMessage.trim() === "") return;
     console.log("Sending message: ", inputMessage);
@@ -167,7 +148,7 @@ const Chat: React.FC = () => {
         <div className="py-10 md:rounded-[1.25rem] bg-white dark:bg-slate-800">
           {hasMoreMessages && (
             <IonButton
-              onClick={() =>
+              onClick={() => {
                 dispatch(
                   getLastMessagesFromInbox(
                     deserializedId,
@@ -176,8 +157,8 @@ const Chat: React.FC = () => {
                     setupDetailsState,
                     true,
                   ),
-                )
-              }
+                );
+              }}
             >
               Load More
             </IonButton>
@@ -241,7 +222,6 @@ const Chat: React.FC = () => {
                   );
                 })}
           </IonList>
-          <div ref={bottomChatRef} />
         </div>
       </IonContentCustom>
       <IonFooterCustom>
