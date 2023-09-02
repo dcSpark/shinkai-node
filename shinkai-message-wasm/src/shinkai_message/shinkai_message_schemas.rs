@@ -95,12 +95,12 @@ impl JobScope {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreation {
     pub scope: JobScope,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobMessage {
     // TODO: scope div modifications?
     pub job_id: String,

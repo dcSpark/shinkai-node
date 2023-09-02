@@ -42,6 +42,10 @@ export class InboxNameWrapper {
 */
   static get_job_inbox_name_from_params(unique_id: string): InboxNameWrapper;
 /**
+* @returns {any}
+*/
+  get_inner(): any;
+/**
 */
   readonly get_identities: any;
 /**
@@ -56,6 +60,92 @@ export class InboxNameWrapper {
 /**
 */
   readonly to_string: any;
+}
+/**
+*/
+export class JobCreationWrapper {
+  free(): void;
+/**
+* @param {any} scope_js
+*/
+  constructor(scope_js: any);
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
+/**
+* @param {string} s
+* @returns {JobCreationWrapper}
+*/
+  static from_json_str(s: string): JobCreationWrapper;
+/**
+* @param {any} js_value
+* @returns {JobCreationWrapper}
+*/
+  static from_jsvalue(js_value: any): JobCreationWrapper;
+/**
+* @returns {JobCreationWrapper}
+*/
+  static empty(): JobCreationWrapper;
+/**
+*/
+  readonly get_scope: any;
+}
+/**
+*/
+export class JobMessageWrapper {
+  free(): void;
+/**
+* @param {any} job_id_js
+* @param {any} content_js
+*/
+  constructor(job_id_js: any, content_js: any);
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
+/**
+* @param {string} s
+* @returns {JobMessageWrapper}
+*/
+  static from_json_str(s: string): JobMessageWrapper;
+/**
+* @param {any} js_value
+* @returns {JobMessageWrapper}
+*/
+  static from_jsvalue(js_value: any): JobMessageWrapper;
+/**
+* @param {string} job_id
+* @param {string} content
+* @returns {JobMessageWrapper}
+*/
+  static fromStrings(job_id: string, content: string): JobMessageWrapper;
+}
+/**
+*/
+export class JobScopeWrapper {
+  free(): void;
+/**
+* @param {any} buckets_js
+* @param {any} documents_js
+*/
+  constructor(buckets_js: any, documents_js: any);
+/**
+* @returns {any}
+*/
+  to_jsvalue(): any;
+/**
+* @returns {string}
+*/
+  to_json_str(): string;
 }
 /**
 */

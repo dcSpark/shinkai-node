@@ -65,6 +65,8 @@ impl fmt::Display for ShinkaiNameError {
     }
 }
 
+impl std::error::Error for ShinkaiNameError {}
+
 // Valid Examples
 // @@alice.shinkai
 // @@alice.shinkai/profileName

@@ -1,4 +1,5 @@
 import { Base58String } from "../models/QRSetupData";
+import { SerializedAgent } from "../models/SchemaTypes";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { calculateMessageHash } from "../utils/shinkai_message_handler";
 import {
@@ -14,6 +15,7 @@ import {
   ADD_MESSAGE_TO_INBOX,
   RECEIVE_ALL_INBOXES_FOR_PROFILE,
   RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
+  ADD_AGENTS,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -65,6 +67,9 @@ export interface RootState {
   messageHashes: {
     [inboxId: string]: Set<string>;
   };
+  agents: {
+    [agentId: string]: SerializedAgent;
+  };
 }
 
 const initialState: RootState = {
@@ -76,6 +81,7 @@ const initialState: RootState = {
   error: null,
   inboxes: {},
   messageHashes: {},
+  agents: {},
 };
 
 const rootReducer = (state = initialState, action: Action): RootState => {
@@ -191,6 +197,17 @@ const rootReducer = (state = initialState, action: Action): RootState => {
             {}
           ),
         },
+      };
+    }
+    case ADD_AGENTS: {
+      const newAgents = action.payload;
+      const updatedAgents = { ...state.agents };
+      newAgents.forEach((agent: SerializedAgent) => {
+        updatedAgents[agent.id] = agent;
+      });
+      return {
+        ...state,
+        agents: updatedAgents,
       };
     }
     case CREATE_REGISTRATION_CODE:

@@ -98,4 +98,9 @@ impl InboxNameWrapper {
         let inbox_name = InboxName::get_job_inbox_name_from_params(unique_id)?;
         Ok(InboxNameWrapper { inner: inbox_name })
     }
+
+    #[wasm_bindgen]
+    pub fn get_inner(&self) -> JsValue {
+        self.to_jsvalue().unwrap()
+    }
 }
