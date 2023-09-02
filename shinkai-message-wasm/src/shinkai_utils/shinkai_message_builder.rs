@@ -5,15 +5,18 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{inbox_name::InboxName, registration_code::RegistrationCode, shinkai_time::ShinkaiTime, agents::serialized_agent::SerializedAgent},
+    schemas::{
+        agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
+        shinkai_time::ShinkaiTime,
+    },
     shinkai_message::{
         shinkai_message::{
             EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData,
             ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion,
         },
         shinkai_message_schemas::{
-            APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreation, JobMessage,
-            JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, APIAddAgentRequest,
+            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
+            JobCreation, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -262,11 +265,30 @@ impl ShinkaiMessageBuilder {
                 if let Some(external_metadata) = &new_self.external_metadata {
                     // Generate a new inbox name
                     // Print the value of external_metadata.sender to the browser console
-                    web_sys::console::log_1(&format!("external_metadata.sender: {}", external_metadata.sender).into());
-                    web_sys::console::log_1(&format!("internal_metadata.sender_subidentity: {}", internal_metadata.sender_subidentity).into()); 
-                    web_sys::console::log_1(&format!("external_metadata.recipient: {}", external_metadata.recipient).into());
-                    web_sys::console::log_1(&format!("internal_metadata.recipient_subidentity: {}", internal_metadata.recipient_subidentity).into());
-                    
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        web_sys::console::log_1(
+                            &format!("external_metadata.sender: {}", external_metadata.sender).into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!(
+                                "internal_metadata.sender_subidentity: {}",
+                                internal_metadata.sender_subidentity
+                            )
+                            .into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!("external_metadata.recipient: {}", external_metadata.recipient).into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!(
+                                "internal_metadata.recipient_subidentity: {}",
+                                internal_metadata.recipient_subidentity
+                            )
+                            .into(),
+                        );
+                    }
+
                     let new_inbox_name = InboxName::get_regular_inbox_name_from_params(
                         external_metadata.sender.clone(),
                         internal_metadata.sender_subidentity.clone(),
@@ -523,7 +545,6 @@ impl ShinkaiMessageBuilder {
         )
     }
 
-
     pub fn use_code_registration_for_device(
         my_device_encryption_sk: EncryptionStaticKey,
         my_device_signature_sk: SignatureStaticKey,
@@ -636,9 +657,7 @@ impl ShinkaiMessageBuilder {
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let add_agent = APIAddAgentRequest {
-            agent
-        };
+        let add_agent = APIAddAgentRequest { agent };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
             my_subidentity_encryption_sk,

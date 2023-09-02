@@ -53,12 +53,14 @@ impl ShinkaiDB {
         let cf_agent_id_name = format!("agentid_{}", &agent_id);
         let cf_job_id_name = format!("jobtopic_{}", &job_id);
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
+        let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
 
         // Check that the profile name exists in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesIdentityType
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
             || self.db.cf_handle(&cf_job_id_step_history_name).is_some()
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
+            || self.db.cf_handle(&cf_job_id_perms_name).is_some() 
         {
             return Err(ShinkaiDBError::ProfileNameAlreadyExists);
         }
@@ -71,6 +73,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_job_id_scope_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_step_history_name, &cf_opts)?;
         self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -272,11 +275,13 @@ impl ShinkaiDB {
 
     pub fn add_message_to_job_inbox(&self, job_id: &str, content: &str) -> Result<(), ShinkaiDBError> {
         let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.to_string();
+        println!("add_message_to_job_inbox: cf_conversation_inbox_name: {}", cf_conversation_inbox_name);
         let cf_handle = self
             .db
             .cf_handle(&cf_conversation_inbox_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name))?;
         let current_time = ShinkaiTime::generate_time_now();
+        // TODO: update it so it can use composite keys
         self.db.put_cf(cf_handle, current_time.as_bytes(), content.as_bytes())?;
         Ok(())
     }

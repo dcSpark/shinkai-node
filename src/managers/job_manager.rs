@@ -217,7 +217,6 @@ impl AgentManager {
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
                         if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id).await {
-                            println!("serialized_agent: {:?}", serialized_agent);
                             let agent = Agent::from_serialized_agent(serialized_agent, self.job_manager_sender.clone());
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             self.agents.push(agent_found.clone().unwrap());

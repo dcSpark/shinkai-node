@@ -95,8 +95,8 @@ impl Node {
                                 },
                                 Identity::Device(device) => device.node_encryption_public_key,
                                 Identity::Agent(_) => return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
                                     message:
                                         "Failed to get sender encryption pk from message: Agent identity not supported"
                                             .to_string(),
@@ -104,8 +104,8 @@ impl Node {
                             },
                             None => {
                                 return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
                                     message: "Failed to get sender encryption pk from message: Identity not found"
                                         .to_string(),
                                 })
@@ -533,7 +533,7 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-        match self.internal_create_new_job(msg).await {
+        match self.internal_create_new_job(msg, sender_subidentity).await {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok(job_id.clone())).await;

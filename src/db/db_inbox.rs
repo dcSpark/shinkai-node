@@ -387,6 +387,9 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<bool, ShinkaiDBError> {
+        println!("Checking permission for inbox: {}", inbox_name);
+        println!("Permission: {:?}", perm);
+        println!("Identity: {}", identity);
         let profile_name =
             identity
                 .full_identity_name
