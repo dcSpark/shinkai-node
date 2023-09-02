@@ -297,7 +297,7 @@ pub trait VectorResource {
             if let Ok(chunk) = self.get_data_chunk(id) {
                 match chunk.data {
                     DataContent::Resource(resource) => {
-                        // vector_resource_count += 1;
+                        vector_resource_count += 1;
                         // If no data tag names provided, it means we are doing a normal vector search
                         let sub_results = if data_tag_names.is_empty() {
                             resource.trait_object().vector_search(query.clone(), num_of_results)
@@ -322,11 +322,13 @@ pub trait VectorResource {
             }
         }
 
-        return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
-        //   if vector_resource_count > 1 {
-        //             return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
-        //         }
-        //         first_level_results
+        // If at least one vector resource exists in the DataChunks then re-sort
+        // after fetching deeper level results to ensure ordering are correct
+        if vector_resource_count >= 1 {
+            return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
+        }
+        // Otherwise just return 1st level results
+        first_level_results
     }
 
     /// Performs a vector search using a query embedding and returns
