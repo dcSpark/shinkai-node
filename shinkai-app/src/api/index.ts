@@ -346,45 +346,36 @@ export const pingAllNodes = () => async (dispatch: AppDispatch) => {
   }
 };
 
-export const createJob =
-  (
-    scope: any,
-    sender: string,
-    receiver: string,
-    receiver_subidentity: string,
-    setupDetailsState: SetupDetailsState
-  ) =>
-  async (dispatch: AppDispatch) => {
-    try {
-      const messageStr = ShinkaiMessageBuilderWrapper.job_creation(
-        setupDetailsState.profile_encryption_sk,
-        setupDetailsState.profile_identity_sk,
-        setupDetailsState.node_encryption_pk,
-        scope,
-        sender,
-        receiver,
-        receiver_subidentity
-      );
+export const createJob = async (
+  scope: any,
+  sender: string,
+  receiver: string,
+  receiver_subidentity: string,
+  setupDetailsState: SetupDetailsState
+) => {
+  try {
+    const messageStr = ShinkaiMessageBuilderWrapper.job_creation(
+      setupDetailsState.profile_encryption_sk,
+      setupDetailsState.profile_identity_sk,
+      setupDetailsState.node_encryption_pk,
+      scope,
+      sender,
+      receiver,
+      receiver_subidentity
+    );
 
-      const message = JSON.parse(messageStr);
-      // console.log("Message:", message);
+    const message = JSON.parse(messageStr);
 
-      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
-      const response = await axios.post(
-        `${apiEndpoint}/v1/create_job`,
-        message
-      );
-      handleHttpError(response);
-      // TODO: connect to redux if needed
-      // dispatch({ type: 'CREATE_JOB_SUCCESS', jobId: response.data.jobId });
-      console.log("createJob Response:", response.data);
-      const jobId = response.data;
-
-      return jobId;
-    } catch (error) {
-      console.error("Error creating job:", error);
-    }
-  };
+    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+    const response = await axios.post(`${apiEndpoint}/v1/create_job`, message);
+    handleHttpError(response);
+    console.log("createJob Response:", response.data);
+    const jobId = response.data;
+    return jobId;
+  } catch (error) {
+    console.error("Error creating job:", error);
+  }
+};
 
 export const sendMessageToJob =
   (
@@ -400,8 +391,8 @@ export const sendMessageToJob =
       const messageStr = ShinkaiMessageBuilderWrapper.job_message(
         jobId,
         content,
-        setupDetailsState.my_device_encryption_sk,
-        setupDetailsState.my_device_identity_sk,
+        setupDetailsState.profile_encryption_sk,
+        setupDetailsState.profile_identity_sk,
         setupDetailsState.node_encryption_pk,
         sender,
         receiver,
@@ -460,37 +451,34 @@ export const getProfileAgents =
     }
   };
 
-export const addAgent =
-  (
-    sender_subidentity: string,
-    node_name: string,
-    agent: SerializedAgent,
-    setupDetailsState: SetupDetailsState
-  ) =>
-  async (dispatch: AppDispatch) => {
-    try {
-      let agent_wrapped = SerializedAgentWrapper.fromSerializedAgent(agent);
-      const messageStr = ShinkaiMessageBuilderWrapper.request_add_agent(
-        setupDetailsState.profile_encryption_sk,
-        setupDetailsState.profile_identity_sk,
-        setupDetailsState.node_encryption_pk,
-        node_name + "/" + sender_subidentity,
-        "",
-        node_name,
-        agent_wrapped
-      );
+export const addAgent = async (
+  sender_subidentity: string,
+  node_name: string,
+  agent: SerializedAgent,
+  setupDetailsState: SetupDetailsState
+) => {
+  try {
+    let agent_wrapped = SerializedAgentWrapper.fromSerializedAgent(agent);
+    const messageStr = ShinkaiMessageBuilderWrapper.request_add_agent(
+      setupDetailsState.profile_encryption_sk,
+      setupDetailsState.profile_identity_sk,
+      setupDetailsState.node_encryption_pk,
+      node_name + "/" + sender_subidentity,
+      "",
+      node_name,
+      agent_wrapped
+    );
 
-      const message = JSON.parse(messageStr);
-      // console.log("Message:", message);
+    const message = JSON.parse(messageStr);
+    // console.log("Message:", message);
 
-      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
-      const response = await axios.post(`${apiEndpoint}/v1/add_agent`, message);
+    const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+    const response = await axios.post(`${apiEndpoint}/v1/add_agent`, message);
 
-      console.log("addAgent Response:", response.data);
-      handleHttpError(response);
-      dispatch(response.data);
-      return response.data;
-    } catch (error) {
-      console.error("Error sending message to add agent:", error);
-    }
-  };
+    console.log("addAgent Response:", response.data);
+    handleHttpError(response);
+    return response.data;
+  } catch (error) {
+    console.error("Error sending message to add agent:", error);
+  }
+};

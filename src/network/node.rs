@@ -268,9 +268,11 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-        let job_manager = Arc::new(Mutex::new(
-            JobManager::new(db_arc.clone(), identity_manager.clone()).await,
-        ));
+        // let job_manager = Arc::new(Mutex::new(
+        //     JobManager::new(db_arc.clone(), identity_manager.clone()).await,
+        // ));
+        let job_manager = Arc::new(Mutex::new(JobManager::new(db_arc.clone(), identity_manager.clone()).await));
+        job_manager.lock().await.start().await;
 
         Node {
             node_profile_name,

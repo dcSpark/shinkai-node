@@ -182,7 +182,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-    
+        eprintln!("Inbox {} Messages: {:?}", inbox_name, messages);
         Ok(messages)
     }
 
@@ -486,7 +486,7 @@ impl ShinkaiDB {
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8_lossy(&key);
-                    if key_str.contains(&profile_name_identity.to_string()) {
+                    if key_str.contains(&profile_name_identity.full_identity_name.to_string()) {
                         inboxes.push(key_str.to_string());
                     } else {
                         // Check if the identity has read permission for the inbox
@@ -503,7 +503,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-
+        eprintln!("Inboxes: {:?}", inboxes);
         Ok(inboxes)
     }
 }

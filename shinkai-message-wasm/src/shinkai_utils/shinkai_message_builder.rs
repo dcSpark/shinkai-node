@@ -597,16 +597,18 @@ impl ShinkaiMessageBuilder {
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
-            receiver_public_key,
-            full_profile.to_string(),
+        ShinkaiMessageBuilder::new(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key)
+        .message_raw_content(full_profile)
+        .internal_metadata_with_schema(
             sender_subidentity,
-            sender,
-            receiver,
+            "".to_string(),
+            "".to_string(),
             MessageSchemaType::TextContent,
+            EncryptionMethod::None,
         )
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .external_metadata(receiver, sender)
+        .build()
     }
 
     pub fn get_last_messages_from_inbox(
