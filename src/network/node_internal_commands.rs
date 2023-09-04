@@ -250,7 +250,8 @@ impl Node {
         sender: Identity,
     ) -> Result<String, NodeError> {
         println!("Creating new job");
-        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
+        let job_manager = self.job_manager.as_ref().expect("JobManager not initialized");
+        match job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(job_id) => {
                 {
                     let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
@@ -302,7 +303,8 @@ impl Node {
     }
 
     pub async fn internal_job_message(&self, shinkai_message: ShinkaiMessage) -> Result<(), NodeError> {
-        match self.job_manager.lock().await.process_job_message(shinkai_message).await {
+        let job_manager = self.job_manager.as_ref().expect("JobManager not initialized");
+        match job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(_) => Ok(()),
             Err(err) => Err(NodeError {
                 message: format!("Error with process job message: {}", err),

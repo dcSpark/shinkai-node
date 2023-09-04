@@ -2,7 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_wasm::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
 use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{MessageSchemaType, JobMessage};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
@@ -225,8 +225,16 @@ fn node_agent_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                // println!("node2_last_messages: {:?}", node2_last_messages);
-                assert!(node2_last_messages.len() == 1);
+                println!("### node2_last_messages: {:?}", node2_last_messages);
+                let shinkai_message_content_agent = node2_last_messages[0].get_message_content().unwrap();
+                let message_content_agent: JobMessage =
+                    serde_json::from_str(&shinkai_message_content_agent).unwrap();
+
+                assert_eq!(
+                    message_content_agent.content,
+                    "\n\nHello there, how may I assist you today?".to_string()
+                );
+                assert!(node2_last_messages.len() == 2);
             }
             {
                 // Check Profile inboxes (to confirm job's there)
@@ -237,7 +245,7 @@ fn node_agent_registration() {
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk.clone(),
-                    sender.clone().to_string(), 
+                    sender.clone().to_string(),
                     "".to_string(),
                     sender,
                     node1_identity_name.clone().to_string(),

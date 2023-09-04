@@ -1,12 +1,17 @@
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use reqwest::Identity;
 use shinkai_message_wasm::{
-    schemas::{inbox_name::InboxName, shinkai_name::{ShinkaiName, ShinkaiNameError}},
+    schemas::{
+        inbox_name::InboxName,
+        shinkai_name::{ShinkaiName, ShinkaiNameError},
+    },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope, MessageSchemaType},
+        shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobRecipient, JobScope, MessageSchemaType},
     },
+    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
     ShinkaiMessageWrapper,
 };
 use std::result::Result::Ok;
@@ -14,6 +19,7 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use std::{fmt, thread};
 use tokio::sync::{mpsc, Mutex};
 use warp::path::full;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use super::{agent::Agent, IdentityManager};
 
@@ -73,19 +79,32 @@ impl JobLike for Job {
     }
 }
 
+type JobId = String;
+
 pub struct JobManager {
     pub agent_manager: Arc<Mutex<AgentManager>>,
-    pub job_manager_receiver: Option<mpsc::Receiver<Vec<JobPreMessage>>>,
+    pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
+    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
+    pub identity_secret_key: SignatureStaticKey,
+    pub node_profile_name: ShinkaiName,
 }
 
 impl JobManager {
-    pub async fn new(db: Arc<Mutex<ShinkaiDB>>, identity_manager: Arc<Mutex<IdentityManager>>) -> Self {
+    pub async fn new(
+        db: Arc<Mutex<ShinkaiDB>>,
+        identity_manager: Arc<Mutex<IdentityManager>>,
+        identity_secret_key: SignatureStaticKey,
+        node_profile_name: ShinkaiName,
+    ) -> Self {
         let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
-        let agent_manager = AgentManager::new(db, identity_manager, job_manager_sender).await;
+        let agent_manager = AgentManager::new(db, identity_manager, job_manager_sender.clone()).await;
 
         let mut job_manager = Self {
             agent_manager: Arc::new(Mutex::new(agent_manager)),
-            job_manager_receiver: Some(job_manager_receiver),
+            job_manager_receiver: Arc::new(Mutex::new(job_manager_receiver)),
+            job_manager_sender: job_manager_sender.clone(),
+            identity_secret_key,
+            node_profile_name,
         };
         job_manager.process_received_messages().await;
         job_manager
@@ -101,21 +120,33 @@ impl JobManager {
     }
 
     pub async fn process_received_messages(&mut self) {
-        if let Some(mut receiver) = self.job_manager_receiver.take() {
-            let agent_manager = Arc::clone(&self.agent_manager);
-            tokio::spawn(async move {
-                while let Some(messages) = receiver.recv().await {
-                    println!("process_received_messages> messages: {:?}", messages);
-                    for message in messages {
-                        let mut agent_manager = agent_manager.lock().await;
-                        println!("calling handle_pre_message_schema> message: {:?}", message);
-                        if let Err(err) = agent_manager.handle_pre_message_schema(message).await {
+        let agent_manager = Arc::clone(&self.agent_manager);
+        let receiver = Arc::clone(&self.job_manager_receiver);
+        let node_profile_name_clone = self.node_profile_name.clone();
+        let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key); 
+        tokio::spawn(async move {
+            while let Some((messages, job_id)) = receiver.lock().await.recv().await {
+                for message in messages {
+                    let mut agent_manager = agent_manager.lock().await;
+
+                    let shinkai_message_result = ShinkaiMessageBuilder::job_message_from_agent(
+                        job_id.clone(),
+                        message.clone().content,
+                        clone_signature_secret_key(&identity_secret_key_clone),
+                        node_profile_name_clone.clone().to_string(),
+                        node_profile_name_clone.clone().to_string(),
+                    );
+
+                    if let Ok(shinkai_message) = shinkai_message_result {
+                        if let Err(err) = agent_manager.handle_pre_message_schema(message, job_id.clone(), shinkai_message).await {
                             eprintln!("Error while handling pre message schema: {:?}", err);
                         }
+                    } else if let Err(err) = shinkai_message_result {
+                        eprintln!("Error while building ShinkaiMessage: {:?}", err);
                     }
                 }
-            });
-        }
+            }
+        });
     }
 
     pub async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
@@ -134,7 +165,7 @@ pub struct AgentManager {
     jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     db: Arc<Mutex<ShinkaiDB>>,
     identity_manager: Arc<Mutex<IdentityManager>>,
-    job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
+    job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
     agents: Vec<Arc<Mutex<Agent>>>,
 }
 
@@ -142,7 +173,7 @@ impl AgentManager {
     pub async fn new(
         db: Arc<Mutex<ShinkaiDB>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
+        job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -168,10 +199,11 @@ impl AgentManager {
         let mut job_manager = Self {
             jobs: jobs_map,
             db,
-            job_manager_sender,
+            job_manager_sender: job_manager_sender.clone(),
             identity_manager,
             agents,
         };
+
         job_manager
     }
 
@@ -237,7 +269,11 @@ impl AgentManager {
         }
     }
 
-    pub async fn handle_job_message_schema(&mut self, message: ShinkaiMessage, job_message: JobMessage) -> Result<String, JobManagerError> {
+    pub async fn handle_job_message_schema(
+        &mut self,
+        message: ShinkaiMessage,
+        job_message: JobMessage,
+    ) -> Result<String, JobManagerError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
             let mut shinkai_db = self.db.lock().await;
@@ -253,9 +289,15 @@ impl AgentManager {
         }
     }
 
-    pub async fn handle_pre_message_schema(&mut self, pre_message: JobPreMessage) -> Result<String, JobManagerError> {
-        // Placeholder logic
+    pub async fn handle_pre_message_schema(
+        &mut self,
+        pre_message: JobPreMessage,
+        job_id: String,
+        shinkai_message: ShinkaiMessage
+    ) -> Result<String, JobManagerError> {
         println!("handle_pre_message_schema> pre_message: {:?}", pre_message);
+    
+        self.db.lock().await.add_message_to_job_inbox(job_id.as_str(), &shinkai_message)?;
         Ok(String::new())
     }
 
@@ -267,7 +309,8 @@ impl AgentManager {
                         let message_type = data.message_content_schema;
                         match message_type {
                             MessageSchemaType::JobCreationSchema => {
-                                let agent_name = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                                let agent_name =
+                                    ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                                 let agent_id = agent_name.get_agent_name().ok_or(JobManagerError::AgentNotFound)?;
                                 let job_creation: JobCreation = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
@@ -281,7 +324,8 @@ impl AgentManager {
                             MessageSchemaType::PreMessageSchema => {
                                 let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_pre_message_schema(pre_message).await
+                                // TODO: we should be able to extract the job_id from the inbox
+                                self.handle_pre_message_schema(pre_message, "".to_string(), message).await
                             }
                             _ => {
                                 // Handle Empty message type if needed, or return an error if it's not a valid job message
@@ -304,6 +348,7 @@ impl AgentManager {
         let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
 
         let full_job = { self.db.lock().await.get_job(job.job_id()).unwrap() };
+        let job_id = job.job_id().to_string();
         let mut context = full_job.step_history.clone();
         context.push(time_with_comment);
         println!("decision_phase> context: {:?}", context);
@@ -322,10 +367,14 @@ impl AgentManager {
             Some(agent) => {
                 // Create a new async task where the agent's execute method will run
                 // Note: agent execute run in a separate thread
-                let last_message = full_job.step_history.last().ok_or(JobManagerError::ContentParseFailed)?.clone();
+                let last_message = full_job
+                    .step_history
+                    .last()
+                    .ok_or(JobManagerError::ContentParseFailed)?
+                    .clone();
                 tokio::spawn(async move {
                     let mut agent = agent.lock().await;
-                    agent.execute(last_message.to_string(), context).await;
+                    agent.execute(last_message.to_string(), context, job_id).await;
                 })
                 .await?;
                 Ok(())

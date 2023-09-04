@@ -130,7 +130,7 @@ mod tests {
         }
 
         // Create JobManager
-        let mut job_manager = JobManager::new(db_arc.clone(), identity_manager).await;
+        let mut job_manager = JobManager::new(db_arc.clone(), identity_manager, clone_signature_secret_key(&node1_identity_sk), node_profile_name.clone()).await;
 
         // Create a JobCreationMessage ShinkaiMessage
         let scope = JobScope {

@@ -26,7 +26,7 @@ use crate::{
 };
 
 use super::{
-    encryption::{clone_static_secret_key, encryption_secret_key_to_string},
+    encryption::{clone_static_secret_key, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair},
     signatures::{clone_signature_secret_key, signature_secret_key_to_string},
 };
 
@@ -468,6 +468,38 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+    pub fn job_message_from_agent(
+        job_id: String,
+        content: String,
+        my_signature_secret_key: SignatureStaticKey,
+        node_sender: ProfileName,
+        node_receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let job_id_clone = job_id.clone();
+        let job_message = JobMessage { job_id, content };
+        let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
+
+        let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
+            .map_err(|_| "Failed to get job inbox name")?
+            .to_string();
+
+        // Use for placeholder. These messages *are not* encrypted so it's not required
+        let (placeholder_encryption_sk, placeholder_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        ShinkaiMessageBuilder::new(placeholder_encryption_sk, my_signature_secret_key, placeholder_encryption_pk)
+            .message_raw_content(body)
+            .internal_metadata_with_schema(
+                "".to_string(),
+                "".to_string(),
+                inbox,
+                MessageSchemaType::JobMessageSchema,
+                EncryptionMethod::None,
+            )
+            .body_encryption(EncryptionMethod::None)
+            .external_metadata(node_receiver, node_sender)
+            .build()
+    }
+
     pub fn terminate_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
@@ -597,7 +629,11 @@ impl ShinkaiMessageBuilder {
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        ShinkaiMessageBuilder::new(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key)
+        ShinkaiMessageBuilder::new(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+        )
         .message_raw_content(full_profile)
         .internal_metadata_with_schema(
             sender_subidentity,

@@ -153,7 +153,6 @@ impl Node {
                 })
             }
         };
-        println!("sender_name: {:?}", sender_name);
 
         // We (currently) don't proxy external messages from other nodes to other nodes
         if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
@@ -170,10 +169,10 @@ impl Node {
         let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        eprintln!(
-            "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
-            sender_subidentity
-        );
+        // eprintln!(
+        //     "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
+        //     sender_subidentity
+        // );
 
         // Check that the identity exists locally
         let sender_subidentity = match sender_subidentity.clone() {
