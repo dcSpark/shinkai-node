@@ -896,7 +896,9 @@ impl Node {
             }
         };
 
-        let profile_requested = msg.get_message_content()?;
+        let profile_requested: String = serde_json::from_str(&msg.get_message_content()?).map_err(|e| NodeError {
+            message: format!("Failed to parse profile_requested: {}", e),
+        })?;
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {

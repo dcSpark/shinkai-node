@@ -35,7 +35,7 @@ const Home: React.FC = () => {
     setupDetailsState;
   const displayString = (
     <>
-      {`${shinkai_identity}/${profile}/${registration_name}`}{" "}
+      {`${shinkai_identity}/${profile}/device/${registration_name}`}{" "}
       <span className="text-muted text-sm">(Device)</span>
     </>
   );

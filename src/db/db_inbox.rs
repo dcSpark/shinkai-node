@@ -1,3 +1,4 @@
+use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_wasm::{
     schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
@@ -387,9 +388,6 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<bool, ShinkaiDBError> {
-        println!("Checking permission for inbox: {}", inbox_name);
-        println!("Permission: {:?}", perm);
-        println!("Identity: {}", identity);
         let profile_name =
             identity
                 .full_identity_name
@@ -445,7 +443,6 @@ impl ShinkaiDB {
 
         // Handle the original permission check
         let cf_name = format!("{}_perms", inbox_name);
-        println!("Checking permission for inbox: {}", cf_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -468,14 +465,14 @@ impl ShinkaiDB {
         }
     }
 
-    pub fn get_inboxes_for_profile(&self, profile_name: String) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_inboxes_for_profile(&self, profile_name_identity: StandardIdentity) -> Result<Vec<String>, ShinkaiDBError> {
         // Fetch the column family for the 'inbox' topic
         let cf_inbox = match self.db.cf_handle(Topic::Inbox.as_str()) {
             Some(cf) => cf,
             None => {
                 return Err(ShinkaiDBError::InboxNotFound(format!(
                     "Inbox not found: {}",
-                    profile_name
+                    profile_name_identity
                 )))
             }
         };
@@ -489,8 +486,18 @@ impl ShinkaiDB {
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8_lossy(&key);
-                    if key_str.contains(&profile_name) {
+                    if key_str.contains(&profile_name_identity.to_string()) {
                         inboxes.push(key_str.to_string());
+                    } else {
+                        // Check if the identity has read permission for the inbox
+                        match self.has_permission(&key_str, &profile_name_identity, InboxPermission::Read) {
+                            Ok(has_perm) => {
+                                if has_perm {
+                                    inboxes.push(key_str.to_string());
+                                }
+                            }
+                            Err(e) => return Err(e),
+                        }
                     }
                 }
                 Err(e) => return Err(e.into()),

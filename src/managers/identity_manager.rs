@@ -1,9 +1,7 @@
 use crate::db::ShinkaiDB;
 use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
-use crate::schemas::identity::{
-    DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType,
-};
+use crate::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
@@ -124,8 +122,6 @@ impl IdentityManager {
         }
 
         let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
-        println!("search_local_identity > node_in_question: {}", node_in_question);
-
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_in_question {
             self.local_identities
@@ -133,7 +129,10 @@ impl IdentityManager {
                 .filter_map(|identity| match identity {
                     Identity::Standard(standard_identity) => {
                         if standard_identity.full_identity_name.to_string() == full_identity_name {
-                            println!("FOUND! search_local_identity > standard_identity: {}", standard_identity);
+                            println!(
+                                "FOUND! search_local_identity > standard_identity: {}",
+                                standard_identity
+                            );
                             Some(Identity::Standard(standard_identity.clone()))
                         } else {
                             None
@@ -206,7 +205,7 @@ impl IdentityManager {
     }
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
-        println!("identities_manager identities: {:?}", self.local_identities); 
+        println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.clone()
     }
 
@@ -216,7 +215,7 @@ impl IdentityManager {
     }
 
     pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
-        println!("identities_manager identities: {:?}", self.local_identities); 
+        println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.iter().find(|identity| {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
@@ -297,7 +296,7 @@ impl IdentityManager {
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()), // 
+            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()), //
             Identity::Agent(_) => {
                 eprintln!("signature check > Agent identities cannot send onionized messages");
                 return Ok(());

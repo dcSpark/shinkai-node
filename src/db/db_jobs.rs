@@ -37,12 +37,7 @@ impl JobInfo {
 }
 
 impl ShinkaiDB {
-    pub fn create_new_job(
-        &mut self,
-        job_id: String,
-        agent_id: String,
-        scope: JobScope,
-    ) -> Result<(), ShinkaiDBError> {
+    pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -61,7 +56,7 @@ impl ShinkaiDB {
             || self.db.cf_handle(&cf_job_id_step_history_name).is_some()
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
-            || self.db.cf_handle(&cf_job_id_perms_name).is_some() 
+            || self.db.cf_handle(&cf_job_id_perms_name).is_some()
         {
             return Err(ShinkaiDBError::ProfileNameAlreadyExists);
         }
@@ -112,6 +107,13 @@ impl ShinkaiDB {
             .expect("to be able to access Topic::AllJobsTimeKeyed");
         batch.put_cf(cf_jobs, &current_time, &job_id);
 
+        // Add job inbox name to the list in the 'inbox' topic
+        let cf_inbox = self
+            .db
+            .cf_handle(Topic::Inbox.as_str())
+            .expect("to be able to access Topic::Inbox");
+        batch.put_cf(cf_inbox, &cf_conversation_inbox_name, &cf_conversation_inbox_name);
+
         self.db.write(batch)?;
 
         Ok(())
@@ -161,7 +163,7 @@ impl ShinkaiDB {
         let cf_job_id_name = format!("jobtopic_{}", job_id);
         let cf_job_id_scope_name = format!("{}_scope", job_id);
         let cf_job_id_step_history_name = format!("{}_step_history", job_id);
-    
+
         let cf_job_id_scope = self
             .db
             .cf_handle(&cf_job_id_scope_name)
@@ -170,34 +172,46 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_job_id_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
-    
-        let scope_value = self.db.get_cf(cf_job_id_scope, job_id)?.ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let scope_value = self
+            .db
+            .get_cf(cf_job_id_scope, job_id)?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
         let scope = JobScope::from_bytes(&scope_value)?;
-    
-        let is_finished_value = self.db.get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let is_finished_value = self
+            .db
+            .get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
-    
+
         let cf_job_id_step_history = self
             .db
             .cf_handle(&cf_job_id_step_history_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
-    
-        let datetime_created_value = self.db.get_cf(cf_job_id, JobInfo::DatetimeCreated.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let datetime_created_value = self
+            .db
+            .get_cf(cf_job_id, JobInfo::DatetimeCreated.to_str().as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
         let datetime_created = std::str::from_utf8(&datetime_created_value)?.to_string();
-    
-        let parent_agent_id_value = self.db.get_cf(cf_job_id, JobInfo::ParentAgentId.to_str().as_bytes())?.ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let parent_agent_id_value = self
+            .db
+            .get_cf(cf_job_id, JobInfo::ParentAgentId.to_str().as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
-    
+
         let mut conversation_inbox: Option<InboxName> = None;
         let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
-    
-        let conversation_inbox_value = self.db.get_cf(
-            cf_job_id,
-            JobInfo::ConversationInboxName.to_str().as_bytes(),
-        )?.ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let conversation_inbox_value = self
+            .db
+            .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
         let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
         conversation_inbox = Some(InboxName::new(inbox_name)?);
-    
+
         if let Some(ref mut step_history) = step_history {
             let iter = self.db.iterator_cf(cf_job_id_step_history, IteratorMode::Start);
             for item in iter {
@@ -206,7 +220,7 @@ impl ShinkaiDB {
                 step_history.push(step);
             }
         }
-    
+
         Ok((
             scope,
             is_finished,
@@ -216,13 +230,13 @@ impl ShinkaiDB {
             step_history,
         ))
     }
-    
+
     pub fn get_all_jobs(&self) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_handle = self
             .db
             .cf_handle(Topic::AllJobsTimeKeyed.as_str())
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound("AllJobsTimeKeyed".to_string()))?;
-    
+
         let mut jobs = Vec::new();
         let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
         for item in iter {
@@ -280,25 +294,26 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_conversation_inbox_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name))?;
-    
+
         // Insert the message to AllMessages column family
         self.insert_message_to_all(message)?;
-    
+
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash();
-    
+
         // Get the scheduled time or calculate current time
         let time_key = match message.external_metadata.scheduled_time.is_empty() {
             true => ShinkaiTime::generate_time_now(),
             false => message.external_metadata.scheduled_time.clone(),
         };
-    
+
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
-    
+
         // Use the composite_key as the key and hash_key as the value in the inbox
-        self.db.put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes())?;
-    
+        self.db
+            .put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes())?;
+
         Ok(())
     }
 }

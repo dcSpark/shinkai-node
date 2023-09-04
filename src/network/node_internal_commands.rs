@@ -92,8 +92,30 @@ impl Node {
         result
     }
 
-    pub async fn internal_get_all_inboxes_for_profile(&self, profile_name: String) -> Vec<String> {
-        let result = match self.db.lock().await.get_inboxes_for_profile(profile_name) {
+    pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: String) -> Vec<String> {
+        // Obtain the IdentityManager and ShinkaiDB locks
+        let mut identity_manager = self.identity_manager.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(full_profile_name.as_str()).await;
+
+        // If identity is None (doesn't exist), return an error message
+        if identity.is_none() {
+            error!("Failed to find identity for profile: {}", full_profile_name);
+            return Vec::new();
+        }
+
+        let identity = identity.unwrap();
+
+        // Check if the found identity is a StandardIdentity. If not, return an empty vector.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            _ => {
+                error!("Identity for profile: {} is not a StandardIdentity", full_profile_name);
+                return Vec::new();
+            }
+        };
+        let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 error!("Failed to get inboxes for profile: {}", e);

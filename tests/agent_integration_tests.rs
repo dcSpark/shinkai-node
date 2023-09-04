@@ -82,8 +82,8 @@ fn node_agent_registration() {
         let interactions_handler = tokio::spawn(async move {
             println!("Registration of an Admin Profile");
 
-            // Register a Profile in Node1 and verifies it
             {
+                // Register a Profile in Node1 and verifies it
                 eprintln!("\n\nRegister a Device with main Profile in Node1 and verify it");
                 api_registration_device_node_profile_main(
                     node1_commands_sender.clone(),
@@ -100,8 +100,8 @@ fn node_agent_registration() {
             }
 
             let mut server = Server::new();
-            // Register an Agent
             {
+                // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
                 let open_ai = OpenAI {
                     model_type: "gpt-3.5-turbo".to_string(),
@@ -168,14 +168,10 @@ fn node_agent_registration() {
             }
 
             let mut job_id = "".to_string();
-            let agent_subidentity = format!(
-                "{}/agent/{}",
-                node1_subidentity_name.clone(),
-                node1_agent.clone()
-            )
-            .to_string();
-            // Create a Job
+            let agent_subidentity =
+                format!("{}/agent/{}", node1_subidentity_name.clone(), node1_agent.clone()).to_string();
             {
+                // Create a Job
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
@@ -189,8 +185,8 @@ fn node_agent_registration() {
                 .await;
             }
 
-            // Send a Message to the Job for processing
             {
+                // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for a Job");
                 let message = "Tell me. Who are you?".to_string();
                 api_message_job(
@@ -206,8 +202,8 @@ fn node_agent_registration() {
                 )
                 .await;
             }
-            // Successfully read job inbox
             {
+                // Successfully read job inbox
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
                 let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
 
@@ -229,8 +225,32 @@ fn node_agent_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                println!("node2_last_messages: {:?}", node2_last_messages);
+                // println!("node2_last_messages: {:?}", node2_last_messages);
+                assert!(node2_last_messages.len() == 1);
+            }
+            {
+                // Check Profile inboxes (to confirm job's there)
+                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+                eprintln!("sender: {}", sender);
 
+                let msg = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    sender.clone().to_string(), 
+                    "".to_string(),
+                    sender,
+                    node1_identity_name.clone().to_string(),
+                )
+                .unwrap();
+
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIGetAllInboxesForProfile { msg, res: res2_sender })
+                    .await
+                    .unwrap();
+                let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                println!("node1_all_profiles: {:?}", node2_last_messages);
                 assert!(node2_last_messages.len() == 1);
             }
         });

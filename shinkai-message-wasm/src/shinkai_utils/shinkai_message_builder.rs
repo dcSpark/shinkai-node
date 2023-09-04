@@ -588,6 +588,27 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    pub fn get_all_inboxes_for_profile(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        full_profile: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            full_profile.to_string(),
+            sender_subidentity,
+            sender,
+            receiver,
+            MessageSchemaType::TextContent,
+        )
+    }
+
     pub fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SignatureStaticKey,
