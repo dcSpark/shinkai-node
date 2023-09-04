@@ -147,7 +147,7 @@ impl ShinkaiDB {
         let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
         let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
         let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
-        let cf_device = self.db.cf_handle(Topic::Devices.as_str()).unwrap();
+        let cf_device = self.db.cf_handle(Topic::DevicesIdentityKey.as_str()).unwrap();
 
         let (node_encryption_public_key, node_signature_public_key) =
             self.get_local_node_keys(my_node_identity.clone())?;
@@ -177,7 +177,7 @@ impl ShinkaiDB {
                         Some(subidentity_encryption_public_key),
                         Some(subidentity_signature_public_key),
                         identity_type,
-                        permissions, // Added this line
+                        permissions,
                     ));
 
                     let mut device_iter = self.db.iterator_cf(cf_device, rocksdb::IteratorMode::Start);
@@ -187,6 +187,7 @@ impl ShinkaiDB {
                                 let device_key_str = String::from_utf8(device_key.to_vec()).unwrap();
                                 let device_shinkai_name = ShinkaiName::new(device_key_str.clone())?;
                                 let device_identity = self.get_device(device_shinkai_name)?;
+                                eprintln!("\n\n self.get_device> device_identity: {}", device_identity);
                                 result.push(Identity::Device(device_identity));
                             }
                             Err(e) => return Err(e.into()),
@@ -351,7 +352,7 @@ impl ShinkaiDB {
 
     pub fn print_all_devices_for_profile(&self, profile_name: &str) {
         // Get the column family handle for Devices
-        let cf_device = match self.db.cf_handle(Topic::Devices.as_str()) {
+        let cf_device = match self.db.cf_handle(Topic::DevicesIdentityKey.as_str()) {
             Some(handle) => handle,
             None => {
                 eprintln!("Failed to get column family handle for Devices");
@@ -400,12 +401,13 @@ impl ShinkaiDB {
         }
 
         // Get a handle to the device column family
-        let cf_device = self.db.cf_handle(Topic::Devices.as_str()).unwrap();
+        let cf_device_identity = self.db.cf_handle(Topic::DevicesIdentityKey.as_str()).unwrap();
+        let cf_device_encryption = self.db.cf_handle(Topic::DevicesEncryptionKey.as_str()).unwrap();
 
         // Check that the full device identity name doesn't already exist in the column
         if self
             .db
-            .get_cf(cf_device, &device.full_identity_name.to_string().as_bytes())?
+            .get_cf(cf_device_identity, &device.full_identity_name.to_string().as_bytes())?
             .is_some()
         {
             return Err(ShinkaiDBError::DeviceIdentityAlreadyExists(
@@ -417,17 +419,19 @@ impl ShinkaiDB {
         let mut batch = rocksdb::WriteBatch::default();
 
         // Convert the public keys to strings
-        let device_signature_public_key = device
-            .device_signature_public_key
-            .as_ref()
-            .map(signature_public_key_to_string_ref)
-            .unwrap_or_else(|| String::new());
+        let device_signature_public_key = signature_public_key_to_string_ref(&device.device_signature_public_key);
+        let device_encryption_public_key = encryption_public_key_to_string_ref(&device.device_encryption_public_key);
 
         // Add the device information to the batch
         batch.put_cf(
-            cf_device,
+            cf_device_identity,
             &device.full_identity_name.to_string().as_bytes(),
             device_signature_public_key.as_bytes(),
+        );
+        batch.put_cf(
+            cf_device_encryption,
+            &device.full_identity_name.to_string().as_bytes(),
+            device_encryption_public_key.as_bytes(),
         );
 
         // Handle for DevicePermissions column family
@@ -558,8 +562,13 @@ impl ShinkaiDB {
 
         let cf_device = self
             .db
-            .cf_handle(Topic::Devices.as_str())
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("Devices".to_string()))?;
+            .cf_handle(Topic::DevicesIdentityKey.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("DevicesIdentityKey".to_string()))?;
+
+        let cf_device_encryption = self
+            .db
+            .cf_handle(Topic::DevicesEncryptionKey.as_str())
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound("DevicesEncryptionKey".to_string()))?;
 
         let cf_permission = self
             .db
@@ -571,6 +580,11 @@ impl ShinkaiDB {
             None => return Err(ShinkaiDBError::DeviceNameNonExistent(device_name.to_string())),
         };
 
+        let device_encryption_public_key_bytes = match self.db.get_cf(cf_device_encryption, device_name.clone())? {
+            Some(bytes) => bytes,
+            None => return Err(ShinkaiDBError::DeviceNameNonExistent(device_name.to_string())),
+        };
+
         let permission_type_bytes = self
             .db
             .get_cf(cf_permission, device_name.clone())?
@@ -578,24 +592,61 @@ impl ShinkaiDB {
 
         let device_signature_public_key_str = String::from_utf8(device_signature_public_key_bytes.to_vec())
             .map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+
+        let device_encryption_public_key_str = String::from_utf8(device_encryption_public_key_bytes.to_vec())
+            .map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+
         let permission_type_str =
             String::from_utf8(permission_type_bytes.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
 
         let device_signature_public_key = string_to_signature_public_key(&device_signature_public_key_str)
             .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
+        let device_encryption_public_key = string_to_encryption_public_key(&device_encryption_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
         let permission_type =
             IdentityPermissions::from_str(&permission_type_str).ok_or(ShinkaiDBError::InvalidPermissionsType)?;
 
         let (node_encryption_public_key, node_signature_public_key) =
             self.get_local_node_keys(full_identity_name.clone())?;
 
+        // Extract profile_name from full_identity_name
+        let profile_name = full_identity_name
+            .get_profile_name()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
+
+        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+
+        let profile_encryption_public_key_bytes = self
+            .db
+            .get_cf(cf_encryption, profile_name.clone())?
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
+        let profile_signature_public_key_bytes = self
+            .db
+            .get_cf(cf_identity, profile_name.clone())?
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(profile_name.to_string()))?;
+
+        let profile_encryption_public_key_str = String::from_utf8(profile_encryption_public_key_bytes.to_vec())
+            .map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+        let profile_signature_public_key_str = String::from_utf8(profile_signature_public_key_bytes.to_vec())
+            .map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
+
+        let profile_encryption_public_key = string_to_encryption_public_key(&profile_encryption_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
+        let profile_signature_public_key = string_to_signature_public_key(&profile_signature_public_key_str)
+            .map_err(|_| ShinkaiDBError::PublicKeyParseError)?;
+
         Ok(DeviceIdentity {
             full_identity_name,
             node_encryption_public_key,
             node_signature_public_key,
-            profile_encryption_public_key: None,
-            profile_signature_public_key: None,
-            device_signature_public_key: Some(device_signature_public_key),
+            profile_encryption_public_key: profile_encryption_public_key,
+            profile_signature_public_key: profile_signature_public_key,
+            device_encryption_public_key: device_encryption_public_key,
+            device_signature_public_key: device_signature_public_key,
             permission_type,
         })
     }

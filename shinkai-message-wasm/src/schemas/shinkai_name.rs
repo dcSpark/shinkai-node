@@ -1,16 +1,16 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-
+use wasm_bindgen::prelude::*;
 use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ShinkaiName {
-    full_name: String,
-    node_name: String,
-    profile_name: Option<String>,
-    subidentity_type: Option<ShinkaiSubidentityType>,
-    subidentity_name: Option<String>,
+    pub full_name: String,
+    pub node_name: String,
+    pub profile_name: Option<String>,
+    pub subidentity_type: Option<ShinkaiSubidentityType>,
+    pub subidentity_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -64,6 +64,8 @@ impl fmt::Display for ShinkaiNameError {
         }
     }
 }
+
+impl std::error::Error for ShinkaiNameError {}
 
 // Valid Examples
 // @@alice.shinkai
@@ -405,6 +407,24 @@ impl ShinkaiName {
         };
 
         corrected_name
+    }
+
+    pub fn to_jsvalue(&self) -> Result<JsValue, JsValue> {
+        Ok(serde_wasm_bindgen::to_value(&self).map_err(|e| JsValue::from_str(&e.to_string()))?)
+    }
+
+    pub fn from_jsvalue(j: &JsValue) -> Result<Self, JsValue> {
+        Ok(serde_wasm_bindgen::from_value(j.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?)
+    }
+
+    pub fn to_json_str(&self) -> Result<String, JsValue> {
+        let json_str = serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(json_str)
+    }
+
+    pub fn from_json_str(j: &str) -> Result<Self, JsValue> {
+        let shinkai_name = serde_json::from_str(j).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(shinkai_name)
     }
 }
 

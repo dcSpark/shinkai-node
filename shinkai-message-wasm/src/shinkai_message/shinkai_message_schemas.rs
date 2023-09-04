@@ -13,6 +13,7 @@ pub enum MessageSchemaType {
     JobMessageSchema,
     PreMessageSchema,
     CreateRegistrationCode,
+    UseRegistrationCode,
     APIGetMessagesFromInboxRequest,
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
@@ -27,6 +28,7 @@ impl MessageSchemaType {
             "JobMessageSchema" => Some(Self::JobMessageSchema),
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
+            "UseRegistrationCode" => Some(Self::UseRegistrationCode),
             "TextContent" => Some(Self::TextContent),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
@@ -42,6 +44,7 @@ impl MessageSchemaType {
             Self::JobMessageSchema => "JobMessageSchema",
             Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
+            Self::UseRegistrationCode => "UseRegistrationCode",
             Self::TextContent => "TextContent",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
@@ -92,12 +95,12 @@ impl JobScope {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreation {
     pub scope: JobScope,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobMessage {
     // TODO: scope div modifications?
     pub job_id: String,
@@ -187,7 +190,7 @@ impl JobRecipient {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIGetMessagesFromInboxRequest {
-    pub inbox: InboxName,
+    pub inbox: String,
     pub count: usize,
     pub offset: Option<String>,
 }
@@ -247,7 +250,6 @@ impl RegistrationCodeRequest {
         Ok(deserialized)
     }
 
-    // TODO: use this as an example and apply this to the other to_json_str
     pub fn to_json_str(&self) -> std::result::Result<String, JsValue> {
         serde_json::to_string(self).map_err(|e| JsValue::from_str(&e.to_string()))
     }

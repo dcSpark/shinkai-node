@@ -232,7 +232,27 @@ impl Node {
     }
 
     pub async fn local_create_new_job(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
-        match self.internal_create_new_job(shinkai_message).await {
+         let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&&shinkai_message.clone()) {
+            Ok(name) => name,
+            Err(e) => {
+                error!("Failed to get sender name from message: {}", e);
+                return;
+            }
+        };
+
+        let subidentity_manager = self.identity_manager.lock().await;
+        let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
+        std::mem::drop(subidentity_manager);
+
+        let sender_subidentity = match sender_subidentity {
+            Some(identity) => identity,
+            None => {
+                let _ = res.send((String::new(), "Sender subidentity not found".to_string())).await;
+                return;
+            }
+        };
+
+        match self.internal_create_new_job(shinkai_message, sender_subidentity).await {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send((job_id, String::new())).await;
@@ -264,5 +284,20 @@ impl Node {
             Err(e) => format!("Error: {:?}", e),
         };
         let _ = res.send(result_str).await;
+    }
+
+    pub async fn local_available_agents(
+        &self,
+        full_profile_name: String,
+        res: Sender<Result<Vec<SerializedAgent>, String>>,
+    ) {
+        match self.internal_get_agents_for_profile(full_profile_name).await {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let _ = res.send(Err(format!("Internal Server Error: {}", err))).await;
+            }
+        }
     }
 }

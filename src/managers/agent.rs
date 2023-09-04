@@ -36,7 +36,7 @@ impl Agent {
         allowed_message_senders: Vec<String>,
     ) -> Self {
         let client = Client::new();
-        let (_, agent_receiver) = mpsc::channel(1);
+        let (_, agent_receiver) = mpsc::channel(1); // TODO: I think we can remove this altogether
         let agent_receiver = Arc::new(Mutex::new(agent_receiver)); // wrap the receiver
         Self {
             id,
@@ -97,15 +97,18 @@ impl Agent {
     pub async fn execute(&self, content: String, context: Vec<String>) {
         if self.perform_locally {
             // No need to spawn a new task here
-            self.process_locally(content.clone(), context).await;
+            self.process_locally(content.clone(), context.clone()).await;
         } else {
             // Call external API
-            let response = self.call_external_api(&content.clone(), context).await;
+            let response = self.call_external_api(&content.clone(), context.clone()).await;
             match response {
                 Ok(message) => {
                     // Send the message to AgentManager
-                    println!("Sending message to AgentManager");
-                    let _ = self.job_manager_sender.send(message).await;
+                    println!("Sending message to AgentManager {:?} with context: {:?}", message, context);
+                    match self.job_manager_sender.send(message).await {
+                        Ok(_) => println!("Message sent successfully"),
+                        Err(e) => eprintln!("Error when sending message: {}", e),
+                    }
                 }
                 Err(e) => eprintln!("Error when calling API: {}", e),
             }

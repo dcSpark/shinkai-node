@@ -2,6 +2,7 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
 use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -183,6 +184,14 @@ pub enum NodeCommand {
         agent: SerializedAgent,
         res: Sender<String>,
     },
+    APIAvailableAgents {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+    },
+    AvailableAgents {
+        full_profile_name: String, 
+        res: Sender<Result<Vec<SerializedAgent>, String>>,
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -329,6 +338,7 @@ impl Node {
                             Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
                             Some(NodeCommand::JobMessage { shinkai_message, res }) => self.internal_job_message(shinkai_message).await?,
                             Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
+                            Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints
                             Some(NodeCommand::APICreateRegistrationCode { msg, res }) => self.api_create_and_send_registration_code(msg, res).await?,
@@ -343,6 +353,7 @@ impl Node {
                             Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
                             Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
+                            Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
                             _ => break,
                         }
                     }
@@ -590,7 +601,7 @@ impl Node {
             "{} > Sender Profile Name: {:?}",
             receiver_address, sender_profile_name_string
         );
-        debug!("{} > Node Sender Identity: {:?}", receiver_address, sender_identity);
+        debug!("{} > Node Sender Identity: {}", receiver_address, sender_identity);
         debug!("{} > Verified message signature", receiver_address);
 
         // Save to db

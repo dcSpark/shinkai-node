@@ -2,7 +2,7 @@ use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use reqwest::Identity;
 use shinkai_message_wasm::{
-    schemas::inbox_name::InboxName,
+    schemas::{inbox_name::InboxName, shinkai_name::{ShinkaiName, ShinkaiNameError}},
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobScope, MessageSchemaType},
@@ -237,11 +237,12 @@ impl AgentManager {
         }
     }
 
-    pub async fn handle_job_message_schema(&mut self, job_message: JobMessage) -> Result<String, JobManagerError> {
+    pub async fn handle_job_message_schema(&mut self, message: ShinkaiMessage, job_message: JobMessage) -> Result<String, JobManagerError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
             let mut shinkai_db = self.db.lock().await;
-            shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &job_message.content.clone())?;
+            println!("handle_job_message_schema> job_message: {:?}", job_message);
+            shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
             shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
@@ -259,24 +260,23 @@ impl AgentManager {
     }
 
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, JobManagerError> {
-        match message.body {
+        match message.clone().body {
             MessageBody::Unencrypted(body) => {
-                let internal_metadata = body.internal_metadata;
-                let agent_id = &internal_metadata.recipient_subidentity;
-
                 match body.message_data {
                     MessageData::Unencrypted(data) => {
                         let message_type = data.message_content_schema;
                         match message_type {
                             MessageSchemaType::JobCreationSchema => {
+                                let agent_name = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
+                                let agent_id = agent_name.get_agent_name().ok_or(JobManagerError::AgentNotFound)?;
                                 let job_creation: JobCreation = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_job_creation_schema(job_creation, agent_id).await
+                                self.handle_job_creation_schema(job_creation, &agent_id).await
                             }
                             MessageSchemaType::JobMessageSchema => {
                                 let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_job_message_schema(job_message).await
+                                self.handle_job_message_schema(message, job_message).await
                             }
                             MessageSchemaType::PreMessageSchema => {
                                 let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)
@@ -378,6 +378,7 @@ pub enum JobManagerError {
     MessageTypeParseFailed,
     IO(String),
     ShinkaiDB(ShinkaiDBError),
+    ShinkaiNameError(ShinkaiNameError),
     AgentNotFound,
     ContentParseFailed,
 }
@@ -395,6 +396,7 @@ impl fmt::Display for JobManagerError {
             JobManagerError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
             JobManagerError::AgentNotFound => write!(f, "Agent not found"),
             JobManagerError::ContentParseFailed => write!(f, "Failed to parse content"),
+            JobManagerError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
         }
     }
 }
@@ -403,6 +405,7 @@ impl std::error::Error for JobManagerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             JobManagerError::ShinkaiDB(err) => Some(err),
+            JobManagerError::ShinkaiNameError(err) => Some(err),
             _ => None,
         }
     }
@@ -417,5 +420,11 @@ impl From<Box<dyn std::error::Error>> for JobManagerError {
 impl From<ShinkaiDBError> for JobManagerError {
     fn from(err: ShinkaiDBError) -> JobManagerError {
         JobManagerError::ShinkaiDB(err)
+    }
+}
+
+impl From<ShinkaiNameError> for JobManagerError {
+    fn from(err: ShinkaiNameError) -> JobManagerError {
+        JobManagerError::ShinkaiNameError(err)
     }
 }

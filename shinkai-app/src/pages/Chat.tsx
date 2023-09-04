@@ -21,7 +21,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getLastMessagesFromInbox,
-  sendTextMessage,
+  createChatWithMessage,
   sendTextMessageWithInbox,
 } from "../api/index";
 import { RootState } from "../store";
@@ -43,21 +43,7 @@ import {
 } from "../components/ui/Layout";
 
 const parseDate = (dateString: string) => {
-  const formattedDateString =
-    dateString.slice(0, 4) +
-    "-" +
-    dateString.slice(4, 6) +
-    "-" +
-    dateString.slice(6, 8) +
-    "T" +
-    dateString.slice(9, 11) +
-    ":" +
-    dateString.slice(11, 13) +
-    ":" +
-    dateString.slice(13, 15) +
-    "Z";
-
-  return new Date(Date.parse(formattedDateString));
+  return new Date(dateString);
 };
 
 const Chat: React.FC = () => {
@@ -66,7 +52,7 @@ const Chat: React.FC = () => {
 
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState,
+    (state: RootState) => state.setupDetailsState
   );
 
   const { id } = useParams<{ id: string }>();
@@ -77,25 +63,28 @@ const Chat: React.FC = () => {
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   const reduxMessages = useSelector(
-    (state: RootState) => state.inboxes[deserializedId],
+    (state: RootState) => state.inboxes[deserializedId]
   );
 
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const otherPersonIdentity = getOtherPersonIdentity(
     deserializedId,
-    setupDetailsState.shinkai_identity,
+    setupDetailsState.shinkai_identity
   );
 
   useEffect(() => {
+    console.log("deserializedId:", deserializedId);
     dispatch(
-      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState),
+      getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
     );
   }, [id, dispatch, setupDetailsState]);
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
+      console.log("Redux Messages:", reduxMessages);
       const lastMessage = reduxMessages[reduxMessages.length - 1];
+      console.log("Last Message:", lastMessage);
       const timeKey = lastMessage.external_metadata.scheduled_time;
       const hashKey = calculateMessageHash(lastMessage);
       const lastMessageKey = `${timeKey}:${hashKey}`;
@@ -127,8 +116,10 @@ const Chat: React.FC = () => {
 
     // Local Identity
     const { shinkai_identity, profile, registration_name } = setupDetailsState;
-    let sender = shinkai_identity;
-    let sender_subidentity = `${profile}/device/${registration_name}`;
+    // let sender = shinkai_identity;
+    let sender = `${shinkai_identity}/${profile}/device/${registration_name}`;
+
+    console.log("Sender:", sender);
 
     const receiver = extractReceiverShinkaiName(deserializedId, sender);
     console.log("Receiver:", receiver);
@@ -136,12 +127,12 @@ const Chat: React.FC = () => {
     dispatch(
       sendTextMessageWithInbox(
         sender,
-        sender_subidentity,
+        "",
         receiver,
         inputMessage,
         deserializedId,
-        setupDetailsState,
-      ),
+        setupDetailsState
+      )
     );
     setInputMessage("");
   };
@@ -171,8 +162,8 @@ const Chat: React.FC = () => {
                     10,
                     lastKey,
                     setupDetailsState,
-                    true,
-                  ),
+                    true
+                  )
                 )
               }
             >
@@ -189,10 +180,13 @@ const Chat: React.FC = () => {
                     setupDetailsState;
 
                   const localIdentity = `${profile}/device/${registration_name}`;
-
-                  const isLocalMessage =
-                    message?.body?.internal_metadata?.sender_subidentity ===
-                    localIdentity;
+                  // console.log("Message:", message);
+                  let isLocalMessage = false;
+                  if (message.body && "unencrypted" in message.body) {
+                    isLocalMessage =
+                      message.body.unencrypted.internal_metadata
+                        .sender_subidentity === localIdentity;
+                  }
 
                   return (
                     <IonItem
@@ -200,7 +194,7 @@ const Chat: React.FC = () => {
                       lines="none"
                       className={cn(
                         "ion-item-chat relative w-full shadow",
-                        isLocalMessage && "isLocalMessage",
+                        isLocalMessage && "isLocalMessage"
                       )}
                     >
                       <div className="px-2 py-4 flex gap-4 pb-10 w-full">
@@ -213,11 +207,20 @@ const Chat: React.FC = () => {
                           }
                         />
 
-                        <p>{message?.body?.content}</p>
+                        <p>
+                          {message.body && "unencrypted" in message.body
+                            ? "unencrypted" in
+                              message.body.unencrypted.message_data
+                              ? message.body.unencrypted.message_data
+                                  .unencrypted.message_raw_content
+                              : message.body.unencrypted.message_data.encrypted
+                                  .content
+                            : message.body?.encrypted.content}
+                        </p>
                         {message?.external_metadata?.scheduled_time && (
                           <span className="absolute bottom-[5px] right-5 text-muted text-sm">
                             {parseDate(
-                              message.external_metadata.scheduled_time,
+                              message.external_metadata.scheduled_time
                             ).toLocaleTimeString()}
                           </span>
                         )}
@@ -260,7 +263,7 @@ const Chat: React.FC = () => {
                 "absolute z-10 p-3 rounded-md text-gray-500 bottom-[1px] right-1",
                 "md:bottom-2.5 md:right-2",
                 "hover:bg-gray-100 disabled:hover:bg-transparent",
-                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent",
+                "dark:text-white dark:hover:text-gray-100 dark:hover:bg-gray-700 dark:disabled:hover:bg-transparent"
               )}
             >
               <IonIcon size="" icon={send} />

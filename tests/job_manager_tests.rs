@@ -19,10 +19,14 @@ mod tests {
     use async_trait::async_trait;
     use mockito::Server;
     use shinkai_message_wasm::{
-        schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, agents::serialized_agent::{SerializedAgent, OpenAI, AgentAPIModel}},
+        schemas::{
+            agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent},
+            inbox_name::InboxName,
+            shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
+        },
         shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
-            encryption::{unsafe_deterministic_encryption_keypair},
+            encryption::unsafe_deterministic_encryption_keypair,
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
             utils::hash_string,
@@ -100,13 +104,17 @@ mod tests {
             model_type: "gpt-3.5-turbo".to_string(),
         };
 
+        let agent_name = ShinkaiName::from_node_and_profile_and_type_and_name(
+            node_profile_name.get_node_name(),
+            "main".to_string(),
+            ShinkaiSubidentityType::Agent,
+            "test_agent_id".to_string(),
+        )
+        .unwrap();
+
         let agent = SerializedAgent {
             id: "test_agent_id".to_string(),
-            full_identity_name: ShinkaiName::from_node_and_profile(
-                node_profile_name.get_node_name(),
-                "test_name".to_string(),
-            )
-            .unwrap(),
+            full_identity_name: agent_name.clone(),
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
@@ -117,7 +125,7 @@ mod tests {
         };
         {
             let mut db = db_arc.lock().await;
-            db.add_agent(agent.clone());
+            let _ = db.add_agent(agent.clone());
             let _ = identity_manager.lock().await.add_agent_subidentity(agent.clone()).await;
         }
 
@@ -136,12 +144,13 @@ mod tests {
             node1_encryption_pk.clone(),
             node_profile_name.to_string().clone(),
             node_profile_name.to_string(),
-            agent.id.clone(),
+            format!("main/agent/{}", agent.id),
         )
         .unwrap();
 
-        let shinkai_message_creation = shinkai_message_creation_encrypted.decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
-        .expect("Failed to decrypt body content");
+        let shinkai_message_creation = shinkai_message_creation_encrypted
+            .decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+            .expect("Failed to decrypt body content");
 
         // Process the JobCreationSchema message
         let mut job_created_id = String::new();
@@ -174,8 +183,9 @@ mod tests {
         )
         .unwrap();
 
-        let shinkai_job_message = shinkai_job_message_encrypted.decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
-        .expect("Failed to decrypt body content");
+        let shinkai_job_message = shinkai_job_message_encrypted
+            .decrypt_outer_layer(&node1_encryption_sk.clone(), &node1_encryption_pk.clone())
+            .expect("Failed to decrypt body content");
 
         println!("shinkai_job_message: {:?}", shinkai_job_message);
         match job_manager.process_job_message(shinkai_job_message).await {

@@ -20,24 +20,6 @@ impl ShinkaiMessageWrapper {
         let shinkai_message = ShinkaiMessage::from_jsvalue(shinkai_message_js)?;
         Ok(ShinkaiMessageWrapper { inner: shinkai_message })
     }
-    // pub fn new(
-    //     body: &JsValue,
-    //     external_metadata: &JsValue,
-    //     encryption: EncryptionMethod,
-    // ) -> Result<ShinkaiMessageWrapper, JsValue> {
-    //     let body = ShinkaiBody::from_jsvalue(body).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    //     let external_metadata =
-    //         ExternalMetadata::from_jsvalue(external_metadata).map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-    //     let shinkai_message = ShinkaiMessage::new(
-    //         MessageBody::Unencrypted(body),
-    //         external_metadata,
-    //         encryption,
-    //         None,
-    //     );
-
-    //     Ok(ShinkaiMessageWrapper { inner: shinkai_message })
-    // }
 
     #[wasm_bindgen(method, getter)]
     pub fn message_body(&self) -> Result<JsValue, JsValue> {

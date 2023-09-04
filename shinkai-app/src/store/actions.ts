@@ -1,3 +1,4 @@
+import { SerializedAgent } from "../models/SchemaTypes";
 import { SetupDetailsState } from "./reducers";
 import {
   GET_PUBLIC_KEY,
@@ -11,6 +12,9 @@ import {
   ADD_MESSAGE_TO_INBOX,
   RECEIVE_ALL_INBOXES_FOR_PROFILE,
   RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
+  GET_AVAILABLE_AGENTS,
+  CLEAR_MESSAGES,
+  ADD_AGENTS,
 } from "./types";
 
 export const getPublicKey = (publicKey: string) => ({
@@ -62,7 +66,7 @@ export const clearStore = () => {
 };
 
 export const clearMessages = () => ({
-  type: "CLEAR_MESSAGES",
+  type: CLEAR_MESSAGES,
 });
 
 export const addMessageToInbox = (inboxId: string, message: any) => ({
@@ -78,3 +82,15 @@ export const receiveAllInboxesForProfile = (inboxes: string[]) => ({
   type: RECEIVE_ALL_INBOXES_FOR_PROFILE,
   payload: inboxes,
 });
+
+export interface AddAgentsAction {
+  type: typeof ADD_AGENTS;
+  payload: SerializedAgent[];
+}
+
+export function addAgents(agents: SerializedAgent[]): AddAgentsAction {
+  return {
+    type: ADD_AGENTS,
+    payload: agents,
+  };
+}

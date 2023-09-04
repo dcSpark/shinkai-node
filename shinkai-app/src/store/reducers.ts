@@ -1,5 +1,7 @@
 import { Base58String } from "../models/QRSetupData";
+import { SerializedAgent } from "../models/SchemaTypes";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
+import { calculateMessageHash } from "../utils/shinkai_message_handler";
 import {
   Action,
   GET_PUBLIC_KEY,
@@ -13,6 +15,7 @@ import {
   ADD_MESSAGE_TO_INBOX,
   RECEIVE_ALL_INBOXES_FOR_PROFILE,
   RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
+  ADD_AGENTS,
 } from "./types";
 
 export type SetupDetailsState = {
@@ -23,10 +26,14 @@ export type SetupDetailsState = {
   shinkai_identity: string;
   node_encryption_pk: Base58String;
   node_signature_pk: Base58String;
-  myEncryptionSk: Base58String;
-  myEncryptionPk: Base58String;
-  myIdentitySk: Base58String;
-  myIdentityPk: Base58String;
+  profile_encryption_sk: Base58String;
+  profile_encryption_pk: Base58String;
+  profile_identity_sk: Base58String;
+  profile_identity_pk: Base58String;
+  my_device_encryption_sk: Base58String;
+  my_device_encryption_pk: Base58String;
+  my_device_identity_sk: Base58String;
+  my_device_identity_pk: Base58String;
 };
 
 const setupInitialState: SetupDetailsState = {
@@ -37,10 +44,14 @@ const setupInitialState: SetupDetailsState = {
   shinkai_identity: "",
   node_encryption_pk: "",
   node_signature_pk: "",
-  myEncryptionSk: "",
-  myEncryptionPk: "",
-  myIdentitySk: "",
-  myIdentityPk: "",
+  profile_encryption_sk: "",
+  profile_encryption_pk: "",
+  profile_identity_sk: "",
+  profile_identity_pk: "",
+  my_device_encryption_sk: "",
+  my_device_encryption_pk: "",
+  my_device_identity_sk: "",
+  my_device_identity_pk: "",
 };
 
 export interface RootState {
@@ -53,6 +64,12 @@ export interface RootState {
   inboxes: {
     [inboxId: string]: any[];
   };
+  messageHashes: {
+    [inboxId: string]: Set<string>;
+  };
+  agents: {
+    [agentId: string]: SerializedAgent;
+  };
 }
 
 const initialState: RootState = {
@@ -63,6 +80,8 @@ const initialState: RootState = {
   registrationCode: "",
   error: null,
   inboxes: {},
+  messageHashes: {},
+  agents: {},
 };
 
 const rootReducer = (state = initialState, action: Action): RootState => {
@@ -78,89 +97,81 @@ const rootReducer = (state = initialState, action: Action): RootState => {
     case RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX: {
       const { inboxId, messages } = action.payload;
       const currentMessages = state.inboxes[inboxId] || [];
-      const lastCurrentMessageTimestamp =
-        currentMessages.length > 0 &&
-        currentMessages[currentMessages.length - 1].external_metadata
-          ? new Date(
-              currentMessages[
-                currentMessages.length - 1
-              ].external_metadata.scheduled_time
-            )
-          : null;
-      const lastNewMessageTimestamp = messages[messages.length - 1]
-        .external_metadata
-        ? new Date(
-            messages[messages.length - 1].external_metadata.scheduled_time
-          )
-        : null;
+      const currentMessageHashes = state.messageHashes[inboxId] || new Set();
 
-      const newMessages =
-        currentMessages.length === 0 ||
-        (lastCurrentMessageTimestamp &&
-          lastNewMessageTimestamp &&
-          lastCurrentMessageTimestamp.getTime() <
-            lastNewMessageTimestamp.getTime())
-          ? messages
-          : [];
-
-      console.log(
-        "last current messages: ",
-        currentMessages[currentMessages.length - 1]
-      );
-      console.log("last new messages: ", messages[messages.length - 1]);
-
-      console.log("newMessages: ", newMessages);
-      console.log("currentMessages: ", currentMessages);
-      console.log("messages: ", messages);
+      const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
+        const hash = calculateMessageHash(msg);
+        if (currentMessageHashes.has(hash)) {
+          return false;
+        } else {
+          currentMessageHashes.add(hash);
+          return true;
+        }
+      });
 
       return {
         ...state,
         inboxes: {
           ...state.inboxes,
-          [inboxId]: [...newMessages, ...currentMessages],
+          [inboxId]: [...currentMessages, ...uniqueNewMessages],
+        },
+        messageHashes: {
+          ...state.messageHashes,
+          [inboxId]: currentMessageHashes,
         },
       };
     }
     case RECEIVE_LAST_MESSAGES_FROM_INBOX: {
       const { inboxId, messages } = action.payload;
       const currentMessages = state.inboxes[inboxId] || [];
-      const lastMessageTimestamp =
-        currentMessages.length > 0 &&
-        currentMessages[currentMessages.length - 1].external_metadata
-          ? new Date(
-              currentMessages[
-                currentMessages.length - 1
-              ].external_metadata.scheduled_time
-            )
-          : null;
-      const firstNewMessageTimestamp = messages[0].external_metadata
-        ? new Date(messages[0].external_metadata.scheduled_time)
-        : null;
+      const currentMessageHashes = state.messageHashes[inboxId] || new Set();
 
-      const newMessages =
-        currentMessages.length === 0 ||
-        (lastMessageTimestamp &&
-          firstNewMessageTimestamp &&
-          firstNewMessageTimestamp > lastMessageTimestamp)
-          ? messages
-          : [];
+      const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
+        const hash = calculateMessageHash(msg);
+        if (currentMessageHashes.has(hash)) {
+          return false;
+        } else {
+          currentMessageHashes.add(hash);
+          return true;
+        }
+      });
+
       return {
         ...state,
         inboxes: {
           ...state.inboxes,
-          [inboxId]: [...currentMessages, ...newMessages],
+          [inboxId]: [...currentMessages, ...uniqueNewMessages],
+        },
+        messageHashes: {
+          ...state.messageHashes,
+          [inboxId]: currentMessageHashes,
         },
       };
     }
     case ADD_MESSAGE_TO_INBOX: {
       const { inboxId, message } = action.payload;
-      return {
-        ...state,
-        inboxes: {
-          ...state.inboxes,
-          [inboxId]: [message, ...(state.inboxes[inboxId] || [])],
-        },
-      };
+      const currentMessages = state.inboxes[inboxId] || [];
+      const currentMessageHashes = state.messageHashes[inboxId] || new Set();
+
+      const hash = calculateMessageHash(message);
+      if (currentMessageHashes.has(hash)) {
+        // If the message is a duplicate, don't add it
+        return state;
+      } else {
+        // If the message is unique, add it to the inbox and the hash to the set
+        currentMessageHashes.add(hash);
+        return {
+          ...state,
+          inboxes: {
+            ...state.inboxes,
+            [inboxId]: [message, ...currentMessages],
+          },
+          messageHashes: {
+            ...state.messageHashes,
+            [inboxId]: currentMessageHashes,
+          },
+        };
+      }
     }
     case RECEIVE_ALL_INBOXES_FOR_PROFILE: {
       const newInboxes = action.payload;
@@ -186,6 +197,17 @@ const rootReducer = (state = initialState, action: Action): RootState => {
             {}
           ),
         },
+      };
+    }
+    case ADD_AGENTS: {
+      const newAgents = action.payload;
+      const updatedAgents = { ...state.agents };
+      newAgents.forEach((agent: SerializedAgent) => {
+        updatedAgents[agent.id] = agent;
+      });
+      return {
+        ...state,
+        agents: updatedAgents,
       };
     }
     case CREATE_REGISTRATION_CODE:

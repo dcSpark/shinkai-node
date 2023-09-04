@@ -1,46 +1,4 @@
-export enum EncryptionMethod {
-  DiffieHellmanChaChaPoly1305 = "DiffieHellmanChaChaPoly1305",
-  None = "None",
-}
-
-export enum MessageSchemaType {
-  JobCreationSchema = "JobCreationSchema",
-  JobMessageSchema = "JobMessageSchema",
-  PreMessageSchema = "PreMessageSchema",
-  TextContent = "TextContent",
-  Empty = "",
-}
-
-export interface JobScope {
-  buckets: string[];
-  documents: string[];
-}
-
-export interface JobCreation {
-  scope: JobScope;
-}
-
-export interface JobMessage {
-  job_id: string;
-  content: string;
-}
-
-export interface JobToolCall {
-  tool_id: string;
-  inputs: Record<string, string>;
-}
-
-export enum JobRecipient {
-  SelfNode = "SelfNode",
-  User = "User",
-  ExternalIdentity = "ExternalIdentity",
-}
-
-export interface JobPreMessage {
-  tool_calls: JobToolCall[];
-  content: string;
-  recipient: JobRecipient;
-}
+import { EncryptionMethod, MessageSchemaType } from "./SchemaTypes";
 
 export interface InternalMetadata {
   sender_subidentity: string;

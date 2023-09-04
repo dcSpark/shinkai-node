@@ -5,15 +5,18 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
-    schemas::{inbox_name::InboxName, registration_code::RegistrationCode, shinkai_time::ShinkaiTime, agents::serialized_agent::SerializedAgent},
+    schemas::{
+        agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
+        shinkai_time::ShinkaiTime,
+    },
     shinkai_message::{
         shinkai_message::{
             EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData,
             ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion,
         },
         shinkai_message_schemas::{
-            APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreation, JobMessage,
-            JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, APIAddAgentRequest,
+            APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
+            JobCreation, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -261,6 +264,31 @@ impl ShinkaiMessageBuilder {
             if internal_metadata.inbox.is_empty() {
                 if let Some(external_metadata) = &new_self.external_metadata {
                     // Generate a new inbox name
+                    // Print the value of external_metadata.sender to the browser console
+                    #[cfg(target_arch = "wasm32")]
+                    {
+                        web_sys::console::log_1(
+                            &format!("external_metadata.sender: {}", external_metadata.sender).into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!(
+                                "internal_metadata.sender_subidentity: {}",
+                                internal_metadata.sender_subidentity
+                            )
+                            .into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!("external_metadata.recipient: {}", external_metadata.recipient).into(),
+                        );
+                        web_sys::console::log_1(
+                            &format!(
+                                "internal_metadata.recipient_subidentity: {}",
+                                internal_metadata.recipient_subidentity
+                            )
+                            .into(),
+                        );
+                    }
+
                     let new_inbox_name = InboxName::get_regular_inbox_name_from_params(
                         external_metadata.sender.clone(),
                         internal_metadata.sender_subidentity.clone(),
@@ -424,7 +452,7 @@ impl ShinkaiMessageBuilder {
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
             .map_err(|_| "Failed to get job inbox name")?
-            .get_value();
+            .to_string();
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content(body)
@@ -462,6 +490,7 @@ impl ShinkaiMessageBuilder {
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let registration_code_request = RegistrationCodeRequest { permissions, code_type };
@@ -472,44 +501,114 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             registration_code_request,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::CreateRegistrationCode,
         )
     }
 
-    pub fn use_code_registration(
-        my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+    pub fn use_code_registration_for_profile(
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
         identity_type: String,
         permission_type: String,
         registration_name: String,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk);
-        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
-        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
 
         let registration_code = RegistrationCode {
             code,
             registration_name: registration_name.clone(),
-            identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
-            encryption_pk: other.clone(),
+            device_identity_pk: "".to_string(),
+            device_encryption_pk: "".to_string(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
             identity_type,
             permission_type,
         };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
+            profile_encryption_sk,
+            profile_signature_sk,
             receiver_public_key,
             registration_code,
             sender_subidentity,
+            sender,
             receiver,
-            MessageSchemaType::TextContent,
+            MessageSchemaType::UseRegistrationCode,
         )
+    }
+
+    pub fn use_code_registration_for_device(
+        my_device_encryption_sk: EncryptionStaticKey,
+        my_device_signature_sk: SignatureStaticKey,
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        code: String,
+        identity_type: String,
+        permission_type: String,
+        registration_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk);
+        let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
+        let other = encryption_public_key_to_string(my_device_encryption_pk);
+
+        let registration_code = RegistrationCode {
+            code,
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_device_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
+            my_device_encryption_sk,
+            my_device_signature_sk,
+            receiver_public_key,
+            registration_code,
+            sender_subidentity,
+            sender,
+            receiver,
+            MessageSchemaType::UseRegistrationCode,
+        )
+    }
+
+    pub fn get_all_inboxes_for_profile(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        full_profile: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key)
+        .message_raw_content(full_profile)
+        .internal_metadata_with_schema(
+            sender_subidentity,
+            "".to_string(),
+            "".to_string(),
+            MessageSchemaType::TextContent,
+            EncryptionMethod::None,
+        )
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .external_metadata(receiver, sender)
+        .build()
     }
 
     pub fn get_last_messages_from_inbox(
@@ -520,11 +619,12 @@ impl ShinkaiMessageBuilder {
         count: usize,
         offset: Option<String>,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };
@@ -535,6 +635,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             get_last_messages_from_inbox,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
         )
@@ -548,11 +649,12 @@ impl ShinkaiMessageBuilder {
         count: usize,
         offset: Option<String>,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
         let get_last_unread_messages_from_inbox = APIGetMessagesFromInboxRequest {
-            inbox: inbox_name,
+            inbox: inbox_name.to_string(),
             count,
             offset,
         };
@@ -563,6 +665,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             get_last_unread_messages_from_inbox,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIGetMessagesFromInboxRequest,
         )
@@ -574,11 +677,10 @@ impl ShinkaiMessageBuilder {
         receiver_public_key: EncryptionPublicKey,
         agent: SerializedAgent,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let add_agent = APIAddAgentRequest {
-            agent
-        };
+        let add_agent = APIAddAgentRequest { agent };
 
         ShinkaiMessageBuilder::create_custom_shinkai_message_to_node(
             my_subidentity_encryption_sk,
@@ -586,6 +688,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             add_agent,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIAddAgentRequest,
         )
@@ -598,6 +701,7 @@ impl ShinkaiMessageBuilder {
         inbox: String,
         up_to_time: String,
         sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let inbox_name = InboxName::new(inbox).map_err(|_| "Failed to create inbox name")?;
@@ -609,6 +713,7 @@ impl ShinkaiMessageBuilder {
             receiver_public_key,
             read_up_to_time,
             sender_subidentity,
+            sender,
             receiver,
             MessageSchemaType::APIReadUpToTimeRequest,
         )
@@ -619,7 +724,8 @@ impl ShinkaiMessageBuilder {
         my_subidentity_signature_sk: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         data: T,
-        sender_profile_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
         receiver: ProfileName,
         schema: MessageSchemaType,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -635,13 +741,13 @@ impl ShinkaiMessageBuilder {
         .message_raw_content(body)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .internal_metadata_with_schema(
-            sender_profile_name,
+            sender_subidentity,
             "".to_string(),
             "".to_string(),
             schema,
             EncryptionMethod::None,
         )
-        .external_metadata_with_other(receiver.clone(), receiver, other)
+        .external_metadata_with_other(receiver.clone(), sender, other)
         .build()
     }
 
@@ -848,24 +954,31 @@ mod tests {
     fn test_builder_use_code_registration() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
         let (my_encryption_sk, my_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
-        let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+        let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+        let (_, node2_encryption_pk) = unsafe_deterministic_encryption_keypair(2);
 
         let recipient = "@@other_node.shinkai".to_string();
-        let sender = "main".to_string();
+        let sender = recipient.clone();
+        let sender_subidentity = "main".to_string();
 
         let code = "registration_code".to_string();
         let identity_type = IdentityPermissions::Admin.to_string();
         let permission_type = "profile".to_string();
         let registration_name = "registration_name".to_string();
 
-        let message_result = ShinkaiMessageBuilder::use_code_registration(
+        let message_result = ShinkaiMessageBuilder::use_code_registration_for_device(
             my_encryption_sk.clone(),
             my_identity_sk,
+            profile_encryption_sk,
+            profile_identity_sk,
             node2_encryption_pk,
             code,
             identity_type,
             permission_type,
             registration_name,
+            sender_subidentity.clone(),
             sender.clone(),
             recipient.clone(),
         );
@@ -900,7 +1013,7 @@ mod tests {
                 assert_eq!(registration_code.permission_type, "profile");
                 assert_eq!(registration_code.identity_type, "admin");
             }
-            assert_eq!(shinkai_body.internal_metadata.sender_subidentity, sender);
+            assert_eq!(shinkai_body.internal_metadata.sender_subidentity, sender_subidentity);
         }
 
         let external_metadata = message.external_metadata;

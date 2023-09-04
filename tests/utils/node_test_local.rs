@@ -49,7 +49,7 @@ pub async fn local_registration_profile_node(
             .unwrap();
         let node_registration_code = res_registraton_receiver.recv().await.unwrap();
 
-        let code_message = ShinkaiMessageBuilder::use_code_registration(
+        let code_message = ShinkaiMessageBuilder::use_code_registration_for_profile(
             node_profile_encryption_sk.clone(),
             clone_signature_secret_key(&node_subidentity_sk),
             node_encryption_pk,
@@ -58,6 +58,7 @@ pub async fn local_registration_profile_node(
             IdentityPermissions::Admin.to_string(),
             node_profile_name.to_string().clone(),
             node_profile_name.to_string().clone(),
+            node_identity_name.to_string(),
             node_identity_name.to_string(),
         )
         .unwrap();

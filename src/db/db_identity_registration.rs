@@ -1,15 +1,13 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::IdentityManager;
-use crate::schemas::identity::{
-    DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType,
-};
+use crate::schemas::identity::{DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rand::RngCore;
 use rocksdb::{Error, Options};
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::to_vec;
 use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{RegistrationCodeType, IdentityPermissions};
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -135,8 +133,10 @@ impl ShinkaiDB {
         registration_code: &str,
         node_name: &str,
         new_name: &str,
-        identity_public_key: &str,
-        encryption_public_key: &str,
+        profile_identity_public_key: &str,
+        profile_encryption_public_key: &str,
+        device_identity_public_key: Option<&str>,
+        device_encryption_public_key: Option<&str>,
     ) -> Result<(), ShinkaiDBError> {
         // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
         let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
@@ -186,9 +186,11 @@ impl ShinkaiDB {
                             node_encryption_public_key,
                             node_signature_public_key,
                             profile_encryption_public_key: Some(string_to_encryption_public_key(
-                                encryption_public_key,
+                                profile_encryption_public_key,
                             )?),
-                            profile_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                            profile_signature_public_key: Some(string_to_signature_public_key(
+                                profile_identity_public_key,
+                            )?),
                             identity_type: StandardIdentityType::Profile,
                             permission_type: code_info.permission.clone(),
                         };
@@ -222,11 +224,13 @@ impl ShinkaiDB {
                         let (node_encryption_public_key, node_signature_public_key) =
                             self.get_local_node_keys(current_identity_name)?;
 
-                        let full_identity_name = match ShinkaiName::from_node_and_profile(node_name.to_string(), "main".to_string())
-                        {
-                            Ok(name) => name,
-                            Err(_) => return Err(ShinkaiDBError::InvalidIdentityName(format!("{}/main", node_name))),
-                        };
+                        let full_identity_name =
+                            match ShinkaiName::from_node_and_profile(node_name.to_string(), "main".to_string()) {
+                                Ok(name) => name,
+                                Err(_) => {
+                                    return Err(ShinkaiDBError::InvalidIdentityName(format!("{}/main", node_name)))
+                                }
+                            };
 
                         let main_profile = StandardIdentity {
                             full_identity_name,
@@ -234,9 +238,11 @@ impl ShinkaiDB {
                             node_encryption_public_key,
                             node_signature_public_key,
                             profile_encryption_public_key: Some(string_to_encryption_public_key(
-                                encryption_public_key,
+                                profile_encryption_public_key,
                             )?),
-                            profile_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                            profile_signature_public_key: Some(string_to_signature_public_key(
+                                profile_identity_public_key,
+                            )?),
                             identity_type: StandardIdentityType::Profile,
                             permission_type: IdentityPermissions::Admin,
                         };
@@ -267,13 +273,64 @@ impl ShinkaiDB {
                     }
                 };
 
+                let device_encryption_public_key = match device_encryption_public_key {
+                    Some(key) => match string_to_encryption_public_key(key) {
+                        Ok(parsed_key) => parsed_key,
+                        Err(_) => {
+                            return Err(ShinkaiDBError::SomeError(
+                                "Invalid device encryption public key".to_string(),
+                            ))
+                        }
+                    },
+                    None => {
+                        return Err(ShinkaiDBError::SomeError(
+                            "Device encryption public key is missing".to_string(),
+                        ))
+                    }
+                };
+
+                let device_signature_public_key = match device_identity_public_key {
+                    Some(key) => match string_to_signature_public_key(key) {
+                        Ok(parsed_key) => parsed_key,
+                        Err(_) => {
+                            return Err(ShinkaiDBError::SomeError(
+                                "Invalid device signature public key".to_string(),
+                            ))
+                        }
+                    },
+                    None => {
+                        return Err(ShinkaiDBError::SomeError(
+                            "Device signature public key is missing".to_string(),
+                        ))
+                    }
+                };
+
+                let profile_encryption_public_key = match profile.profile_encryption_public_key {
+                    Some(key) => key,
+                    None => {
+                        return Err(ShinkaiDBError::SomeError(
+                            "Profile encryption public key is missing".to_string(),
+                        ))
+                    }
+                };
+
+                let profile_signature_public_key = match profile.profile_signature_public_key {
+                    Some(key) => key,
+                    None => {
+                        return Err(ShinkaiDBError::SomeError(
+                            "Profile signature public key is missing".to_string(),
+                        ))
+                    }
+                };
+
                 let device = DeviceIdentity {
                     full_identity_name,
                     node_encryption_public_key: profile.node_encryption_public_key,
                     node_signature_public_key: profile.node_signature_public_key,
-                    profile_encryption_public_key: profile.profile_encryption_public_key,
-                    profile_signature_public_key: profile.profile_signature_public_key,
-                    device_signature_public_key: Some(string_to_signature_public_key(identity_public_key)?),
+                    profile_encryption_public_key,
+                    profile_signature_public_key,
+                    device_encryption_public_key,
+                    device_signature_public_key,
                     permission_type: code_info.permission,
                 };
 

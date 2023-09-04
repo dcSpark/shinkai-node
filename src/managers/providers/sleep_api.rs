@@ -18,9 +18,9 @@ impl Provider for SleepAPI {
     fn extract_content(_: &Self::Response) -> Vec<JobPreMessage> {
         vec![
             JobPreMessage {
-                tool_calls: Vec::new(), // TODO: You might want to replace this with actual values
+                tool_calls: Vec::new(),
                 content: "OK".to_string(),
-                recipient: JobRecipient::SelfNode, // TODO: This is a placeholder. You should replace this with the actual recipient.
+                recipient: JobRecipient::SelfNode,
             }
         ]
     }

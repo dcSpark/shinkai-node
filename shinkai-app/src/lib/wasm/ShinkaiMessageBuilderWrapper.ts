@@ -5,8 +5,10 @@ import {
 } from "../../pkg/shinkai_message_wasm.js";
 import {
   MessageSchemaType,
+  SerializedAgent,
   EncryptionMethod as TSEncryptionMethod,
-} from "../../models/ShinkaiMessage.js";
+} from "../../models/SchemaTypes.js";
+import { SerializedAgentWrapper } from "./SerializedAgentWrapper.js";
 
 export class ShinkaiMessageBuilderWrapper {
   private wasmBuilder: ShinkaiMessageBuilderWrapperWASM;
@@ -129,9 +131,9 @@ export class ShinkaiMessageBuilderWrapper {
     );
   }
 
-  static use_code_registration(
-    my_subidentity_encryption_sk: string,
-    my_subidentity_signature_sk: string,
+  static use_code_registration_for_profile(
+    profile_encryption_sk: string,
+    profile_signature_sk: string,
     receiver_public_key: string,
     code: string,
     identity_type: string,
@@ -140,16 +142,48 @@ export class ShinkaiMessageBuilderWrapper {
     sender_profile_name: string,
     receiver: string
   ): string {
-    return ShinkaiMessageBuilderWrapperWASM.use_code_registration(
-      my_subidentity_encryption_sk,
-      my_subidentity_signature_sk,
+    return ShinkaiMessageBuilderWrapperWASM.use_code_registration_for_profile(
+      profile_encryption_sk,
+      profile_signature_sk,
       receiver_public_key,
       code,
       identity_type,
       permission_type,
       registration_name,
+      receiver,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
+    );
+  }
+
+  static use_code_registration_for_device(
+    my_device_encryption_sk: string,
+    my_device_signature_sk: string,
+    profile_encryption_sk: string,
+    profile_signature_sk: string,
+    receiver_public_key: string,
+    code: string,
+    identity_type: string,
+    permission_type: string,
+    registration_name: string,
+    sender_profile_name: string,
+    node_name: string
+  ): string {
+    return ShinkaiMessageBuilderWrapperWASM.use_code_registration_for_device(
+      my_device_encryption_sk,
+      my_device_signature_sk,
+      profile_encryption_sk,
+      profile_signature_sk,
+      receiver_public_key,
+      code,
+      identity_type,
+      permission_type,
+      registration_name,
+      node_name,
+      sender_profile_name,
+      node_name,
+      ""
     );
   }
 
@@ -168,8 +202,10 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key,
       permission_type,
       code_type,
+      receiver,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
     );
   }
 
@@ -230,6 +266,7 @@ export class ShinkaiMessageBuilderWrapper {
     inbox: string,
     count: number,
     offset: string | undefined,
+    sender: string,
     sender_profile_name: string,
     receiver: string
   ): string {
@@ -240,8 +277,10 @@ export class ShinkaiMessageBuilderWrapper {
       inbox,
       count,
       offset,
+      sender,
       sender_profile_name,
-      receiver
+      receiver,
+      ""
     );
   }
 
@@ -321,7 +360,59 @@ export class ShinkaiMessageBuilderWrapper {
     );
   }
 
-  static send_text_message(
+  static request_add_agent(
+    my_encryption_secret_key: string,
+    my_signature_secret_key: string,
+    receiver_public_key: string,
+    sender: string,
+    sender_subidentity: string,
+    recipient: string,
+    agent: SerializedAgentWrapper
+  ): string {
+    let agentJson = agent.to_json_str();
+    return ShinkaiMessageBuilderWrapperWASM.request_add_agent(
+      my_encryption_secret_key,
+      my_signature_secret_key,
+      receiver_public_key,
+      agentJson,
+      sender,
+      sender_subidentity,
+      recipient,
+      ""
+    );
+  }
+
+
+  static get_profile_agents(
+    my_encryption_secret_key: string,
+    my_signature_secret_key: string,
+    receiver_public_key: string,
+    sender: string,
+    sender_subidentity: string,
+    receiver: string,
+  ): string {
+    const builder = new ShinkaiMessageBuilderWrapperWASM(
+      my_encryption_secret_key,
+      my_signature_secret_key,
+      receiver_public_key
+    );
+
+    builder.message_raw_content("");
+    builder.message_schema_type(MessageSchemaType.Empty.toString());
+    builder.internal_metadata(
+      sender_subidentity,
+      "",
+      EncryptionMethod.None.toString()
+    );
+    builder.external_metadata(receiver, sender);
+    builder.body_encryption(
+      EncryptionMethod.DiffieHellmanChaChaPoly1305.toString()
+    );
+    const message = builder.build_to_string();
+    return message;
+  }
+
+  static create_chat_with_message(
     my_encryption_secret_key: string,
     my_signature_secret_key: string,
     receiver_public_key: string,
@@ -329,7 +420,8 @@ export class ShinkaiMessageBuilderWrapper {
     sender_subidentity: string,
     receiver: string,
     receiver_subidentity: string,
-    text_message: string
+    text_message: string,
+    inbox: string
   ): string {
     const builder = new ShinkaiMessageBuilderWrapperWASM(
       my_encryption_secret_key,
@@ -339,9 +431,10 @@ export class ShinkaiMessageBuilderWrapper {
 
     builder.message_raw_content(text_message);
     builder.message_schema_type(MessageSchemaType.TextContent.toString());
-    builder.internal_metadata(
+    builder.internal_metadata_with_inbox(
       sender_subidentity,
       receiver_subidentity,
+      inbox,
       EncryptionMethod.None.toString()
     );
     builder.external_metadata(receiver, sender);

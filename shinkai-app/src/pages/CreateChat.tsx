@@ -18,7 +18,7 @@ import {
 } from "@ionic/react";
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { sendTextMessage } from "../api";
+import { createChatWithMessage } from "../api";
 import { useSetup } from "../hooks/usetSetup";
 import { RootState } from "../store/reducers";
 import { useHistory } from "react-router-dom";
@@ -57,7 +57,7 @@ const CreateChat: React.FC = () => {
 
     // Send a message to someone
     let inboxId = await dispatch(
-      sendTextMessage(
+      createChatWithMessage(
         sender,
         sender_subidentity,
         receiver,

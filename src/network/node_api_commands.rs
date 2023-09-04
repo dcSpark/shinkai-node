@@ -16,6 +16,7 @@ use mupdf::Device;
 use reqwest::StatusCode;
 use shinkai_message_wasm::{
     schemas::{
+        agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
     },
@@ -94,8 +95,8 @@ impl Node {
                                 },
                                 Identity::Device(device) => device.node_encryption_public_key,
                                 Identity::Agent(_) => return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
                                     message:
                                         "Failed to get sender encryption pk from message: Agent identity not supported"
                                             .to_string(),
@@ -103,8 +104,8 @@ impl Node {
                             },
                             None => {
                                 return Err(APIError {
-                                    code: StatusCode::BAD_REQUEST.as_u16(),
-                                    error: "Bad Request".to_string(),
+                                    code: StatusCode::UNAUTHORIZED.as_u16(),
+                                    error: "Unauthorized".to_string(),
                                     message: "Failed to get sender encryption pk from message: Identity not found"
                                         .to_string(),
                                 })
@@ -132,7 +133,6 @@ impl Node {
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
-            println!("schema: {:?}", schema);
             if let Err(e) = msg.validate_message_schema(schema) {
                 return Err(APIError {
                     code: StatusCode::BAD_REQUEST.as_u16(),
@@ -170,8 +170,8 @@ impl Node {
         let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        println!(
-            "after find_by_identity_name> sender_subidentity: {:?}",
+        eprintln!(
+            "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
             sender_subidentity
         );
 
@@ -214,7 +214,7 @@ impl Node {
     ) -> Result<bool, NodeError> {
         let db_lock = self.db.lock().await;
         let has_permission = db_lock
-            .has_permission(&inbox_name.get_value(), &std_identity, InboxPermission::Read)
+            .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
@@ -236,6 +236,7 @@ impl Node {
 
         let has_creation_permission = inbox_name.has_creation_access(sender_shinkai_name);
         if let Ok(true) = has_creation_permission {
+            println!("has_creation_permission: true");
             return Ok(true);
         }
 
@@ -249,7 +250,7 @@ impl Node {
             _ => Err(NodeError {
                 message: format!(
                     "Invalid Identity type. You don't have enough permissions to access the inbox: {}",
-                    inbox_name.get_value()
+                    inbox_name.to_string()
                 ),
             }),
         }
@@ -289,12 +290,23 @@ impl Node {
                 })
             }
         };
-        let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
-            serde_json::from_str(&content).map_err(|e| NodeError {
-                message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
-            })?;
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
+            serde_json::from_str(&content);
 
-        let inbox_name = last_messages_inbox_request.inbox;
+        let last_messages_inbox_request = match last_messages_inbox_request_result {
+            Ok(request) => request,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
         println!("offset: {:?}", offset);
@@ -305,7 +317,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_get_last_messages_from_inbox(inbox_name.get_value(), count, offset)
+                        .internal_get_last_messages_from_inbox(inbox_name.to_string(), count, offset)
                         .await;
                     let _ = res.send(Ok(response)).await;
                     return Ok(());
@@ -316,7 +328,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;
@@ -361,12 +373,23 @@ impl Node {
         };
 
         let content = msg.get_message_content()?;
-        let last_messages_inbox_request: APIGetMessagesFromInboxRequest =
-            serde_json::from_str(&content).map_err(|e| NodeError {
-                message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
-            })?;
+        let last_messages_inbox_request_result: Result<APIGetMessagesFromInboxRequest, _> =
+            serde_json::from_str(&content);
 
-        let inbox_name = last_messages_inbox_request.inbox;
+        let last_messages_inbox_request = match last_messages_inbox_request_result {
+            Ok(request) => request,
+            Err(e) => {
+                let api_error = APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: format!("Failed to parse GetLastMessagesFromInboxRequest: {}", e),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
 
@@ -376,7 +399,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_get_last_unread_messages_from_inbox(inbox_name.get_value(), count, offset)
+                        .internal_get_last_unread_messages_from_inbox(inbox_name.to_string(), count, offset)
                         .await;
                     let _ = res.send(Ok(response)).await;
                     return Ok(());
@@ -387,7 +410,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;
@@ -510,7 +533,7 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-        match self.internal_create_new_job(msg).await {
+        match self.internal_create_new_job(msg, sender_subidentity).await {
             Ok(job_id) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok(job_id.clone())).await;
@@ -562,7 +585,7 @@ impl Node {
             Ok(value) => {
                 if value == true {
                     let response = self
-                        .internal_mark_as_read_up_to(inbox_name.get_value(), up_to_time.clone())
+                        .internal_mark_as_read_up_to(inbox_name.to_string(), up_to_time.clone())
                         .await;
                     match response {
                         Ok(true) => {
@@ -586,7 +609,7 @@ impl Node {
                                     error: "Don't have access".to_string(),
                                     message: format!(
                                         "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                        inbox_name.get_value()
+                                        inbox_name.to_string()
                                     ),
                                 }))
                                 .await;
@@ -601,7 +624,7 @@ impl Node {
                             error: "Don't have access".to_string(),
                             message: format!(
                                 "Permission denied. You don't have enough permissions to access the inbox: {}",
-                                inbox_name.get_value()
+                                inbox_name.to_string()
                             ),
                         }))
                         .await;
@@ -658,8 +681,10 @@ impl Node {
         // Extract values from the ShinkaiMessage
         let code = registration_code.code;
         let registration_name = registration_code.registration_name;
-        let identity_pk = registration_code.identity_pk;
-        let encryption_pk = registration_code.encryption_pk;
+        let profile_identity_pk = registration_code.profile_identity_pk;
+        let profile_encryption_pk = registration_code.profile_encryption_pk;
+        let device_identity_pk = registration_code.device_identity_pk;
+        let device_encryption_pk = registration_code.device_encryption_pk;
         let identity_type = registration_code.identity_type;
         println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
         // Comment (to me): this should be able to handle Device and Agent identities
@@ -673,7 +698,6 @@ impl Node {
         println!("permission_type: {:?}", permission_type);
 
         let db = self.db.lock().await;
-        // TODO: remove this
         println!("handle_registration_code_usage> before use_registration_code");
         db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
@@ -681,13 +705,14 @@ impl Node {
                 &code.clone(),
                 self.node_profile_name.get_node_name().as_str(),
                 registration_name.as_str(),
-                &identity_pk,
-                &encryption_pk,
+                &profile_identity_pk,
+                &profile_encryption_pk,
+                Some(&device_identity_pk),
+                Some(&device_encryption_pk),
             )
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
 
-        // TODO: remove this eventually or make it a debug
         println!("handle_registration_code_usage> after use_registration_code");
         db.debug_print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
@@ -697,8 +722,9 @@ impl Node {
                 match identity_type {
                     IdentityType::Profile | IdentityType::Global => {
                         // Existing logic for handling profile identity
-                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
                         // let full_identity_name = format!("{}/{}", self.node_profile_name.clone(), profile_name.clone());
 
                         let full_identity_name_result = ShinkaiName::from_node_and_profile(
@@ -757,8 +783,9 @@ impl Node {
                         };
                         std::mem::drop(db);
 
-                        let signature_pk_obj = string_to_signature_public_key(identity_pk.as_str()).unwrap();
-                        let encryption_pk_obj = string_to_encryption_public_key(encryption_pk.as_str()).unwrap();
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
 
                         // Check if the profile exists in the identity_manager
                         {
@@ -797,13 +824,23 @@ impl Node {
                         )
                         .unwrap();
 
+                        let signature_pk_obj = string_to_signature_public_key(profile_identity_pk.as_str()).unwrap();
+                        let encryption_pk_obj =
+                            string_to_encryption_public_key(profile_encryption_pk.as_str()).unwrap();
+
+                        let device_signature_pk_obj =
+                            string_to_signature_public_key(device_identity_pk.as_str()).unwrap();
+                        let device_encryption_pk_obj =
+                            string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
+
                         let device_identity = DeviceIdentity {
                             full_identity_name,
                             node_encryption_public_key: self.encryption_public_key.clone(),
                             node_signature_public_key: self.identity_public_key.clone(),
-                            profile_encryption_public_key: Some(encryption_pk_obj),
-                            profile_signature_public_key: Some(signature_pk_obj),
-                            device_signature_public_key: None, // NOTE: This assumes you don't have the device signature PK in the RegistrationCode. Adjust if necessary.
+                            profile_encryption_public_key: encryption_pk_obj,
+                            profile_signature_public_key: signature_pk_obj,
+                            device_encryption_public_key: device_encryption_pk_obj,
+                            device_signature_public_key: device_signature_pk_obj,
                             permission_type,
                         };
 
@@ -859,7 +896,8 @@ impl Node {
             }
         };
 
-        let profile_requested = msg.get_message_content()?;
+        eprintln!("api_get_all_inboxes_for_profile> msg: {:?}", msg);
+        let profile_requested: String = msg.get_message_content()?;
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
@@ -1016,6 +1054,7 @@ impl Node {
             }
         };
 
+        eprintln!("api_job_message> msg: {:?}", msg);
         // TODO: add permissions to check if the sender has the right permissions to send the job message
 
         match self.internal_job_message(msg).await {
@@ -1037,6 +1076,44 @@ impl Node {
         }
     }
 
+    pub async fn api_available_agents(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<SerializedAgent>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::Empty))
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?
+            .get_profile_name()
+            .ok_or(NodeError {
+                message: "Profile name not found".to_string(),
+            })?;
+
+        match self.internal_get_agents_for_profile(profile).await {
+            Ok(agents) => {
+                let _ = res.send(Ok(agents)).await;
+            }
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn api_add_agent(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1054,7 +1131,6 @@ impl Node {
         };
 
         // TODO: add permissions to check if the sender has the right permissions to contact the agent
-
         let serialized_agent_string = msg.get_message_content()?;
         let serialized_agent: APIAddAgentRequest =
             serde_json::from_str(&serialized_agent_string).map_err(|e| NodeError {

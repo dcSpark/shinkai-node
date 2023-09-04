@@ -1,6 +1,8 @@
+use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_wasm::{
-    schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime}, shinkai_message::shinkai_message::ShinkaiMessage,
+    schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
+    shinkai_message::shinkai_message::ShinkaiMessage,
 };
 
 use crate::schemas::{
@@ -125,6 +127,10 @@ impl ShinkaiDB {
         n: usize,
         offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
+        println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        println!("Offset key: {:?}", offset_key);
+        println!("n: {:?}", n);
+
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
             Some(cf) => cf,
@@ -140,6 +146,7 @@ impl ShinkaiDB {
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
 
         // Create an iterator for the specified inbox
+        // Create an iterator for the specified inbox
         let mut iter = match &offset_key {
             Some(offset_key) => self.db.iterator_cf(
                 inbox_cf,
@@ -148,25 +155,21 @@ impl ShinkaiDB {
             None => self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End),
         };
 
-        // Skip the first entry if an offset_key was provided and it matches the current key
-        if let Some(offset_key) = &offset_key {
-            if let Some(Ok((key, _))) = iter.next() {
-                let key_str = String::from_utf8_lossy(&key);
-                if key_str != *offset_key {
-                    // If the key didn't match the offset_key, recreate the iterator to start from the end
-                    iter = self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End);
-                }
-            }
-        }
-
+        let mut skip_first = offset_key.is_some();
         let mut messages = Vec::new();
         for item in iter.take(n) {
+            // Skip the first entry if an offset_key was provided
+            if skip_first {
+                skip_first = false;
+                continue;
+            }
+    
             // Handle the Result returned by the iterator
             match item {
                 Ok((_, value)) => {
                     // The value of the inbox CF is the key in the AllMessages CF
                     let message_key = value.to_vec();
-
+    
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
@@ -179,7 +182,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-
+        eprintln!("Inbox {} Messages: {:?}", inbox_name, messages);
         Ok(messages)
     }
 
@@ -249,10 +252,10 @@ impl ShinkaiDB {
                 )))
             }
         };
-
+    
         // Fetch the column family for all messages
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
-
+    
         // Create an iterator for the specified unread_list
         let mut iter = match &offset_key {
             Some(offset_key) => self.db.iterator_cf(
@@ -261,26 +264,22 @@ impl ShinkaiDB {
             ),
             None => self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::End),
         };
-
-        // Skip the first entry if an offset_key was provided and it matches the current key
-        if let Some(offset_key) = &offset_key {
-            if let Some(Ok((key, _))) = iter.next() {
-                let key_str = String::from_utf8_lossy(&key);
-                if key_str != *offset_key {
-                    // If the key didn't match the offset_key, recreate the iterator to start from the end
-                    iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::End);
-                }
-            }
-        }
-
+    
+        let mut skip_first = offset_key.is_some();
         let mut messages = Vec::new();
         for item in iter.take(n) {
+            // Skip the first entry if an offset_key was provided
+            if skip_first {
+                skip_first = false;
+                continue;
+            }
+    
             // Handle the Result returned by the iterator
             match item {
                 Ok((_, value)) => {
                     // The value of the unread_list CF is the key in the AllMessages CF
                     let message_key = value.to_vec();
-
+    
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
@@ -293,7 +292,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-
+    
         Ok(messages)
     }
 
@@ -444,7 +443,6 @@ impl ShinkaiDB {
 
         // Handle the original permission check
         let cf_name = format!("{}_perms", inbox_name);
-        println!("Checking permission for inbox: {}", cf_name);
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -467,14 +465,14 @@ impl ShinkaiDB {
         }
     }
 
-    pub fn get_inboxes_for_profile(&self, profile_name: String) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_inboxes_for_profile(&self, profile_name_identity: StandardIdentity) -> Result<Vec<String>, ShinkaiDBError> {
         // Fetch the column family for the 'inbox' topic
         let cf_inbox = match self.db.cf_handle(Topic::Inbox.as_str()) {
             Some(cf) => cf,
             None => {
                 return Err(ShinkaiDBError::InboxNotFound(format!(
                     "Inbox not found: {}",
-                    profile_name
+                    profile_name_identity
                 )))
             }
         };
@@ -488,14 +486,24 @@ impl ShinkaiDB {
             match item {
                 Ok((key, _)) => {
                     let key_str = String::from_utf8_lossy(&key);
-                    if key_str.contains(&profile_name) {
+                    if key_str.contains(&profile_name_identity.full_identity_name.to_string()) {
                         inboxes.push(key_str.to_string());
+                    } else {
+                        // Check if the identity has read permission for the inbox
+                        match self.has_permission(&key_str, &profile_name_identity, InboxPermission::Read) {
+                            Ok(has_perm) => {
+                                if has_perm {
+                                    inboxes.push(key_str.to_string());
+                                }
+                            }
+                            Err(e) => return Err(e),
+                        }
                     }
                 }
                 Err(e) => return Err(e.into()),
             }
         }
-
+        eprintln!("Inboxes: {:?}", inboxes);
         Ok(inboxes)
     }
 }
