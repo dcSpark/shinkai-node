@@ -1,4 +1,5 @@
 use crate::db::{ShinkaiDB, Topic};
+use crate::resources::base_vector_resources::BaseVectorResource;
 use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::Embedding;
 use crate::resources::resource_errors::VectorResourceError;
@@ -50,7 +51,7 @@ impl ShinkaiDB {
     /// resource being saved and is implemented in `.save_resources`.
     fn _save_resource_pointerless(
         &self,
-        resource: &Box<dyn VectorResource>,
+        resource: &Box<&dyn VectorResource>,
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let (bytes, cf) = self._prepare_resource_pointerless(resource, profile)?;
@@ -65,7 +66,7 @@ impl ShinkaiDB {
     /// string. Note this is only to be used internally.
     fn _prepare_resource_pointerless(
         &self,
-        resource: &Box<dyn VectorResource>,
+        resource: &Box<&dyn VectorResource>,
         profile: &ShinkaiName,
     ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
         // Convert VectorResource JSON to bytes for storage
@@ -78,16 +79,12 @@ impl ShinkaiDB {
         Ok((bytes, cf))
     }
 
-    /// Saves the `VectorResource` into the ShinkaiDB. This updates the
+    /// Saves the `BaseVectorResource` into the ShinkaiDB. This updates the
     /// Global VectorResourceRouter with the resource pointers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
-    pub fn save_resource(
-        &self,
-        resource: Box<dyn VectorResource>,
-        profile: &ShinkaiName,
-    ) -> Result<(), ShinkaiDBError> {
+    pub fn save_resource(&self, resource: BaseVectorResource, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         self.save_resources(vec![resource], profile)
     }
 
@@ -98,7 +95,7 @@ impl ShinkaiDB {
     /// resource_id, this will overwrite the old resource completely.
     pub fn save_resources(
         &self,
-        resources: Vec<Box<dyn VectorResource>>,
+        resources: Vec<BaseVectorResource>,
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         // Get the resource router
@@ -106,13 +103,16 @@ impl ShinkaiDB {
 
         let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for resource in resources {
+            // Convert the BaseVectorResource to a Box<dyn VectorResource>
+            let trait_object = resource.as_trait_object();
+
             // Adds the JSON of the resource to the batch
-            let (bytes, cf) = self._prepare_resource_pointerless(&resource, profile)?;
-            pb_batch.put_cf_pb(cf, &resource.db_key(), &bytes);
+            let (bytes, cf) = self._prepare_resource_pointerless(&trait_object, profile)?;
+            pb_batch.put_cf_pb(cf, &trait_object.db_key(), &bytes);
 
             // Add the pointer to the router, then putting the router
             // into the batch
-            let pointer = resource.get_resource_pointer();
+            let pointer = trait_object.get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router, profile)?;
             pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_db_key(), &bytes);

@@ -227,7 +227,7 @@ fn test_pdf_resource_save_to_db() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save/fetch doc
-    let resource: Box<dyn VectorResource> = Box::new(doc.clone());
+    let resource = BaseVectorResource::from(doc.clone());
     shinkai_db.save_resource(resource, &profile).unwrap();
     let fetched_doc = shinkai_db.get_document(&doc.db_key(), &profile).unwrap();
 
@@ -276,8 +276,8 @@ fn test_multi_resource_db_vector_search() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
-    let resource2 = Box::new(doc2.clone()) as Box<dyn VectorResource>;
+    let resource1 = BaseVectorResource::from(doc.clone());
+    let resource2 = BaseVectorResource::from(doc2.clone());
     shinkai_db.save_resources(vec![resource1, resource2], &profile).unwrap();
 
     // Animal resource vector search
@@ -373,7 +373,7 @@ fn test_db_syntactic_vector_search() {
     shinkai_db.init_profile_resource_router(&profile).unwrap();
 
     // Save resources to DB
-    let resource1 = Box::new(doc.clone()) as Box<dyn VectorResource>;
+    let resource1 = BaseVectorResource::from(doc);
     shinkai_db.save_resources(vec![resource1], &profile).unwrap();
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
