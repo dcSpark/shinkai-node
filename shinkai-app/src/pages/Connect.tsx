@@ -20,7 +20,7 @@ import { BrowserQRCodeReader } from "@zxing/browser";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { useHistory } from "react-router-dom";
 import { toast } from "react-toastify";
-import type { AppDispatch, RootState } from "../store";
+import type { AppDispatch } from "../store";
 import { QrScanner, QrScannerProps } from "@yudiel/react-qr-scanner";
 import { BarcodeScanner } from "@capacitor-community/barcode-scanner";
 import { isPlatform } from "@ionic/react";
@@ -29,13 +29,14 @@ import {
   generateSignatureKeys,
 } from "../utils/wasm_helpers";
 import { QRSetupData } from "../models/QRSetupData";
-import { SetupDetailsState } from "../store/reducers";
 import { InputCustomEvent } from "@ionic/core/dist/types/components/input/input-interface";
 import { cn } from "../theme/lib/utils";
 import Button from "../components/ui/Button";
 import { IonHeaderCustom } from "../components/ui/Layout";
 import Input from "../components/ui/Input";
 import { scan, cloudUpload, checkmarkSharp } from "ionicons/icons";
+import { SetupDetailsState } from "../store/reducers/setupDetailsReducer";
+import { RootState } from "../store/main";
 
 export type MergedSetupType = SetupDetailsState & QRSetupData;
 
@@ -65,7 +66,7 @@ const Connect: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const history = useHistory();
-  const errorFromState = useSelector((state: RootState) => state.error);
+  const errorFromState = useSelector((state: RootState) => state.other.error);
 
   // Generate keys when the component mounts
   useEffect(() => {

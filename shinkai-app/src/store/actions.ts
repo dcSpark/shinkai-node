@@ -1,5 +1,5 @@
 import { SerializedAgent } from "../models/SchemaTypes";
-import { SetupDetailsState } from "./reducers";
+import { SetupDetailsState } from "./reducers/setupDetailsReducer";
 import {
   GET_PUBLIC_KEY,
   USE_REGISTRATION_CODE,

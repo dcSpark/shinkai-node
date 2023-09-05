@@ -52,7 +52,7 @@ const Chat: React.FC = () => {
 
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetails
   );
 
   const { id } = useParams<{ id: string }>();
@@ -63,7 +63,7 @@ const Chat: React.FC = () => {
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   const reduxMessages = useSelector(
-    (state: RootState) => state.inboxes[deserializedId]
+    (state: RootState) => state.messages.inboxes[deserializedId]
   );
 
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);

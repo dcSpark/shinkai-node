@@ -5,10 +5,10 @@ import { RootState } from "../store";
 import { ApiConfig } from "../api/api_config";
 
 export const useSetup = () => {
-  const { setupDetailsState } = useSelector((state: RootState) => state);
+  const { setupDetails } = useSelector((state: RootState) => state);
 
   useEffect(() => {
-    console.log("Redux State:", setupDetailsState);
-    ApiConfig.getInstance().setEndpoint(setupDetailsState.node_address);
-  }, [setupDetailsState]);
+    console.log("Redux State:", setupDetails);
+    ApiConfig.getInstance().setEndpoint(setupDetails.node_address);
+  }, [setupDetails]);
 };

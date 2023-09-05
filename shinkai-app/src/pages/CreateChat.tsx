@@ -20,17 +20,17 @@ import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { createChatWithMessage } from "../api";
 import { useSetup } from "../hooks/usetSetup";
-import { RootState } from "../store/reducers";
 import { useHistory } from "react-router-dom";
 import { History } from "history";
 import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
+import { RootState } from "../store";
 
 const CreateChat: React.FC = () => {
   useSetup();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState,
+    (state: RootState) => state.setupDetails,
   );
   const [shinkaiIdentity, setShinkaiIdentity] = useState("");
   const [messageText, setMessageText] = useState("");

@@ -17,7 +17,6 @@ import {
 import { addOutline, arrowForward, cloudUpload } from "ionicons/icons";
 import "./Home.css";
 import { useHistory } from "react-router-dom";
-import { RootState } from "../store";
 import { useDispatch, useSelector } from "react-redux";
 import React, { useEffect, useState } from "react";
 import { ApiConfig } from "../api/api_config";
@@ -25,14 +24,15 @@ import { clearStore } from "../store/actions";
 import { getAllInboxesForProfile } from "../api";
 import Avatar from "../components/ui/Avatar";
 import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
+import { RootState } from "../store";
 
 const Home: React.FC = () => {
-  const { setupDetailsState } = useSelector((state: RootState) => state);
+  const setupDetails = useSelector((state: RootState) => state.setupDetails);
   const history = useHistory();
   const dispatch = useDispatch();
 
   const { shinkai_identity, profile, registration_name, permission_type } =
-    setupDetailsState;
+    setupDetails;
   const displayString = (
     <>
       {`${shinkai_identity}/${profile}/device/${registration_name}`}{" "}
@@ -41,20 +41,20 @@ const Home: React.FC = () => {
   );
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showLogoutAlert, setShowLogoutAlert] = useState(false);
-  const inboxes = useSelector((state: RootState) => state.inboxes);
+  const inboxes = useSelector((state: RootState) => state.messages.inboxes);
   console.log("Inboxes:", inboxes);
 
   useEffect(() => {
-    console.log("Redux State:", setupDetailsState);
-    ApiConfig.getInstance().setEndpoint(setupDetailsState.node_address);
+    console.log("Redux State:", setupDetails);
+    ApiConfig.getInstance().setEndpoint(setupDetails.node_address);
   }, []);
 
   useEffect(() => {
-    console.log("Redux State:", setupDetailsState);
-    ApiConfig.getInstance().setEndpoint(setupDetailsState.node_address);
+    console.log("Redux State:", setupDetails);
+    ApiConfig.getInstance().setEndpoint(setupDetails.node_address);
 
     // Local Identity
-    const { shinkai_identity, profile, registration_name } = setupDetailsState;
+    const { shinkai_identity, profile, registration_name } = setupDetails;
     let sender = shinkai_identity;
     let sender_subidentity = `${profile}/device/${registration_name}`;
 
@@ -68,7 +68,7 @@ const Home: React.FC = () => {
         sender_subidentity,
         receiver,
         target_shinkai_name_profile,
-        setupDetailsState,
+        setupDetails,
       ),
     );
   }, []);

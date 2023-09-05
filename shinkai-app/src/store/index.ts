@@ -2,11 +2,10 @@ import { createStore, applyMiddleware, Store } from 'redux';
 import thunk, { ThunkAction } from 'redux-thunk';
 import storage from 'redux-persist/lib/storage';
 import { persistStore, persistReducer } from 'redux-persist';
-import rootReducer, { RootState as RootStateFromReducer } from './reducers';
+import rootReducer from './reducers';
 import { Action } from 'redux';
 
-export type RootState = RootStateFromReducer;
-
+export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = Store['dispatch'];
 
 export type AppThunk<ReturnType = void> = ThunkAction<
@@ -19,7 +18,8 @@ export type AppThunk<ReturnType = void> = ThunkAction<
 const persistConfig = {
   key: 'root',
   storage,
-  whitelist: ['registrationStatus', 'setupDetailsState']
+  whitelist: ['other', 'setupDetails', "messages"],
+  debug: true,
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

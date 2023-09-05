@@ -16,12 +16,12 @@ import { AppThunk } from "../types";
 import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
 import { MergedSetupType } from "../pages/Connect";
 import { ApiConfig } from "./api_config";
-import { SetupDetailsState } from "../store/reducers";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { ShinkaiNameWrapper } from "../lib/wasm/ShinkaiNameWrapper";
 import { InboxNameWrapper } from "../pkg/shinkai_message_wasm";
 import { SerializedAgent } from "../models/SchemaTypes";
 import { SerializedAgentWrapper } from "../lib/wasm/SerializedAgentWrapper";
+import { SetupDetailsState } from "../store/reducers/setupDetailsReducer";
 
 // Helper function to handle HTTP errors
 export const handleHttpError = (response: any) => {
