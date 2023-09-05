@@ -2,6 +2,7 @@
 import {program} from 'commander';
 import {execMode, toolkitConfig, validate} from './exec-mode';
 import {httpMode} from './http-mode';
+// eslint-disable-next-line no-restricted-imports
 import fs from 'fs/promises';
 
 program

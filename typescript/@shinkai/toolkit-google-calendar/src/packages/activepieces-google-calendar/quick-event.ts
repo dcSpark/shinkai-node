@@ -50,7 +50,7 @@ export class GoogleCalendarQuickEvent extends BaseTool<
 
     const setup: Context = {
       auth: {
-        access_token: headers['x-shinkai-oauth'] || headers[SHINKAI_OAUTH],
+        access_token: headers['oauth'] || headers[SHINKAI_OAUTH],
       },
       propsValue: {
         calendar_id: input.calendar_id,

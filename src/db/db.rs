@@ -366,7 +366,7 @@ impl ShinkaiDB {
     // Utc::now().format("%Y-%m-%dT%H:%M:%S.%").to_string();
     // Check out ShinkaiMessageHandler::generate_time_now() for more details.
     // Note: If you pass just a date like "2023-07-02" without the time component,
-    // then the function would interpret this as "2023-07-02T00:00:00Z", i.e., the
+    // then the function would interpret this as "2023-07-02T00:00:00.000Z", i.e., the
     // start of the day.
     pub fn get_due_scheduled_messages(&self, up_to_time: String) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Retrieve the handle to the "ScheduledMessage" column family

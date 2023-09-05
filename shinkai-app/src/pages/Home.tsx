@@ -35,7 +35,7 @@ const Home: React.FC = () => {
     setupDetailsState;
   const displayString = (
     <>
-      {`${shinkai_identity}/${profile}/${registration_name}`}{" "}
+      {`${shinkai_identity}/${profile}/device/${registration_name}`}{" "}
       <span className="text-muted text-sm">(Device)</span>
     </>
   );
@@ -60,7 +60,7 @@ const Home: React.FC = () => {
 
     // Assuming receiver and target_shinkai_name_profile are the same as sender
     let receiver = sender;
-    let target_shinkai_name_profile = sender;
+    let target_shinkai_name_profile = `${sender}/${profile}`;
 
     dispatch(
       getAllInboxesForProfile(
@@ -104,10 +104,12 @@ const Home: React.FC = () => {
                   button
                   className="ion-item-home"
                   onClick={() => {
-                    const encodedInboxId = position
-                      .toString()
-                      .replace(/\./g, "~");
-                    history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
+                    const encodedInboxId = position.toString().replace(/\./g, "~");
+                    if (encodedInboxId.startsWith("inbox")) {
+                      history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
+                    } else if (encodedInboxId.startsWith("job_inbox")) {
+                      history.push(`/job-chat/${encodeURIComponent(encodedInboxId)}`);
+                    }
                   }}
                 >
                   <Avatar

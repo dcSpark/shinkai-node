@@ -3,6 +3,11 @@ use ordered_float::NotNan;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+/// TODO: This is set at 500 chars to be safe for 512 token limit on embedding models. Later
+/// make this more flexible based on embedding model used (important when larger
+/// context window models arrive)
+pub const MAX_EMBEDDING_STRING_SIZE: usize = 500;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Embedding {
     pub id: String,
@@ -26,8 +31,8 @@ impl Embedding {
         self.id = id.to_string();
     }
 
-    /// Print embedding.
-    pub fn print(&self) {
+    /// Pretty print embedding info
+    pub fn pretty_print(&self) {
         println!("Embedding ID: {}", self.id);
         println!("  Embeddings length: {}", self.vector.len());
         println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);
@@ -59,13 +64,21 @@ impl Embedding {
         let num_of_results = num_of_results as usize;
 
         // Calculate the similarity scores for all chunk embeddings and skip any that
-        // are NaN
+        // are NaN or less than 0
         let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()
             .filter_map(|embedding| {
                 let similarity = self.cosine_similarity(embedding);
                 match NotNan::new(similarity) {
-                    Ok(not_nan_similarity) => Some((not_nan_similarity, embedding.id.clone())),
+                    Ok(not_nan_similarity) => {
+                        // If the similarity is a negative, set it to 0 to ensure sorting works properly
+                        let final_simliarity = if similarity < 0.0 {
+                            NotNan::new(0.0).unwrap() // Safe unwrap
+                        } else {
+                            not_nan_similarity
+                        };
+                        return Some((final_simliarity, embedding.id.clone()));
+                    }
                     Err(_) => None, // Skip this embedding if similarity is NaN
                 }
             })

@@ -25,9 +25,10 @@ export abstract class ShinkaiSetup {
     const headers = {};
     Object.keys(rawHeader).forEach((key: string) => {
       if (!v.transformer[key]) {
-        throw new Error(`Header ${key} not found`);
+        // Skipping header. Not defined in in ShinkaiSetup.
+      } else {
+        Object.assign(headers, v.transformer[key](rawHeader[key]));
       }
-      Object.assign(headers, v.transformer[key](rawHeader[key]));
     });
     const headerValidation = v.validator.validate(headers);
     if (headerValidation.error) {

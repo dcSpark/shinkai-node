@@ -2,7 +2,9 @@ use reqwest::Error as ReqwestError;
 use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
-use std::fmt;
+use std::fmt::{self, write};
+
+use crate::resources::resource_errors::VectorResourceError;
 
 #[derive(Debug)]
 pub enum ToolError {
@@ -15,6 +17,12 @@ pub enum ToolError {
     JSToolkitExecutorNotAvailable,
     JSToolkitExecutorFailedStarting,
     RequestError(ReqwestError),
+    ToolNotFound(String),
+    VectorResourceError(VectorResourceError),
+    ToolAlreadyInstalled(String),
+    JSToolkitHeaderValidationFailed(String),
+    ToolkitAlreadyActivated(String),
+    ToolkitAlreadyDeactivated(String),
 }
 
 impl fmt::Display for ToolError {
@@ -33,11 +41,23 @@ impl fmt::Display for ToolError {
             }
             ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
+            ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
+            ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
+            ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
+            ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
+            ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
+            ToolError::ToolkitAlreadyDeactivated(ref t) => write!(f, "Toolkit is already deactivated: {}", t),
         }
     }
 }
 
 impl Error for ToolError {}
+
+impl From<VectorResourceError> for ToolError {
+    fn from(err: VectorResourceError) -> ToolError {
+        ToolError::VectorResourceError(err)
+    }
+}
 
 impl From<ReqwestError> for ToolError {
     fn from(err: ReqwestError) -> ToolError {
@@ -65,5 +85,11 @@ impl From<SerdeError> for ToolError {
             serde_json::error::Category::Data => ToolError::ParseError(error.to_string()),
             serde_json::error::Category::Eof => ToolError::ParseError(error.to_string()),
         }
+    }
+}
+
+impl From<anyhow::Error> for ToolError {
+    fn from(err: anyhow::Error) -> ToolError {
+        ToolError::ParseError(err.to_string())
     }
 }

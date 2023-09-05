@@ -304,8 +304,35 @@ fn db_inbox() {
     shinkai_db.unsafe_insert_inbox_message(&message5).unwrap();
 
     // Test get_inboxes_for_profile
+    let node1_profile_identity = StandardIdentity::new(
+        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string()).unwrap(),
+        None,
+        node1_encryption_pk.clone(),
+        node1_identity_pk.clone(),
+        Some(node1_subencryption_pk),
+        Some(node1_subidentity_pk),
+        StandardIdentityType::Profile,
+        IdentityPermissions::Standard,
+    );
+    let _ = shinkai_db.insert_profile(node1_profile_identity.clone());
     let inboxes = shinkai_db
-        .get_inboxes_for_profile(node1_identity_name.to_string())
+        .get_inboxes_for_profile(node1_profile_identity)
+        .unwrap();
+    assert_eq!(inboxes.len(), 1);
+
+
+    let node1_identity = StandardIdentity::new(
+        ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+        None,
+        node1_encryption_pk.clone(),
+        node1_identity_pk.clone(),
+        Some(node1_subencryption_pk),
+        Some(node1_subidentity_pk),
+        StandardIdentityType::Profile,
+        IdentityPermissions::Standard,
+    );
+    let inboxes = shinkai_db
+        .get_inboxes_for_profile(node1_identity)
         .unwrap();
     assert_eq!(inboxes.len(), 3);
     assert!(inboxes.contains(&inbox_name_value));

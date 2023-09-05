@@ -30,7 +30,10 @@ import { History } from "history";
 import { useHistory } from "react-router-dom";
 import { SerializedAgent } from "../models/SchemaTypes";
 import { JobScopeWrapper } from "../lib/wasm/JobScopeWrapper";
-import { InboxNameWrapper, JobCreationWrapper } from "../pkg/shinkai_message_wasm";
+import {
+  InboxNameWrapper,
+  JobCreationWrapper,
+} from "../pkg/shinkai_message_wasm";
 
 const CreateJob: React.FC = () => {
   useSetup();
@@ -39,7 +42,9 @@ const CreateJob: React.FC = () => {
     (state: RootState) => state.setupDetailsState
   );
   const [jobContent, setJobContent] = useState("");
-  const [selectedAgent, setSelectedAgent] = useState<SerializedAgent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<SerializedAgent | null>(
+    null
+  );
   const agents = useSelector((state: RootState) => state.agents);
   const history: History<unknown> = useHistory();
 
@@ -66,36 +71,51 @@ const CreateJob: React.FC = () => {
 
     const { shinkai_identity, profile } = setupDetailsState;
     let sender = shinkai_identity + "/" + profile;
-  
+
     const job_creation = JobCreationWrapper.empty().get_scope;
     console.log("buckets: ", job_creation.buckets);
     console.log("scope:", job_creation);
 
-    const scope = new JobScopeWrapper(job_creation.buckets, job_creation.documents);
+    const scope = new JobScopeWrapper(
+      job_creation.buckets,
+      job_creation.documents
+    );
     console.log("scope:", scope.to_jsvalue());
 
     console.log("Selected agent:", selectedAgent);
 
     const receiver = shinkai_identity;
     const receiver_subidentity = `${profile}/agent/${selectedAgent?.id}`;
-  
+
     // Call createJob
-    const jobId = await dispatch(
-      createJob(
-        scope.to_jsvalue(),
-        sender,
-        receiver,
-        receiver_subidentity,
-        setupDetailsState
-      )
+    const jobId = await createJob(
+      scope.to_jsvalue(),
+      sender,
+      receiver,
+      receiver_subidentity,
+      setupDetailsState
     );
     console.log("Job created with id:", jobId);
-
+    
     if (jobId) {
+      // Now message job
+      const _ = await dispatch(
+        sendMessageToJob(
+          jobId.toString(),
+          jobContent,
+          sender,
+          receiver,
+          receiver_subidentity,
+          setupDetailsState
+        )
+      );
+
       // Hacky solution because react-router can't handle dots in the URL
-      const jobInboxName = InboxNameWrapper.get_job_inbox_name_from_params(jobId.toString());
+      const jobInboxName = InboxNameWrapper.get_job_inbox_name_from_params(
+        jobId.toString()
+      );
       const encodedJobId = jobInboxName.get_value.replace(/\./g, "~");
-      history.push(`/chat/${encodeURIComponent(encodedJobId)}`);
+      history.push(`/job-chat/${encodeURIComponent(encodedJobId)}`);
     }
   };
 

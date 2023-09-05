@@ -3,7 +3,6 @@ import { IonApp, IonRouterOutlet, setupIonicReact } from "@ionic/react";
 import { IonReactRouter } from "@ionic/react-router";
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
-import ChatList from "./pages/ChatList";
 import Settings from "./pages/Settings";
 import Connect from "./pages/Connect";
 import CreateChat from "./pages/CreateChat";
@@ -34,6 +33,7 @@ import "@ionic/react/css/display.css";
 
 /* Theme variables */
 import "./theme/variables.css";
+import JobChat from "./pages/JobChat";
 
 setupIonicReact();
 
@@ -53,8 +53,8 @@ const App: React.FC = () => {
               <Route exact path="/create-job" component={CreateJob} />
               <Route exact path="/create-chat" component={CreateChat} />
               <Route exact path="/add-agent" component={AddAgent} />
-              <Route path="/chatlist" component={ChatList} />
               <Route exact path="/chat/:id" component={Chat} />
+              <Route exact path="/job-chat/:id" component={JobChat} />
               <Route path="/settings" component={Settings} />
               {!setupComplete ? (
                 <Redirect exact from="/" to="/connect" />

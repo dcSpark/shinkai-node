@@ -92,8 +92,30 @@ impl Node {
         result
     }
 
-    pub async fn internal_get_all_inboxes_for_profile(&self, profile_name: String) -> Vec<String> {
-        let result = match self.db.lock().await.get_inboxes_for_profile(profile_name) {
+    pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: String) -> Vec<String> {
+        // Obtain the IdentityManager and ShinkaiDB locks
+        let mut identity_manager = self.identity_manager.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(full_profile_name.as_str()).await;
+
+        // If identity is None (doesn't exist), return an error message
+        if identity.is_none() {
+            error!("Failed to find identity for profile: {}", full_profile_name);
+            return Vec::new();
+        }
+
+        let identity = identity.unwrap();
+
+        // Check if the found identity is a StandardIdentity. If not, return an empty vector.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            _ => {
+                error!("Identity for profile: {} is not a StandardIdentity", full_profile_name);
+                return Vec::new();
+            }
+        };
+        let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 error!("Failed to get inboxes for profile: {}", e);
@@ -222,11 +244,32 @@ impl Node {
         }
     }
 
-    pub async fn internal_create_new_job(&self, shinkai_message: ShinkaiMessage) -> Result<String, NodeError> {
+    pub async fn internal_create_new_job(
+        &self,
+        shinkai_message: ShinkaiMessage,
+        sender: Identity,
+    ) -> Result<String, NodeError> {
         println!("Creating new job");
         match self.job_manager.lock().await.process_job_message(shinkai_message).await {
             Ok(job_id) => {
-                // If everything went well, return Ok(true)
+                {
+                    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                    println!("Adding permission for inbox: {}", inbox_name.to_string());
+                    let sender_standard = match sender {
+                        Identity::Standard(std_identity) => std_identity,
+                        _ => {
+                            return Err(NodeError {
+                                message: "Sender is not a StandardIdentity".to_string(),
+                            })
+                        }
+                    };
+                    let mut db = self.db.lock().await;
+                    db.add_permission(
+                        inbox_name.to_string().as_str(),
+                        &sender_standard,
+                        InboxPermission::Admin,
+                    )?;
+                }
                 Ok(job_id)
             }
             Err(err) => {

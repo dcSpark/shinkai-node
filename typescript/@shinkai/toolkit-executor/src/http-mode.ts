@@ -1,23 +1,23 @@
-import { execMode, toolkitConfig, validate } from './exec-mode';
+import {execMode, toolkitConfig, validate} from './exec-mode';
 
 // Http Mode
 import express from 'express';
 import bodyParser from 'body-parser';
-import { IncomingHttpHeaders } from 'http';
-import { TerminusState, createTerminus } from '@godaddy/terminus';
+import {IncomingHttpHeaders} from 'http';
+import {TerminusState, createTerminus} from '@godaddy/terminus';
 
 export function httpMode(port: string | number) {
   const app = express();
-  app.use(bodyParser.json({ limit: '50mb' }));
+  app.use(bodyParser.json({limit: '50mb'}));
 
   app.post(
     '/validate_headers',
     async (
-      req: express.Request<{}, {}, { source: string }>,
+      req: express.Request<{}, {}, {source: string}>,
       res: express.Response
     ) => {
       if (!req.body.source)
-        return res.status(400).json({ error: 'Missing source' });
+        return res.status(400).json({error: 'Missing source'});
 
       return res.json(
         await validate(req.body.source, filterHeaders(req.headers))
@@ -28,11 +28,11 @@ export function httpMode(port: string | number) {
   app.post(
     '/toolkit_json',
     async (
-      req: express.Request<{}, {}, { source: string }>,
+      req: express.Request<{}, {}, {source: string}>,
       res: express.Response
     ) => {
       if (!req.body.source)
-        return res.status(400).json({ error: 'Missing source' });
+        return res.status(400).json({error: 'Missing source'});
       return res.json(await toolkitConfig(req.body.source));
     }
   );
@@ -43,14 +43,14 @@ export function httpMode(port: string | number) {
       req: express.Request<
         {},
         {},
-        { source: string; tool: string; input: string }
+        {source: string; tool: string; input: string}
       >,
       res: express.Response
     ) => {
-      if (!req.body) return res.status(400).json({ error: 'Missing body' });
+      if (!req.body) return res.status(400).json({error: 'Missing body'});
       if (!req.body.source)
-        return res.status(400).json({ error: 'Missing source' });
-      if (!req.body.tool) return res.status(400).json({ error: 'Missing tool' });
+        return res.status(400).json({error: 'Missing source'});
+      if (!req.body.tool) return res.status(400).json({error: 'Missing tool'});
 
       return res.json(
         await execMode(
@@ -70,7 +70,7 @@ export function httpMode(port: string | number) {
   createTerminus(server, {
     healthChecks: {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      '/health_check': (state: { state: TerminusState }) => {
+      '/health_check': (state: {state: TerminusState}) => {
         return Promise.resolve();
       },
     },

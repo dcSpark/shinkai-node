@@ -23,6 +23,10 @@ impl BertCPPProcess {
             File::open("/dev/null").unwrap()
         };
 
+        // Wait for for previous tests bert.cpp to close
+        let duration = Duration::from_millis(100);
+        thread::sleep(duration);
+
         let child = Command::new("./bert-cpp-server")
             .arg("--model")
             .arg("models/all-MiniLM-L12-v2.bin")
@@ -34,10 +38,11 @@ impl BertCPPProcess {
             .stderr(Stdio::from(dev_null)) // Redirect stderr
             .spawn()?;
 
-        // Wait for 1/10th of a second for the BertCPP process to boot up/initialize its
+        // Wait for for the BertCPP process to boot up/initialize its
         // web server
-        let duration = Duration::from_millis(100);
+        let duration = Duration::from_millis(150);
         thread::sleep(duration);
+
         Ok(BertCPPProcess { child })
     }
 }
@@ -45,7 +50,11 @@ impl BertCPPProcess {
 impl Drop for BertCPPProcess {
     fn drop(&mut self) {
         match self.child.kill() {
-            Ok(_) => println!("Successfully killed the bert-cpp server process."),
+            Ok(_) => {
+                let duration = Duration::from_millis(150);
+                thread::sleep(duration);
+                println!("Successfully killed the bert-cpp server process.")
+            }
             Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
         }
     }
