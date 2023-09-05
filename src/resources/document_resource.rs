@@ -20,6 +20,7 @@ pub struct DocumentVectorResource {
     resource_id: String,
     resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
+    resource_base_type: VectorResourceBaseType,
     chunk_embeddings: Vec<Embedding>,
     chunk_count: u64,
     data_chunks: Vec<DataChunk>,
@@ -56,7 +57,7 @@ impl VectorResource for DocumentVectorResource {
     }
 
     fn resource_base_type(&self) -> VectorResourceBaseType {
-        VectorResourceBaseType::Document
+        self.resource_base_type.clone()
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -119,6 +120,7 @@ impl DocumentVectorResource {
             chunk_count: data_chunks.len() as u64,
             data_chunks: data_chunks,
             embedding_model_used,
+            resource_base_type: VectorResourceBaseType::Document,
             data_tag_index: DataTagIndex::new(),
         }
     }

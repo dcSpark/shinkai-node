@@ -2,9 +2,8 @@ use super::document_resource::DocumentVectorResource;
 use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
 use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embeddings::*;
 use crate::resources::resource_errors::*;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Value as JsonValue;
 use std::str::FromStr;
 
 /// The list of base/core VectorResource types which are fully
@@ -42,14 +41,23 @@ impl BaseVectorResource {
         self.as_trait_object().to_json()
     }
 
-    /// Parses a vector resource JSON string into a BaseVectorResource
+    /// Creates a BaseVectorResource from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
-        if let Ok(document_resource) = DocumentVectorResource::from_json(json) {
-            Ok(BaseVectorResource::Document(document_resource))
-        } else if let Ok(map_resource) = MapVectorResource::from_json(json) {
-            Ok(BaseVectorResource::Map(map_resource))
-        } else {
-            Err(VectorResourceError::FailedJSONParsing)
+        let value: JsonValue = serde_json::from_str(json)?;
+
+        match value.get("resource_base_type") {
+            Some(serde_json::Value::String(resource_type)) => match VectorResourceBaseType::from_str(resource_type) {
+                Ok(VectorResourceBaseType::Document) => {
+                    let document_resource = DocumentVectorResource::from_json(json)?;
+                    Ok(BaseVectorResource::Document(document_resource))
+                }
+                Ok(VectorResourceBaseType::Map) => {
+                    let map_resource = MapVectorResource::from_json(json)?;
+                    Ok(BaseVectorResource::Map(map_resource))
+                }
+                _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
+            },
+            _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
         }
     }
 

@@ -125,20 +125,11 @@ impl ShinkaiDB {
         resource_pointer: &VectorResourcePointer,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
-        self.get_resource(
-            &resource_pointer.db_key.clone(),
-            &resource_pointer.resource_base_type,
-            profile,
-        )
+        self.get_resource(&resource_pointer.db_key.clone(), profile)
     }
 
     /// Fetches the BaseVectorResource from the DB
-    pub fn get_resource(
-        &self,
-        key: &str,
-        resource_type: &VectorResourceBaseType,
-        profile: &ShinkaiName,
-    ) -> Result<BaseVectorResource, ShinkaiDBError> {
+    pub fn get_resource(&self, key: &str, profile: &ShinkaiName) -> Result<BaseVectorResource, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf_pb(Topic::VectorResources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
@@ -306,7 +297,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_base_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, profile)?);
         }
 
         Ok(resources)
@@ -325,7 +316,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_base_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, profile)?);
         }
 
         Ok(resources)

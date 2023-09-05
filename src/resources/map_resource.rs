@@ -18,6 +18,7 @@ pub struct MapVectorResource {
     source: Option<String>,
     resource_id: String,
     resource_embedding: Embedding,
+    resource_base_type: VectorResourceBaseType,
     embedding_model_used: EmbeddingModelType,
     chunk_embeddings: HashMap<String, Embedding>,
     chunk_count: u64,
@@ -55,7 +56,7 @@ impl VectorResource for MapVectorResource {
     }
 
     fn resource_base_type(&self) -> VectorResourceBaseType {
-        VectorResourceBaseType::Map
+        self.resource_base_type.clone()
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -114,6 +115,7 @@ impl MapVectorResource {
             resource_embedding,
             chunk_embeddings,
             chunk_count: data_chunks.len() as u64,
+            resource_base_type: VectorResourceBaseType::Map,
             data_chunks,
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
