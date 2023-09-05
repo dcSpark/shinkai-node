@@ -1,13 +1,11 @@
+use crate::resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
 use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embedding_generator::*;
-use crate::resources::embeddings::*;
-use crate::resources::model_type::*;
-use crate::resources::resource_errors::*;
-use crate::resources::vector_resource::*;
+use crate::resources::embeddings::Embedding;
+use crate::resources::model_type::{EmbeddingModelType, RemoteModel};
+use crate::resources::resource_errors::VectorResourceError;
+use crate::resources::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::collections::HashMap;
-
-use super::base_vector_resources::BaseVectorResource;
 
 /// A VectorResource which uses an internal numbered/ordered list data model,  
 /// thus providing an ideal interface for document-like content such as PDFs,

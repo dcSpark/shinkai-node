@@ -1,13 +1,13 @@
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::base_vector_resources::BaseVectorResource;
+use crate::resources::base_vector_resources::VectorResourceBaseType;
 use crate::resources::document_resource::DocumentVectorResource;
 use crate::resources::embeddings::Embedding;
-use crate::resources::map_resource::MapVectorResource;
 use crate::resources::resource_errors::VectorResourceError;
 use crate::resources::router::{VectorResourcePointer, VectorResourceRouter};
 use crate::resources::vector_resource::RetrievedDataChunk;
-use crate::resources::vector_resource::{VectorResource, VectorResourceBaseType};
-use serde_json::{from_str, to_string};
+use crate::resources::vector_resource::VectorResource;
+use serde_json::from_str;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
 use super::db::ProfileBoundWriteBatch;

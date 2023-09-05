@@ -1,7 +1,7 @@
 use crate::resources::bert_cpp::DEFAULT_LOCAL_EMBEDDINGS_PORT;
-use crate::resources::embeddings::*;
-use crate::resources::model_type::*;
-use crate::resources::resource_errors::*;
+use crate::resources::embeddings::Embedding;
+use crate::resources::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
+use crate::resources::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
 use llm::load_progress_callback_stdout as load_callback;

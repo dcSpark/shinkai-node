@@ -1,8 +1,7 @@
 use super::document_resource::DocumentVectorResource;
 use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
-use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::resource_errors::*;
+use crate::resources::resource_errors::VectorResourceError;
 use serde_json::Value as JsonValue;
 use std::str::FromStr;
 
@@ -95,14 +94,15 @@ impl From<MapVectorResource> for BaseVectorResource {
     }
 }
 
-/// Enum used for all VectorResources to self-attest their base type.
-/// Used primarily when dealing with Trait objects, and self-attesting
-/// JSON serialized VectorResources
+/// Enum used for VectorResources to self-attest their base type.
+///
+/// `CustomUnsupported(s)` allows for devs to implement custom VectorResources that fulfill the trait,
+/// but which aren't composable with any of the base resources (we are open to PRs for adding new base types as well).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VectorResourceBaseType {
     Document,
     Map,
-    CustomUnsupported(String), // Allows for devs to implement custom VectorResources, but which aren't composable
+    CustomUnsupported(String),
 }
 
 impl VectorResourceBaseType {

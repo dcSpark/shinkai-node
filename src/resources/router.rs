@@ -1,7 +1,8 @@
-use crate::resources::embeddings::*;
+use crate::resources::base_vector_resources::VectorResourceBaseType;
+use crate::resources::embeddings::Embedding;
 use crate::resources::map_resource::MapVectorResource;
-use crate::resources::resource_errors::*;
-use crate::resources::vector_resource::*;
+use crate::resources::resource_errors::VectorResourceError;
+use crate::resources::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::convert::From;
 use std::str::FromStr;

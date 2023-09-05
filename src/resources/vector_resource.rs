@@ -1,15 +1,14 @@
 use super::base_vector_resources::BaseVectorResource;
 use super::router::VectorResourcePointer;
-pub use crate::resources::base_vector_resources::VectorResourceBaseType;
+use crate::resources::base_vector_resources::VectorResourceBaseType;
 use crate::resources::data_tags::DataTagIndex;
-use crate::resources::embedding_generator::*;
+use crate::resources::embedding_generator::EmbeddingGenerator;
+use crate::resources::embeddings::Embedding;
 use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::resources::embeddings::*;
-use crate::resources::model_type::*;
-use crate::resources::resource_errors::*;
+use crate::resources::model_type::EmbeddingModelType;
+use crate::resources::resource_errors::VectorResourceError;
 use ordered_float::NotNan;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 /// Contents of a DataChunk. Either the String data itself, or
 /// another VectorResource
