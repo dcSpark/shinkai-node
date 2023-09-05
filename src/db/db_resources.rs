@@ -131,7 +131,7 @@ impl ShinkaiDB {
     ) -> Result<Box<dyn VectorResource>, ShinkaiDBError> {
         self.get_resource(
             &resource_pointer.db_key.clone(),
-            &resource_pointer.resource_type,
+            &resource_pointer.resource_base_type,
             profile,
         )
     }
@@ -310,7 +310,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_base_type), profile)?);
         }
 
         Ok(resources)
@@ -329,7 +329,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_type), profile)?);
+            resources.push(self.get_resource(&res_pointer.db_key, &(res_pointer.resource_base_type), profile)?);
         }
 
         Ok(resources)

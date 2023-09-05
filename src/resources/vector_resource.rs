@@ -144,7 +144,7 @@ pub trait VectorResource {
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
-    fn resource_type(&self) -> VectorResourceBaseType;
+    fn resource_base_type(&self) -> VectorResourceBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn chunk_embeddings(&self) -> Vec<Embedding>;
@@ -164,9 +164,9 @@ pub trait VectorResource {
         format!("{}.{}", name, resource_id)
     }
 
-    /// Validates whether the VectorResource is a BaseVectorResource by checking its resource_type()
+    /// Validates whether the VectorResource is a BaseVectorResource by checking its .resource_base_type()
     fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
-        match self.resource_type() {
+        match self.resource_base_type() {
             VectorResourceBaseType::Document | VectorResourceBaseType::Map => Ok(()),
             _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
         }
@@ -215,7 +215,7 @@ pub trait VectorResource {
     /// Generates a pointer out of the resource.
     fn get_resource_pointer(&self) -> VectorResourcePointer {
         let db_key = self.db_key();
-        let resource_type = self.resource_type();
+        let resource_type = self.resource_base_type();
         let embedding = self.resource_embedding().clone();
 
         // Fetch list of data tag names from the index

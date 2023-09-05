@@ -54,7 +54,7 @@ impl VectorResource for MapVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> VectorResourceBaseType {
+    fn resource_base_type(&self) -> VectorResourceBaseType {
         VectorResourceBaseType::Map
     }
 

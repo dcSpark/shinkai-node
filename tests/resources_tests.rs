@@ -3,6 +3,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::base_vector_resources::BaseVectorResource;
 use shinkai_node::resources::document_resource::DocumentVectorResource;
 use shinkai_node::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_node::resources::file_parsing::FileParser;
 use shinkai_node::resources::map_resource::MapVectorResource;
 use shinkai_node::resources::resource_errors::VectorResourceError;
 use shinkai_node::resources::vector_resource::VectorResource;
@@ -27,7 +28,7 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
 
     // Generate DocumentVectorResource
     let desc = "An initial introduction to the Shinkai Network.";
-    let doc = DocumentVectorResource::parse_pdf(
+    let doc = FileParser::parse_pdf(
         &buffer,
         100,
         generator,

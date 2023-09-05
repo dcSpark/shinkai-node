@@ -10,7 +10,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
     pub db_key: String,
-    pub resource_type: VectorResourceBaseType,
+    pub resource_base_type: VectorResourceBaseType,
     data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
 }
@@ -19,13 +19,13 @@ impl VectorResourcePointer {
     /// Create a new VectorResourcePointer
     pub fn new(
         db_key: &str,
-        resource_type: VectorResourceBaseType,
+        resource_base_type: VectorResourceBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
     ) -> Self {
         Self {
             db_key: db_key.to_string(),
-            resource_type,
+            resource_base_type,
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
         }
@@ -94,14 +94,14 @@ impl VectorResourceRouter {
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
             if let DataContent::Data(data) = &ret_chunk.chunk.data {
-                if let Ok(resource_type) = VectorResourceBaseType::from_str(data)
+                if let Ok(resource_base_type) = VectorResourceBaseType::from_str(data)
                     .map_err(|_| VectorResourceError::InvalidVectorResourceBaseType)
                 {
                     let id = &ret_chunk.chunk.id;
                     let embedding = self.routing_resource.get_chunk_embedding(id.to_string()).ok();
                     let resource_pointer = VectorResourcePointer::new(
                         &id,
-                        resource_type,
+                        resource_base_type,
                         embedding,
                         ret_chunk.chunk.data_tag_names.clone(),
                     );
@@ -125,7 +125,7 @@ impl VectorResourceRouter {
         &mut self,
         resource_pointer: &VectorResourcePointer,
     ) -> Result<(), VectorResourceError> {
-        let data = resource_pointer.resource_type.to_str();
+        let data = resource_pointer.resource_base_type.to_str();
         let embedding = resource_pointer
             .resource_embedding
             .clone()
@@ -164,7 +164,7 @@ impl VectorResourceRouter {
         old_pointer_id: &str,
         resource_pointer: &VectorResourcePointer,
     ) -> Result<(), VectorResourceError> {
-        let data = resource_pointer.resource_type.to_str();
+        let data = resource_pointer.resource_base_type.to_str();
         let embedding = resource_pointer
             .resource_embedding
             .clone()

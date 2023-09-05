@@ -1,7 +1,6 @@
 use crate::resources::data_tags::{DataTag, DataTagIndex};
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::*;
-use crate::resources::file_parsing::*;
 use crate::resources::model_type::*;
 use crate::resources::resource_errors::*;
 use crate::resources::vector_resource::*;
@@ -56,7 +55,7 @@ impl VectorResource for DocumentVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> VectorResourceBaseType {
+    fn resource_base_type(&self) -> VectorResourceBaseType {
         VectorResourceBaseType::Document
     }
 
@@ -408,78 +407,5 @@ impl DocumentVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
-    }
-
-    /// Parses a list of strings filled with text into a Document VectorResource,
-    /// extracting keywords, and generating embeddings using the supplied
-    /// embedding generator.
-    ///
-    /// Of note, this function assumes you already pre-parsed the text,
-    /// performed cleanup, ensured that each String is under the 512 token
-    /// limit and is ready to be used to create a DataChunk.
-    pub fn parse_text(
-        text_list: Vec<String>,
-        generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
-        source: Option<&str>,
-        resource_id: &str,
-        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
-    ) -> Result<DocumentVectorResource, VectorResourceError> {
-        // Create doc resource and initial setup
-        let mut doc = DocumentVectorResource::new_empty(name, desc, source, resource_id);
-        doc.set_embedding_model_used(generator.model_type());
-
-        // Parse the pdf into grouped text blocks
-        let keywords = FileParser::extract_keywords(&text_list.join(" "), 50);
-
-        // Set the resource embedding, using the keywords + name + desc + source
-        doc.update_resource_embedding(generator, keywords)?;
-        // println!("Generated resource embedding");
-
-        // Generate embeddings for each group of text
-        let mut embeddings = Vec::new();
-        let total_num_embeddings = text_list.len();
-        let mut i = 0;
-        for text in &text_list {
-            let embedding = generator.generate_embedding(text)?;
-            embeddings.push(embedding);
-
-            i += 1;
-            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
-        }
-
-        // Add the text + embeddings into the doc
-        for (i, text) in text_list.iter().enumerate() {
-            doc.append_data(text, None, &embeddings[i], parsing_tags);
-        }
-
-        Ok(doc)
-    }
-
-    /// Parses a PDF from a buffer into a Document VectorResource, automatically
-    /// separating sentences + performing text parsing, as well as
-    /// generating embeddings using the supplied embedding generator.
-    pub fn parse_pdf(
-        buffer: &[u8],
-        average_chunk_size: u64,
-        generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
-        source: Option<&str>,
-        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
-    ) -> Result<DocumentVectorResource, VectorResourceError> {
-        // Parse pdf into groups of lines + a resource_id from the hash of the data
-        let grouped_text_list = FileParser::parse_pdf(buffer, average_chunk_size)?;
-        let resource_id = FileParser::generate_data_hash(buffer);
-        DocumentVectorResource::parse_text(
-            grouped_text_list,
-            generator,
-            name,
-            desc,
-            source,
-            &resource_id,
-            parsing_tags,
-        )
     }
 }

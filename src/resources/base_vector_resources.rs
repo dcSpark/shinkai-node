@@ -16,16 +16,59 @@ pub enum BaseVectorResource {
 }
 
 impl BaseVectorResource {
-    /// Converts the BaseVectorResource into a Box<dyn VectorResource>
-    /// Used to get access to all of the trait's methods, ie.
+    /// Converts into a Box<&dyn VectorResource>.
+    /// Used to access all of the VectorResource trait's methods, ie.
     /// self.as_trait_object().vector_search(...);
-    pub fn as_trait_object(&self) -> Box<dyn VectorResource> {
+    ///
+    /// Note this is not a mutable reference so this is only for reading.
+    pub fn as_trait_object(&self) -> Box<&dyn VectorResource> {
         match self {
-            BaseVectorResource::Document(resource) => Box::new(resource.clone()),
-            BaseVectorResource::Map(resource) => Box::new(resource.clone()),
+            BaseVectorResource::Document(resource) => Box::new(resource),
+            BaseVectorResource::Map(resource) => Box::new(resource),
         }
     }
 
+    /// Converts into a Box<&mut dyn VectorResource>, which provides ability
+    /// to mutate the BaseVectorResource using the VectorResource trait's methods.
+    pub fn as_trait_object_mut(&mut self) -> Box<&mut dyn VectorResource> {
+        match self {
+            BaseVectorResource::Document(resource) => Box::new(resource),
+            BaseVectorResource::Map(resource) => Box::new(resource),
+        }
+    }
+
+    /// Attempts to convert the BaseVectorResource into a DocumentVectorResource
+    pub fn as_document_resource(&self) -> Result<&DocumentVectorResource, VectorResourceError> {
+        match self {
+            BaseVectorResource::Document(resource) => Ok(resource),
+            _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
+        }
+    }
+
+    /// Attempts to convert the BaseVectorResource into a MapVectorResource
+    pub fn as_map_resource(&self) -> Result<&MapVectorResource, VectorResourceError> {
+        match self {
+            BaseVectorResource::Map(resource) => Ok(resource),
+            _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
+        }
+    }
+
+    /// Returns the base type of the VectorResource
+    pub fn resource_base_type(&self) -> VectorResourceBaseType {
+        self.as_trait_object().resource_base_type()
+    }
+}
+
+impl From<DocumentVectorResource> for BaseVectorResource {
+    fn from(resource: DocumentVectorResource) -> Self {
+        BaseVectorResource::Document(resource)
+    }
+}
+
+impl From<MapVectorResource> for BaseVectorResource {
+    fn from(resource: MapVectorResource) -> Self {
+        BaseVectorResource::Map(resource)
+    }
 }
 
 /// Enum used for all VectorResources to self-attest their base type.
