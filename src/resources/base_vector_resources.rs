@@ -102,6 +102,7 @@ impl From<MapVectorResource> for BaseVectorResource {
 pub enum VectorResourceBaseType {
     Document,
     Map,
+    CustomUnsupported(String), // Allows for devs to implement custom VectorResources, but which aren't composable
 }
 
 impl VectorResourceBaseType {
@@ -109,6 +110,17 @@ impl VectorResourceBaseType {
         match self {
             VectorResourceBaseType::Document => "Document",
             VectorResourceBaseType::Map => "Map",
+            VectorResourceBaseType::CustomUnsupported(s) => s,
+        }
+    }
+
+    /// Check if the given resource type is one of the supported types.
+    /// Does this by using to/from_str to reuse the `match`es and keep code cleaner.
+    pub fn is_base_vector_resource(resource_base_type: VectorResourceBaseType) -> Result<(), VectorResourceError> {
+        let resource_type_str = resource_base_type.to_str();
+        match Self::from_str(resource_type_str) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(VectorResourceError::InvalidVectorResourceBaseType),
         }
     }
 }

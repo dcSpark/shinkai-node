@@ -164,12 +164,9 @@ pub trait VectorResource {
         format!("{}.{}", name, resource_id)
     }
 
-    /// Validates whether the VectorResource is a BaseVectorResource by checking its .resource_base_type()
+    /// Validates whether the VectorResource has a valid  BaseVectorResourceType by checking its .resource_base_type()
     fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
-        match self.resource_base_type() {
-            VectorResourceBaseType::Document | VectorResourceBaseType::Map => Ok(()),
-            _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
-        }
+        VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
     /// Regenerates and updates the resource's embedding.
