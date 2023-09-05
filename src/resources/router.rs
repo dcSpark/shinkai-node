@@ -10,7 +10,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
     pub db_key: String,
-    pub resource_type: VectorResourceType,
+    pub resource_type: VectorResourceBaseType,
     data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
 }
@@ -19,7 +19,7 @@ impl VectorResourcePointer {
     /// Create a new VectorResourcePointer
     pub fn new(
         db_key: &str,
-        resource_type: VectorResourceType,
+        resource_type: VectorResourceBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
     ) -> Self {
@@ -87,15 +87,15 @@ impl VectorResourceRouter {
     /// Takes a list of RetrievedDataChunks and outputs a list of VectorResourcePointers
     /// that point to the real resource (not the resource router).
     ///
-    /// Of note, if a chunk holds an invalid VectorResourceType string then the chunk
+    /// Of note, if a chunk holds an invalid VectorResourceBaseType string then the chunk
     /// is ignored.
     fn ret_data_chunks_to_pointers(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<VectorResourcePointer> {
         let mut resource_pointers = vec![];
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
             if let DataContent::Data(data) = &ret_chunk.chunk.data {
-                if let Ok(resource_type) =
-                    VectorResourceType::from_str(data).map_err(|_| VectorResourceError::InvalidVectorResourceType)
+                if let Ok(resource_type) = VectorResourceBaseType::from_str(data)
+                    .map_err(|_| VectorResourceError::InvalidVectorResourceBaseType)
                 {
                     let id = &ret_chunk.chunk.id;
                     let embedding = self.routing_resource.get_chunk_embedding(id.to_string()).ok();

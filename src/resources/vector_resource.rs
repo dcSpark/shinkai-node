@@ -1,5 +1,6 @@
 use super::base_vector_resources::BaseVectorResource;
 use super::router::VectorResourcePointer;
+pub use crate::resources::base_vector_resources::VectorResourceBaseType;
 use crate::resources::data_tags::DataTagIndex;
 use crate::resources::embedding_generator::*;
 use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
@@ -16,36 +17,6 @@ use std::str::FromStr;
 pub enum DataContent {
     Data(String),
     Resource(BaseVectorResource),
-}
-
-/// Enum used for all VectorResources to specify their type.
-/// Used primarily when dealing with Trait objects, and self-attesting
-/// JSON serialized VectorResources
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum VectorResourceType {
-    Document,
-    Map,
-}
-
-impl VectorResourceType {
-    pub fn to_str(&self) -> &str {
-        match self {
-            VectorResourceType::Document => "Document",
-            VectorResourceType::Map => "Map",
-        }
-    }
-}
-
-impl FromStr for VectorResourceType {
-    type Err = VectorResourceError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Document" => Ok(VectorResourceType::Document),
-            "Map" => Ok(VectorResourceType::Map),
-            _ => Err(VectorResourceError::InvalidVectorResourceType),
-        }
-    }
 }
 
 /// A data chunk that was retrieved from a vector search.
@@ -135,7 +106,7 @@ impl DataChunk {
             id: id,
             data: DataContent::Resource(vector_resource.clone()),
             metadata: metadata,
-            data_tag_names: vector_resource.trait_object().data_tag_index().data_tag_names(),
+            data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
         }
     }
 
@@ -173,7 +144,7 @@ pub trait VectorResource {
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
-    fn resource_type(&self) -> VectorResourceType;
+    fn resource_type(&self) -> VectorResourceBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn chunk_embeddings(&self) -> Vec<Embedding>;
@@ -191,6 +162,14 @@ pub trait VectorResource {
         let name = self.name().replace(" ", "_");
         let resource_id = self.resource_id().replace(" ", "_");
         format!("{}.{}", name, resource_id)
+    }
+
+    /// Validates whether the VectorResource is a BaseVectorResource by checking its resource_type()
+    fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
+        match self.resource_type() {
+            VectorResourceBaseType::Document | VectorResourceBaseType::Map => Ok(()),
+            _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
+        }
     }
 
     /// Regenerates and updates the resource's embedding.
@@ -289,7 +268,7 @@ pub trait VectorResource {
             if let Ok(data_chunk) = self.get_data_chunk(id.clone()) {
                 match data_chunk.data {
                     DataContent::Resource(resource) => {
-                        let sub_results = resource.trait_object().syntactic_search(data_tag_names);
+                        let sub_results = resource.as_trait_object().syntactic_search(data_tag_names);
                         matching_data_chunks.extend(sub_results);
                     }
                     DataContent::Data(_) => {
@@ -338,9 +317,9 @@ pub trait VectorResource {
                         vector_resource_count += 1;
                         // If no data tag names provided, it means we are doing a normal vector search
                         let sub_results = if data_tag_names.is_empty() {
-                            resource.trait_object().vector_search(query.clone(), num_of_results)
+                            resource.as_trait_object().vector_search(query.clone(), num_of_results)
                         } else {
-                            resource.trait_object().syntactic_vector_search(
+                            resource.as_trait_object().syntactic_vector_search(
                                 query.clone(),
                                 num_of_results,
                                 data_tag_names,

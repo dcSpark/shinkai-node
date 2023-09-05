@@ -56,8 +56,8 @@ impl VectorResource for DocumentVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> VectorResourceType {
-        VectorResourceType::Document
+    fn resource_type(&self) -> VectorResourceBaseType {
+        VectorResourceBaseType::Document
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -216,8 +216,8 @@ impl DocumentVectorResource {
     /// and updates the data tags index. Of note, we use the resource's data tags
     /// and resource embedding.
     pub fn append_vector_resource(&mut self, resource: BaseVectorResource, metadata: Option<HashMap<String, String>>) {
-        let embedding = resource.trait_object().resource_embedding().clone();
-        let tag_names = resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = resource.as_trait_object().resource_embedding().clone();
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         self._append_data_without_tag_validation(DataContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
@@ -275,8 +275,8 @@ impl DocumentVectorResource {
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
     ) -> Result<DataChunk, VectorResourceError> {
-        let embedding = new_resource.trait_object().resource_embedding().clone();
-        let tag_names = new_resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = new_resource.as_trait_object().resource_embedding().clone();
+        let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_data_without_tag_validation(
             id,
             DataContent::Resource(new_resource),

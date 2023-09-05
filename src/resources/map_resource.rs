@@ -54,8 +54,8 @@ impl VectorResource for MapVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> VectorResourceType {
-        VectorResourceType::Map
+    fn resource_type(&self) -> VectorResourceBaseType {
+        VectorResourceBaseType::Map
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -169,8 +169,8 @@ impl MapVectorResource {
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) {
-        let embedding = resource.trait_object().resource_embedding().clone();
-        let tag_names = resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = resource.as_trait_object().resource_embedding().clone();
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         self._insert_kv_without_tag_validation(key, DataContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
@@ -230,8 +230,8 @@ impl MapVectorResource {
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
     ) -> Result<DataChunk, VectorResourceError> {
-        let embedding = new_resource.trait_object().resource_embedding().clone();
-        let tag_names = new_resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = new_resource.as_trait_object().resource_embedding().clone();
+        let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_kv_without_tag_validation(
             key,
             DataContent::Resource(new_resource),

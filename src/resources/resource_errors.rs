@@ -13,7 +13,7 @@ pub enum VectorResourceError {
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
-    InvalidVectorResourceType,
+    InvalidVectorResourceBaseType,
     RocksDBError(RocksError),
     RegexError(regex::Error),
     RequestFailed(String),
@@ -35,7 +35,10 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
             VectorResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
             VectorResourceError::NoEmbeddingProvided => write!(f, "No embedding provided."),
-            VectorResourceError::InvalidVectorResourceType => write!(f, "The resource type does not exist."),
+            VectorResourceError::InvalidVectorResourceBaseType => write!(
+                f,
+                "The resource type does not match any of the VectorResourceBaseTypes."
+            ),
             VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
             VectorResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),

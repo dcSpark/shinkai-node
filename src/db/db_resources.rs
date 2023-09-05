@@ -4,7 +4,7 @@ use crate::resources::embeddings::Embedding;
 use crate::resources::resource_errors::VectorResourceError;
 use crate::resources::router::{VectorResourcePointer, VectorResourceRouter};
 use crate::resources::vector_resource::RetrievedDataChunk;
-use crate::resources::vector_resource::{VectorResource, VectorResourceType};
+use crate::resources::vector_resource::{VectorResource, VectorResourceBaseType};
 use serde_json::{from_str, to_string};
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 
@@ -140,7 +140,7 @@ impl ShinkaiDB {
     pub fn get_resource(
         &self,
         key: &str,
-        resource_type: &VectorResourceType,
+        resource_type: &VectorResourceBaseType,
         profile: &ShinkaiName,
     ) -> Result<Box<dyn VectorResource>, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
@@ -148,11 +148,11 @@ impl ShinkaiDB {
         let json_str = std::str::from_utf8(&bytes)?;
 
         // Parse the JSON string into a VectorResource implementing struct
-        if resource_type == &VectorResourceType::Document {
+        if resource_type == &VectorResourceBaseType::Document {
             let document_resource: DocumentVectorResource = from_str(json_str)?;
             Ok(Box::new(document_resource))
         } else {
-            Err(ShinkaiDBError::from(VectorResourceError::InvalidVectorResourceType))
+            Err(ShinkaiDBError::from(VectorResourceError::InvalidVectorResourceBaseType))
         }
     }
 
