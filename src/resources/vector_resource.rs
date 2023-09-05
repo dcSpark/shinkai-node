@@ -1,14 +1,14 @@
 use super::base_vector_resources::BaseVectorResource;
 use super::router::VectorResourcePointer;
+use crate::resources::base_vector_resources::VectorResourceBaseType;
 use crate::resources::data_tags::DataTagIndex;
-use crate::resources::embedding_generator::*;
+use crate::resources::embedding_generator::EmbeddingGenerator;
+use crate::resources::embeddings::Embedding;
 use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::resources::embeddings::*;
-use crate::resources::model_type::*;
-use crate::resources::resource_errors::*;
+use crate::resources::model_type::EmbeddingModelType;
+use crate::resources::resource_errors::VectorResourceError;
 use ordered_float::NotNan;
 use std::collections::HashMap;
-use std::str::FromStr;
 
 /// Contents of a DataChunk. Either the String data itself, or
 /// another VectorResource
@@ -16,36 +16,6 @@ use std::str::FromStr;
 pub enum DataContent {
     Data(String),
     Resource(BaseVectorResource),
-}
-
-/// Enum used for all VectorResources to specify their type.
-/// Used primarily when dealing with Trait objects, and self-attesting
-/// JSON serialized VectorResources
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum VectorResourceType {
-    Document,
-    Map,
-}
-
-impl VectorResourceType {
-    pub fn to_str(&self) -> &str {
-        match self {
-            VectorResourceType::Document => "Document",
-            VectorResourceType::Map => "Map",
-        }
-    }
-}
-
-impl FromStr for VectorResourceType {
-    type Err = VectorResourceError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Document" => Ok(VectorResourceType::Document),
-            "Map" => Ok(VectorResourceType::Map),
-            _ => Err(VectorResourceError::InvalidVectorResourceType),
-        }
-    }
 }
 
 /// A data chunk that was retrieved from a vector search.
@@ -71,7 +41,7 @@ impl RetrievedDataChunk {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|data_chunk| {
-                let db_key = data_chunk.resource_pointer.db_key.clone();
+                let db_key = data_chunk.resource_pointer.shinkai_db_key.clone();
                 let id_db_key = format!("{}-{}", data_chunk.chunk.id.clone(), db_key);
                 data_chunks.insert(id_db_key.clone(), data_chunk.clone());
                 (NotNan::new(data_chunks[&id_db_key].score).unwrap(), id_db_key)
@@ -135,7 +105,7 @@ impl DataChunk {
             id: id,
             data: DataContent::Resource(vector_resource.clone()),
             metadata: metadata,
-            data_tag_names: vector_resource.trait_object().data_tag_index().data_tag_names(),
+            data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
         }
     }
 
@@ -164,8 +134,9 @@ impl DataChunk {
     }
 }
 
-/// Represents a VectorResource which includes properties and operations related to
-/// data chunks and embeddings.
+/// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
+/// Of note, when working with multiple VectorResources/the Shinkai DB, the `name` field can have duplicates,
+/// but `resource_id` is expected to be unique.
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
@@ -173,7 +144,7 @@ pub trait VectorResource {
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
-    fn resource_type(&self) -> VectorResourceType;
+    fn resource_base_type(&self) -> VectorResourceBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn chunk_embeddings(&self) -> Vec<Embedding>;
@@ -187,10 +158,15 @@ pub trait VectorResource {
     /// Returns a String representing the Key that this VectorResource
     /// will be/is saved to in the Topic::VectorResources in the DB.
     /// The db key is: `{name}.{resource_id}`
-    fn db_key(&self) -> String {
+    fn shinkai_db_key(&self) -> String {
         let name = self.name().replace(" ", "_");
         let resource_id = self.resource_id().replace(" ", "_");
         format!("{}.{}", name, resource_id)
+    }
+
+    /// Validates whether the VectorResource has a valid  BaseVectorResourceType by checking its .resource_base_type()
+    fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
+        VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
     /// Regenerates and updates the resource's embedding.
@@ -235,18 +211,19 @@ pub trait VectorResource {
 
     /// Generates a pointer out of the resource.
     fn get_resource_pointer(&self) -> VectorResourcePointer {
-        let db_key = self.db_key();
-        let resource_type = self.resource_type();
+        let shinkai_db_key = self.shinkai_db_key();
+        let resource_type = self.resource_base_type();
         let embedding = self.resource_embedding().clone();
 
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
 
-        VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
+        VectorResourcePointer::new(&shinkai_db_key, resource_type, Some(embedding), tag_names)
     }
 
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks.
+    /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all
+    /// Vector Resources held inside of self, and only searches inside of them if their resource embedding is sufficiently
+    /// similar to meet the `num_of_results` at that given level of depth.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
@@ -254,8 +231,10 @@ pub trait VectorResource {
         self._order_vector_search_results(scores, query, num_of_results, &vec![])
     }
 
-    /// Performs a syntactic vector search using a query embedding and a list of data tag names
-    /// and returns the most similar data chunks.
+    /// Performs a syntactic vector search, efficiently filtering out all data chunks based on the list of data tag names,
+    /// and performs a vector search to return the most similar. Of note this goes over all Vector Resources held inside of self,
+    /// and only searches inside of them if they both have matching data tags and their resource embedding is sufficiently
+    /// similar to meet the `num_of_results` at that given level of depth.
     fn syntactic_vector_search(
         &self,
         query: Embedding,
@@ -264,21 +243,56 @@ pub trait VectorResource {
     ) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
-        for name in data_tag_names {
-            if let Some(ids) = self.data_tag_index().get_chunk_ids(&name) {
-                if !ids.is_empty() {
-                    for id in ids {
-                        if let Ok(embedding) = self.get_chunk_embedding(id.to_string()) {
-                            matching_data_tag_embeddings.push(embedding.clone());
-                        }
-                    }
-                }
+        let ids = self._syntactic_search_id_fetch(data_tag_names);
+        for id in ids {
+            if let Ok(embedding) = self.get_chunk_embedding(id) {
+                matching_data_tag_embeddings.push(embedding);
             }
         }
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
         self._order_vector_search_results(scores, query, num_of_results, data_tag_names)
+    }
+
+    /// Fetches all data chunks which contain tags matching the input name list
+    /// (including fetching inside all levels of Vector Resources, akin to vector searches)
+    fn syntactic_search(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedDataChunk> {
+        // Fetch all data chunks with matching data tags
+        let mut matching_data_chunks = vec![];
+        let ids = self._syntactic_search_id_fetch(data_tag_names);
+        for id in ids {
+            if let Ok(data_chunk) = self.get_data_chunk(id.clone()) {
+                match data_chunk.data {
+                    DataContent::Resource(resource) => {
+                        let sub_results = resource.as_trait_object().syntactic_search(data_tag_names);
+                        matching_data_chunks.extend(sub_results);
+                    }
+                    DataContent::Data(_) => {
+                        let resource_pointer = self.get_resource_pointer();
+                        let retrieved_data_chunk = RetrievedDataChunk {
+                            chunk: data_chunk,
+                            score: 0.0,
+                            resource_pointer,
+                        };
+                        matching_data_chunks.push(retrieved_data_chunk);
+                    }
+                }
+            }
+        }
+
+        matching_data_chunks
+    }
+
+    /// Internal method to fetch all chunk ids for syntactic searches
+    fn _syntactic_search_id_fetch(&self, data_tag_names: &Vec<String>) -> Vec<String> {
+        let mut ids = vec![];
+        for name in data_tag_names {
+            if let Some(chunk_ids) = self.data_tag_index().get_chunk_ids(&name) {
+                ids.extend(chunk_ids.iter().map(|id| id.to_string()));
+            }
+        }
+        ids
     }
 
     /// Internal method shared by vector_search() and syntactic_vector_search() that
@@ -300,9 +314,9 @@ pub trait VectorResource {
                         vector_resource_count += 1;
                         // If no data tag names provided, it means we are doing a normal vector search
                         let sub_results = if data_tag_names.is_empty() {
-                            resource.trait_object().vector_search(query.clone(), num_of_results)
+                            resource.as_trait_object().vector_search(query.clone(), num_of_results)
                         } else {
-                            resource.trait_object().syntactic_vector_search(
+                            resource.as_trait_object().syntactic_vector_search(
                                 query.clone(),
                                 num_of_results,
                                 data_tag_names,

@@ -168,9 +168,9 @@ impl ToolRouter {
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
-    /// No other resource is allowed to use this db_key (this is enforced
+    /// No other resource is allowed to use this shinkai_db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn profile_router_db_key() -> String {
+    pub fn profile_router_shinkai_db_key() -> String {
         "profile_tool_router".to_string()
     }
 

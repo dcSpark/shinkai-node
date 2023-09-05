@@ -46,7 +46,7 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let (bytes, cf) = self._prepare_profile_toolkit_map(toolkit_map, profile)?;
-        self.put_cf_pb(cf, &InstalledJSToolkitMap::db_key(), bytes, profile)?;
+        self.put_cf_pb(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes, profile)?;
         Ok(())
     }
 
@@ -66,13 +66,13 @@ impl ShinkaiDB {
     /// Saves the `ToolRouter` into the database (overwriting the old saved instance)
     fn _save_profile_tool_router(&self, tool_router: &ToolRouter, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         let (bytes, cf) = self._prepare_profile_tool_router(tool_router, profile)?;
-        self.put_cf_pb(cf, &ToolRouter::profile_router_db_key(), bytes, profile)?;
+        self.put_cf_pb(cf, &ToolRouter::profile_router_shinkai_db_key(), bytes, profile)?;
         Ok(())
     }
 
     /// Fetches the `ToolRouter` from the DB (for the provided profile)
     pub fn get_tool_router(&self, profile: &ShinkaiName) -> Result<ToolRouter, ShinkaiDBError> {
-        let bytes = self.get_cf_pb(Topic::Toolkits, &ToolRouter::profile_router_db_key(), profile)?;
+        let bytes = self.get_cf_pb(Topic::Toolkits, &ToolRouter::profile_router_shinkai_db_key(), profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         let tool_router: ToolRouter = from_str(json_str)?;
@@ -81,7 +81,7 @@ impl ShinkaiDB {
 
     /// Fetches the `InstalledJSToolkitMap` from the DB (for the provided profile)
     pub fn get_installed_toolkit_map(&self, profile: &ShinkaiName) -> Result<InstalledJSToolkitMap, ShinkaiDBError> {
-        let bytes = self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::db_key(), profile)?;
+        let bytes = self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::shinkai_db_key(), profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         let toolkit_map: InstalledJSToolkitMap = from_str(json_str)?;
@@ -90,7 +90,7 @@ impl ShinkaiDB {
 
     /// Fetches the `JSToolkit` from the DB (for the provided profile and toolkit name)
     pub fn get_toolkit(&self, toolkit_name: &str, profile: &ShinkaiName) -> Result<JSToolkit, ShinkaiDBError> {
-        let key = JSToolkit::db_key_from_name(toolkit_name);
+        let key = JSToolkit::shinkai_db_key_from_name(toolkit_name);
         let bytes = self.get_cf_pb(Topic::Toolkits, &key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
@@ -112,7 +112,7 @@ impl ShinkaiDB {
         self._save_profile_toolkit_map(&toolkit_map, profile)?;
         // 3. Delete toolkit itself from db
         let cf = self.get_cf_handle(Topic::Toolkits)?;
-        self.delete_cf_pb(cf, &JSToolkit::db_key_from_name(toolkit_name), profile)?;
+        self.delete_cf_pb(cf, &JSToolkit::shinkai_db_key_from_name(toolkit_name), profile)?;
 
         Ok(())
     }
@@ -202,7 +202,7 @@ impl ShinkaiDB {
             if let Some(value) = value_opt {
                 let bytes = value.to_string().as_bytes().to_vec(); // Clone the bytes here
                 let cf = self.get_cf_handle(Topic::Toolkits)?;
-                pb_batch.put_cf_pb(cf, &header.db_key(&toolkit_name), &bytes);
+                pb_batch.put_cf_pb(cf, &header.shinkai_db_key(&toolkit_name), &bytes);
             } else {
                 return Err(ToolError::JSToolkitHeaderValidationFailed(format!(
                     "Not all required header values have been provided while setting for toolkit: {}",
@@ -227,7 +227,7 @@ impl ShinkaiDB {
         let mut header_values = HashMap::new();
 
         for header in toolkit.header_definitions {
-            let bytes = self.get_cf_pb(Topic::Toolkits, &header.db_key(&toolkit_name), profile)?;
+            let bytes = self.get_cf_pb(Topic::Toolkits, &header.shinkai_db_key(&toolkit_name), profile)?;
             let value = std::str::from_utf8(&bytes)?;
             header_values.insert(header.header().clone(), value.to_string());
         }
@@ -271,7 +271,7 @@ impl ShinkaiDB {
 
             // Saving the toolkit itself
             let (bytes, cf) = self._prepare_toolkit(&toolkit, profile)?;
-            pb_batch.put_cf_pb(cf, &toolkit.db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &toolkit.shinkai_db_key(), &bytes);
 
             // Add the toolkit info to the map
             let toolkit_info = JSToolkitInfo::from(&toolkit.clone());
@@ -280,7 +280,7 @@ impl ShinkaiDB {
 
         // Finally save the toolkit map
         let (bytes, cf) = self._prepare_profile_toolkit_map(&toolkit_map, profile)?;
-        pb_batch.put_cf_pb(cf, &InstalledJSToolkitMap::db_key(), &bytes);
+        pb_batch.put_cf_pb(cf, &InstalledJSToolkitMap::shinkai_db_key(), &bytes);
 
         // Write the batch
         self.write_pb(pb_batch)?;

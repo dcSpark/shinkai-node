@@ -43,7 +43,7 @@ impl InstalledJSToolkitMap {
     }
 
     /// DB Key For the Installed JS Toolkits Map
-    pub fn db_key() -> String {
+    pub fn shinkai_db_key() -> String {
         "installed_js_toolkit_map".to_string()
     }
 
@@ -89,8 +89,8 @@ pub struct JSToolkitInfo {
 
 impl JSToolkitInfo {
     /// The DB Key where the corresponding whole JSToolkit is stored
-    pub fn db_key(&self) -> String {
-        JSToolkit::db_key_from_name(&self.name)
+    pub fn shinkai_db_key(&self) -> String {
+        JSToolkit::shinkai_db_key_from_name(&self.name)
     }
 
     /// Convert to json
@@ -135,8 +135,8 @@ pub struct JSToolkit {
 
 impl JSToolkit {
     /// The DB Key where this JSToolkit is stored
-    pub fn db_key(&self) -> String {
-        Self::db_key_from_name(&self.name)
+    pub fn shinkai_db_key(&self) -> String {
+        Self::shinkai_db_key_from_name(&self.name)
     }
 
     // Returns activated bool
@@ -151,7 +151,7 @@ impl JSToolkit {
 
     /// Given a toolkit name, generates the database key where the JSToolkit
     /// is stored in Topic::Toolkits
-    pub fn db_key_from_name(js_toolkit_name: &str) -> String {
+    pub fn shinkai_db_key_from_name(js_toolkit_name: &str) -> String {
         let mut key = "js_toolkit".to_string();
         key.push_str(js_toolkit_name);
         key

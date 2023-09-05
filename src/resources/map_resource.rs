@@ -1,11 +1,9 @@
-use crate::resources::base_vector_resources::BaseVectorResource;
+use crate::resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
 use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embedding_generator::*;
-use crate::resources::embeddings::*;
-use crate::resources::file_parsing::*;
-use crate::resources::model_type::*;
-use crate::resources::resource_errors::*;
-use crate::resources::vector_resource::*;
+use crate::resources::embeddings::Embedding;
+use crate::resources::model_type::{EmbeddingModelType, RemoteModel};
+use crate::resources::resource_errors::VectorResourceError;
+use crate::resources::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -18,6 +16,7 @@ pub struct MapVectorResource {
     source: Option<String>,
     resource_id: String,
     resource_embedding: Embedding,
+    resource_base_type: VectorResourceBaseType,
     embedding_model_used: EmbeddingModelType,
     chunk_embeddings: HashMap<String, Embedding>,
     chunk_count: u64,
@@ -54,8 +53,8 @@ impl VectorResource for MapVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_type(&self) -> VectorResourceType {
-        VectorResourceType::Map
+    fn resource_base_type(&self) -> VectorResourceBaseType {
+        self.resource_base_type.clone()
     }
 
     fn chunk_embeddings(&self) -> Vec<Embedding> {
@@ -114,6 +113,7 @@ impl MapVectorResource {
             resource_embedding,
             chunk_embeddings,
             chunk_count: data_chunks.len() as u64,
+            resource_base_type: VectorResourceBaseType::Map,
             data_chunks,
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
@@ -169,8 +169,8 @@ impl MapVectorResource {
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) {
-        let embedding = resource.trait_object().resource_embedding().clone();
-        let tag_names = resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = resource.as_trait_object().resource_embedding().clone();
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         self._insert_kv_without_tag_validation(key, DataContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
@@ -230,8 +230,8 @@ impl MapVectorResource {
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
     ) -> Result<DataChunk, VectorResourceError> {
-        let embedding = new_resource.trait_object().resource_embedding().clone();
-        let tag_names = new_resource.trait_object().data_tag_index().data_tag_names();
+        let embedding = new_resource.as_trait_object().resource_embedding().clone();
+        let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_kv_without_tag_validation(
             key,
             DataContent::Resource(new_resource),
@@ -329,7 +329,7 @@ impl MapVectorResource {
     }
 
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
-        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
+        Ok(serde_json::from_str(json)?)
     }
 
     pub fn set_resource_id(&mut self, resource_id: String) {
