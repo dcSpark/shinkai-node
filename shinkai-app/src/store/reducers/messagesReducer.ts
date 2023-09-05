@@ -23,7 +23,9 @@ const messagesState: MessagesState = {
 };
 
 interface InboxMessagesAction {
-  type: typeof RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX | typeof RECEIVE_LAST_MESSAGES_FROM_INBOX;
+  type:
+    | typeof RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX
+    | typeof RECEIVE_LAST_MESSAGES_FROM_INBOX;
   payload?: {
     inboxId: string;
     messages: ShinkaiMessage[];
@@ -40,7 +42,7 @@ interface AddMessageAction {
 
 interface ReceiveAllInboxesAction {
   type: typeof RECEIVE_ALL_INBOXES_FOR_PROFILE;
-  payload?: any; // Update this to the actual type of the payload
+  payload?: string[];
 }
 
 type MessagesAction =
@@ -89,8 +91,12 @@ export const messagesReducer = (
       }
       const { inboxId, messages } = action.payload;
       const currentMessages = state.inboxes[inboxId] || [];
-      const currentMessageHashes = state.messageHashes[inboxId] || new Set();
+      const currentMessageHashes =
+        state.messageHashes[inboxId] instanceof Set
+          ? state.messageHashes[inboxId]
+          : new Set<string>();
 
+      console.log("currentMessageHashes: ", currentMessageHashes);
       const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
         const hash = calculateMessageHash(msg);
         if (currentMessageHashes.has(hash)) {
@@ -142,7 +148,10 @@ export const messagesReducer = (
       }
     }
     case RECEIVE_ALL_INBOXES_FOR_PROFILE: {
-      const newInboxes = action.payload;
+      if (!action.payload) {
+        return state;
+      }
+      const newInboxes: { [key: string]: any } = action.payload;
       if (typeof newInboxes !== "object") {
         console.error(
           "Invalid payload for RECEIVE_ALL_INBOXES_FOR_PROFILE: ",

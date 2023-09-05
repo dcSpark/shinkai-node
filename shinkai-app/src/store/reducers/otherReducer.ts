@@ -7,6 +7,7 @@ import {
   CREATE_REGISTRATION_CODE,
   GET_PUBLIC_KEY,
   PING_ALL,
+  RECEIVE_ALL_INBOXES_FOR_PROFILE,
   REGISTRATION_ERROR,
   USE_REGISTRATION_CODE,
 } from "../types";
@@ -20,6 +21,7 @@ export interface OtherState {
   agents: {
     [agentId: string]: SerializedAgent;
   };
+  just_inboxes: string[];
 }
 
 const initialState: OtherState = {
@@ -29,6 +31,7 @@ const initialState: OtherState = {
   registrationCode: "",
   error: null,
   agents: {},
+  just_inboxes: [],
 };
 
 const otherReducer = (state = initialState, action: Action): OtherState => {
@@ -38,6 +41,20 @@ const otherReducer = (state = initialState, action: Action): OtherState => {
         ...state,
         registrationStatus: true,
       };
+    case RECEIVE_ALL_INBOXES_FOR_PROFILE: {
+      const newInboxes = action.payload;
+      if (!Array.isArray(newInboxes)) {
+        console.error(
+          "Invalid payload for RECEIVE_ALL_INBOXES_FOR_PROFILE: ",
+          newInboxes
+        );
+        return state;
+      }
+      return {
+        ...state,
+        just_inboxes: newInboxes,
+      };
+    }
     case GET_PUBLIC_KEY:
       return { ...state, publicKey: action.payload };
     case ADD_AGENTS: {

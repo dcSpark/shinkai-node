@@ -1,4 +1,4 @@
-import { createStore, applyMiddleware, Store } from 'redux';
+import { createStore, applyMiddleware, Store, compose } from 'redux';
 import thunk, { ThunkAction } from 'redux-thunk';
 import storage from 'redux-persist/lib/storage';
 import { persistStore, persistReducer } from 'redux-persist';
@@ -24,5 +24,11 @@ const persistConfig = {
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-export const store = createStore(persistedReducer, applyMiddleware(thunk));
+// Use Redux DevTools extension if it's installed in the user's browser
+const composeEnhancers = (typeof window !== 'undefined' && window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) || compose;
+
+export const store = createStore(
+  persistedReducer,
+  composeEnhancers(applyMiddleware(thunk))
+);
 export const persistor = persistStore(store);

@@ -41,7 +41,7 @@ const Home: React.FC = () => {
   );
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showLogoutAlert, setShowLogoutAlert] = useState(false);
-  const inboxes = useSelector((state: RootState) => state.messages.inboxes);
+  const inboxes = useSelector((state: RootState) => state.other.just_inboxes);
   console.log("Inboxes:", inboxes);
 
   useEffect(() => {
@@ -98,13 +98,13 @@ const Home: React.FC = () => {
         <IonContentCustom>
           <div className="h-full flex flex-col">
             <div className="flex-1 md:rounded-[1.25rem] bg-white dark:bg-slate-800 p-4 md:p-10 space-y-2 md:space-y-4">
-              {Object.entries(inboxes).map(([position, inboxId]) => (
+              {inboxes && inboxes.map((inbox_name) => (
                 <IonItem
-                  key={position}
+                  key={inbox_name}
                   button
                   className="ion-item-home"
                   onClick={() => {
-                    const encodedInboxId = position.toString().replace(/\./g, "~");
+                    const encodedInboxId = inbox_name.toString().replace(/\./g, "~");
                     if (encodedInboxId.startsWith("inbox")) {
                       history.push(`/chat/${encodeURIComponent(encodedInboxId)}`);
                     } else if (encodedInboxId.startsWith("job_inbox")) {
@@ -113,11 +113,11 @@ const Home: React.FC = () => {
                   }}
                 >
                   <Avatar
-                    url={`https://ui-avatars.com/api/?name=${position}&background=FE6162&color=fff`}
+                    url={`https://ui-avatars.com/api/?name=${inbox_name}&background=FE6162&color=fff`}
                     className="shrink-0"
                   />
                   <IonText className="ml-4 font-bold md:text-lg">
-                    {JSON.stringify(position)}
+                    {JSON.stringify(inbox_name)}
                   </IonText>
                   <IonIcon
                     icon={arrowForward}

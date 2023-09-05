@@ -7,7 +7,7 @@ import Avatar from "../components/ui/Avatar";
 import { cn } from "../theme/lib/utils";
 import { IonContentCustom } from "./ui/Layout";
 import { calculateMessageHash } from "../utils/shinkai_message_handler";
-import { RootState } from "../store/main";
+import { RootState } from "../store";
 
 interface ChatMessagesProps {
   deserializedId: string;
