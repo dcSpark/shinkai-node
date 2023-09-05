@@ -42,7 +42,7 @@ impl RetrievedDataChunk {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|data_chunk| {
-                let db_key = data_chunk.resource_pointer.db_key.clone();
+                let db_key = data_chunk.resource_pointer.shinkai_db_key.clone();
                 let id_db_key = format!("{}-{}", data_chunk.chunk.id.clone(), db_key);
                 data_chunks.insert(id_db_key.clone(), data_chunk.clone());
                 (NotNan::new(data_chunks[&id_db_key].score).unwrap(), id_db_key)
@@ -135,8 +135,9 @@ impl DataChunk {
     }
 }
 
-/// Represents a VectorResource which includes properties and operations related to
-/// data chunks and embeddings.
+/// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
+/// Of note, when working with multiple VectorResources/the Shinkai DB, the `name` field can have duplicates,
+/// but `resource_id` is expected to be unique.
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
@@ -158,7 +159,7 @@ pub trait VectorResource {
     /// Returns a String representing the Key that this VectorResource
     /// will be/is saved to in the Topic::VectorResources in the DB.
     /// The db key is: `{name}.{resource_id}`
-    fn db_key(&self) -> String {
+    fn shinkai_db_key(&self) -> String {
         let name = self.name().replace(" ", "_");
         let resource_id = self.resource_id().replace(" ", "_");
         format!("{}.{}", name, resource_id)
@@ -211,14 +212,14 @@ pub trait VectorResource {
 
     /// Generates a pointer out of the resource.
     fn get_resource_pointer(&self) -> VectorResourcePointer {
-        let db_key = self.db_key();
+        let shinkai_db_key = self.shinkai_db_key();
         let resource_type = self.resource_base_type();
         let embedding = self.resource_embedding().clone();
 
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
 
-        VectorResourcePointer::new(&db_key, resource_type, Some(embedding), tag_names)
+        VectorResourcePointer::new(&shinkai_db_key, resource_type, Some(embedding), tag_names)
     }
 
     /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all

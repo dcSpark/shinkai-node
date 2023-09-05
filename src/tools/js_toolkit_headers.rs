@@ -34,8 +34,8 @@ impl HeaderDefinition {
         }
     }
 
-    /// Generates the db_key that this header is stored at for the given toolkit_name
-    pub fn db_key(&self, toolkit_name: &str) -> String {
+    /// Generates the shinkai_db_key that this header is stored at for the given toolkit_name
+    pub fn shinkai_db_key(&self, toolkit_name: &str) -> String {
         format!("{}:{}", self.header(), toolkit_name)
     }
 }

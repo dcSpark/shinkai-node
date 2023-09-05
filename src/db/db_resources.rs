@@ -23,7 +23,12 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_profile_resource_router(router)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(cf, &VectorResourceRouter::profile_router_db_key(), bytes, profile)?;
+        self.put_cf_pb(
+            cf,
+            &VectorResourceRouter::profile_router_shinkai_db_key(),
+            bytes,
+            profile,
+        )?;
 
         Ok(())
     }
@@ -57,7 +62,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_resource_pointerless(resource)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(cf, &resource.as_trait_object().db_key(), &bytes, profile)?;
+        self.put_cf_pb(cf, &resource.as_trait_object().shinkai_db_key(), &bytes, profile)?;
 
         Ok(())
     }
@@ -104,14 +109,14 @@ impl ShinkaiDB {
         for resource in resources {
             // Adds the JSON of the resource to the batch
             let (bytes, cf) = self._prepare_resource_pointerless(&resource)?;
-            pb_batch.put_cf_pb(cf, &resource.as_trait_object().db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &resource.as_trait_object().shinkai_db_key(), &bytes);
 
             // Add the pointer to the router, then putting the router
             // into the batch
             let pointer = resource.as_trait_object().get_resource_pointer();
             router.add_resource_pointer(&pointer)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router)?;
-            pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);
         }
 
         self.write_pb(pb_batch)?;
@@ -125,7 +130,7 @@ impl ShinkaiDB {
         resource_pointer: &VectorResourcePointer,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
-        self.get_resource(&resource_pointer.db_key.clone(), profile)
+        self.get_resource(&resource_pointer.shinkai_db_key.clone(), profile)
     }
 
     /// Fetches the BaseVectorResource from the DB
@@ -142,7 +147,7 @@ impl ShinkaiDB {
         // Fetch and convert the bytes to a valid UTF-8 string
         let bytes = self.get_cf_pb(
             Topic::VectorResources,
-            &VectorResourceRouter::profile_router_db_key(),
+            &VectorResourceRouter::profile_router_shinkai_db_key(),
             profile,
         )?;
         let json_str = std::str::from_utf8(&bytes)?;
@@ -268,7 +273,7 @@ impl ShinkaiDB {
         ))?;
 
         for doc in &docs {
-            if doc.db_key() == top_chunk.resource_pointer.db_key {
+            if doc.shinkai_db_key() == top_chunk.resource_pointer.shinkai_db_key {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
@@ -292,7 +297,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, profile)?);
+            resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
         }
 
         Ok(resources)
@@ -311,7 +316,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.db_key, profile)?);
+            resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
         }
 
         Ok(resources)
@@ -332,7 +337,7 @@ impl ShinkaiDB {
         for res_pointer in resource_pointers {
             if res_pointer.resource_base_type == VectorResourceBaseType::Document {
                 if (resources.len() as u64) < num_of_docs {
-                    resources.push(self.get_resource(&res_pointer.db_key, profile)?);
+                    resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
                 }
             }
         }

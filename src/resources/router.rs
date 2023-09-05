@@ -9,7 +9,7 @@ use std::str::FromStr;
 /// Type which holds data about a stored resource in the DB.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
-    pub db_key: String,
+    pub shinkai_db_key: String,
     pub resource_base_type: VectorResourceBaseType,
     data_tag_names: Vec<String>,
     resource_embedding: Option<Embedding>,
@@ -18,13 +18,13 @@ pub struct VectorResourcePointer {
 impl VectorResourcePointer {
     /// Create a new VectorResourcePointer
     pub fn new(
-        db_key: &str,
+        shinkai_db_key: &str,
         resource_base_type: VectorResourceBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
     ) -> Self {
         Self {
-            db_key: db_key.to_string(),
+            shinkai_db_key: shinkai_db_key.to_string(),
             resource_base_type,
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
@@ -58,9 +58,9 @@ impl VectorResourceRouter {
     }
 
     /// A hard-coded DB key for the profile-wide VectorResource Router in Topic::VectorResources.
-    /// No other resource is allowed to use this db_key (this is enforced
+    /// No other resource is allowed to use this shinkai_db_key (this is enforced
     /// automatically because all resources have a two-part key)
-    pub fn profile_router_db_key() -> String {
+    pub fn profile_router_shinkai_db_key() -> String {
         "profile_resource_router".to_string()
     }
 
@@ -116,11 +116,11 @@ impl VectorResourceRouter {
     /// The pointer is expected to have a valid resource embedding
     /// and the matching resource having already been saved into the DB.
     ///
-    /// If a resource pointer already exists with the same db_key, then
+    /// If a resource pointer already exists with the same shinkai_db_key, then
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the db_key as the id of the data chunk.
+    /// of the chunk and the shinkai_db_key as the id of the data chunk.
     pub fn add_resource_pointer(
         &mut self,
         resource_pointer: &VectorResourcePointer,
@@ -130,23 +130,23 @@ impl VectorResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(VectorResourceError::NoEmbeddingProvided)?;
-        let db_key = resource_pointer.db_key.to_string();
-        let db_key_clone = db_key.clone();
+        let shinkai_db_key = resource_pointer.shinkai_db_key.to_string();
+        let shinkai_db_key_clone = shinkai_db_key.clone();
         let metadata = None;
 
-        match self.routing_resource.get_data_chunk(db_key_clone) {
+        match self.routing_resource.get_data_chunk(shinkai_db_key_clone) {
             Ok(old_chunk) => {
-                // If a resource pointer with matching db_key is found,
+                // If a resource pointer with matching shinkai_db_key is found,
                 // replace the existing resource pointer with the new one.
                 self.replace_resource_pointer(&old_chunk.id, resource_pointer)?;
             }
             Err(_) => {
-                // If no resource pointer with matching db_key is found,
+                // If no resource pointer with matching shinkai_db_key is found,
                 // insert the new kv pair. We skip tag validation because the tags
                 // have already been previously validated when adding into the
                 // original resource.
                 self.routing_resource._insert_kv_without_tag_validation(
-                    &db_key,
+                    &shinkai_db_key,
                     DataContent::Data(data.to_string()),
                     metadata,
                     &embedding,
@@ -198,7 +198,7 @@ impl VectorResourceRouter {
             Ok(embedding)
         } else {
             self.routing_resource
-                .get_chunk_embedding(resource_pointer.db_key.to_string())
+                .get_chunk_embedding(resource_pointer.shinkai_db_key.to_string())
         }
     }
 
