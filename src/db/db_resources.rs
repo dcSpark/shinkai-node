@@ -137,16 +137,6 @@ impl ShinkaiDB {
         Ok(BaseVectorResource::from_json(json_str)?)
     }
 
-    /// Fetches a DocumentVectorResource from the DB
-    pub fn get_document(&self, key: &str, profile: &ShinkaiName) -> Result<DocumentVectorResource, ShinkaiDBError> {
-        // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf_pb(Topic::VectorResources, key, profile)?;
-        let json_str = std::str::from_utf8(&bytes)?;
-
-        // Parse the JSON string into a VectorResource implementing struct
-        Ok(from_str(json_str)?)
-    }
-
     /// Fetches the Global VectorResource Router from  the DB
     pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<VectorResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
@@ -167,7 +157,7 @@ impl ShinkaiDB {
     /// Only resources with matching data tags will be considered at all,
     /// and likewise only data chunks with matching data tags inside of said
     /// resources will be scored and potentially returned.
-    pub fn syntactic_vector_search_data(
+    pub fn syntactic_vector_search(
         &self,
         query: Embedding,
         num_of_resources: u64,
@@ -196,7 +186,7 @@ impl ShinkaiDB {
     /// From there a vector search is performed on each resource with the query embedding,
     /// and the results from all resources are then collected, sorted, and the top num_of_results
     /// RetriedDataChunks based on similarity score are returned.
-    pub fn vector_search_data(
+    pub fn vector_search(
         &self,
         query: Embedding,
         num_of_resources: u64,
@@ -220,14 +210,14 @@ impl ShinkaiDB {
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
     ///   of the highest score.
-    pub fn vector_search_data_tolerance_ranged(
+    pub fn vector_search_tolerance_ranged(
         &self,
         query: Embedding,
         num_of_resources: u64,
         tolerance_range: f32,
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let retrieved_chunks = self.vector_search_data(query.clone(), num_of_resources, 1, profile)?;
+        let retrieved_chunks = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
         let top_chunk = &retrieved_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
             VectorResourceError::VectorResourceEmpty,
         ))?;
@@ -252,14 +242,19 @@ impl ShinkaiDB {
     ///
     /// Note: This only searches DocumentVectorResources in Topic::VectorResources, not all resources. This is
     /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
-    pub fn vector_search_data_doc_proximity(
+    pub fn vector_search_proximity(
         &self,
         query: Embedding,
         num_of_docs: u64,
         proximity_window: u64,
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let docs = self.vector_search_docs(query.clone(), num_of_docs, profile)?;
+        let mut docs: Vec<DocumentVectorResource> = Vec::new();
+        for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
+            if let Ok(document_resource) = doc.as_document_resource() {
+                docs.push(document_resource.clone());
+            }
+        }
 
         let mut retrieved_chunks = Vec::new();
         for doc in &docs {
@@ -304,7 +299,7 @@ impl ShinkaiDB {
     }
 
     /// Performs a vector search using a query embedding and returns the
-    /// num_of_resources amount of most similar VectorResources.
+    /// num_of_resources amount of most similar BaseVectorResources.
     pub fn vector_search_resources(
         &self,
         query: Embedding,
@@ -329,13 +324,17 @@ impl ShinkaiDB {
         query: Embedding,
         num_of_docs: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<DocumentVectorResource>, ShinkaiDBError> {
+    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
-        let resource_pointers = router.vector_search(query, num_of_docs);
+        let resource_pointers = router.vector_search(query, num_of_docs * 2);
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_document(&res_pointer.db_key, profile)?);
+            if res_pointer.resource_base_type == VectorResourceBaseType::Document {
+                if (resources.len() as u64) < num_of_docs {
+                    resources.push(self.get_resource(&res_pointer.db_key, profile)?);
+                }
+            }
         }
 
         Ok(resources)

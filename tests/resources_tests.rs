@@ -229,7 +229,11 @@ fn test_pdf_resource_save_to_db() {
     // Save/fetch doc
     let resource = BaseVectorResource::from(doc.clone());
     shinkai_db.save_resource(resource, &profile).unwrap();
-    let fetched_doc = shinkai_db.get_document(&doc.db_key(), &profile).unwrap();
+    let fetched_doc = shinkai_db
+        .get_resource(&doc.db_key(), &profile)
+        .unwrap()
+        .as_document_resource()
+        .unwrap();
 
     assert_eq!(doc, fetched_doc);
 }
@@ -294,13 +298,13 @@ fn test_multi_resource_db_vector_search() {
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Camels").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10, &profile).unwrap();
+    let ret_data_chunks = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(fact2, &ret_data_chunk.chunk.get_data_string().unwrap());
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Does this relate to crypto?").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_data(query, 10, 10, &profile).unwrap();
+    let ret_data_chunks = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
@@ -309,9 +313,7 @@ fn test_multi_resource_db_vector_search() {
 
     // Camel DataChunk proximity vector search
     let query = generator.generate_embedding("Camel").unwrap();
-    let ret_data_chunks = shinkai_db
-        .vector_search_data_doc_proximity(query, 10, 2, &profile)
-        .unwrap();
+    let ret_data_chunks = shinkai_db.vector_search_proximity(query, 10, 2, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
     let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
@@ -322,7 +324,7 @@ fn test_multi_resource_db_vector_search() {
     // Animal tolerance range vector search
     let query = generator.generate_embedding("Animals that perform actions").unwrap();
     let ret_data_chunks = shinkai_db
-        .vector_search_data_tolerance_ranged(query, 10, 0.4, &profile)
+        .vector_search_tolerance_ranged(query, 10, 0.4, &profile)
         .unwrap();
 
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
@@ -381,7 +383,7 @@ fn test_db_syntactic_vector_search() {
     // Email syntactic vector search
     let query = generator.generate_embedding("Fetch me emails.").unwrap();
     let fetched_data = shinkai_db
-        .syntactic_vector_search_data(query, 1, 10, &vec![email_tag.name.clone()], &profile)
+        .syntactic_vector_search(query, 1, 10, &vec![email_tag.name.clone()], &profile)
         .unwrap();
     let fetched_chunk = fetched_data.get(0).unwrap();
     assert_eq!("1", &fetched_chunk.chunk.id);
@@ -390,7 +392,7 @@ fn test_db_syntactic_vector_search() {
     // Multiplier syntactic vector search
     let query = generator.generate_embedding("Fetch me multipliers.").unwrap();
     let fetched_data = shinkai_db
-        .syntactic_vector_search_data(query, 1, 10, &vec![multiplier_tag.name.clone()], &profile)
+        .syntactic_vector_search(query, 1, 10, &vec![multiplier_tag.name.clone()], &profile)
         .unwrap();
     let fetched_chunk = fetched_data.get(0).unwrap();
     assert_eq!("15", &fetched_chunk.chunk.id);

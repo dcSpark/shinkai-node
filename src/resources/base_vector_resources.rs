@@ -62,17 +62,17 @@ impl BaseVectorResource {
     }
 
     /// Attempts to convert the BaseVectorResource into a DocumentVectorResource
-    pub fn as_document_resource(&self) -> Result<&DocumentVectorResource, VectorResourceError> {
+    pub fn as_document_resource(&self) -> Result<DocumentVectorResource, VectorResourceError> {
         match self {
-            BaseVectorResource::Document(resource) => Ok(resource),
+            BaseVectorResource::Document(resource) => Ok(resource.clone()),
             _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
         }
     }
 
     /// Attempts to convert the BaseVectorResource into a MapVectorResource
-    pub fn as_map_resource(&self) -> Result<&MapVectorResource, VectorResourceError> {
+    pub fn as_map_resource(&self) -> Result<MapVectorResource, VectorResourceError> {
         match self {
-            BaseVectorResource::Map(resource) => Ok(resource),
+            BaseVectorResource::Map(resource) => Ok(resource.clone()),
             _ => Err(VectorResourceError::InvalidVectorResourceBaseType),
         }
     }
