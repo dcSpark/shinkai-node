@@ -329,7 +329,7 @@ impl MapVectorResource {
     }
 
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
-        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
+        Ok(serde_json::from_str(json)?)
     }
 
     pub fn set_resource_id(&mut self, resource_id: String) {

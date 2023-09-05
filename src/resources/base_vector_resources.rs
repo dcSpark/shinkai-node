@@ -20,7 +20,7 @@ impl BaseVectorResource {
     /// Used to access all of the VectorResource trait's methods, ie.
     /// self.as_trait_object().vector_search(...);
     ///
-    /// Note this is not a mutable reference so this is only for reading.
+    /// Note this is not a mutable reference, so do not use mutating methods.
     pub fn as_trait_object(&self) -> Box<&dyn VectorResource> {
         match self {
             BaseVectorResource::Document(resource) => Box::new(resource),
@@ -34,6 +34,22 @@ impl BaseVectorResource {
         match self {
             BaseVectorResource::Document(resource) => Box::new(resource),
             BaseVectorResource::Map(resource) => Box::new(resource),
+        }
+    }
+
+    /// Converts the BaseVectorResource into a JSON string (without the enum wrapping JSON)
+    pub fn to_json(&self) -> Result<String, VectorResourceError> {
+        self.as_trait_object().to_json()
+    }
+
+    /// Parses a vector resource JSON string into a BaseVectorResource
+    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+        if let Ok(document_resource) = DocumentVectorResource::from_json(json) {
+            Ok(BaseVectorResource::Document(document_resource))
+        } else if let Ok(map_resource) = MapVectorResource::from_json(json) {
+            Ok(BaseVectorResource::Map(map_resource))
+        } else {
+            Err(VectorResourceError::FailedJSONParsing)
         }
     }
 

@@ -284,13 +284,13 @@ fn test_multi_resource_db_vector_search() {
     let query = generator.generate_embedding("Animals").unwrap();
     let fetched_resources = shinkai_db.vector_search_resources(query, 100, &profile).unwrap();
     let fetched_doc = fetched_resources.get(0).unwrap();
-    assert_eq!(&doc.resource_id(), &fetched_doc.resource_id());
+    assert_eq!(&doc.resource_id(), &fetched_doc.as_trait_object().resource_id());
 
     // Shinkai introduction resource vector search
     let query = generator.generate_embedding("Shinkai").unwrap();
     let fetched_resources = shinkai_db.vector_search_resources(query, 1, &profile).unwrap();
     let fetched_doc = fetched_resources.get(0).unwrap();
-    assert_eq!(&doc2.resource_id(), &fetched_doc.resource_id());
+    assert_eq!(&doc2.resource_id(), &fetched_doc.as_trait_object().resource_id());
 
     // Camel DataChunk vector search
     let query = generator.generate_embedding("Camels").unwrap();
@@ -320,7 +320,7 @@ fn test_multi_resource_db_vector_search() {
     assert_eq!(fact3, &ret_data_chunk3.chunk.get_data_string().unwrap());
 
     // Animal tolerance range vector search
-    let query = generator.generate_embedding("Animals that peform actions").unwrap();
+    let query = generator.generate_embedding("Animals that perform actions").unwrap();
     let ret_data_chunks = shinkai_db
         .vector_search_data_tolerance_ranged(query, 10, 0.4, &profile)
         .unwrap();
