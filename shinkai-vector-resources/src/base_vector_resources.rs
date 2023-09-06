@@ -1,7 +1,7 @@
 use super::document_resource::DocumentVectorResource;
 use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
-use crate::resources::resource_errors::VectorResourceError;
+use crate::resource_errors::VectorResourceError;
 use serde_json::Value as JsonValue;
 use std::str::FromStr;
 

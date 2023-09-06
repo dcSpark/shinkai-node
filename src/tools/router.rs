@@ -1,11 +1,11 @@
-use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::resources::map_resource::MapVectorResource;
-use crate::resources::vector_resource::*;
-use crate::resources::{embeddings::*, router};
+use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use crate::map_resource::MapVectorResource;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
+use crate::vector_resource::*;
+use crate::{embeddings::*, router};
 use serde_json;
 use std::collections::HashMap;
 

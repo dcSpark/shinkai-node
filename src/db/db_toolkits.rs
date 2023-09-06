@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
 use crate::tools::js_toolkit_executor::JSToolkitExecutor;

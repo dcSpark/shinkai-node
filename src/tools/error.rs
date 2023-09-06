@@ -4,7 +4,7 @@ use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt::{self, write};
 
-use crate::resources::resource_errors::VectorResourceError;
+use crate::resource_errors::VectorResourceError;
 
 #[derive(Debug)]
 pub enum ToolError {

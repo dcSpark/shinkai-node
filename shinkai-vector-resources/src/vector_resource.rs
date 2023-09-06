@@ -1,12 +1,11 @@
 use super::base_vector_resources::BaseVectorResource;
-use super::router::VectorResourcePointer;
-use crate::resources::base_vector_resources::VectorResourceBaseType;
-use crate::resources::data_tags::DataTagIndex;
-use crate::resources::embedding_generator::EmbeddingGenerator;
-use crate::resources::embeddings::Embedding;
-use crate::resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::resources::model_type::EmbeddingModelType;
-use crate::resources::resource_errors::VectorResourceError;
+use crate::base_vector_resources::VectorResourceBaseType;
+use crate::data_tags::DataTagIndex;
+use crate::embedding_generator::EmbeddingGenerator;
+use crate::embeddings::Embedding;
+use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use crate::model_type::EmbeddingModelType;
+use crate::resource_errors::VectorResourceError;
 use ordered_float::NotNan;
 use std::collections::HashMap;
 
@@ -131,6 +130,38 @@ impl DataChunk {
             DataContent::Data(_) => Err(VectorResourceError::DataIsNonMatchingType),
             DataContent::Resource(resource) => Ok(resource.clone()),
         }
+    }
+}
+
+/// Type which holds data about a stored resource in the DB.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VectorResourcePointer {
+    pub shinkai_db_key: String,
+    pub resource_base_type: VectorResourceBaseType,
+    data_tag_names: Vec<String>,
+    resource_embedding: Option<Embedding>,
+}
+
+impl VectorResourcePointer {
+    /// Create a new VectorResourcePointer
+    pub fn new(
+        shinkai_db_key: &str,
+        resource_base_type: VectorResourceBaseType,
+        resource_embedding: Option<Embedding>,
+        data_tag_names: Vec<String>,
+    ) -> Self {
+        Self {
+            shinkai_db_key: shinkai_db_key.to_string(),
+            resource_base_type,
+            resource_embedding: resource_embedding.clone(),
+            data_tag_names: data_tag_names,
+        }
+    }
+}
+
+impl From<Box<dyn VectorResource>> for VectorResourcePointer {
+    fn from(resource: Box<dyn VectorResource>) -> Self {
+        resource.get_resource_pointer()
     }
 }
 

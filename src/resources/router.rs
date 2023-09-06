@@ -1,43 +1,13 @@
-use crate::resources::base_vector_resources::VectorResourceBaseType;
-use crate::resources::embeddings::Embedding;
-use crate::resources::map_resource::MapVectorResource;
-use crate::resources::resource_errors::VectorResourceError;
-use crate::resources::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
+use crate::base_vector_resources::VectorResourceBaseType;
+use crate::embeddings::Embedding;
+use crate::map_resource::MapVectorResource;
+use crate::resource_errors::VectorResourceError;
+use crate::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::convert::From;
 use std::str::FromStr;
 
-/// Type which holds data about a stored resource in the DB.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VectorResourcePointer {
-    pub shinkai_db_key: String,
-    pub resource_base_type: VectorResourceBaseType,
-    data_tag_names: Vec<String>,
-    resource_embedding: Option<Embedding>,
-}
 
-impl VectorResourcePointer {
-    /// Create a new VectorResourcePointer
-    pub fn new(
-        shinkai_db_key: &str,
-        resource_base_type: VectorResourceBaseType,
-        resource_embedding: Option<Embedding>,
-        data_tag_names: Vec<String>,
-    ) -> Self {
-        Self {
-            shinkai_db_key: shinkai_db_key.to_string(),
-            resource_base_type,
-            resource_embedding: resource_embedding.clone(),
-            data_tag_names: data_tag_names,
-        }
-    }
-}
-
-impl From<Box<dyn VectorResource>> for VectorResourcePointer {
-    fn from(resource: Box<dyn VectorResource>) -> Self {
-        resource.get_resource_pointer()
-    }
-}
 
 /// A top level struct which indexes a series of resource pointers
 /// using a MapVectorResource

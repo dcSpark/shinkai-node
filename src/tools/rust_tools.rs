@@ -1,4 +1,4 @@
-use crate::resources::embeddings::Embedding;
+use crate::embeddings::Embedding;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use lazy_static::lazy_static;

@@ -1,4 +1,3 @@
-use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
@@ -14,7 +13,6 @@ pub enum VectorResourceError {
     FailedCSVParsing,
     FailedPDFParsing,
     InvalidVectorResourceBaseType,
-    RocksDBError(RocksError),
     RegexError(regex::Error),
     RequestFailed(String),
     NoEmbeddingProvided,
@@ -41,7 +39,6 @@ impl fmt::Display for VectorResourceError {
             ),
             VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
-            VectorResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
             VectorResourceError::DataIsNonMatchingType => {
                 write!(f, "Data inside of the DataChunk is of a different type than requested.")
             }
@@ -50,12 +47,6 @@ impl fmt::Display for VectorResourceError {
 }
 
 impl Error for VectorResourceError {}
-
-impl From<RocksError> for VectorResourceError {
-    fn from(err: RocksError) -> VectorResourceError {
-        VectorResourceError::RocksDBError(err)
-    }
-}
 
 impl From<regex::Error> for VectorResourceError {
     fn from(err: regex::Error) -> VectorResourceError {

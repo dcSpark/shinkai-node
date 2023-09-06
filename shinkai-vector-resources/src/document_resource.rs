@@ -1,9 +1,9 @@
-use crate::resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
-use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embeddings::Embedding;
-use crate::resources::model_type::{EmbeddingModelType, RemoteModel};
-use crate::resources::resource_errors::VectorResourceError;
-use crate::resources::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use crate::data_tags::{DataTag, DataTagIndex};
+use crate::embeddings::Embedding;
+use crate::model_type::{EmbeddingModelType, RemoteModel};
+use crate::resource_errors::VectorResourceError;
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 

@@ -1,20 +1,19 @@
-use crate::resources::bert_cpp::DEFAULT_LOCAL_EMBEDDINGS_PORT;
-use crate::resources::embeddings::Embedding;
-use crate::resources::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
-use crate::resources::resource_errors::VectorResourceError;
+use crate::embeddings::Embedding;
+use crate::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
+use crate::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
-use llm::load_progress_callback_stdout as load_callback;
-use llm::Model;
-use llm::ModelArchitecture;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::io::prelude::*;
 use std::io::Cursor;
 use std::net::TcpStream;
+// use llm::load_progress_callback_stdout as load_callback;
+// use llm::Model;
+// use llm::ModelArchitecture;
 
 lazy_static! {
-    static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
+    pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
 }
 const N_EMBD: usize = 384;
 
@@ -220,68 +219,70 @@ impl RemoteEmbeddingGenerator {
     }
 }
 
-/// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
-pub struct LocalEmbeddingGenerator {
-    model: Box<dyn Model>,
-    model_type: EmbeddingModelType,
-}
+// /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
+// pub struct LocalEmbeddingGenerator {
+//     model: Box<dyn Model>,
+//     model_type: EmbeddingModelType,
+// }
 
-impl EmbeddingGenerator for LocalEmbeddingGenerator {
-    /// Generate an Embedding for an input string.
-    /// - `id`: The id to be associated with the embeddings.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
-        let mut session = self.model.start_session(Default::default());
-        let mut output_request = llm::OutputRequest {
-            all_logits: None,
-            embeddings: Some(Vec::new()),
-        };
-        let vocab = self.model.tokenizer();
-        let beginning_of_sentence = true;
+// impl EmbeddingGenerator for LocalEmbeddingGenerator {
+//     /// Generate an Embedding for an input string.
+//     /// - `id`: The id to be associated with the embeddings.
+//     fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
+//         let mut session = self.model.start_session(Default::default());
+//         let mut output_request = llm::OutputRequest {
+//             all_logits: None,
+//             embeddings: Some(Vec::new()),
+//         };
+//         let vocab = self.model.tokenizer();
+//         let beginning_of_sentence = true;
 
-        let tokens = vocab
-            .tokenize(input_string, beginning_of_sentence)
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+//         let tokens = vocab
+//             .tokenize(input_string, beginning_of_sentence)
+//             .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
-        let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
+//         let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
 
-        self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
+//         self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
 
-        let vector = output_request
-            .embeddings
-            .ok_or_else(|| VectorResourceError::FailedEmbeddingGeneration)?;
+//         let vector = output_request
+//             .embeddings
+//             .ok_or_else(|| VectorResourceError::FailedEmbeddingGeneration)?;
 
-        Ok(Embedding {
-            id: String::from(id),
-            vector,
-        })
-    }
+//         Ok(Embedding {
+//             id: String::from(id),
+//             vector,
+//         })
+//     }
 
-    fn model_type(&self) -> EmbeddingModelType {
-        self.model_type.clone()
-    }
-}
+//     fn model_type(&self) -> EmbeddingModelType {
+//         self.model_type.clone()
+//     }
+// }
 
-impl LocalEmbeddingGenerator {
-    /// Create a new LocalEmbeddingGenerator with a specified model.
-    pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
-        Self {
-            model,
-            model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
-        }
-    }
+// impl LocalEmbeddingGenerator {
+//     /// Create a new LocalEmbeddingGenerator with a specified model.
+//     pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
+//         Self {
+//             model,
+//             model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
+//         }
+//     }
 
-    /// Create a new LocalEmbeddingGenerator that uses the default model.
-    /// Intended to be used just for testing.
-    pub fn new_default() -> Self {
-        let model_architecture = llm::ModelArchitecture::GptNeoX;
-        let model = llm::load_dynamic(
-            Some(model_architecture),
-            std::path::Path::new(&*DEFAULT_LOCAL_MODEL_PATH),
-            llm::TokenizerSource::Embedded,
-            Default::default(),
-            load_callback,
-        )
-        .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-        LocalEmbeddingGenerator::new(model, model_architecture)
-    }
-}
+//     /// Create a new LocalEmbeddingGenerator that uses the default model.
+//     /// Intended to be used just for testing.
+//     pub fn new_default() -> Self {
+
+//         let DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
+//         let model_architecture = llm::ModelArchitecture::GptNeoX;
+//         let model = llm::load_dynamic(
+//             Some(model_architecture),
+//             std::path::Path::new(&*DEFAULT_LOCAL_MODEL_PATH),
+//             llm::TokenizerSource::Embedded,
+//             Default::default(),
+//             load_callback,
+//         )
+//         .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
+//         LocalEmbeddingGenerator::new(model, model_architecture)
+//     }
+// }

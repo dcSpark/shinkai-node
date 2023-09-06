@@ -1,8 +1,8 @@
-use crate::resources::data_tags::DataTag;
-use crate::resources::document_resource::DocumentVectorResource;
-use crate::resources::embedding_generator::EmbeddingGenerator;
-use crate::resources::resource_errors::VectorResourceError;
-use crate::resources::vector_resource::VectorResource;
+use crate::data_tags::DataTag;
+use crate::document_resource::DocumentVectorResource;
+use crate::embedding_generator::EmbeddingGenerator;
+use crate::resource_errors::VectorResourceError;
+use crate::vector_resource::VectorResource;
 use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
 use mupdf::pdf::PdfDocument;
