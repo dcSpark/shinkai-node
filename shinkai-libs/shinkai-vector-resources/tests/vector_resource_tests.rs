@@ -112,7 +112,7 @@ fn test_manual_document_resource_vector_search() {
     let deserialized_doc: DocumentVectorResource = DocumentVectorResource::from_json(&json).unwrap();
     assert_eq!(doc, deserialized_doc);
 
-    // Testing vector search works
+    // Testing basic vector search works
     let query_string = "What animal barks?";
     let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = doc.vector_search(query_embedding.clone(), 1);
@@ -149,7 +149,8 @@ fn test_manual_document_resource_vector_search() {
     map_resource.insert_kv("some_key", fact4, None, &fact4_embeddings, &vec![]);
 
     // Insert the document resource into the map resource
-    let doc_resource = BaseVectorResource::Document(doc);
+    // To allow for this composability we need to convert the doc into a BaseVectorResource
+    let doc_resource = BaseVectorResource::from(doc);
     map_resource.insert_vector_resource("doc_key", doc_resource, None);
 
     //
@@ -172,16 +173,19 @@ fn test_manual_document_resource_vector_search() {
     fruit_doc.append_data(fact6, None, &fact6_embeddings, &vec![]);
 
     // Insert the map resource into the fruit doc
-    let map_resource = BaseVectorResource::Map(map_resource);
+    let map_resource = BaseVectorResource::from(map_resource);
     fruit_doc.append_vector_resource(map_resource, None);
 
-    // Perform a vector search for data 2 levels lower on the fruit doc to ensure
+    //
+    // Perform Vector Search Tests Through All Levels/Resources
+    //
+
+    // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding, 5);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
-    // Perform a vector search for data 1 level lower on the fruit doc to ensure
-    // that vector searches propagate inwards through all resources
+    // Perform a vector search for data 1 level lower in the tech map resource
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
