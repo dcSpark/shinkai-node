@@ -28,20 +28,6 @@ pub trait VectorResource {
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
-    /// Returns a String representing the Key that this VectorResource
-    /// will be/is saved to in the Topic::VectorResources in the DB.
-    /// The db key is: `{name}.{resource_id}`
-    fn shinkai_db_key(&self) -> String {
-        let name = self.name().replace(" ", "_");
-        let resource_id = self.resource_id().replace(" ", "_");
-        format!("{}.{}", name, resource_id)
-    }
-
-    /// Validates whether the VectorResource has a valid  BaseVectorResourceType by checking its .resource_base_type()
-    fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
-        VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
-    }
-
     /// Regenerates and updates the resource's embedding.
     fn update_resource_embedding(
         &mut self,
@@ -80,18 +66,34 @@ pub trait VectorResource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
     }
 
-    /// Generates a ResourcePointer out of the resource.
+    /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.
+    /// This uniquely identifies the given VectorResource, and is used in VectorResourcePointer to
+    /// make it easy to know what resource a RetrievedDataChunk is from (more informative than bare resource_id).
+    ///
+    /// This is also used in the Shinkai Node for the key where the VectorResource will be stored in the DB.
+    fn reference_string(&self) -> String {
+        let name = self.name().replace(" ", "_").replace(":", "_");
+        let resource_id = self.resource_id().replace(" ", "_").replace(":", "_");
+        format!("{}:{}", name, resource_id)
+    }
+
+    /// Generates a VectorResourcePointer out of the VectorResource
     fn get_resource_pointer(&self) -> VectorResourcePointer {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
 
         VectorResourcePointer::new(
-            &self.shinkai_db_key(),
+            &self.reference_string(),
             self.resource_base_type(),
             Some(embedding),
             tag_names,
         )
+    }
+
+    /// Validates whether the VectorResource has a valid BaseVectorResourceType by checking its .resource_base_type()
+    fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
+        VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
     /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all

@@ -99,7 +99,7 @@ fn test_pdf_resource_save_to_db() {
     let resource = BaseVectorResource::from(doc.clone());
     shinkai_db.save_resource(resource, &profile).unwrap();
     let fetched_doc = shinkai_db
-        .get_resource(&doc.shinkai_db_key(), &profile)
+        .get_resource(&doc.reference_string(), &profile)
         .unwrap()
         .as_document_resource()
         .unwrap();

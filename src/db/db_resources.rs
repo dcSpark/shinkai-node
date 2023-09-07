@@ -60,7 +60,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_resource_pointerless(resource)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(cf, &resource.as_trait_object().shinkai_db_key(), &bytes, profile)?;
+        self.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes, profile)?;
 
         Ok(())
     }
@@ -107,7 +107,7 @@ impl ShinkaiDB {
         for resource in resources {
             // Adds the JSON of the resource to the batch
             let (bytes, cf) = self._prepare_resource_pointerless(&resource)?;
-            pb_batch.put_cf_pb(cf, &resource.as_trait_object().shinkai_db_key(), &bytes);
+            pb_batch.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes);
 
             // Add the pointer to the router, then putting the router
             // into the batch
@@ -271,7 +271,7 @@ impl ShinkaiDB {
         ))?;
 
         for doc in &docs {
-            if doc.shinkai_db_key() == top_chunk.resource_pointer.reference {
+            if doc.reference_string() == top_chunk.resource_pointer.reference {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
