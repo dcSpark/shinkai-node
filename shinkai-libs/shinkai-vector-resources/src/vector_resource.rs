@@ -207,9 +207,7 @@ pub trait VectorResource {
         keywords: Vec<String>,
     ) -> Result<(), VectorResourceError> {
         let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator
-            .generate_embedding_with_id(&formatted, "RE")
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+        let new_embedding = generator.generate_embedding(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }

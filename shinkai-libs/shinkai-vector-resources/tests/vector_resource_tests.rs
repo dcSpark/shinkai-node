@@ -70,8 +70,8 @@ fn test_remote_embeddings_generation() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let dog_embeddings = generator.generate_embedding("dog").unwrap();
-    let cat_embeddings = generator.generate_embedding("cat").unwrap();
+    let dog_embeddings = generator.generate_embedding_default("dog").unwrap();
+    let cat_embeddings = generator.generate_embedding_default("cat").unwrap();
 
     assert_eq!(dog_embeddings, dog_embeddings);
     assert_eq!(cat_embeddings, cat_embeddings);
@@ -98,11 +98,11 @@ fn test_manual_document_resource_vector_search() {
 
     // Prepare embeddings + data, then add it to the doc
     let fact1 = "Dogs are creatures with 4 legs that bark.";
-    let fact1_embeddings = generator.generate_embedding(fact1).unwrap();
+    let fact1_embeddings = generator.generate_embedding_default(fact1).unwrap();
     let fact2 = "Camels are slow animals with large humps.";
-    let fact2_embeddings = generator.generate_embedding(fact2).unwrap();
+    let fact2_embeddings = generator.generate_embedding_default(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
-    let fact3_embeddings = generator.generate_embedding(fact3).unwrap();
+    let fact3_embeddings = generator.generate_embedding_default(fact3).unwrap();
     doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
     doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
     doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
@@ -114,17 +114,17 @@ fn test_manual_document_resource_vector_search() {
 
     // Testing vector search works
     let query_string = "What animal barks?";
-    let query_embedding = generator.generate_embedding(query_string).unwrap();
+    let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = doc.vector_search(query_embedding.clone(), 1);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
     let query_string2 = "What animal is slow?";
-    let query_embedding2 = generator.generate_embedding(query_string2).unwrap();
+    let query_embedding2 = generator.generate_embedding_default(query_string2).unwrap();
     let res2 = doc.vector_search(query_embedding2, 3);
     assert_eq!(fact2, res2[0].chunk.get_data_string().unwrap());
 
     let query_string3 = "What animal swims in the ocean?";
-    let query_embedding3 = generator.generate_embedding(query_string3).unwrap();
+    let query_embedding3 = generator.generate_embedding_default(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
     assert_eq!(fact3, res3[0].chunk.get_data_string().unwrap());
 
@@ -145,7 +145,7 @@ fn test_manual_document_resource_vector_search() {
 
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
-    let fact4_embeddings = generator.generate_embedding(fact4).unwrap();
+    let fact4_embeddings = generator.generate_embedding_default(fact4).unwrap();
     map_resource.insert_kv("some_key", fact4, None, &fact4_embeddings, &vec![]);
 
     // Insert the document resource into the map resource
@@ -165,9 +165,9 @@ fn test_manual_document_resource_vector_search() {
 
     // Prepare embeddings + data, then add it to the fruit doc
     let fact5 = "Apples are sweet and crunchy.";
-    let fact5_embeddings = generator.generate_embedding(fact5).unwrap();
+    let fact5_embeddings = generator.generate_embedding_default(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
-    let fact6_embeddings = generator.generate_embedding(fact6).unwrap();
+    let fact6_embeddings = generator.generate_embedding_default(fact6).unwrap();
     fruit_doc.append_data(fact5, None, &fact5_embeddings, &vec![]);
     fruit_doc.append_data(fact6, None, &fact6_embeddings, &vec![]);
 
@@ -183,14 +183,14 @@ fn test_manual_document_resource_vector_search() {
     // Perform a vector search for data 1 level lower on the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let query_string = "What can I use to access the internet?";
-    let query_embedding = generator.generate_embedding(query_string).unwrap();
+    let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
     assert_eq!(fact4, res[0].chunk.get_data_string().unwrap());
 
     // Perform a vector search on the fruit doc
     // for data on the base level
     let query_string = "What fruit has its own packaging?";
-    let query_embedding = generator.generate_embedding(query_string).unwrap();
+    let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 10);
 
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());

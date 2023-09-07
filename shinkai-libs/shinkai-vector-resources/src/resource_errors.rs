@@ -6,7 +6,7 @@ use std::fmt;
 pub enum VectorResourceError {
     InvalidChunkId,
     VectorResourceEmpty,
-    FailedEmbeddingGeneration,
+    FailedEmbeddingGeneration(String),
     NoChunkFound,
     InvalidModelArchitecture,
     FailedJSONParsing,
@@ -24,7 +24,7 @@ impl fmt::Display for VectorResourceError {
         match *self {
             VectorResourceError::InvalidChunkId => write!(f, "Invalid chunk id"),
             VectorResourceError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
-            VectorResourceError::FailedEmbeddingGeneration => write!(f, "Failed to generate embeddings"),
+            VectorResourceError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
             VectorResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
             VectorResourceError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
