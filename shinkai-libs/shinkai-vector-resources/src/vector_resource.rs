@@ -8,7 +8,7 @@ use crate::resource_errors::VectorResourceError;
 pub use crate::vector_resource_types::*;
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
-/// Of note, when working with multiple VectorResources/the Shinkai DB, the `name` field can have duplicates,
+/// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
 pub trait VectorResource {
     fn name(&self) -> &str;

@@ -1,8 +1,7 @@
-use crate::embeddings::Embedding;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use lazy_static::lazy_static;
-use serde_json::Value as JsonValue;
+use shinkai_vector_resources::embeddings::Embedding;
 use std::collections::HashMap;
 
 // TODO: Have the node generate embeddings and save rust tools into the tool router

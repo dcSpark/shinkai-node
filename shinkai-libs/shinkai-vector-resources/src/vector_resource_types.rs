@@ -136,14 +136,14 @@ impl DataChunk {
 }
 
 /// Type which holds referential data about a given resource.
-/// `reference` holds data which points back to the original resource that
+/// `reference` holds a string which points back to the original resource that
 /// the pointer was created out of.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorResourcePointer {
     pub reference: String,
     pub resource_base_type: VectorResourceBaseType,
-    data_tag_names: Vec<String>,
-    resource_embedding: Option<Embedding>,
+    pub data_tag_names: Vec<String>,
+    pub resource_embedding: Option<Embedding>,
 }
 
 impl VectorResourcePointer {

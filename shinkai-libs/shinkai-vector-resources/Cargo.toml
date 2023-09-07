@@ -1,5 +1,5 @@
 [package]
-name = "shinkai-vector-resources"
+name = "shinkai_vector_resources"
 version = "0.1.0"
 edition = "2021"
 

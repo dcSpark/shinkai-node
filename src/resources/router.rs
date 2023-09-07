@@ -1,13 +1,13 @@
-use crate::base_vector_resources::VectorResourceBaseType;
-use crate::embeddings::Embedding;
-use crate::map_resource::MapVectorResource;
-use crate::resource_errors::VectorResourceError;
-use crate::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
+use shinkai_vector_resources::base_vector_resources::VectorResourceBaseType;
+use shinkai_vector_resources::embeddings::Embedding;
+use shinkai_vector_resources::map_resource::MapVectorResource;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::vector_resource::{
+    DataContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
+};
 use std::convert::From;
 use std::str::FromStr;
-
-
 
 /// A top level struct which indexes a series of resource pointers
 /// using a MapVectorResource
@@ -101,7 +101,7 @@ impl VectorResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(VectorResourceError::NoEmbeddingProvided)?;
-        let shinkai_db_key = resource_pointer.shinkai_db_key.to_string();
+        let shinkai_db_key = resource_pointer.reference.to_string();
         let shinkai_db_key_clone = shinkai_db_key.clone();
         let metadata = None;
 
@@ -169,7 +169,7 @@ impl VectorResourceRouter {
             Ok(embedding)
         } else {
             self.routing_resource
-                .get_chunk_embedding(resource_pointer.shinkai_db_key.to_string())
+                .get_chunk_embedding(resource_pointer.reference.to_string())
         }
     }
 

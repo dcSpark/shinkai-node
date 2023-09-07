@@ -1,14 +1,12 @@
-use crate::base_vector_resources::BaseVectorResource;
-use crate::base_vector_resources::VectorResourceBaseType;
 use crate::db::{ShinkaiDB, Topic};
-use crate::document_resource::DocumentVectorResource;
-use crate::embeddings::Embedding;
-use crate::resource_errors::VectorResourceError;
-use crate::router::{VectorResourcePointer, VectorResourceRouter};
-use crate::vector_resource::RetrievedDataChunk;
-use crate::vector_resource::VectorResource;
+use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use shinkai_vector_resources::document_resource::DocumentVectorResource;
+use shinkai_vector_resources::embeddings::Embedding;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::vector_resource::{RetrievedDataChunk, VectorResource, VectorResourcePointer};
 
 use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
@@ -130,7 +128,7 @@ impl ShinkaiDB {
         resource_pointer: &VectorResourcePointer,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
-        self.get_resource(&resource_pointer.shinkai_db_key.clone(), profile)
+        self.get_resource(&resource_pointer.reference.clone(), profile)
     }
 
     /// Fetches the BaseVectorResource from the DB
@@ -273,7 +271,7 @@ impl ShinkaiDB {
         ))?;
 
         for doc in &docs {
-            if doc.shinkai_db_key() == top_chunk.resource_pointer.shinkai_db_key {
+            if doc.shinkai_db_key() == top_chunk.resource_pointer.reference {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
@@ -297,7 +295,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
+            resources.push(self.get_resource(&res_pointer.reference, profile)?);
         }
 
         Ok(resources)
@@ -316,7 +314,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
+            resources.push(self.get_resource(&res_pointer.reference, profile)?);
         }
 
         Ok(resources)
@@ -337,7 +335,7 @@ impl ShinkaiDB {
         for res_pointer in resource_pointers {
             if res_pointer.resource_base_type == VectorResourceBaseType::Document {
                 if (resources.len() as u64) < num_of_docs {
-                    resources.push(self.get_resource(&res_pointer.shinkai_db_key, profile)?);
+                    resources.push(self.get_resource(&res_pointer.reference, profile)?);
                 }
             }
         }

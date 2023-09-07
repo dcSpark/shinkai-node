@@ -1,13 +1,13 @@
-use crate::data_tags::DataTag;
-use crate::document_resource::DocumentVectorResource;
-use crate::embedding_generator::EmbeddingGenerator;
-use crate::resource_errors::VectorResourceError;
-use crate::vector_resource::VectorResource;
 use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
 use mupdf::pdf::PdfDocument;
 use regex::Regex;
 use sha2::{Digest, Sha256};
+use shinkai_vector_resources::data_tags::DataTag;
+use shinkai_vector_resources::document_resource::DocumentVectorResource;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::vector_resource::VectorResource;
 use std::{io::Cursor, vec};
 
 pub struct FileParser {}
@@ -313,7 +313,7 @@ impl FileParser {
         let total_num_embeddings = text_list.len();
         let mut i = 0;
         for text in &text_list {
-            let embedding = generator.generate_embedding(text)?;
+            let embedding = generator.generate_embedding_default(text)?;
             embeddings.push(embedding);
 
             i += 1;

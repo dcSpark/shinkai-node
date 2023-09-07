@@ -1,12 +1,13 @@
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::map_resource::MapVectorResource;
+use crate::resources::router::VectorResourceRouter;
 use crate::tools::argument::ToolArgument;
 use crate::tools::error::ToolError;
 use crate::tools::js_tools::JSTool;
 use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
-use crate::vector_resource::*;
-use crate::{embeddings::*, router};
 use serde_json;
+use shinkai_vector_resources::embeddings::Embedding;
+use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use shinkai_vector_resources::map_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

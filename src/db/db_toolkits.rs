@@ -2,15 +2,13 @@ use std::collections::HashMap;
 
 use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
 use crate::tools::js_toolkit_executor::JSToolkitExecutor;
 use crate::tools::router::{ShinkaiTool, ToolRouter};
-use rocksdb::IteratorMode;
-use rocksdb::{Error, Options};
-use serde_json::{from_str, to_string};
+use serde_json::from_str;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 
 impl ShinkaiDB {
     /// Prepares the `JSToolkit` for saving into the ShinkaiDB.
@@ -144,7 +142,7 @@ impl ShinkaiDB {
 
         for tool in toolkit.tools {
             let js_tool = ShinkaiTool::JS(tool);
-            let embedding = embedding_generator.generate_embedding(&js_tool.format_embedding_string())?;
+            let embedding = embedding_generator.generate_embedding_default(&js_tool.format_embedding_string())?;
             tool_router.add_shinkai_tool(&js_tool, embedding)?;
         }
 
