@@ -1,4 +1,3 @@
-use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VectorResourceBaseType;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
@@ -6,164 +5,7 @@ use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
-use ordered_float::NotNan;
-use std::collections::HashMap;
-
-/// Contents of a DataChunk. Either the String data itself, or
-/// another VectorResource
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum DataContent {
-    Data(String),
-    Resource(BaseVectorResource),
-}
-
-/// A data chunk that was retrieved from a vector search.
-/// Includes extra data like the resource_id of the resource it was from
-/// and the vector search score.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RetrievedDataChunk {
-    pub chunk: DataChunk,
-    pub score: f32,
-    pub resource_pointer: VectorResourcePointer,
-}
-
-impl RetrievedDataChunk {
-    /// Sorts the list of RetrievedDataChunks based on their scores.
-    /// Uses a binary heap for efficiency, returns num_results of highest scored.
-    pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {
-        // Create a HashMap to store the RetrievedDataChunk instances for post-scoring retrieval
-        let mut data_chunks: HashMap<String, RetrievedDataChunk> = HashMap::new();
-
-        // Map the retrieved_data to a vector of tuples (NotNan<f32>, id_db_key)
-        // We create id_db_key to support sorting RetrievedDataChunks from
-        // different Resources together and avoid chunk id collision problems.
-        let scores: Vec<(NotNan<f32>, String)> = retrieved_data
-            .into_iter()
-            .map(|data_chunk| {
-                let db_key = data_chunk.resource_pointer.shinkai_db_key.clone();
-                let id_db_key = format!("{}-{}", data_chunk.chunk.id.clone(), db_key);
-                data_chunks.insert(id_db_key.clone(), data_chunk.clone());
-                (NotNan::new(data_chunks[&id_db_key].score).unwrap(), id_db_key)
-            })
-            .collect();
-
-        // Use the bin_heap_order_scores function to sort the scores
-        let sorted_scores = Embedding::bin_heap_order_scores(scores, num_results as usize);
-
-        // Map the sorted_scores back to a vector of RetrievedDataChunk
-        let sorted_data: Vec<RetrievedDataChunk> = sorted_scores
-            .into_iter()
-            .map(|(_, id_db_key)| data_chunks[&id_db_key].clone())
-            .collect();
-
-        sorted_data
-    }
-}
-
-/// Represents a data chunk with an id, data, and optional metadata.
-/// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
-/// data tag names instead in the DataChunk.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DataChunk {
-    pub id: String,
-    pub data: DataContent,
-    pub metadata: Option<HashMap<String, String>>,
-    pub data_tag_names: Vec<String>,
-}
-
-impl DataChunk {
-    pub fn new(
-        id: String,
-        data: &str,
-        metadata: Option<HashMap<String, String>>,
-        data_tag_names: &Vec<String>,
-    ) -> Self {
-        Self {
-            id,
-            data: DataContent::Data(data.to_string()),
-            metadata,
-            data_tag_names: data_tag_names.clone(),
-        }
-    }
-
-    pub fn new_with_integer_id(
-        id: u64,
-        data: &str,
-        metadata: Option<HashMap<String, String>>,
-        data_tag_names: &Vec<String>,
-    ) -> Self {
-        Self::new(id.to_string(), data, metadata, data_tag_names)
-    }
-
-    pub fn new_vector_resource(
-        id: String,
-        vector_resource: &BaseVectorResource,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Self {
-        DataChunk {
-            id: id,
-            data: DataContent::Resource(vector_resource.clone()),
-            metadata: metadata,
-            data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
-        }
-    }
-
-    pub fn new_vector_resource_with_integer_id(
-        id: u64,
-        vector_resource: &BaseVectorResource,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Self {
-        Self::new_vector_resource(id.to_string(), vector_resource, metadata)
-    }
-
-    /// Attempts to read the data String from the DataChunk. Errors if data is a VectorResource
-    pub fn get_data_string(&self) -> Result<String, VectorResourceError> {
-        match &self.data {
-            DataContent::Data(s) => Ok(s.clone()),
-            DataContent::Resource(_) => Err(VectorResourceError::DataIsNonMatchingType),
-        }
-    }
-
-    /// Attempts to read the BaseVectorResource from the DataChunk. Errors if data is an actual String
-    pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VectorResourceError> {
-        match &self.data {
-            DataContent::Data(_) => Err(VectorResourceError::DataIsNonMatchingType),
-            DataContent::Resource(resource) => Ok(resource.clone()),
-        }
-    }
-}
-
-/// Type which holds data about a stored resource in the DB.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VectorResourcePointer {
-    pub shinkai_db_key: String,
-    pub resource_base_type: VectorResourceBaseType,
-    data_tag_names: Vec<String>,
-    resource_embedding: Option<Embedding>,
-}
-
-impl VectorResourcePointer {
-    /// Create a new VectorResourcePointer
-    pub fn new(
-        shinkai_db_key: &str,
-        resource_base_type: VectorResourceBaseType,
-        resource_embedding: Option<Embedding>,
-        data_tag_names: Vec<String>,
-    ) -> Self {
-        Self {
-            shinkai_db_key: shinkai_db_key.to_string(),
-            resource_base_type,
-            resource_embedding: resource_embedding.clone(),
-            data_tag_names: data_tag_names,
-        }
-    }
-}
-
-impl From<Box<dyn VectorResource>> for VectorResourcePointer {
-    fn from(resource: Box<dyn VectorResource>) -> Self {
-        resource.get_resource_pointer()
-    }
-}
+pub use crate::vector_resource_types::*;
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources/the Shinkai DB, the `name` field can have duplicates,
@@ -238,16 +80,18 @@ pub trait VectorResource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
     }
 
-    /// Generates a pointer out of the resource.
+    /// Generates a ResourcePointer out of the resource.
     fn get_resource_pointer(&self) -> VectorResourcePointer {
-        let shinkai_db_key = self.shinkai_db_key();
-        let resource_type = self.resource_base_type();
-        let embedding = self.resource_embedding().clone();
-
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
+        let embedding = self.resource_embedding().clone();
 
-        VectorResourcePointer::new(&shinkai_db_key, resource_type, Some(embedding), tag_names)
+        VectorResourcePointer::new(
+            &self.shinkai_db_key(),
+            self.resource_base_type(),
+            Some(embedding),
+            tag_names,
+        )
     }
 
     /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all
