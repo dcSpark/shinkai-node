@@ -17,7 +17,16 @@ byteorder = "1.4.3"
 ordered-float = "3.7.0"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
+[build-dependencies]
+reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking"] }
+
 
 [dependencies.serde]
 version = "1.0.105"
 features = ["derive"]
+
+
+[[test]]
+name = "vector_resource_tests"
+path = "tests/vector_resource_tests.rs"
+
