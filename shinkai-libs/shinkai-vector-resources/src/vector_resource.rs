@@ -260,10 +260,9 @@ pub trait VectorResource {
         self._order_vector_search_results(scores, query, num_of_results, &vec![])
     }
 
-    /// Performs a syntactic vector search, efficiently filtering out all data chunks based on the list of data tag names,
-    /// and performs a vector search to return the most similar. Of note this goes over all Vector Resources held inside of self,
-    /// and only searches inside of them if they both have matching data tags and their resource embedding is sufficiently
-    /// similar to meet the `num_of_results` at that given level of depth.
+    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
+    /// Of note this goes over all Vector Resources held inside of self, and only searches inside of them if they both have
+    /// matching data tags and their resource embedding is sufficiently similar to meet the `num_of_results` at that given level of depth.
     fn syntactic_vector_search(
         &self,
         query: Embedding,

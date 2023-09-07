@@ -1,9 +1,10 @@
 use lazy_static::lazy_static;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
+use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
-use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::vector_resource::{DataContent, VectorResource};
 use std::fs::File;
 use std::io;
 use std::process::{Child, Command, Stdio};
@@ -198,4 +199,95 @@ fn test_manual_document_resource_vector_search() {
     let res = fruit_doc.vector_search(query_embedding, 10);
 
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
+}
+
+#[test]
+fn test_manual_syntactic_vector_search() {
+    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    //
+    // Create a first resource
+    //
+    let mut doc = DocumentVectorResource::new_empty(
+        "CV Data From Resume",
+        Some("A bunch of data theoretically parsed out of a CV"),
+        None,
+        "cv_data",
+    );
+    doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    doc.update_resource_embedding(&generator, vec!["cv".to_string(), "email".to_string()])
+        .unwrap();
+
+    // Manually create a few test tags
+    let regex1 = r#"[€$¥£][0-9]{1,3}(,[0-9]{3})*(\.[0-9]{2})?\b|\b€[0-9]{1,3}(\.[0-9]{3})*,(0-9{2})?"#;
+    let price_tag = DataTag::new("Price", "A price in a major currency", regex1).unwrap();
+
+    let regex2 = r#"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"#;
+    let email_tag = DataTag::new("Email", "An email address", regex2).unwrap();
+
+    let regex3 = r#"(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])|(0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])[- /.](19|20)\d\d|(0[1-9]|[12][0-9]|3[01])[- /.](0[1-9]|1[012])[- /.](19|20)\d\d"#;
+    let date_tag = DataTag::new(
+        "Date",
+        "Captures dates in three common formats - YYYY-MM-DD, MM/DD/YYYY, and DD/MM/YYYY.",
+        regex3,
+    )
+    .unwrap();
+
+    let regex4 = r#"[0-9]+x"#;
+    let multiplier_tag = DataTag::new("Multiplier", "Strings like `100x` which denote a multiplier.", regex4).unwrap();
+
+    let data_tags = vec![
+        price_tag.clone(),
+        email_tag.clone(),
+        date_tag.clone(),
+        multiplier_tag.clone(),
+    ];
+
+    // Prepare embeddings + data, then add it to the doc
+    let fact1 = "Name: Joe Smith - Email: joesmith@gmail.com";
+    let fact1_embeddings = generator.generate_embedding_default(fact1).unwrap();
+    let fact2 = "Birthday: 23/03/1980";
+    let fact2_embeddings = generator.generate_embedding_default(fact2).unwrap();
+    let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
+    let fact3_embeddings = generator.generate_embedding_default(fact3).unwrap();
+    doc.append_data(fact1, None, &fact1_embeddings, &data_tags);
+    doc.append_data(fact2, None, &fact2_embeddings, &data_tags);
+    doc.append_data(fact3, None, &fact3_embeddings, &data_tags);
+
+    println!("Doc data tag index: {:?}", doc.data_tag_index());
+
+    // Email syntactic vector search
+    // In Shinkai the LLM Agent would do a Tag Vector Search in node DB to find the email_tag based on user's prompt
+    // And then calls syntactic_vector_search to guarantee the data retrieved is of the correct structure/"type"
+    let query = generator
+        .generate_embedding_default("What is the applicant's email?")
+        .unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 1, &vec![email_tag.name.clone()]);
+    let fetched_chunk = fetched_data.get(0).unwrap();
+    assert_eq!(DataContent::Data(fact1.to_string()), fetched_chunk.chunk.data);
+
+    // Date syntactic vector search
+    let query = generator
+        .generate_embedding_default("What is the applicant's birthday?")
+        .unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 10, &vec![date_tag.name.clone()]);
+    let fetched_chunk = fetched_data.get(0).unwrap();
+    assert_eq!(DataContent::Data(fact2.to_string()), fetched_chunk.chunk.data);
+
+    // Price syntactic vector search
+    let query = generator
+        .generate_embedding_default("Any notable accomplishments in previous positions?")
+        .unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 2, &vec![price_tag.name.clone()]);
+    let fetched_chunk = fetched_data.get(0).unwrap();
+    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
+
+    // Multiplier syntactic vector search
+    let query = generator
+        .generate_embedding_default("Any notable accomplishments in previous positions?")
+        .unwrap();
+    let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
+    let fetched_chunk = fetched_data.get(0).unwrap();
+    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
 }
