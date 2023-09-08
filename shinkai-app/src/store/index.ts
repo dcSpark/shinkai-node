@@ -18,7 +18,7 @@ export type AppThunk<ReturnType = void> = ThunkAction<
 const persistConfig = {
   key: 'root',
   storage,
-  whitelist: ['other', 'setupDetails', "messages"],
+  whitelist: ['other', 'setupDetails'],
   debug: true,
 };
 

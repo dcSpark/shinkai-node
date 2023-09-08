@@ -11,6 +11,7 @@ import {
   receiveAllInboxesForProfile,
   receiveLoadMoreMessagesFromInbox,
   addAgents,
+  receiveUnreadMessagesFromInbox,
 } from "../store/actions";
 import { AppThunk } from "../types";
 import { ShinkaiMessageBuilderWrapper } from "../lib/wasm/ShinkaiMessageBuilderWrapper";
@@ -234,6 +235,51 @@ export const getLastMessagesFromInbox =
     }
   };
 
+export const getLastUnreadMessagesFromInbox =
+  (
+    inbox: string,
+    count: number,
+    fromKey: string | undefined,
+    setupDetailsState: SetupDetailsState
+  ) =>
+  async (dispatch: AppDispatch) => {
+    try {
+      console.log("fromKey: ", fromKey);
+      let sender =
+        setupDetailsState.shinkai_identity + "/" + setupDetailsState.profile;
+
+      const messageStr =
+        ShinkaiMessageBuilderWrapper.get_last_messages_from_inbox(
+          setupDetailsState.profile_encryption_sk,
+          setupDetailsState.profile_identity_sk,
+          setupDetailsState.node_encryption_pk,
+          inbox,
+          count,
+          fromKey,
+          sender,
+          "",
+          setupDetailsState.shinkai_identity
+        );
+
+      const message = JSON.parse(messageStr);
+      console.log("Message:", message);
+
+      const apiEndpoint = ApiConfig.getInstance().getEndpoint();
+      const response = await axios.post(
+        `${apiEndpoint}/v1/last_unread_messages_from_inbox`,
+        message
+      );
+
+      handleHttpError(response);
+      let results = response.data;
+
+      console.log("getLastUnreadMessagesFromInbox Response:", results);
+      dispatch(receiveUnreadMessagesFromInbox(inbox, results));
+    } catch (error) {
+      console.error("Error getting last messages from inbox:", error);
+    }
+  };
+
 export const submitRequestRegistrationCode =
   (
     identity_permissions: string,
@@ -409,7 +455,7 @@ export const sendMessageToJob =
       );
 
       handleHttpError(response);
-      dispatch(response.data);
+      dispatch({ type: "SEND_MESSAGE_SUCCESS", payload: response.data });
     } catch (error) {
       console.error("Error sending message to job:", error);
     }

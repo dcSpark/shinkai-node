@@ -54,7 +54,7 @@ impl IdentityManager {
         {
             let db = db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
-            println!("identities_manager identities: {:?}", identities);
+            // println!("identities_manager identities: {:?}", identities);
         }
 
         identities.extend(agents);
@@ -205,7 +205,7 @@ impl IdentityManager {
     }
 
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
-        println!("identities_manager identities: {:?}", self.local_identities);
+        // println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.clone()
     }
 
@@ -215,7 +215,7 @@ impl IdentityManager {
     }
 
     pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
-        println!("identities_manager identities: {:?}", self.local_identities);
+        // println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.iter().find(|identity| {
             match identity {
                 Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
@@ -276,7 +276,7 @@ impl IdentityManager {
         original_message: &ShinkaiMessage,
         decrypted_message: &ShinkaiMessage,
     ) -> Result<(), NodeError> {
-        eprintln!("signature check > sender_subidentity: {:?}", sender_subidentity);
+        // eprintln!("signature check > sender_subidentity: {:?}", sender_subidentity);
         if sender_subidentity.is_none() {
             eprintln!(
                 "signature check > Subidentity not found for profile name: {}",
@@ -291,7 +291,7 @@ impl IdentityManager {
         }
         // If we reach this point, it means that subidentity exists, so it's safe to unwrap
         let subidentity = sender_subidentity.unwrap();
-        eprintln!("signature check > subidentity: {:?}", subidentity);
+        // eprintln!("signature check > subidentity: {:?}", subidentity);
 
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {

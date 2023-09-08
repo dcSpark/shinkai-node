@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { getLastMessagesFromInbox } from "../api/index";
+import { getLastMessagesFromInbox, getLastUnreadMessagesFromInbox } from "../api/index";
 import { ShinkaiMessage } from "../models/ShinkaiMessage";
 import { IonList, IonItem, IonButton } from "@ionic/react";
 import Avatar from "../components/ui/Avatar";
@@ -13,9 +13,7 @@ interface ChatMessagesProps {
   deserializedId: string;
 }
 
-const ChatMessages: React.FC<ChatMessagesProps> = ({
-  deserializedId,
-}) => {
+const ChatMessages: React.FC<ChatMessagesProps> = ({ deserializedId }) => {
   console.log("Loading ChatMessages.tsx");
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
@@ -39,16 +37,22 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
 
   useEffect(() => {
     const interval = setInterval(() => {
+      const lastMessage = reduxMessages[reduxMessages.length - 1];
+      const hashKey = calculateMessageHash(lastMessage);
+      console.log("Debug> Last Message:", lastMessage);
+      console.log("Debug> Last Message Content:", extractContent(lastMessage.body));
+      console.log("Debug> Hash Key from above:", hashKey);
+      console.log("Debug> Last key (stored):", lastKey);
       dispatch(
-        getLastMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
+        getLastUnreadMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
       );
-    }, 2000); // 2000 milliseconds = 2 seconds
+    }, 5000); // 2000 milliseconds = 2 seconds
     return () => clearInterval(interval);
-  }, [dispatch, deserializedId, lastKey, setupDetailsState]);
+  }, [dispatch, deserializedId, lastKey, setupDetailsState, reduxMessages]);
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
-      console.log("Redux Messages:", reduxMessages);
+      // console.log("Redux Messages:", reduxMessages);
       const lastMessage = reduxMessages[reduxMessages.length - 1];
       console.log("Last Message:", lastMessage);
       const timeKey = lastMessage.external_metadata.scheduled_time;
@@ -106,7 +110,6 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
           {messages &&
             messages
               .slice()
-              .reverse()
               .map((message, index) => {
                 const { shinkai_identity, profile, registration_name } =
                   setupDetailsState;
@@ -144,7 +147,13 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({
                         <span className="absolute bottom-[5px] right-5 text-muted text-sm">
                           {new Date(
                             message.external_metadata.scheduled_time
-                          ).toLocaleTimeString()}
+                          ).toLocaleString(undefined, {
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </span>
                       )}
                     </div>

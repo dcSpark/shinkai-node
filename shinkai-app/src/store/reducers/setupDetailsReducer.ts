@@ -46,9 +46,6 @@ export const setupDetailsReducer = (
   state = setupInitialState,
   action: SetupDetailsAction
 ): SetupDetailsState => {
-  console.log("Current state: ", state);
-  console.log("Received action: ", action);
-  
   switch (action.type) {
     case USE_REGISTRATION_CODE:
       const newState = action.payload ? action.payload : state;

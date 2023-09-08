@@ -46,22 +46,24 @@ const JobChat: React.FC = () => {
     setupDetailsState.shinkai_identity
   );
 
-  const sendMessage = useCallback(() => {
+  const sendMessage = useCallback(async () => {
     let sender = `${shinkai_identity}/${profile}`;
     console.log("Sending message: ", inputMessage);
     console.log("Sender:", sender);
 
-    dispatch(
+    let message_to_send = inputMessage;
+    setInputMessage("");
+    const result = await dispatch(
       sendMessageToJob(
         extractJobIdFromInbox(deserializedId.toString()),
-        inputMessage,
+        message_to_send,
         sender,
         shinkai_identity,
         "",
         setupDetailsState
       )
     );
-    setInputMessage("");
+    
   }, [inputMessage, dispatch, setupDetailsState, shinkai_identity, deserializedId]);
 
   return (

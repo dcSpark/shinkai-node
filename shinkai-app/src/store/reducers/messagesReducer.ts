@@ -6,6 +6,7 @@ import {
   RECEIVE_ALL_INBOXES_FOR_PROFILE,
   RECEIVE_LAST_MESSAGES_FROM_INBOX,
   RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX,
+  RECEIVE_UNREAD_MESSAGES_FROM_INBOX,
 } from "../types";
 
 export interface MessagesState {
@@ -13,7 +14,7 @@ export interface MessagesState {
     [inboxId: string]: any[];
   };
   messageHashes: {
-    [inboxId: string]: Set<string>;
+    [inboxId: string]: { [hash: string]: boolean };
   };
 }
 
@@ -25,7 +26,8 @@ const messagesState: MessagesState = {
 interface InboxMessagesAction {
   type:
     | typeof RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX
-    | typeof RECEIVE_LAST_MESSAGES_FROM_INBOX;
+    | typeof RECEIVE_LAST_MESSAGES_FROM_INBOX
+    | typeof RECEIVE_UNREAD_MESSAGES_FROM_INBOX;
   payload?: {
     inboxId: string;
     messages: ShinkaiMessage[];
@@ -55,20 +57,50 @@ export const messagesReducer = (
   action: MessagesAction
 ): MessagesState => {
   switch (action.type) {
+    case RECEIVE_UNREAD_MESSAGES_FROM_INBOX: {
+      if (!action.payload) {
+        return state;
+      }
+      const { inboxId, messages } = action.payload;
+      const currentMessages = state.inboxes[inboxId] || [];
+      const currentMessageHashes = state.messageHashes[inboxId] || {};
+
+      const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
+        const hash = calculateMessageHash(msg);
+        if (currentMessageHashes[hash]) {
+          return false;
+        } else {
+          currentMessageHashes[hash] = true;
+          return true;
+        }
+      });
+
+      return {
+        ...state,
+        inboxes: {
+          ...state.inboxes,
+          [inboxId]: [...currentMessages, ...uniqueNewMessages],
+        },
+        messageHashes: {
+          ...state.messageHashes,
+          [inboxId]: currentMessageHashes,
+        },
+      };
+    }
     case RECEIVE_LOAD_MORE_MESSAGES_FROM_INBOX: {
       if (!action.payload) {
         return state;
       }
       const { inboxId, messages } = action.payload;
       const currentMessages = state.inboxes[inboxId] || [];
-      const currentMessageHashes = state.messageHashes[inboxId] || new Set();
+      const currentMessageHashes = state.messageHashes[inboxId] || {};
 
       const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
         const hash = calculateMessageHash(msg);
-        if (currentMessageHashes.has(hash)) {
+        if (currentMessageHashes[hash]) {
           return false;
         } else {
-          currentMessageHashes.add(hash);
+          currentMessageHashes[hash] = true;
           return true;
         }
       });
@@ -91,18 +123,16 @@ export const messagesReducer = (
       }
       const { inboxId, messages } = action.payload;
       const currentMessages = state.inboxes[inboxId] || [];
-      const currentMessageHashes =
-        state.messageHashes[inboxId] instanceof Set
-          ? state.messageHashes[inboxId]
-          : new Set<string>();
+      const currentMessageHashes = state.messageHashes[inboxId] || {};
 
-      console.log("currentMessageHashes: ", currentMessageHashes);
+      console.log("RECEIVE_LAST_MESSAGES_FROM_INBOX> currentMessageHashes: ", currentMessageHashes);
+      console.log("RECEIVE_LAST_MESSAGES_FROM_INBOX> new messages: ", messages);
       const uniqueNewMessages = messages.filter((msg: ShinkaiMessage) => {
         const hash = calculateMessageHash(msg);
-        if (currentMessageHashes.has(hash)) {
+        if (currentMessageHashes[hash]) {
           return false;
         } else {
-          currentMessageHashes.add(hash);
+          currentMessageHashes[hash] = true;
           return true;
         }
       });
@@ -120,6 +150,8 @@ export const messagesReducer = (
       };
     }
     case ADD_MESSAGE_TO_INBOX: {
+      console.log("ADD_MESSAGE_TO_INBOX");
+      console.log("action.payload: ", action.payload);
       if (!action.payload) {
         return state;
       }
@@ -128,12 +160,12 @@ export const messagesReducer = (
       const currentMessageHashes = state.messageHashes[inboxId] || new Set();
 
       const hash = calculateMessageHash(message);
-      if (currentMessageHashes.has(hash)) {
+      if (currentMessageHashes[hash]) {
         // If the message is a duplicate, don't add it
         return state;
       } else {
         // If the message is unique, add it to the inbox and the hash to the set
-        currentMessageHashes.add(hash);
+        currentMessageHashes[hash] = true;
         return {
           ...state,
           inboxes: {
@@ -165,9 +197,13 @@ export const messagesReducer = (
           ...state.inboxes,
           ...Object.keys(newInboxes).reduce(
             (result: { [key: string]: any[] }, key) => {
+              // Only initialize the inbox if it doesn't already exist in the state
               if (!state.inboxes[key]) {
                 console.log("value for key: ", newInboxes[key]);
                 result[newInboxes[key]] = [];
+              } else {
+                // If the inbox already exists, keep the current messages
+                result[newInboxes[key]] = state.inboxes[key];
               }
               return result;
             },

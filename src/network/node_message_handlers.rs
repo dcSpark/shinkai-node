@@ -294,6 +294,7 @@ pub async fn send_ack(
         peer,
         db,
         maybe_identity_manager,
+        false
     )
     .await?;
     Ok(())
@@ -338,6 +339,7 @@ pub async fn ping_pong(
         peer,
         db,
         maybe_identity_manager,
+        false,
     )
     .await
 }

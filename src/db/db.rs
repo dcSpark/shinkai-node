@@ -29,6 +29,7 @@ pub enum Topic {
     VectorResources,
     Agents,
     Toolkits,
+    MessagesToRetry,
 }
 
 impl Topic {
@@ -53,6 +54,7 @@ impl Topic {
             Self::VectorResources => "resources",
             Self::Agents => "agents",
             Self::Toolkits => "toolkits",
+            Self::MessagesToRetry => "mesages_to_retry"
         }
     }
 }

@@ -50,6 +50,7 @@ impl ShinkaiDB {
         let cf_job_id_name = format!("jobtopic_{}", &job_id);
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
         let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
+        let cf_job_id_unread_list_name = format!("job_inbox::{}::false_unread_list", &job_id);
 
         // Check that the profile name exists in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesIdentityType
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
@@ -57,6 +58,7 @@ impl ShinkaiDB {
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
             || self.db.cf_handle(&cf_job_id_perms_name).is_some()
+            || self.db.cf_handle(&cf_job_id_unread_list_name).is_some()
         {
             return Err(ShinkaiDBError::ProfileNameAlreadyExists);
         }
@@ -70,6 +72,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_job_id_step_history_name, &cf_opts)?;
         self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_unread_list_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -293,7 +296,7 @@ impl ShinkaiDB {
         let cf_handle = self
             .db
             .cf_handle(&cf_conversation_inbox_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name))?;
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name.clone()))?;
 
         // Insert the message to AllMessages column family
         self.insert_message_to_all(message)?;
@@ -310,9 +313,21 @@ impl ShinkaiDB {
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
 
+        // Start a write batch
+        let mut batch = WriteBatch::default();
+
         // Use the composite_key as the key and hash_key as the value in the inbox
-        self.db
-            .put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes())?;
+        batch.put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes());
+
+        // Add the message to the unread_list inbox
+        let cf_unread_list = self
+            .db
+            .cf_handle(&format!("{}_unread_list", cf_conversation_inbox_name))
+            .expect("Failed to get cf handle for unread_list");
+        batch.put_cf(cf_unread_list, composite_key.as_bytes(), hash_key.as_bytes());
+
+        // Write the batch
+        self.db.write(batch)?;
 
         Ok(())
     }

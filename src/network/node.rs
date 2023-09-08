@@ -38,6 +38,7 @@ use super::node_api::APIError;
 use super::node_error::NodeError;
 
 pub enum NodeCommand {
+    Shutdown,
     // Command to make the node ping all the other nodes it knows about.
     PingAll,
     // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
@@ -326,6 +327,11 @@ impl Node {
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
+                            Some(NodeCommand::Shutdown) => {
+                                eprintln!("Shutdown command received. Stopping the node.");
+                                info!("Shutdown command received. Stopping the node.");
+                                break;
+                            },
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
@@ -476,6 +482,7 @@ impl Node {
         peer: (SocketAddr, ProfileName),
         db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        save_to_db_flag: bool,
     ) -> Result<(), NodeError> {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
@@ -488,12 +495,15 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 info!("Sent message to {}", stream.peer_addr()?);
-                Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+                if save_to_db_flag {
+                    Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+                }
                 Ok(())
             }
             Err(e) => {
                 // handle the error
                 println!("Failed to connect to {}: {}", address, e);
+                // TODO: it should save the message to db to retry every x^2
                 Ok(())
             }
         }

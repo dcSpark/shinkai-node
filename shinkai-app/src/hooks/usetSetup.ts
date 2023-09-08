@@ -1,11 +1,14 @@
 // hooks/useSetup.ts
 import { useEffect } from "react";
-import { useSelector } from "react-redux";
+import { shallowEqual, useSelector } from "react-redux";
 import { RootState } from "../store";
 import { ApiConfig } from "../api/api_config";
 
 export const useSetup = () => {
-  const { setupDetails } = useSelector((state: RootState) => state);
+  const setupDetails = useSelector(
+    (state: RootState) => state.setupDetails,
+    shallowEqual
+  );
 
   useEffect(() => {
     console.log("Redux State:", setupDetails);

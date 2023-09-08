@@ -43,7 +43,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        println!("validate_message: {:?}", potentially_encrypted_msg);
+        // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
         let msg: ShinkaiMessage;
         {
@@ -1281,6 +1281,7 @@ impl Node {
             (node_addr, recipient_profile_name_string),
             &mut db_guard,
             self.identity_manager.clone(),
+            true
         )
         .await?;
 

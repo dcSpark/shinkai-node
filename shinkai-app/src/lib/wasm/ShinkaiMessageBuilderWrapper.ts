@@ -265,7 +265,7 @@ export class ShinkaiMessageBuilderWrapper {
     receiver_public_key: string,
     inbox: string,
     count: number,
-    offset: string | undefined,
+    until_offset: string | undefined,
     sender: string,
     sender_profile_name: string,
     receiver: string
@@ -276,7 +276,32 @@ export class ShinkaiMessageBuilderWrapper {
       receiver_public_key,
       inbox,
       count,
-      offset,
+      until_offset,
+      sender,
+      sender_profile_name,
+      receiver,
+      ""
+    );
+  }
+
+  static get_last_unread_messages_from_inbox(
+    my_subidentity_encryption_sk: string,
+    my_subidentity_signature_sk: string,
+    receiver_public_key: string,
+    inbox: string,
+    count: number,
+    from_offset: string | undefined,
+    sender: string,
+    sender_profile_name: string,
+    receiver: string
+  ): string {
+    return ShinkaiMessageBuilderWrapperWASM.get_last_unread_messages_from_inbox(
+      my_subidentity_encryption_sk,
+      my_subidentity_signature_sk,
+      receiver_public_key,
+      inbox,
+      count,
+      from_offset,
       sender,
       sender_profile_name,
       receiver,
