@@ -3,7 +3,7 @@ use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, RemoteModel};
 use crate::resource_errors::VectorResourceError;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -140,12 +140,14 @@ impl DocumentVectorResource {
     /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
+    ///
+    /// Does not traverse past the top level.
     pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
-        let search_results = self.vector_search(query, 1);
+        let search_results = self.vector_search_with_traversal(query, 1, &TraversalMethod::UntilDepth(0));
         let most_similar_chunk = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk

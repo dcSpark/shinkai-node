@@ -17,6 +17,7 @@ pub enum TraversalMethod {
     Efficient,
     /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
     /// Will return BaseVectorResource DataChunks if they are the highest scored at the specified depth.
+    /// Top level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
     UntilDepth(u64),
     /// Does not skip over any DataChunks, traverses through all levels.
     Exhaustive,
