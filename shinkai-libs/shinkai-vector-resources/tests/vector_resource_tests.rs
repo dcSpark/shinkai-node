@@ -4,7 +4,7 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
-use shinkai_vector_resources::vector_resource::{DataContent, VectorResource};
+use shinkai_vector_resources::vector_resource::{DataContent, TraversalMethod, VectorResource};
 use std::fs::File;
 use std::io;
 use std::process::{Child, Command, Stdio};
@@ -80,7 +80,7 @@ fn test_remote_embeddings_generation() {
 }
 
 #[test]
-fn test_manual_document_resource_vector_search() {
+fn test_manual_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
@@ -93,6 +93,7 @@ fn test_manual_document_resource_vector_search() {
         Some("animalwildlife.com"),
         "animal_resource",
     );
+
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
     doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
         .unwrap();
@@ -115,8 +116,8 @@ fn test_manual_document_resource_vector_search() {
 
     // Testing basic vector search works
     let query_string = "What animal barks?";
-    let query_embedding = generator.generate_embedding_default(query_string).unwrap();
-    let res = doc.vector_search(query_embedding.clone(), 1);
+    let query_embedding1 = generator.generate_embedding_default(query_string).unwrap();
+    let res = doc.vector_search(query_embedding1.clone(), 1);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
     let query_string2 = "What animal is slow?";
@@ -183,7 +184,7 @@ fn test_manual_document_resource_vector_search() {
 
     // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
-    let res = fruit_doc.vector_search(query_embedding, 5);
+    let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
 
     // Perform a vector search for data 1 level lower in the tech map resource
@@ -196,9 +197,27 @@ fn test_manual_document_resource_vector_search() {
     // for data on the base level
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default(query_string).unwrap();
-    let res = fruit_doc.vector_search(query_embedding, 10);
+    let res = fruit_doc.vector_search(query_embedding.clone(), 10);
 
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
+
+    // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
+    let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(0));
+    assert_ne!(fact1, res[0].chunk.get_data_string().unwrap());
+    // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
+    let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(1));
+    assert_eq!(
+        "3 Animal Facts",
+        res[0]
+            .chunk
+            .get_data_vector_resource()
+            .unwrap()
+            .as_trait_object()
+            .name()
+    );
+    // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
+    let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2));
+    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
 }
 
 #[test]
@@ -255,7 +274,7 @@ fn test_manual_syntactic_vector_search() {
     doc.append_data(fact2, None, &fact2_embeddings, &data_tags);
     doc.append_data(fact3, None, &fact3_embeddings, &data_tags);
 
-    println!("Doc data tag index: {:?}", doc.data_tag_index());
+    // println!("Doc data tag index: {:?}", doc.data_tag_index());
 
     // Email syntactic vector search
     // In Shinkai the LLM Agent would do a Tag Vector Search in node DB to find the email_tag based on user's prompt

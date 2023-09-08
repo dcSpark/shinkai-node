@@ -6,18 +6,19 @@ use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
 pub use crate::vector_resource_types::*;
-use std::thread::current;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
 /// choose how the searching algorithm decides to include/ignore DataChunks.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalMethod {
-    /// Only goes deeper into Vector Resources if they are the highest scored DataChunks at their level
+    /// Efficiently only goes deeper into Vector Resources if they are the highest scored DataChunks at their level.
+    /// Will go infinitely deep until hitting a level where no BaseVectorResources are parrt of the highest scored.
     Efficient,
-    /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go)
+    /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
+    /// Will return BaseVectorResource DataChunks if they are the highest scored at the specified depth.
     UntilDepth(u64),
-    /// Does not skip over any DataChunks
+    /// Does not skip over any DataChunks, traverses through all levels.
     Exhaustive,
 }
 
@@ -125,7 +126,7 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._vector_search_with_traversal_depth(query, num_of_results, traversal, 1)
+        self._vector_search_with_traversal_depth(query, num_of_results, traversal, 0)
     }
 
     /// Internal method which is used to keep track of depth of the traversal
@@ -170,7 +171,7 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._syntactic_vector_search_with_traversal_depth(query, num_of_results, data_tag_names, traversal, 1)
+        self._syntactic_vector_search_with_traversal_depth(query, num_of_results, data_tag_names, traversal, 0)
     }
 
     /// Internal method which is used to keep track of depth of the traversal
@@ -267,7 +268,7 @@ pub trait VectorResource {
                     // If traversal method is UntilDepth and we've reached the right level
                     // Don't recurse any deeper, just return current DataChunk with BaseVectorResource
                     if let TraversalMethod::UntilDepth(d) = traversal {
-                        if &depth == d {
+                        if d == &depth {
                             let ret_chunk = RetrievedDataChunk {
                                 chunk: chunk.clone(),
                                 score,
@@ -278,6 +279,7 @@ pub trait VectorResource {
                         }
                     }
                 }
+
                 let results = self._recursive_data_extraction(
                     chunk,
                     score,
