@@ -6,6 +6,7 @@ use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
 pub use crate::vector_resource_types::*;
+use std::thread::current;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
@@ -14,8 +15,8 @@ pub use crate::vector_resource_types::*;
 pub enum TraversalMethod {
     /// Only goes deeper into Vector Resources if they are the highest scored DataChunks at their level
     Efficient,
-    /// Efficiently traverses until the exact specified depth is hit (or no more levels)
-    DiscreteDepth(u64),
+    /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go)
+    UntilDepth(u64),
     /// Does not skip over any DataChunks
     Exhaustive,
 }
@@ -254,15 +255,30 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
     ) -> Vec<RetrievedDataChunk> {
-        let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
+        let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         let mut vector_resource_count = 0;
         for (score, id) in scores {
             if let Ok(chunk) = self.get_data_chunk(id) {
+                // Check if it's a resource
                 if let DataContent::Resource(_) = chunk.data {
+                    // Keep track for later sorting efficiency
                     vector_resource_count += 1;
-                }
 
-                let results = self._efficient_traversal(
+                    // If traversal method is UntilDepth and we've reached the right level
+                    // Don't recurse any deeper, just return current DataChunk with BaseVectorResource
+                    if let TraversalMethod::UntilDepth(d) = traversal {
+                        if &depth == d {
+                            let ret_chunk = RetrievedDataChunk {
+                                chunk: chunk.clone(),
+                                score,
+                                resource_pointer: self.get_resource_pointer(),
+                            };
+                            current_level_results.push(ret_chunk);
+                            continue;
+                        }
+                    }
+                }
+                let results = self._recursive_data_extraction(
                     chunk,
                     score,
                     query.clone(),
@@ -271,20 +287,20 @@ pub trait VectorResource {
                     traversal,
                     depth,
                 );
-                first_level_results.extend(results);
+                current_level_results.extend(results);
             }
         }
 
         // If at least one vector resource exists in the DataChunks then re-sort
         // after fetching deeper level results to ensure ordering are correct
         if vector_resource_count >= 1 {
-            return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
+            return RetrievedDataChunk::sort_by_score(&current_level_results, num_of_results);
         }
         // Otherwise just return 1st level results
-        first_level_results
+        current_level_results
     }
 
-    fn _efficient_traversal(
+    fn _recursive_data_extraction(
         &self,
         chunk: DataChunk,
         score: f32,
