@@ -40,10 +40,6 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ deserializedId }) => {
     const interval = setInterval(() => {
       const lastMessage = reduxMessages[reduxMessages.length - 1];
       const hashKey = calculateMessageHash(lastMessage);
-      console.log("Debug> Last Message:", lastMessage);
-      console.log("Debug> Last Message Content:", extractContent(lastMessage.body));
-      console.log("Debug> Hash Key from above:", hashKey);
-      console.log("Debug> Last key (stored):", mostRecentKey);
       dispatch(
         getLastUnreadMessagesFromInbox(deserializedId, 10, mostRecentKey, setupDetailsState)
       );
