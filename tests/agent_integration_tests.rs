@@ -2,7 +2,7 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_wasm::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
 use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_wasm::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
@@ -225,8 +225,15 @@ fn node_agent_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                // println!("node2_last_messages: {:?}", node2_last_messages);
-                assert!(node2_last_messages.len() == 1);
+                println!("### node2_last_messages: {:?}", node2_last_messages);
+                let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+
+                assert_eq!(
+                    message_content_agent.content,
+                    "\n\nHello there, how may I assist you today?".to_string()
+                );
+                assert!(node2_last_messages.len() == 2);
             }
             {
                 // Check Profile inboxes (to confirm job's there)
@@ -237,7 +244,7 @@ fn node_agent_registration() {
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk.clone(),
-                    sender.clone().to_string(), 
+                    sender.clone().to_string(),
                     "".to_string(),
                     sender,
                     node1_identity_name.clone().to_string(),
@@ -252,6 +259,125 @@ fn node_agent_registration() {
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                 println!("node1_all_profiles: {:?}", node2_last_messages);
                 assert!(node2_last_messages.len() == 1);
+            }
+
+            // Now we add more messages to properly test unread and pagination
+            {
+                // Send a Message to the Job for processing
+                let message = "Are you still there?".to_string();
+                api_message_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone(),
+                    node1_subidentity_name.clone(),
+                    &agent_subidentity.clone(),
+                    &job_id.clone().to_string(),
+                    &message,
+                )
+                .await;
+
+                // Successfully read unread messages from job inbox
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+
+                let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    inbox_name.to_string(),
+                    3,
+                    None,
+                    "".to_string(),
+                    sender.clone(),
+                    node1_identity_name.clone().to_string(),
+                )
+                .unwrap();
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res: res2_sender })
+                    .await
+                    .unwrap();
+                let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                println!("### node2_last_messages: {:?}", node2_last_messages);
+                let shinkai_message_content_agent = node2_last_messages[2].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+
+                assert_eq!(message_content_agent.content, message.to_string());
+                assert!(node2_last_messages.len() == 3);
+
+                let offset = format!("{}:::{}", node2_last_messages[1].external_metadata.scheduled_time, node2_last_messages[1].calculate_message_hash());
+                eprintln!("next_msg offset: {}", offset);
+                let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    inbox_name.to_string(),
+                    4,
+                    Some(offset.clone()),
+                    "".to_string(),
+                    sender.clone(),
+                    node1_identity_name.clone().to_string(),
+                )
+                .unwrap();
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg: next_msg, res: res2_sender })
+                    .await
+                    .unwrap();
+                let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                println!("### node2_last_messages unread pagination: {:?}", node2_last_messages);
+                let shinkai_message_content_agent = node2_last_messages[0].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+
+                assert!(node2_last_messages.len() == 2);
+                assert_eq!(message_content_agent.content, message.to_string());
+
+                // we mark read until the offset
+                let read_msg = ShinkaiMessageBuilder::read_up_to_time(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    inbox_name.to_string(),
+                    offset,
+                    "".to_string(),
+                    sender,
+                    node1_identity_name.clone().to_string(),
+                )
+                .unwrap();
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIMarkAsReadUpTo { msg: read_msg, res: res2_sender })
+                    .await
+                    .unwrap(); 
+            }
+            {
+                // check how many unread messages are left
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
+                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+
+                let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk.clone(),
+                    inbox_name.to_string(),
+                    3,
+                    None,
+                    "".to_string(),
+                    sender.clone(),
+                    node1_identity_name.clone().to_string(),
+                )
+                .unwrap();
+                let (res2_sender, res2_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIGetLastUnreadMessagesFromInbox { msg, res: res2_sender })
+                    .await
+                    .unwrap();
+                let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
+                println!("### unread after cleaning node2_last_messages: {:?}", node2_last_messages);
+                eprintln!("### unread after cleaning node2_last_messages len: {:?}", node2_last_messages.len());
+                assert!(node2_last_messages.len() == 2); 
             }
         });
 

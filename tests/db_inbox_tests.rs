@@ -200,7 +200,7 @@ fn db_inbox() {
     assert_eq!(last_unread_messages_inbox.len(), 2);
     assert_eq!(
         last_unread_messages_inbox[0].clone().get_message_content().unwrap(),
-        "Hello World 3".to_string()
+        "Hello World".to_string()
     );
     assert_eq!(
         last_unread_messages_inbox[1].clone().get_message_content().unwrap(),
@@ -217,7 +217,7 @@ fn db_inbox() {
     assert_eq!(last_unread_messages_inbox_page2.len(), 1);
     assert_eq!(
         last_unread_messages_inbox_page2[0].clone().get_message_content().unwrap(),
-        "Hello World".to_string()
+        "Hello World 3".to_string()
     );
 
     // check pagination for inbox messages

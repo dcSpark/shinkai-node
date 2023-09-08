@@ -1,15 +1,15 @@
 use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
-use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
-use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
@@ -24,8 +24,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::db::ShinkaiDB;
 use crate::db::db_errors::ShinkaiDBError;
+use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
 use crate::managers::job_manager::{JobManager, JobManagerError};
 use crate::managers::{job_manager, IdentityManager};
@@ -38,6 +38,7 @@ use super::node_api::APIError;
 use super::node_error::NodeError;
 
 pub enum NodeCommand {
+    Shutdown,
     // Command to make the node ping all the other nodes it knows about.
     PingAll,
     // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
@@ -189,7 +190,7 @@ pub enum NodeCommand {
         res: Sender<Result<Vec<SerializedAgent>, APIError>>,
     },
     AvailableAgents {
-        full_profile_name: String, 
+        full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
     },
 }
@@ -222,7 +223,7 @@ pub struct Node {
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiDB>>,
     // The job manager
-    pub job_manager: Arc<Mutex<JobManager>>,
+    pub job_manager: Option<Arc<Mutex<JobManager>>>,
 }
 
 impl Node {
@@ -268,9 +269,6 @@ impl Node {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
-        let job_manager = Arc::new(Mutex::new(
-            JobManager::new(db_arc.clone(), identity_manager.clone()).await,
-        ));
 
         Node {
             node_profile_name,
@@ -284,12 +282,21 @@ impl Node {
             commands,
             identity_manager,
             db: db_arc,
-            job_manager,
+            job_manager: None,
         }
     }
 
     // Start the node's operations.
     pub async fn start(&mut self) -> Result<(), NodeError> {
+        self.job_manager = Some(Arc::new(Mutex::new(
+            JobManager::new(
+                Arc::clone(&self.db),
+                Arc::clone(&self.identity_manager),
+                clone_signature_secret_key(&self.identity_secret_key),
+                self.node_profile_name.clone(),
+            )
+            .await,
+        )));
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
@@ -320,6 +327,11 @@ impl Node {
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
+                            Some(NodeCommand::Shutdown) => {
+                                eprintln!("Shutdown command received. Stopping the node.");
+                                info!("Shutdown command received. Stopping the node.");
+                                break;
+                            },
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
                             Some(NodeCommand::GetPeers(sender)) => self.send_peer_addresses(sender).await?,
                             Some(NodeCommand::IdentityNameToExternalProfileData { name, res }) => self.handle_external_profile_data(name, res).await?,
@@ -470,6 +482,7 @@ impl Node {
         peer: (SocketAddr, ProfileName),
         db: &mut ShinkaiDB,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        save_to_db_flag: bool,
     ) -> Result<(), NodeError> {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
@@ -482,12 +495,15 @@ impl Node {
                 stream.write_all(encoded_msg.as_ref()).await?;
                 stream.flush().await?;
                 info!("Sent message to {}", stream.peer_addr()?);
-                Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+                if save_to_db_flag {
+                    Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+                }
                 Ok(())
             }
             Err(e) => {
                 // handle the error
                 println!("Failed to connect to {}: {}", address, e);
+                // TODO: it should save the message to db to retry every x^2
                 Ok(())
             }
         }
@@ -578,7 +594,10 @@ impl Node {
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {
-        info!("\n\n {} > Got message from {:?}", receiver_address, unsafe_sender_address);
+        info!(
+            "\n\n {} > Got message from {:?}",
+            receiver_address, unsafe_sender_address
+        );
 
         // Extract and validate the message
         let message = extract_message(bytes, receiver_address)?;

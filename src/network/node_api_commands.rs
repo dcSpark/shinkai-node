@@ -43,7 +43,7 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
-        println!("validate_message: {:?}", potentially_encrypted_msg);
+        // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
         let msg: ShinkaiMessage;
         {
@@ -153,7 +153,6 @@ impl Node {
                 })
             }
         };
-        println!("sender_name: {:?}", sender_name);
 
         // We (currently) don't proxy external messages from other nodes to other nodes
         if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
@@ -170,10 +169,10 @@ impl Node {
         let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
         std::mem::drop(subidentity_manager);
 
-        eprintln!(
-            "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
-            sender_subidentity
-        );
+        // eprintln!(
+        //     "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
+        //     sender_subidentity
+        // );
 
         // Check that the identity exists locally
         let sender_subidentity = match sender_subidentity.clone() {
@@ -1282,6 +1281,7 @@ impl Node {
             (node_addr, recipient_profile_name_string),
             &mut db_guard,
             self.identity_manager.clone(),
+            true
         )
         .await?;
 

@@ -1,7 +1,13 @@
 use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{AgentAPIModel, SerializedAgent}}};
+use shinkai_message_wasm::{
+    schemas::{
+        agents::serialized_agent::{AgentAPIModel, SerializedAgent},
+        shinkai_name::ShinkaiName,
+    },
+    shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient},
+};
 use std::fmt;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -10,7 +16,7 @@ use tokio::sync::{mpsc, Mutex};
 pub struct Agent {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
+    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
     pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     pub client: Client,
     pub perform_locally: bool,        // flag to perform computation locally or not
@@ -26,7 +32,7 @@ impl Agent {
     pub fn new(
         id: String,
         full_identity_name: ShinkaiName,
-        job_manager_sender: mpsc::Sender<Vec<JobPreMessage>>,
+        job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
         perform_locally: bool,
         external_url: Option<String>,
         api_key: Option<String>,
@@ -62,18 +68,30 @@ impl Agent {
         match &self.model {
             AgentAPIModel::OpenAI(openai) => {
                 openai
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content, context)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        content,
+                        context,
+                    )
                     .await
             }
             AgentAPIModel::Sleep(sleep_api) => {
                 sleep_api
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content, context)
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        content,
+                        context,
+                    )
                     .await
             }
         }
     }
 
-    pub async fn process_locally(&self, content: String, context: Vec<String>) {
+    pub async fn process_locally(&self, content: String, context: Vec<String>, job_id: String) {
         // Here we run our GPU-intensive task on a separate thread
         let handle = tokio::task::spawn_blocking(move || {
             // perform GPU-intensive work
@@ -88,24 +106,27 @@ impl Agent {
         match result {
             Ok(response) => {
                 // create ShinkaiMessage based on result and send to AgentManager
-                let _ = self.job_manager_sender.send(response).await;
+                let _ = self.job_manager_sender.send((response, job_id)).await;
             }
             Err(e) => eprintln!("Error in processing message: {:?}", e),
         }
     }
 
-    pub async fn execute(&self, content: String, context: Vec<String>) {
+    pub async fn execute(&self, content: String, context: Vec<String>, job_id: String) {
         if self.perform_locally {
             // No need to spawn a new task here
-            self.process_locally(content.clone(), context.clone()).await;
+            self.process_locally(content.clone(), context.clone(), job_id).await;
         } else {
             // Call external API
             let response = self.call_external_api(&content.clone(), context.clone()).await;
             match response {
                 Ok(message) => {
                     // Send the message to AgentManager
-                    println!("Sending message to AgentManager {:?} with context: {:?}", message, context);
-                    match self.job_manager_sender.send(message).await {
+                    println!(
+                        "Sending message to AgentManager {:?} with context: {:?}",
+                        message, context
+                    );
+                    match self.job_manager_sender.send((message, job_id.clone())).await {
                         Ok(_) => println!("Message sent successfully"),
                         Err(e) => eprintln!("Error when sending message: {}", e),
                     }
@@ -113,11 +134,18 @@ impl Agent {
                 Err(e) => eprintln!("Error when calling API: {}", e),
             }
         }
+        // TODO: For debugging
+        // // Check if the sender is still connected to the channel
+        // if self.job_manager_sender.is_closed() {
+        //     eprintln!("Sender is closed");
+        // } else {
+        //     println!("Sender is still connected");
+        // }
     }
 }
 
 impl Agent {
-    pub fn from_serialized_agent(serialized_agent: SerializedAgent, sender: mpsc::Sender<Vec<JobPreMessage>>) -> Self {
+    pub fn from_serialized_agent(serialized_agent: SerializedAgent, sender: mpsc::Sender<(Vec<JobPreMessage>, String)>) -> Self {
         Self::new(
             serialized_agent.id,
             serialized_agent.full_identity_name,
@@ -169,7 +197,7 @@ impl From<reqwest::Error> for AgentError {
 mod tests {
     use super::*;
     use mockito::Server;
-    use shinkai_message_wasm::schemas::agents::serialized_agent::{SleepAPI, OpenAI};
+    use shinkai_message_wasm::schemas::agents::serialized_agent::{OpenAI, SleepAPI};
     use tokio::sync::mpsc;
 
     #[tokio::test]
@@ -191,7 +219,10 @@ mod tests {
         let context = vec![String::from("context1"), String::from("context2")];
 
         assert_eq!(agent.id, "1");
-        assert_eq!(agent.full_identity_name, ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap());
+        assert_eq!(
+            agent.full_identity_name,
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap()
+        );
         assert_eq!(agent.perform_locally, false);
         assert_eq!(agent.external_url, Some("http://localhost:8000".to_string()));
         assert_eq!(agent.toolkit_permissions, vec!["tk1".to_string(), "tk2".to_string()]);
@@ -205,7 +236,7 @@ mod tests {
         );
 
         tokio::spawn(async move {
-            agent.execute("Test".to_string(), context).await;
+            agent.execute("Test".to_string(), context, "some_job_1".to_string()).await;
         });
 
         let val = tokio::time::timeout(std::time::Duration::from_millis(600), rx.recv()).await;
@@ -216,7 +247,7 @@ mod tests {
         };
 
         match val {
-            Ok(Some(response)) => assert_eq!(response.first().unwrap(), &expected_resp),
+            Ok(Some(response)) => assert_eq!(response.0.first().unwrap(), &expected_resp),
             Ok(None) => panic!("Channel is empty"),
             Err(_) => panic!("Timeout exceeded"),
         }

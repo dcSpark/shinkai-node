@@ -23,18 +23,19 @@ import {
 import { useEffect, useState } from "react";
 import { IonContentCustom, IonHeaderCustom } from "../components/ui/Layout";
 import Button from "../components/ui/Button";
-import Input from "../components/ui/Input";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../store";
 import { SerializedAgent, AgentAPIModel } from "../models/SchemaTypes";
 import { addAgent } from "../api";
 import { useSetup } from "../hooks/usetSetup";
+import { useHistory } from 'react-router-dom';
+
 
 const AddAgent: React.FC = () => {
   useSetup();
   const dispatch = useDispatch();
   const setupDetailsState = useSelector(
-    (state: RootState) => state.setupDetailsState
+    (state: RootState) => state.setupDetails
   );
   const [agent, setAgent] = useState<Partial<SerializedAgent>>({
     perform_locally: false,
@@ -70,7 +71,7 @@ const AddAgent: React.FC = () => {
     });
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const { shinkai_identity, profile } = setupDetailsState;
     let node_name = shinkai_identity;
 
@@ -82,14 +83,11 @@ const AddAgent: React.FC = () => {
     }
 
     console.log("Submitting agent:", agent);
-    dispatch(
-      addAgent(
-        profile,
-        node_name,
-        agent as SerializedAgent,
-        setupDetailsState
-      )
-    );
+    const resp = await addAgent(profile, node_name, agent as SerializedAgent, setupDetailsState);
+    if (resp) {
+      // TODO: show a success toast
+      history.back();
+    }
   };
 
   return (

@@ -5,9 +5,12 @@ use shinkai_message_wasm::{
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 
-use crate::schemas::{
-    identity::{IdentityType, StandardIdentity},
-    inbox_permission::InboxPermission,
+use crate::{
+    schemas::{
+        identity::{IdentityType, StandardIdentity},
+        inbox_permission::InboxPermission,
+    },
+    utils::logging_helpers::print_content_time_messages,
 };
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
@@ -125,10 +128,10 @@ impl ShinkaiDB {
         &self,
         inbox_name: String,
         n: usize,
-        offset_key: Option<String>,
+        until_offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        println!("Offset key: {:?}", offset_key);
+        println!("Offset key: {:?}", until_offset_key);
         println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox
@@ -146,8 +149,7 @@ impl ShinkaiDB {
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
 
         // Create an iterator for the specified inbox
-        // Create an iterator for the specified inbox
-        let mut iter = match &offset_key {
+        let mut iter = match &until_offset_key {
             Some(offset_key) => self.db.iterator_cf(
                 inbox_cf,
                 rocksdb::IteratorMode::From(offset_key.as_bytes(), rocksdb::Direction::Reverse),
@@ -155,7 +157,7 @@ impl ShinkaiDB {
             None => self.db.iterator_cf(inbox_cf, rocksdb::IteratorMode::End),
         };
 
-        let mut skip_first = offset_key.is_some();
+        let mut skip_first = until_offset_key.is_some();
         let mut messages = Vec::new();
         for item in iter.take(n) {
             // Skip the first entry if an offset_key was provided
@@ -163,13 +165,13 @@ impl ShinkaiDB {
                 skip_first = false;
                 continue;
             }
-    
+
             // Handle the Result returned by the iterator
             match item {
                 Ok((_, value)) => {
                     // The value of the inbox CF is the key in the AllMessages CF
                     let message_key = value.to_vec();
-    
+
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
@@ -182,11 +184,12 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-        eprintln!("Inbox {} Messages: {:?}", inbox_name, messages);
+        messages.reverse();
+        print_content_time_messages(messages.clone());
         Ok(messages)
     }
 
-    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_time: String) -> Result<(), ShinkaiDBError> {
+    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_offset: String) -> Result<(), ShinkaiDBError> {
         // Fetch the column family for the specified unread_list
         let cf_name_unread_list = format!("{}_unread_list", inbox_name);
         let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
@@ -198,14 +201,11 @@ impl ShinkaiDB {
                 )))
             }
         };
-
+    
         // Create an iterator for the specified unread_list, starting from the beginning
         let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-
-        // Convert up_to_time to &str
-        let up_to_time = up_to_time.as_str();
-
-        // Iterate through the unread_list and delete all messages up to the specified time
+    
+        // Iterate through the unread_list and delete all messages up to the specified offset
         for item in iter {
             // Handle the Result returned by the iterator
             match item {
@@ -214,24 +214,19 @@ impl ShinkaiDB {
                         Ok(s) => s,
                         Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
                     };
-
-                    // Split the key_str to separate timestamp and hash
-                    let mut split_key = key_str.splitn(2, ':');
-
-                    if let Some(timestamp_str) = split_key.next() {
-                        if timestamp_str <= up_to_time {
-                            // Delete the message from the unread_list
-                            self.db.delete_cf(unread_list_cf, key)?;
-                        } else {
-                            // We've passed the up_to_time, so we can break the loop
-                            break;
-                        }
+    
+                    if key_str <= up_to_offset {
+                        // Delete the message from the unread_list
+                        self.db.delete_cf(unread_list_cf, key)?;
+                    } else {
+                        // We've passed the up_to_offset, so we can break the loop
+                        break;
                     }
                 }
                 Err(e) => return Err(e.into()),
             }
         }
-
+    
         Ok(())
     }
 
@@ -239,7 +234,7 @@ impl ShinkaiDB {
         &self,
         inbox_name: String,
         n: usize,
-        offset_key: Option<String>,
+        from_offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Fetch the column family for the specified unread_list
         let cf_name_unread_list = format!("{}_unread_list", inbox_name);
@@ -252,38 +247,55 @@ impl ShinkaiDB {
                 )))
             }
         };
-    
+
         // Fetch the column family for all messages
         let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
-    
+
         // Create an iterator for the specified unread_list
-        let mut iter = match &offset_key {
-            Some(offset_key) => self.db.iterator_cf(
+        let mut iter = match &from_offset_key {
+            Some(from_key) => self.db.iterator_cf(
                 unread_list_cf,
-                rocksdb::IteratorMode::From(offset_key.as_bytes(), rocksdb::Direction::Reverse),
+                rocksdb::IteratorMode::From(from_key.as_bytes(), rocksdb::Direction::Forward),
             ),
-            None => self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::End),
+            None => self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start),
         };
-    
-        let mut skip_first = offset_key.is_some();
-        let mut messages = Vec::new();
-        for item in iter.take(n) {
-            // Skip the first entry if an offset_key was provided
-            if skip_first {
-                skip_first = false;
-                continue;
+
+        let offset_hash = match &from_offset_key {
+            Some(offset_key) => {
+                let split: Vec<&str> = offset_key.split(":::").collect();
+                if split.len() < 2 {
+                    return Err(ShinkaiDBError::SomeError("Invalid offset key format".to_string()));
+                }
+                Some(split[1].to_string())
             }
-    
+            None => None,
+        };
+        
+        let mut messages = Vec::new();
+        let mut first_message = true;
+        for item in iter.take(n) {
             // Handle the Result returned by the iterator
             match item {
                 Ok((_, value)) => {
                     // The value of the unread_list CF is the key in the AllMessages CF
                     let message_key = value.to_vec();
-    
+
                     // Fetch the message from the AllMessages CF
                     match self.db.get_cf(messages_cf, &message_key)? {
                         Some(bytes) => {
                             let message = ShinkaiMessage::decode_message_result(bytes)?;
+
+                            // Check if the message hash matches the offset's
+                            if first_message {
+                                if let Some(offset_hash) = &offset_hash {
+                                    if message.calculate_message_hash() == *offset_hash {
+                                        first_message = false;
+                                        continue;
+                                    }
+                                }
+                                first_message = false;
+                            }
+
                             messages.push(message);
                         }
                         None => return Err(ShinkaiDBError::MessageNotFound),
@@ -292,7 +304,8 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-    
+
+        print_content_time_messages(messages.clone());
         Ok(messages)
     }
 
@@ -465,7 +478,10 @@ impl ShinkaiDB {
         }
     }
 
-    pub fn get_inboxes_for_profile(&self, profile_name_identity: StandardIdentity) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_inboxes_for_profile(
+        &self,
+        profile_name_identity: StandardIdentity,
+    ) -> Result<Vec<String>, ShinkaiDBError> {
         // Fetch the column family for the 'inbox' topic
         let cf_inbox = match self.db.cf_handle(Topic::Inbox.as_str()) {
             Some(cf) => cf,

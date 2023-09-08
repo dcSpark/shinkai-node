@@ -350,7 +350,7 @@ fn subidentity_registration() {
                 );
 
                 assert_eq!(
-                    node1_last_messages[1].external_metadata.clone().other,
+                    node1_last_messages[0].external_metadata.clone().other,
                     encryption_public_key_to_string(node2_subencryption_pk),
                     "Node 2's profile send an encrypted message to Node 1. Node 1 has the other's public key"
                 );
@@ -560,7 +560,7 @@ fn subidentity_registration() {
                 // println!("Node 1 last messages: {:?}", node1_last_messages);
                 // println!("\n\nNode 2 last messages: {:?}", node2_last_messages);
 
-                let message_to_check = node2_last_messages[1].clone();
+                let message_to_check = node2_last_messages[0].clone();
 
                 // Check that the message is body encrypted
                 assert_eq!(
