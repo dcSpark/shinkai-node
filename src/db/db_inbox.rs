@@ -263,11 +263,14 @@ impl ShinkaiDB {
         let offset_hash = match &from_offset_key {
             Some(offset_key) => {
                 let split: Vec<&str> = offset_key.split(":::").collect();
+                if split.len() < 2 {
+                    return Err(ShinkaiDBError::SomeError("Invalid offset key format".to_string()));
+                }
                 Some(split[1].to_string())
             }
             None => None,
         };
-
+        
         let mut messages = Vec::new();
         let mut first_message = true;
         for item in iter.take(n) {

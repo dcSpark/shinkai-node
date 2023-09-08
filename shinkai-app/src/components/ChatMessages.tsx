@@ -24,6 +24,7 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ deserializedId }) => {
   );
 
   const [lastKey, setLastKey] = useState<string | undefined>(undefined);
+  const [mostRecentKey, setMostRecentKey] = useState<string | undefined>(undefined);
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [messages, setMessages] = useState<ShinkaiMessage[]>([]);
@@ -42,13 +43,13 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ deserializedId }) => {
       console.log("Debug> Last Message:", lastMessage);
       console.log("Debug> Last Message Content:", extractContent(lastMessage.body));
       console.log("Debug> Hash Key from above:", hashKey);
-      console.log("Debug> Last key (stored):", lastKey);
+      console.log("Debug> Last key (stored):", mostRecentKey);
       dispatch(
-        getLastUnreadMessagesFromInbox(deserializedId, 10, lastKey, setupDetailsState)
+        getLastUnreadMessagesFromInbox(deserializedId, 10, mostRecentKey, setupDetailsState)
       );
     }, 5000); // 2000 milliseconds = 2 seconds
     return () => clearInterval(interval);
-  }, [dispatch, deserializedId, lastKey, setupDetailsState, reduxMessages]);
+  }, [dispatch, deserializedId, mostRecentKey, setupDetailsState, reduxMessages]);
 
   useEffect(() => {
     if (reduxMessages && reduxMessages.length > 0) {
@@ -57,8 +58,15 @@ const ChatMessages: React.FC<ChatMessagesProps> = ({ deserializedId }) => {
       console.log("Last Message:", lastMessage);
       const timeKey = lastMessage.external_metadata.scheduled_time;
       const hashKey = calculateMessageHash(lastMessage);
-      const lastMessageKey = `${timeKey}:${hashKey}`;
+      const lastMessageKey = `${timeKey}:::${hashKey}`;
       setLastKey(lastMessageKey);
+
+      const mostRecentMessage = reduxMessages[0];
+      const mostRecentTimeKey = mostRecentMessage.external_metadata.scheduled_time;
+      const mostRecentHashKey = calculateMessageHash(mostRecentMessage);
+      const mostRecentMessageKey = `${mostRecentTimeKey}:::${mostRecentHashKey}`;
+      setMostRecentKey(mostRecentMessageKey);
+
       setMessages(reduxMessages);
 
       if (reduxMessages.length - prevMessagesLength < 10) {
