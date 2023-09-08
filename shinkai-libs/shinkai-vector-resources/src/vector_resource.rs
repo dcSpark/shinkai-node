@@ -7,6 +7,18 @@ use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
 pub use crate::vector_resource_types::*;
 
+/// An enum that represents the different traversal approaches
+/// supported by Vector Searching. In other words these allow the developer to
+/// choose how the searching algorithm decides to include/ignore DataChunks.
+pub enum TraversalMethod {
+    /// Only goes deeper into Vector Resources if they are the highest scored DataChunks at their level
+    Efficient,
+    /// Efficiently traverses until the exact specified depth is hit (or no more levels)
+    DiscreteDepth(u64),
+    /// Does not skip over any DataChunks
+    Exhaustive,
+}
+
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
@@ -96,24 +108,70 @@ pub trait VectorResource {
         VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
-    /// Performs a vector search that returns the most similar data chunks based on the query. Of note this goes over all
-    /// Vector Resources held inside of self, and only searches inside of them if their resource embedding is sufficiently
+    /// Performs a vector search that returns the most similar data chunks based on the query. Of note this uses `Efficient` traversal
+    /// which goes over all Vector Resources held inside of self, and only searches inside of them if their resource embedding is sufficiently
     /// similar to meet the `num_of_results` at that given level of depth.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
+        self.vector_search_with_traversal(query, num_of_results, &TraversalMethod::Efficient)
+    }
+
+    /// Performs a vector search that returns the most similar data chunks based on the query.
+    /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
+    fn vector_search_with_traversal(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal: &TraversalMethod,
+    ) -> Vec<RetrievedDataChunk> {
+        self._vector_search_with_traversal_depth(query, num_of_results, traversal, 1)
+    }
+
+    /// Internal method which is used to keep track of depth of the traversal
+    fn _vector_search_with_traversal_depth(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal: &TraversalMethod,
+        depth: u64,
+    ) -> Vec<RetrievedDataChunk> {
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
-        self._order_vector_search_results(scores, query, num_of_results, &vec![])
+        self._order_vector_search_results(scores, query, num_of_results, &vec![], &traversal, depth)
     }
 
     /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
-    /// Of note this goes over all Vector Resources held inside of self, and only searches inside of them if they both have
+    /// Of note this uses `Efficient` traversal, which goes over all Vector Resources held inside of self, and only searches inside of them if they both have
     /// matching data tags and their resource embedding is sufficiently similar to meet the `num_of_results` at that given level of depth.
     fn syntactic_vector_search(
         &self,
         query: Embedding,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
+    ) -> Vec<RetrievedDataChunk> {
+        self.syntactic_vector_search_with_traversal(query, num_of_results, data_tag_names, &TraversalMethod::Efficient)
+    }
+
+    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
+    /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
+    fn syntactic_vector_search_with_traversal(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+        traversal: &TraversalMethod,
+    ) -> Vec<RetrievedDataChunk> {
+        self._syntactic_vector_search_with_traversal_depth(query, num_of_results, data_tag_names, traversal, 1)
+    }
+
+    /// Internal method which is used to keep track of depth of the traversal
+    fn _syntactic_vector_search_with_traversal_depth(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+        traversal: &TraversalMethod,
+        depth: u64,
     ) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
@@ -126,11 +184,11 @@ pub trait VectorResource {
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
-        self._order_vector_search_results(scores, query, num_of_results, data_tag_names)
+        self._order_vector_search_results(scores, query, num_of_results, data_tag_names, &traversal, depth)
     }
 
-    /// Fetches all data chunks which contain tags matching the input name list
-    /// (including fetching inside all levels of Vector Resources, akin to vector searches)
+    /// (Not a Vector Search) Fetches all data chunks which contain tags matching the input name list
+    /// (including fetching inside all levels of Vector Resources)
     fn syntactic_search(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_chunks = vec![];
@@ -178,34 +236,27 @@ pub trait VectorResource {
         query: Embedding,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
+        traversal: &TraversalMethod,
+        depth: u64,
     ) -> Vec<RetrievedDataChunk> {
         let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
         let mut vector_resource_count = 0;
         for (score, id) in scores {
             if let Ok(chunk) = self.get_data_chunk(id) {
-                match chunk.data {
-                    DataContent::Resource(resource) => {
-                        vector_resource_count += 1;
-                        // If no data tag names provided, it means we are doing a normal vector search
-                        let sub_results = if data_tag_names.is_empty() {
-                            resource.as_trait_object().vector_search(query.clone(), num_of_results)
-                        } else {
-                            resource.as_trait_object().syntactic_vector_search(
-                                query.clone(),
-                                num_of_results,
-                                data_tag_names,
-                            )
-                        };
-                        first_level_results.extend(sub_results);
-                    }
-                    DataContent::Data(_) => {
-                        first_level_results.push(RetrievedDataChunk {
-                            chunk: chunk.clone(),
-                            score,
-                            resource_pointer: self.get_resource_pointer(),
-                        });
-                    }
+                if let DataContent::Resource(_) = chunk.data {
+                    vector_resource_count += 1;
                 }
+
+                let results = self._efficient_traversal(
+                    chunk,
+                    score,
+                    query.clone(),
+                    num_of_results,
+                    data_tag_names,
+                    traversal,
+                    depth,
+                );
+                first_level_results.extend(results);
             }
         }
 
@@ -215,6 +266,51 @@ pub trait VectorResource {
             return RetrievedDataChunk::sort_by_score(&first_level_results, num_of_results);
         }
         // Otherwise just return 1st level results
+        first_level_results
+    }
+
+    fn _efficient_traversal(
+        &self,
+        chunk: DataChunk,
+        score: f32,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+        traversal: &TraversalMethod,
+        depth: u64,
+    ) -> Vec<RetrievedDataChunk> {
+        let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
+        match chunk.data {
+            DataContent::Resource(resource) => {
+                // If no data tag names provided, it means we are doing a normal vector search
+                let sub_results = if data_tag_names.is_empty() {
+                    resource.as_trait_object()._vector_search_with_traversal_depth(
+                        query.clone(),
+                        num_of_results,
+                        traversal,
+                        depth + 1,
+                    )
+                } else {
+                    resource
+                        .as_trait_object()
+                        ._syntactic_vector_search_with_traversal_depth(
+                            query.clone(),
+                            num_of_results,
+                            data_tag_names,
+                            traversal,
+                            depth + 1,
+                        )
+                };
+                first_level_results.extend(sub_results);
+            }
+            DataContent::Data(_) => {
+                first_level_results.push(RetrievedDataChunk {
+                    chunk: chunk.clone(),
+                    score,
+                    resource_pointer: self.get_resource_pointer(),
+                });
+            }
+        }
         first_level_results
     }
 
