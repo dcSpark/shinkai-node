@@ -1,9 +1,9 @@
-use crate::resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
-use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embeddings::Embedding;
-use crate::resources::model_type::{EmbeddingModelType, RemoteModel};
-use crate::resources::resource_errors::VectorResourceError;
-use crate::resources::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use crate::data_tags::{DataTag, DataTagIndex};
+use crate::embeddings::Embedding;
+use crate::model_type::{EmbeddingModelType, RemoteModel};
+use crate::resource_errors::VectorResourceError;
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -135,6 +135,7 @@ impl MapVectorResource {
     }
 
     /// Returns all DataChunks with a matching key/value pair in the metadata hashmap
+    /// Does not perform any traversal.
     pub fn metadata_search(
         &self,
         metadata_key: &str,
@@ -149,6 +150,7 @@ impl MapVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
+                        retrieval_depth: 0,
                     }),
                 _ => (),
             }

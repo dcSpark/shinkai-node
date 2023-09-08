@@ -1,20 +1,19 @@
-use crate::resources::bert_cpp::DEFAULT_LOCAL_EMBEDDINGS_PORT;
-use crate::resources::embeddings::Embedding;
-use crate::resources::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
-use crate::resources::resource_errors::VectorResourceError;
+use crate::embeddings::Embedding;
+use crate::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
+use crate::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
-use llm::load_progress_callback_stdout as load_callback;
-use llm::Model;
-use llm::ModelArchitecture;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::io::prelude::*;
 use std::io::Cursor;
 use std::net::TcpStream;
+// use llm::load_progress_callback_stdout as load_callback;
+// use llm::Model;
+// use llm::ModelArchitecture;
 
 lazy_static! {
-    static ref DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
+    pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
 }
 const N_EMBD: usize = 384;
 
@@ -24,13 +23,12 @@ pub trait EmbeddingGenerator {
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError>;
+    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
-    /// of empty string. Default id is fine in most cases, due to the fact that
-    /// when embeddings are added into VectorResources, the id are rewritten anyways.
-    fn generate_embedding(&self, input_string: &str) -> Result<Embedding, VectorResourceError> {
-        self.generate_embedding_with_id(input_string, "")
+    /// of empty string.
+    fn generate_embedding_default(&self, input_string: &str) -> Result<Embedding, VectorResourceError> {
+        self.generate_embedding(input_string, "")
     }
 
     /// Generates embeddings from the given list of input strings and ids.
@@ -38,7 +36,7 @@ pub trait EmbeddingGenerator {
         input_strings
             .iter()
             .zip(ids)
-            .map(|(input, id)| self.generate_embedding_with_id(input, id))
+            .map(|(input, id)| self.generate_embedding(input, id))
             .collect()
     }
 
@@ -46,7 +44,7 @@ pub trait EmbeddingGenerator {
     fn generate_embeddings_default(&self, input_strings: &[&str]) -> Result<Vec<Embedding>, VectorResourceError> {
         input_strings
             .iter()
-            .map(|input| self.generate_embedding(input))
+            .map(|input| self.generate_embedding_default(input))
             .collect()
     }
 }
@@ -81,7 +79,7 @@ pub struct RemoteEmbeddingGenerator {
 
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
+    fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // If we're using a Bert model with a Bert-CPP server
         if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
             || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
@@ -131,15 +129,17 @@ impl RemoteEmbeddingGenerator {
     /// This function takes a string and a TcpStream and sends the string to the Bert-CPP server
     fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, VectorResourceError> {
         // Send the input text to the server
-        server
-            .write_all(input_text.as_bytes())
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+        server.write_all(input_text.as_bytes()).map_err(|_| {
+            VectorResourceError::FailedEmbeddingGeneration("Failed writing input text to TcpStream".to_string())
+        })?;
 
         // Receive the data from the server
         let mut data = vec![0u8; N_EMBD * 4];
-        server
-            .read_exact(&mut data)
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+        server.read_exact(&mut data).map_err(|_| {
+            VectorResourceError::FailedEmbeddingGeneration(
+                "Failed reading embedding generation response from TcpStream".to_string(),
+            )
+        })?;
 
         // Convert the data into a vector of floats
         let mut rdr = Cursor::new(data);
@@ -156,12 +156,13 @@ impl RemoteEmbeddingGenerator {
     /// Of note, requires using TcpStream as the server has an arbitrary
     /// implementation that is not proper HTTP.
     fn generate_embedding_bert_cpp(&self, input_text: &str) -> Result<Vec<f32>, VectorResourceError> {
-        let mut server_connection =
-            TcpStream::connect(self.api_url.clone()).map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+        let mut server_connection = TcpStream::connect(self.api_url.clone()).map_err(|_| {
+            VectorResourceError::FailedEmbeddingGeneration("Failed connecting to TcpStream".to_string())
+        })?;
         let mut buffer = [0; 4];
-        server_connection
-            .read_exact(&mut buffer)
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+        server_connection.read_exact(&mut buffer).map_err(|_| {
+            VectorResourceError::FailedEmbeddingGeneration("Failed reading initial buffer from TcpStream".to_string())
+        })?;
 
         let embedding = Self::bert_cpp_embeddings_fetch(&input_text, &mut server_connection);
         match embedding {
@@ -170,7 +171,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    // TODO: Add authorization logic
+    // TODO: Add authorization logic/flesh out to fully working
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // Prepare the request body
@@ -220,68 +221,70 @@ impl RemoteEmbeddingGenerator {
     }
 }
 
-/// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
-pub struct LocalEmbeddingGenerator {
-    model: Box<dyn Model>,
-    model_type: EmbeddingModelType,
-}
+// /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.
+// pub struct LocalEmbeddingGenerator {
+//     model: Box<dyn Model>,
+//     model_type: EmbeddingModelType,
+// }
 
-impl EmbeddingGenerator for LocalEmbeddingGenerator {
-    /// Generate an Embedding for an input string.
-    /// - `id`: The id to be associated with the embeddings.
-    fn generate_embedding_with_id(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
-        let mut session = self.model.start_session(Default::default());
-        let mut output_request = llm::OutputRequest {
-            all_logits: None,
-            embeddings: Some(Vec::new()),
-        };
-        let vocab = self.model.tokenizer();
-        let beginning_of_sentence = true;
+// impl EmbeddingGenerator for LocalEmbeddingGenerator {
+//     /// Generate an Embedding for an input string.
+//     /// - `id`: The id to be associated with the embeddings.
+//     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
+//         let mut session = self.model.start_session(Default::default());
+//         let mut output_request = llm::OutputRequest {
+//             all_logits: None,
+//             embeddings: Some(Vec::new()),
+//         };
+//         let vocab = self.model.tokenizer();
+//         let beginning_of_sentence = true;
 
-        let tokens = vocab
-            .tokenize(input_string, beginning_of_sentence)
-            .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
+//         let tokens = vocab
+//             .tokenize(input_string, beginning_of_sentence)
+//             .map_err(|_| VectorResourceError::FailedEmbeddingGeneration)?;
 
-        let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
+//         let query_token_ids = tokens.iter().map(|(_, tok)| *tok).collect::<Vec<_>>();
 
-        self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
+//         self.model.evaluate(&mut session, &query_token_ids, &mut output_request);
 
-        let vector = output_request
-            .embeddings
-            .ok_or_else(|| VectorResourceError::FailedEmbeddingGeneration)?;
+//         let vector = output_request
+//             .embeddings
+//             .ok_or_else(|| VectorResourceError::FailedEmbeddingGeneration)?;
 
-        Ok(Embedding {
-            id: String::from(id),
-            vector,
-        })
-    }
+//         Ok(Embedding {
+//             id: String::from(id),
+//             vector,
+//         })
+//     }
 
-    fn model_type(&self) -> EmbeddingModelType {
-        self.model_type.clone()
-    }
-}
+//     fn model_type(&self) -> EmbeddingModelType {
+//         self.model_type.clone()
+//     }
+// }
 
-impl LocalEmbeddingGenerator {
-    /// Create a new LocalEmbeddingGenerator with a specified model.
-    pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
-        Self {
-            model,
-            model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
-        }
-    }
+// impl LocalEmbeddingGenerator {
+//     /// Create a new LocalEmbeddingGenerator with a specified model.
+//     pub fn new(model: Box<dyn Model>, model_architecture: ModelArchitecture) -> Self {
+//         Self {
+//             model,
+//             model_type: EmbeddingModelType::LocalModel(LocalModel::from_model_architecture(model_architecture)),
+//         }
+//     }
 
-    /// Create a new LocalEmbeddingGenerator that uses the default model.
-    /// Intended to be used just for testing.
-    pub fn new_default() -> Self {
-        let model_architecture = llm::ModelArchitecture::GptNeoX;
-        let model = llm::load_dynamic(
-            Some(model_architecture),
-            std::path::Path::new(&*DEFAULT_LOCAL_MODEL_PATH),
-            llm::TokenizerSource::Embedded,
-            Default::default(),
-            load_callback,
-        )
-        .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
-        LocalEmbeddingGenerator::new(model, model_architecture)
-    }
-}
+//     /// Create a new LocalEmbeddingGenerator that uses the default model.
+//     /// Intended to be used just for testing.
+//     pub fn new_default() -> Self {
+
+//         let DEFAULT_LOCAL_MODEL_PATH: &'static str = "models/pythia-160m-q4_0.bin";
+//         let model_architecture = llm::ModelArchitecture::GptNeoX;
+//         let model = llm::load_dynamic(
+//             Some(model_architecture),
+//             std::path::Path::new(&*DEFAULT_LOCAL_MODEL_PATH),
+//             llm::TokenizerSource::Embedded,
+//             Default::default(),
+//             load_callback,
+//         )
+//         .unwrap_or_else(|err| panic!("Failed to load model: {}", err));
+//         LocalEmbeddingGenerator::new(model, model_architecture)
+//     }
+// }

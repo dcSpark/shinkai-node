@@ -1,4 +1,3 @@
-use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
@@ -7,14 +6,13 @@ use std::fmt;
 pub enum VectorResourceError {
     InvalidChunkId,
     VectorResourceEmpty,
-    FailedEmbeddingGeneration,
+    FailedEmbeddingGeneration(String),
     NoChunkFound,
     InvalidModelArchitecture,
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
     InvalidVectorResourceBaseType,
-    RocksDBError(RocksError),
     RegexError(regex::Error),
     RequestFailed(String),
     NoEmbeddingProvided,
@@ -26,7 +24,7 @@ impl fmt::Display for VectorResourceError {
         match *self {
             VectorResourceError::InvalidChunkId => write!(f, "Invalid chunk id"),
             VectorResourceError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
-            VectorResourceError::FailedEmbeddingGeneration => write!(f, "Failed to generate embeddings"),
+            VectorResourceError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
             VectorResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
             VectorResourceError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
@@ -41,7 +39,6 @@ impl fmt::Display for VectorResourceError {
             ),
             VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
-            VectorResourceError::RocksDBError(ref e) => write!(f, "Rocks DB Error: {}", e),
             VectorResourceError::DataIsNonMatchingType => {
                 write!(f, "Data inside of the DataChunk is of a different type than requested.")
             }
@@ -50,12 +47,6 @@ impl fmt::Display for VectorResourceError {
 }
 
 impl Error for VectorResourceError {}
-
-impl From<RocksError> for VectorResourceError {
-    fn from(err: RocksError) -> VectorResourceError {
-        VectorResourceError::RocksDBError(err)
-    }
-}
 
 impl From<regex::Error> for VectorResourceError {
     fn from(err: regex::Error) -> VectorResourceError {

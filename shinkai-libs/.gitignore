@@ -1,0 +1,11 @@
+target/
+.env
+./*.json
+./*.bin
+*.log
+models/
+embeddings
+bert.cpp/
+bert-cpp-server
+a.out
+

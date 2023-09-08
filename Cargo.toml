@@ -38,17 +38,19 @@ regex = "1"
 csv = "1.1.6"
 uuid = { version = "0.8", features = ["v4"] }
 reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking"] }
-llm = { git = "https://github.com/rustformers/llm", branch = "main" }
+# llm = { git = "https://github.com/rustformers/llm", branch = "main" }
 ordered-float = "3.7.0"
 keyphrases = "0.3.2"
 byteorder = "1.4.3"
 shinkai_message_wasm = { path = "./shinkai-message-wasm" }
+shinkai_vector_resources = { path = "./shinkai-libs/shinkai-vector-resources" }
 bincode = "1.3.3"
 mupdf = "0.4.2"
 qrcode = "0.12"
 image = "0.23"
 urlencoding = "1.1.1"
 hex = "=0.4.2"
+
 
 [dependencies.rocksdb]
 version = "0.21.0"

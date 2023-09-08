@@ -1,9 +1,9 @@
-use crate::resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
-use crate::resources::data_tags::{DataTag, DataTagIndex};
-use crate::resources::embeddings::Embedding;
-use crate::resources::model_type::{EmbeddingModelType, RemoteModel};
-use crate::resources::resource_errors::VectorResourceError;
-use crate::resources::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use crate::data_tags::{DataTag, DataTagIndex};
+use crate::embeddings::Embedding;
+use crate::model_type::{EmbeddingModelType, RemoteModel};
+use crate::resource_errors::VectorResourceError;
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -140,12 +140,14 @@ impl DocumentVectorResource {
     /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of DataChunks below and above the most
     /// similar DataChunk.
+    ///
+    /// Does not traverse past the top level.
     pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
-        let search_results = self.vector_search(query, 1);
+        let search_results = self.vector_search_with_traversal(query, 1, &TraversalMethod::UntilDepth(0));
         let most_similar_chunk = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk
@@ -177,6 +179,7 @@ impl DocumentVectorResource {
                     chunk: chunk.clone(),
                     score: 0.00,
                     resource_pointer: self.get_resource_pointer(),
+                    retrieval_depth: 0,
                 });
             }
         }
@@ -184,7 +187,8 @@ impl DocumentVectorResource {
         Ok(chunks)
     }
 
-    /// Returns all DataChunks with a matching key/value pair in the metadata hashmap
+    /// Returns all DataChunks with a matching key/value pair in the metadata hashmap.
+    /// Does not perform any traversal.
     pub fn metadata_search(
         &self,
         metadata_key: &str,
@@ -199,6 +203,7 @@ impl DocumentVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
+                        retrieval_depth: 0,
                     }),
                 _ => (),
             }

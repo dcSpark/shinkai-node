@@ -1,9 +1,10 @@
-use crate::{resources::resource_errors::VectorResourceError, tools::error::ToolError};
+use crate::tools::error::ToolError;
 use core::fmt;
 use shinkai_message_wasm::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
+use shinkai_vector_resources::resource_errors::VectorResourceError;
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]

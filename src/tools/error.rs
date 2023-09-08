@@ -1,10 +1,9 @@
 use reqwest::Error as ReqwestError;
 use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
 use std::error::Error;
 use std::fmt::{self, write};
-
-use crate::resources::resource_errors::VectorResourceError;
 
 #[derive(Debug)]
 pub enum ToolError {
