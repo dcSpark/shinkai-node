@@ -10,6 +10,7 @@ pub use crate::vector_resource_types::*;
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
 /// choose how the searching algorithm decides to include/ignore DataChunks.
+#[derive(Debug, Clone, PartialEq)]
 pub enum TraversalMethod {
     /// Only goes deeper into Vector Resources if they are the highest scored DataChunks at their level
     Efficient,
@@ -134,6 +135,13 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
     ) -> Vec<RetrievedDataChunk> {
+        // If exhaustive traversal, then return all
+        let num_of_results = if traversal == &TraversalMethod::Exhaustive {
+            (&self.chunk_embeddings()).len() as u64
+        } else {
+            num_of_results
+        };
+
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
@@ -181,6 +189,13 @@ pub trait VectorResource {
                 matching_data_tag_embeddings.push(embedding);
             }
         }
+
+        // If exhaustive traversal, then return all
+        let num_of_results = if traversal == &TraversalMethod::Exhaustive {
+            matching_data_tag_embeddings.len() as u64
+        } else {
+            num_of_results
+        };
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
