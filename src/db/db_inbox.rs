@@ -189,7 +189,7 @@ impl ShinkaiDB {
         Ok(messages)
     }
 
-    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_time: String) -> Result<(), ShinkaiDBError> {
+    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_offset: String) -> Result<(), ShinkaiDBError> {
         // Fetch the column family for the specified unread_list
         let cf_name_unread_list = format!("{}_unread_list", inbox_name);
         let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
@@ -201,14 +201,11 @@ impl ShinkaiDB {
                 )))
             }
         };
-
+    
         // Create an iterator for the specified unread_list, starting from the beginning
         let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-
-        // Convert up_to_time to &str
-        let up_to_time = up_to_time.as_str();
-
-        // Iterate through the unread_list and delete all messages up to the specified time
+    
+        // Iterate through the unread_list and delete all messages up to the specified offset
         for item in iter {
             // Handle the Result returned by the iterator
             match item {
@@ -217,24 +214,19 @@ impl ShinkaiDB {
                         Ok(s) => s,
                         Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
                     };
-
-                    // Split the key_str to separate timestamp and hash
-                    let mut split_key = key_str.splitn(2, ':');
-
-                    if let Some(timestamp_str) = split_key.next() {
-                        if timestamp_str <= up_to_time {
-                            // Delete the message from the unread_list
-                            self.db.delete_cf(unread_list_cf, key)?;
-                        } else {
-                            // We've passed the up_to_time, so we can break the loop
-                            break;
-                        }
+    
+                    if key_str <= up_to_offset {
+                        // Delete the message from the unread_list
+                        self.db.delete_cf(unread_list_cf, key)?;
+                    } else {
+                        // We've passed the up_to_offset, so we can break the loop
+                        break;
                     }
                 }
                 Err(e) => return Err(e.into()),
             }
         }
-
+    
         Ok(())
     }
 
@@ -270,13 +262,11 @@ impl ShinkaiDB {
 
         let offset_hash = match &from_offset_key {
             Some(offset_key) => {
-                eprintln!("before for> Offset key: {:?}", offset_key);
                 let split: Vec<&str> = offset_key.split(":::").collect();
                 Some(split[1].to_string())
             }
             None => None,
         };
-        eprintln!("before for> Offset hash: {:?}", offset_hash);
 
         let mut messages = Vec::new();
         let mut first_message = true;
@@ -295,12 +285,6 @@ impl ShinkaiDB {
                             // Check if the message hash matches the offset's
                             if first_message {
                                 if let Some(offset_hash) = &offset_hash {
-                                    // debug
-                                    let message_hash = message.calculate_message_hash();
-                                    eprintln!("Message hash: {}", message_hash);
-                                    eprintln!("Offset hash: {}", offset_hash);
-
-                                    // debug
                                     if message.calculate_message_hash() == *offset_hash {
                                         first_message = false;
                                         continue;
