@@ -201,6 +201,9 @@ fn test_manual_resource_vector_search() {
 
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
 
+    //
+    // Traversal Tests
+    //
     // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
     let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(0));
     assert_ne!(fact1, res[0].chunk.get_data_string().unwrap());
@@ -217,6 +220,11 @@ fn test_manual_resource_vector_search() {
     );
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2));
+    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+
+    // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
+    // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom
+    let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 1, &TraversalMethod::Exhaustive);
     assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
 }
 

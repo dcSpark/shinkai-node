@@ -135,6 +135,7 @@ impl MapVectorResource {
     }
 
     /// Returns all DataChunks with a matching key/value pair in the metadata hashmap
+    /// Does not perform any traversal.
     pub fn metadata_search(
         &self,
         metadata_key: &str,
@@ -149,6 +150,7 @@ impl MapVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
+                        retrieval_depth: 0,
                     }),
                 _ => (),
             }

@@ -229,7 +229,7 @@ impl ShinkaiDB {
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
         let mut final_chunks = Vec::new();
         for resource in resources {
-            let results = resource.as_trait_object().vector_search_tolerance_ranged_score(
+            let results = resource.as_trait_object()._vector_search_tolerance_ranged_score(
                 query.clone(),
                 tolerance_range,
                 top_chunk.score,

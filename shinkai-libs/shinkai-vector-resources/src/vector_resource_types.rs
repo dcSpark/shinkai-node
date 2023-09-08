@@ -23,6 +23,7 @@ pub struct RetrievedDataChunk {
     pub chunk: DataChunk,
     pub score: f32,
     pub resource_pointer: VectorResourcePointer,
+    pub retrieval_depth: u64,
 }
 
 impl RetrievedDataChunk {

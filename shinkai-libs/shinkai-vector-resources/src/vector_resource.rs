@@ -13,7 +13,7 @@ pub use crate::vector_resource_types::*;
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalMethod {
     /// Efficiently only goes deeper into Vector Resources if they are the highest scored DataChunks at their level.
-    /// Will go infinitely deep until hitting a level where no BaseVectorResources are parrt of the highest scored.
+    /// Will go infinitely deep until hitting a level where no BaseVectorResources are part of the highest scored.
     Efficient,
     /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
     /// Will return BaseVectorResource DataChunks if they are the highest scored at the specified depth.
@@ -223,6 +223,7 @@ pub trait VectorResource {
                             chunk: data_chunk,
                             score: 0.0,
                             resource_pointer,
+                            retrieval_depth: 0,
                         };
                         matching_data_chunks.push(retrieved_data_chunk);
                     }
@@ -273,6 +274,7 @@ pub trait VectorResource {
                                 chunk: chunk.clone(),
                                 score,
                                 resource_pointer: self.get_resource_pointer(),
+                                retrieval_depth: depth,
                             };
                             current_level_results.push(ret_chunk);
                             continue;
@@ -341,6 +343,7 @@ pub trait VectorResource {
                     chunk: chunk.clone(),
                     score,
                     resource_pointer: self.get_resource_pointer(),
+                    retrieval_depth: depth,
                 });
             }
         }
@@ -349,6 +352,7 @@ pub trait VectorResource {
 
     /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks within a specific range.
+    /// Automatically uses Efficient Traversal.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
@@ -361,14 +365,14 @@ pub trait VectorResource {
         let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
 
         // Find the range of acceptable similarity scores
-        self.vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
+        self._vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
     }
 
     /// Performs a vector search using a query embedding and returns
     /// the most similar data chunks within a specific range of the provided top similarity score.
     ///
     /// * `top_similarity_score` - A float that represents the top similarity score.
-    fn vector_search_tolerance_ranged_score(
+    fn _vector_search_tolerance_ranged_score(
         &self,
         query: Embedding,
         tolerance_range: f32,
