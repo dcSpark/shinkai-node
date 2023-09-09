@@ -5,3 +5,9 @@ COPY ./shinkai-message-wasm .
 
 #RUN WASM tests
 RUN cargo build
+
+#Install wasm-pack
+RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+#RUN wasm-pack test --node
+COPY .github/run-wasm*.sh /entrypoints/
+RUN chmod 755 /entrypoints/*.sh
