@@ -2,6 +2,22 @@
 FROM rust:bookworm as builder
 RUN apt-get update && apt-get install -y libclang-dev cmake 
 
+# Install nvm, npm and node
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+ENV NVM_DIR /usr/local/nvm
+ENV NODE_VERSION v16.20.1
+RUN mkdir $NVM_DIR
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+RUN source $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default
+
+ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
+ENV PATH $NVM_DIR/versions/node/$NODE_VERSION/bin:$PATH
+RUN node -v 
+
 # Create a new directory for your app
 WORKDIR /app
 
