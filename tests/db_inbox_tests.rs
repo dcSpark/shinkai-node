@@ -1,5 +1,4 @@
 use async_channel::{bounded, Receiver, Sender};
-use prost::Message;
 use shinkai_message_wasm::schemas::inbox_name::InboxName;
 use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_wasm::schemas::shinkai_time::ShinkaiTime;

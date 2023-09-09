@@ -11,7 +11,6 @@ use std::{io, str::Utf8Error};
 pub enum ShinkaiDBError {
     ShinkaiNameError(ShinkaiNameError),
     RocksDBError(rocksdb::Error),
-    DecodeError(prost::DecodeError),
     IOError(io::Error),
     InvalidIdentityType(String),
     Utf8ConversionError,
@@ -62,7 +61,6 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::ProfileNameAlreadyExists => {
                 write!(f, "Profile name already exists")
             }
-            ShinkaiDBError::DecodeError(e) => write!(f, "Decoding Error: {}", e),
             ShinkaiDBError::MessageNotFound => write!(f, "Message not found"),
             ShinkaiDBError::SomeError(e) => write!(f, "Some error: {}", e),
             ShinkaiDBError::ShinkaiNameLacksProfile => write!(
@@ -114,7 +112,6 @@ impl std::error::Error for ShinkaiDBError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             ShinkaiDBError::RocksDBError(e) => Some(e),
-            ShinkaiDBError::DecodeError(e) => Some(e),
             ShinkaiDBError::JsonSerializationError(e) => Some(e),
             ShinkaiDBError::IOError(e) => Some(e),
             ShinkaiDBError::VectorResourceError(e) => Some(e),
@@ -152,7 +149,6 @@ impl PartialEq for ShinkaiDBError {
             (ShinkaiDBError::InvalidProfileName(msg1), ShinkaiDBError::InvalidProfileName(msg2)) => msg1 == msg2,
             (ShinkaiDBError::InvalidIdentityName(msg1), ShinkaiDBError::InvalidIdentityName(msg2)) => msg1 == msg2,
             (ShinkaiDBError::IOError(e1), ShinkaiDBError::IOError(e2)) => e1.to_string() == e2.to_string(),
-            (ShinkaiDBError::DecodeError(e1), ShinkaiDBError::DecodeError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::RocksDBError(e1), ShinkaiDBError::RocksDBError(e2)) => e1.to_string() == e2.to_string(),
             (ShinkaiDBError::Utf8ConversionError, ShinkaiDBError::Utf8ConversionError) => true,
             (ShinkaiDBError::JsonSerializationError(e1), ShinkaiDBError::JsonSerializationError(e2)) => {
@@ -186,12 +182,6 @@ impl From<VectorResourceError> for ShinkaiDBError {
 impl From<rocksdb::Error> for ShinkaiDBError {
     fn from(error: rocksdb::Error) -> Self {
         ShinkaiDBError::RocksDBError(error)
-    }
-}
-
-impl From<prost::DecodeError> for ShinkaiDBError {
-    fn from(error: prost::DecodeError) -> Self {
-        ShinkaiDBError::DecodeError(error)
     }
 }
 

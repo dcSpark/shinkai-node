@@ -23,4 +23,4 @@ shinkai-toolkit-executor.js
 tmp_*.js
 qr_code_profile_*.png
 qr_code_device_*.png
-
+.venv/
