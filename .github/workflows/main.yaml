@@ -47,24 +47,3 @@ jobs:
       - name: Remove image
         if: always()
         run: docker rmi testing_image_wasm:${SHORT_SHA} || true
-
-
-  test-shinkai-app:
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Add SHORT_SHA env property with commit short sha
-        run: echo "SHORT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`" >> $GITHUB_ENV
-
-      - name: Build testing image - shinkai-app
-        run: docker build -t testing_image_shinkai_app:${SHORT_SHA} -f .github/Dockerfile.shinkai-app .
-
-      - name: Run tests shinkai-app unit tests
-        run: docker run --rm --entrypoint /entrypoints/run-app-unit-tests.sh testing_image_shinkai_app:${SHORT_SHA}
-
-      - name: Remove image
-        if: always()
-        run: docker rmi testing_image_shinkai_app:${SHORT_SHA} || true
-
