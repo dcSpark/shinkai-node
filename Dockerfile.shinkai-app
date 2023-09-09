@@ -16,7 +16,7 @@ ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/$NODE_VERSION/bin:$PATH
 RUN node -v 
 
-#Install wasm-pack
+# Install wasm-pack
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
 WORKDIR /app/
@@ -24,11 +24,3 @@ COPY . .
 
 WORKDIR /app/shinkai-message-wasm
 RUN wasm-pack build
-RUN cp -R pkg/ ../shinkai-app/src 
-
-WORKDIR /app/shinkai-app
-RUN source $NVM_DIR/nvm.sh && nvm install $(cat .nvmrc) && nvm use
-RUN npm install
-RUN npm run test.unit
-
-

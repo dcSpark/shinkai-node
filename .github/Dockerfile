@@ -2,8 +2,6 @@
 FROM rust:bookworm as builder
 RUN apt-get update && apt-get install -y libclang-dev cmake 
 
-
-
 # Install nvm, npm and node
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 ENV NVM_DIR /usr/local/nvm
@@ -20,7 +18,6 @@ ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/$NODE_VERSION/bin:$PATH
 RUN node -v 
 
-
 # Create a new directory for your app
 WORKDIR /app
 
@@ -30,29 +27,9 @@ COPY . .
 
 # Build the dependencies (cached)
 
-
-
-
 RUN cargo clean 
 RUN rustup component add rustfmt
 RUN CARGO_BUILD_RERUN_IF_CHANGED=1 cargo build
 
 COPY .github/run-main*.sh /entrypoints/
 RUN chmod 755 /entrypoints/*.sh
-#RUN cargo test -- --test-threads=1
-
-
-# Create a new stage for the runtime image
-#FROM debian:bookworm-slim
-
-# Install any necessary system dependencies
-#RUN apt-get update && apt-get install -y \
-#    ca-certificates \
-#    && rm -rf /var/lib/apt/lists/*
-
-# Copy the built binary from the builder stage to the runtime image
-#COPY --from=builder /app/target/debug/shinkai_node /usr/local/bin/shinkai_node
-
-# Set the command to run your application when the container starts
-#ENTRYPOINT ["/usr/local/bin/shinkai_node"]
-

@@ -1,7 +1,0 @@
-{
-  "name": "ShinkaiApp",
-  "integrations": {
-    "capacitor": {}
-  },
-  "type": "react-vite"
-}
