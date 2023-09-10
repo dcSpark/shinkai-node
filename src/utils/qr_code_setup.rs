@@ -1,7 +1,7 @@
 use async_channel::Sender;
 use qrcode::{Color, QrCode};
 use serde::Serialize;
-use shinkai_message_wasm::{shinkai_utils::encryption::encryption_public_key_to_string, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}};
+use shinkai_message_primitives::{shinkai_utils::encryption::encryption_public_key_to_string, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType}};
 
 use crate::network::node::NodeCommand;
 

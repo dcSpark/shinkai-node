@@ -1,17 +1,17 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_wasm::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
-use shinkai_message_wasm::schemas::inbox_name::InboxName;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::schemas::shinkai_time::ShinkaiTime;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
-use shinkai_message_wasm::shinkai_utils::encryption::{
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::signatures::{
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_wasm::shinkai_utils::utils::hash_string;
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::managers::agent;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;

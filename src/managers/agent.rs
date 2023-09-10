@@ -1,7 +1,7 @@
 use crate::managers::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::{AgentAPIModel, SerializedAgent},
         shinkai_name::ShinkaiName,
@@ -197,7 +197,7 @@ impl From<reqwest::Error> for AgentError {
 mod tests {
     use super::*;
     use mockito::Server;
-    use shinkai_message_wasm::schemas::agents::serialized_agent::{OpenAI, SleepAPI};
+    use shinkai_message_primitives::schemas::agents::serialized_agent::{OpenAI, SleepAPI};
     use tokio::sync::mpsc;
 
     #[tokio::test]

@@ -5,18 +5,18 @@ use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
-use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_wasm::schemas::inbox_name::InboxNameError;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_error::ShinkaiMessageError;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::inbox_name::InboxNameError;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
-use shinkai_message_wasm::shinkai_utils::encryption::{
+use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};

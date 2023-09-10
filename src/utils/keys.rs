@@ -1,6 +1,6 @@
 use std::env;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use shinkai_message_wasm::shinkai_utils::{signatures::{string_to_signature_secret_key, ephemeral_signature_keypair}, encryption::{string_to_encryption_static_key, ephemeral_encryption_keys}};
+use shinkai_message_primitives::shinkai_utils::{signatures::{string_to_signature_secret_key, ephemeral_signature_keypair}, encryption::{string_to_encryption_static_key, ephemeral_encryption_keys}};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct NodeKeys {

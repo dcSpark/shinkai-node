@@ -1,4 +1,4 @@
-use shinkai_message_wasm::shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody, MessageData};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody, MessageData};
 
 pub fn print_content_time_messages(messages: Vec<ShinkaiMessage>) {
     for message in &messages {

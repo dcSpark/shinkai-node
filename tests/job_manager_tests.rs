@@ -18,7 +18,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use mockito::Server;
-    use shinkai_message_wasm::{
+    use shinkai_message_primitives::{
         schemas::{
             agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent},
             inbox_name::InboxName,

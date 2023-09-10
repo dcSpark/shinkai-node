@@ -1,6 +1,6 @@
 use crate::tools::error::ToolError;
 use core::fmt;
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };

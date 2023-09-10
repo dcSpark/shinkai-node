@@ -11,7 +11,7 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
-    use shinkai_message_wasm::{shinkai_utils::utils::hash_string, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{OpenAI, SerializedAgent, AgentAPIModel}}};
+    use shinkai_message_primitives::{shinkai_utils::utils::hash_string, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{OpenAI, SerializedAgent, AgentAPIModel}}};
 
     use super::*;
 

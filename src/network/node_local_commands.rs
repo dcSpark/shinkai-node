@@ -6,7 +6,7 @@ use crate::{
 use async_channel::Sender;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::error;
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
