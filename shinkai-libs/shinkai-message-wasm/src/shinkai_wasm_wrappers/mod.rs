@@ -7,3 +7,4 @@ pub mod shinkai_job_wrapper;
 pub mod shinkai_wasm_error;
 pub mod wasm_shinkai_message;
 pub mod shinkai_schema_wasm;
+pub mod shinkai_time;

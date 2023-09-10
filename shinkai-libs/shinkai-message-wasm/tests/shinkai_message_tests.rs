@@ -157,7 +157,7 @@ mod tests {
         );
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_wasm_serde_encode_decode_message_with_decode_message_result() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -214,7 +214,7 @@ mod tests {
         );
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_to_jsvalue() {
         let internal_metadata = InternalMetadata::new(
@@ -288,7 +288,7 @@ mod tests {
         );
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_from_jsvalue() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");

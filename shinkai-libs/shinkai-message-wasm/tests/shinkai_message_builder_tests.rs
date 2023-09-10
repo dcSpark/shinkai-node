@@ -17,7 +17,7 @@ mod tests {
     use wasm_bindgen_test::*;
     use shinkai_message_wasm::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_builder_with_all_fields_no_encryption() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -101,7 +101,7 @@ mod tests {
         assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap());
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_jsvalue_builder_with_all_fields_no_encryption() {
         let (my_identity_sk, my_identity_pk) = unsafe_deterministic_signature_keypair(0);
@@ -176,7 +176,7 @@ mod tests {
         assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_job_message_creation() {
         // Initialize test data
@@ -248,7 +248,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, node_receiver);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_ack_message_creation() {
         // Initialize test data
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_ping_pong_message_creation() {
         // Initialize test data
@@ -345,7 +345,7 @@ mod tests {
         }
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_create_custom_shinkai_message_to_node() {
         // Initialize test data
@@ -408,7 +408,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_use_code_registration_for_device() {
         // Initialize test data
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_request_code_registration() {
         // Initialize test data
@@ -548,7 +548,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_terminate_message_creation() {
         // Initialize test data
@@ -601,7 +601,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_error_message_creation() {
         // Initialize test data
@@ -663,7 +663,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver_node);
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_messages_from_inbox() {
         // Initialize test data
@@ -732,7 +732,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_get_last_unread_messages_from_inbox() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");
@@ -818,7 +818,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, receiver.to_string());
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_read_up_to_time() {
         // Initialize test data

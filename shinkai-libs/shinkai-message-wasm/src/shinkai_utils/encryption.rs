@@ -13,30 +13,15 @@ use shinkai_message_primitives::shinkai_utils::encryption::{string_to_encryption
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 use x25519_dalek::{PublicKey, StaticSecret};
-use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 
-// #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
-// #[wasm_bindgen]
-// pub enum EncryptionMethod {
-//     DiffieHellmanChaChaPoly1305,
-//     None,
-// }
+#[cfg(target_arch = "wasm32")]
 
-// impl EncryptionMethod {
-//     pub fn as_str(&self) -> &'static str {
-//         match self {
-//             Self::DiffieHellmanChaChaPoly1305 => "default",
-//             Self::None => "None",
-//         }
-//     }
-
-//     pub fn from_str(s: &str) -> EncryptionMethod {
-//         match s {
-//             "DiffieHellmanChaChaPoly1305" | "default" => EncryptionMethod::DiffieHellmanChaChaPoly1305,
-//             _ => EncryptionMethod::None,
-//         }
-//     }
-// }
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[wasm_bindgen]
+pub enum EncryptionMethod {
+    DiffieHellmanChaChaPoly1305,
+    None,
+}
 
 #[wasm_bindgen]
 pub fn convert_encryption_sk_string_to_encryption_pk_string(encryption_sk: String) -> Result<String, JsValue> {
