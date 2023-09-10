@@ -2,22 +2,22 @@ use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use shinkai_message_wasm::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobScope, MessageSchemaType, RegistrationCodeType,
 };
-use shinkai_message_wasm::shinkai_utils::encryption::{
+use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
 };
-use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::signatures::{
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
     unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_wasm::shinkai_utils::utils::hash_string;
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;

@@ -1,9 +1,9 @@
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::MessageSchemaType;
-use shinkai_message_wasm::shinkai_utils::encryption::EncryptionMethod;
-use shinkai_message_wasm::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_wasm::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_message_wasm::{
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
         encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,

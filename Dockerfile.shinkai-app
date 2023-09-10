@@ -22,5 +22,5 @@ RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 WORKDIR /app/
 COPY . .
 
-WORKDIR /app/shinkai-message-wasm
+WORKDIR /app/shinkai-libs/shinkai-message-wasm
 RUN wasm-pack build

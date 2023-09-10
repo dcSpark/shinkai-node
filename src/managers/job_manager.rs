@@ -2,7 +2,7 @@ use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use reqwest::Identity;
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{
         inbox_name::InboxName,
         shinkai_name::{ShinkaiName, ShinkaiNameError},
@@ -12,7 +12,6 @@ use shinkai_message_wasm::{
         shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobRecipient, JobScope, MessageSchemaType},
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
-    ShinkaiMessageWrapper,
 };
 use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};

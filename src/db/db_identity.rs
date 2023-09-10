@@ -4,12 +4,12 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use mupdf::device;
 use rocksdb::{Error, Options};
 use serde_json::to_vec;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::IdentityPermissions;
-use shinkai_message_wasm::shinkai_utils::encryption::{
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
+use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
-use shinkai_message_wasm::shinkai_utils::signatures::{
+use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
 };
 use warp::path::full;

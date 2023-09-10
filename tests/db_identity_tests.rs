@@ -1,15 +1,15 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::task;
 use reqwest::Identity;
-use shinkai_message_wasm::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
-use shinkai_message_wasm::shinkai_utils::encryption::{
+use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
+use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, unsafe_deterministic_encryption_keypair,
 };
-use shinkai_message_wasm::shinkai_utils::signatures::{
+use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, unsafe_deterministic_signature_keypair,
 };
-use shinkai_message_wasm::shinkai_utils::utils::hash_string;
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::db::Topic;

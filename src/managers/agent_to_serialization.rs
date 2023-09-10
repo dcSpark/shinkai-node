@@ -1,5 +1,5 @@
 use serde::{Serialize, Deserialize};
-use shinkai_message_wasm::schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::SerializedAgent};
+use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::SerializedAgent};
 
 use super::agent::{Agent};
 

@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobScope;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobScope;
 use shinkai_node::{
     db::ShinkaiDB,
 };
@@ -23,7 +23,7 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::JobScope, shinkai_utils::utils::hash_string, schemas::inbox_name::InboxName};
+    use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::JobScope, shinkai_utils::utils::hash_string, schemas::inbox_name::InboxName};
     use shinkai_node::{db::db_errors::ShinkaiDBError, managers::agent};
 
     use super::*;

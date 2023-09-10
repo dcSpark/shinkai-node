@@ -1,4 +1,4 @@
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use shinkai_node::resources::file_parsing::FileParser;

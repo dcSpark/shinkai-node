@@ -1,6 +1,6 @@
 use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };

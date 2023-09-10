@@ -1,4 +1,4 @@
-use shinkai_message_wasm::{shinkai_message::shinkai_message_error::ShinkaiMessageError, schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError}};
+use shinkai_message_primitives::{shinkai_message::shinkai_message_error::ShinkaiMessageError, schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError}};
 use crate::{managers::job_manager::JobManagerError, db::db_errors::ShinkaiDBError};
 
 

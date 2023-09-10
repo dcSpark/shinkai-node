@@ -4,7 +4,7 @@ use crate::{
     network::Node,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
         shinkai_message_extension::EncryptionStatus,

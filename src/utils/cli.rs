@@ -1,5 +1,5 @@
 // src/utils/cli.rs
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     shinkai_message::shinkai_message_schemas::MessageSchemaType,
     shinkai_utils::{
         encryption::{string_to_encryption_public_key, EncryptionMethod},

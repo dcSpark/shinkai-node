@@ -7,7 +7,7 @@ use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
 use crate::tools::js_toolkit_executor::JSToolkitExecutor;
 use crate::tools::router::{ShinkaiTool, ToolRouter};
 use serde_json::from_str;
-use shinkai_message_wasm::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 
 impl ShinkaiDB {

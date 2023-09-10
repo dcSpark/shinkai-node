@@ -1,5 +1,5 @@
 use reqwest::Client;
-use shinkai_message_wasm::shinkai_message::shinkai_message_schemas::JobPreMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobPreMessage;
 
 use super::agent::AgentError;
 use async_trait::async_trait;

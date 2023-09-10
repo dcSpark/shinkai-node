@@ -14,7 +14,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::{debug, error, info, trace, warn};
 use mupdf::Device;
 use reqwest::StatusCode;
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,

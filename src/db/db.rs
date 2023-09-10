@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use rocksdb::{AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, WriteBatch, DB};
-use shinkai_message_wasm::{
+use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };

@@ -4,7 +4,7 @@ use super::Provider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shinkai_message_wasm::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::agents::serialized_agent::SleepAPI};
+use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient}, schemas::agents::serialized_agent::SleepAPI};
 use tokio::time::Duration;
 
 #[async_trait]
