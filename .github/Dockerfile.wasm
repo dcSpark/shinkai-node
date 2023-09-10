@@ -1,10 +1,10 @@
 FROM rust:bookworm
 
-WORKDIR /app/shinkai-message-wasm
-COPY ./shinkai-message-wasm .
+WORKDIR /app/shinkai-libs
+COPY ./shinkai-libs .
 
 #RUN WASM tests
-RUN cargo build
+RUN cd shinkai-message-wasm && cargo build
 
 # Install nvm 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -21,7 +21,6 @@ RUN source $NVM_DIR/nvm.sh \
 ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/$NODE_VERSION/bin:$PATH
 RUN node -v 
-
 
 #Install wasm-pack
 RUN curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh

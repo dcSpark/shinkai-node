@@ -19,7 +19,7 @@ jobs:
       - name: Build testing image
         run: docker build -t testing_image:${SHORT_SHA} -f .github/Dockerfile .
       - name: Run tests primitives cargo tests
-        run: docker run --rm --entrypoint /entrypoints/run-primitives-cargo-tests.sh testing_image:${SHORT_SHA}        
+        run: docker run --rm --entrypoint /entrypoints/run-main-primitives-cargo-tests.sh testing_image:${SHORT_SHA}        
 
       - name: Run tests main cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-main-cargo-tests.sh testing_image:${SHORT_SHA}
@@ -42,9 +42,6 @@ jobs:
 
       - name: Run tests shinkai-message-wasm cargo tests
         run: docker run --rm --entrypoint /entrypoints/run-wasm-pack-tests.sh testing_image_wasm:${SHORT_SHA}
-
-      - name: Run tests shinkai-message-wasm wasm-pack tests
-        run: docker run --rm --entrypoint /entrypoints/run-wasm-cargo-tests.sh testing_image_wasm:${SHORT_SHA}
 
       - name: Remove image
         if: always()
