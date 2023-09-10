@@ -1,0 +1,1 @@
+pub mod shinkai_message_pyo3;
