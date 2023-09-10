@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cd /app/shinkai-message-wasm && cargo test -- --test-threads=1 
+cd /app/shinkai-libs/shinkai-message-wasm && cargo test -- --test-threads=1 
