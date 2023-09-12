@@ -294,6 +294,7 @@ impl AgentManager {
         }
     }
 
+    /// Adds pre-message to job inbox
     pub async fn handle_pre_message_schema(
         &mut self,
         pre_message: JobPreMessage,
@@ -356,8 +357,8 @@ impl AgentManager {
         // Append current time as ISO8601 to step history
         let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
 
-        let full_job = { self.db.lock().await.get_job(job.job_id()).unwrap() };
         let job_id = job.job_id().to_string();
+        let full_job = { self.db.lock().await.get_job(&job_id).unwrap() };
         let mut context = full_job.step_history.clone();
         context.push(time_with_comment);
         println!("decision_phase> context: {:?}", context);
@@ -376,11 +377,7 @@ impl AgentManager {
             Some(agent) => {
                 // Create a new async task where the agent's execute method will run
                 // Note: agent execute run in a separate thread
-                let last_message = full_job
-                    .step_history
-                    .last()
-                    .ok_or(JobManagerError::ContentParseFailed)?
-                    .clone();
+                let last_message = context.pop().ok_or(JobManagerError::ContentParseFailed)?.clone();
                 tokio::spawn(async move {
                     let mut agent = agent.lock().await;
                     agent.execute(last_message.to_string(), context, job_id).await;
