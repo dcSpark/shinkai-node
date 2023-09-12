@@ -1,11 +1,29 @@
-use crate::shinkai_wasm_wrappers::{shinkai_message_wrapper::ShinkaiMessageWrapper, wasm_shinkai_message::SerdeWasmMethods, shinkai_wasm_error::{WasmErrorWrapper, ShinkaiWasmError}};
+use crate::shinkai_wasm_wrappers::{
+    shinkai_message_wrapper::ShinkaiMessageWrapper,
+    shinkai_wasm_error::{ShinkaiWasmError, WasmErrorWrapper},
+    wasm_shinkai_message::SerdeWasmMethods,
+};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::{shinkai_utils::{encryption::{string_to_encryption_static_key, string_to_encryption_public_key, encryption_public_key_to_string, EncryptionMethod}, signatures::{string_to_signature_secret_key, signature_public_key_to_string}, shinkai_message_builder::{ShinkaiMessageBuilder, ProfileName}}, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType, RegistrationCodeRequest, MessageSchemaType, APIGetMessagesFromInboxRequest, APIAddAgentRequest, APIReadUpToTimeRequest, JobScope, JobCreation, JobMessage}, schemas::{registration_code::RegistrationCode, inbox_name::InboxName, agents::serialized_agent::SerializedAgent}};
+use serde_wasm_bindgen::{from_value, to_value};
+use shinkai_message_primitives::{
+    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
+    shinkai_message::shinkai_message_schemas::{
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
+        JobCreationInfo, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+    },
+    shinkai_utils::{
+        encryption::{
+            encryption_public_key_to_string, string_to_encryption_public_key, string_to_encryption_static_key,
+            EncryptionMethod,
+        },
+        shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
+        signatures::{signature_public_key_to_string, string_to_signature_secret_key},
+    },
+};
 use wasm_bindgen::prelude::*;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use serde_wasm_bindgen::{from_value, to_value};
 
 #[wasm_bindgen]
 pub struct ShinkaiMessageBuilderWrapper {
@@ -240,7 +258,8 @@ impl ShinkaiMessageBuilderWrapper {
             match builder.build() {
                 Ok(shinkai_message) => {
                     let js_value = shinkai_message.to_jsvalue().map_err(WasmErrorWrapper)?;
-                    Ok(ShinkaiMessageWrapper::from_jsvalue(&js_value).map_err(|e| WasmErrorWrapper::new(ShinkaiWasmError::from(e)))?)
+                    Ok(ShinkaiMessageWrapper::from_jsvalue(&js_value)
+                        .map_err(|e| WasmErrorWrapper::new(ShinkaiWasmError::from(e)))?)
                 }
                 Err(e) => Err(JsValue::from_str(&e.to_string())),
             }
@@ -255,9 +274,9 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn build_to_jsvalue(&mut self) -> Result<JsValue, JsValue> {
         if let Some(ref builder) = self.inner {
             match builder.build() {
-                Ok(shinkai_message) => {
-                    shinkai_message.to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
-                }
+                Ok(shinkai_message) => shinkai_message
+                    .to_jsvalue()
+                    .map_err(|e| JsValue::from_str(&e.to_string())),
                 Err(e) => Err(JsValue::from_str(e)),
             }
         } else {
@@ -649,7 +668,7 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<String, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let job_creation = JobCreation { scope };
+        let job_creation = JobCreationInfo { scope };
         let body = serde_json::to_string(&job_creation).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         let mut builder =

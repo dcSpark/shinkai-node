@@ -9,7 +9,9 @@ use shinkai_message_primitives::{
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreation, JobMessage, JobPreMessage, JobRecipient, JobScope, MessageSchemaType},
+        shinkai_message_schemas::{
+            JobCreationInfo, JobMessage, JobPreMessage, JobRecipient, JobScope, MessageSchemaType,
+        },
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
@@ -122,7 +124,7 @@ impl JobManager {
         let agent_manager = Arc::clone(&self.agent_manager);
         let receiver = Arc::clone(&self.job_manager_receiver);
         let node_profile_name_clone = self.node_profile_name.clone();
-        let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key); 
+        let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         tokio::spawn(async move {
             while let Some((messages, job_id)) = receiver.lock().await.recv().await {
                 for message in messages {
@@ -130,14 +132,17 @@ impl JobManager {
 
                     let shinkai_message_result = ShinkaiMessageBuilder::job_message_from_agent(
                         job_id.clone(),
-                        message.clone().content,
+                        message.content.clone(),
                         clone_signature_secret_key(&identity_secret_key_clone),
-                        node_profile_name_clone.clone().to_string(),
-                        node_profile_name_clone.clone().to_string(),
+                        node_profile_name_clone.to_string(),
+                        node_profile_name_clone.to_string(),
                     );
 
                     if let Ok(shinkai_message) = shinkai_message_result {
-                        if let Err(err) = agent_manager.handle_pre_message_schema(message, job_id.clone(), shinkai_message).await {
+                        if let Err(err) = agent_manager
+                            .handle_pre_message_schema(message, job_id.clone(), shinkai_message)
+                            .await
+                        {
                             eprintln!("Error while handling pre message schema: {:?}", err);
                         }
                     } else if let Err(err) = shinkai_message_result {
@@ -206,6 +211,7 @@ impl AgentManager {
         job_manager
     }
 
+    /// Checks that the provided ShinkaiMessage is an unencrypted job message
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
         match &message.body {
             MessageBody::Unencrypted(body) => match &body.message_data {
@@ -221,7 +227,7 @@ impl AgentManager {
 
     pub async fn handle_job_creation_schema(
         &mut self,
-        job_creation: JobCreation,
+        job_creation: JobCreationInfo,
         agent_id: &String,
     ) -> Result<String, JobManagerError> {
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
@@ -292,11 +298,14 @@ impl AgentManager {
         &mut self,
         pre_message: JobPreMessage,
         job_id: String,
-        shinkai_message: ShinkaiMessage
+        shinkai_message: ShinkaiMessage,
     ) -> Result<String, JobManagerError> {
         println!("handle_pre_message_schema> pre_message: {:?}", pre_message);
-    
-        self.db.lock().await.add_message_to_job_inbox(job_id.as_str(), &shinkai_message)?;
+
+        self.db
+            .lock()
+            .await
+            .add_message_to_job_inbox(job_id.as_str(), &shinkai_message)?;
         Ok(String::new())
     }
 
@@ -311,7 +320,7 @@ impl AgentManager {
                                 let agent_name =
                                     ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
                                 let agent_id = agent_name.get_agent_name().ok_or(JobManagerError::AgentNotFound)?;
-                                let job_creation: JobCreation = serde_json::from_str(&data.message_raw_content)
+                                let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
                                 self.handle_job_creation_schema(job_creation, &agent_id).await
                             }
@@ -324,7 +333,8 @@ impl AgentManager {
                                 let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
                                 // TODO: we should be able to extract the job_id from the inbox
-                                self.handle_pre_message_schema(pre_message, "".to_string(), message).await
+                                self.handle_pre_message_schema(pre_message, "".to_string(), message)
+                                    .await
                             }
                             _ => {
                                 // Handle Empty message type if needed, or return an error if it's not a valid job message
@@ -436,7 +446,9 @@ impl fmt::Display for JobManagerError {
         match self {
             JobManagerError::NotAJobMessage => write!(f, "Message is not a job message"),
             JobManagerError::JobNotFound => write!(f, "Job not found"),
-            JobManagerError::JobCreationDeserializationFailed => write!(f, "Failed to deserialize JobCreation message"),
+            JobManagerError::JobCreationDeserializationFailed => {
+                write!(f, "Failed to deserialize JobCreationInfo message")
+            }
             JobManagerError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
             JobManagerError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
             JobManagerError::MessageTypeParseFailed => write!(f, "Could not parse message type"),

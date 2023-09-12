@@ -200,7 +200,8 @@ fn test_tool_router_and_toolkit_flow() {
 
 // A fake test which purposefully fails so that we can generate embeddings
 // for all existing rust tools and print them into console (so we can copy-paste)
-// and hard-code them in rust_tools.rs
+// and hard-code them in rust_tools.rs.
+// Temporary solution
 // #[test]
 // fn generate_rust_tool_embeddings() {
 //     setup();

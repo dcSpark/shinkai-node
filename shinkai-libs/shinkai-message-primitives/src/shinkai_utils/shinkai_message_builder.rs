@@ -15,7 +15,7 @@ use crate::{
         },
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            JobCreation, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            JobCreationInfo, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -394,7 +394,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let job_creation = JobCreation { scope };
+        let job_creation = JobCreationInfo { scope };
         let body = serde_json::to_string(&job_creation).map_err(|_| "Failed to serialize job creation to JSON")?;
 
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
@@ -461,18 +461,22 @@ impl ShinkaiMessageBuilder {
         // Use for placeholder. These messages *are not* encrypted so it's not required
         let (placeholder_encryption_sk, placeholder_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-        ShinkaiMessageBuilder::new(placeholder_encryption_sk, my_signature_secret_key, placeholder_encryption_pk)
-            .message_raw_content(body)
-            .internal_metadata_with_schema(
-                "".to_string(),
-                "".to_string(),
-                inbox,
-                MessageSchemaType::JobMessageSchema,
-                EncryptionMethod::None,
-            )
-            .body_encryption(EncryptionMethod::None)
-            .external_metadata(node_receiver, node_sender)
-            .build()
+        ShinkaiMessageBuilder::new(
+            placeholder_encryption_sk,
+            my_signature_secret_key,
+            placeholder_encryption_pk,
+        )
+        .message_raw_content(body)
+        .internal_metadata_with_schema(
+            "".to_string(),
+            "".to_string(),
+            inbox,
+            MessageSchemaType::JobMessageSchema,
+            EncryptionMethod::None,
+        )
+        .body_encryption(EncryptionMethod::None)
+        .external_metadata(node_receiver, node_sender)
+        .build()
     }
 
     pub fn terminate_message(
