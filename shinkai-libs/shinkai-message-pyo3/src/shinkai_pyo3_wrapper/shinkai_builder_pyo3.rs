@@ -5,7 +5,7 @@ use shinkai_message_primitives::shinkai_utils::{
     signatures::string_to_signature_secret_key,
 };
 
-use super::{encryption_method_pyo3::PyEncryptionMethod, shinkai_message_pyo3::PyShinkaiMessage};
+use super::{encryption_method_pyo3::PyEncryptionMethod, shinkai_message_pyo3::PyShinkaiMessage, message_schema_type_pyo3::PyMessageSchemaType};
 
 #[pyclass]
 pub struct PyShinkaiMessageBuilder {
@@ -16,43 +16,17 @@ pub struct PyShinkaiMessageBuilder {
 #[pymethods]
 impl PyShinkaiMessageBuilder {
     #[new]
-    #[args(kwargs = "**")]
-    /// Creates a new ShinkaiMessageBuilder.
-    ///
-    /// # Arguments
-    /// * `my_encryption_secret_key` (str): The encryption secret key.
-    /// * `my_signature_secret_key` (str): The signature secret key.
-    /// * `receiver_public_key` (str): The receiver's public key.
-    ///
-    /// # Returns
-    /// * `PyShinkaiMessageBuilder`: The new ShinkaiMessageBuilder.
-    ///
-    /// # Raises
-    /// * `PyValueError`: If any of the arguments are missing or invalid.
-    fn new(kwargs: Option<&PyDict>) -> PyResult<Self> {
-        // Extract the keys from kwargs and initialize ShinkaiMessageBuilder
-        // You may need to convert Python types to Rust types
-        let kwargs = kwargs.expect("kwargs is required");
-
-        let my_encryption_secret_key = kwargs
-            .get_item("my_encryption_secret_key")
-            .unwrap()
-            .extract::<String>()?;
-        let my_signature_secret_key = kwargs
-            .get_item("my_signature_secret_key")
-            .unwrap()
-            .extract::<String>()?;
-        let receiver_public_key = kwargs.get_item("receiver_public_key").unwrap().extract::<String>()?;
-
+    #[args(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)]
+    fn new(my_encryption_secret_key: String, my_signature_secret_key: String, receiver_public_key: String) -> PyResult<Self> {
         let my_encryption_secret_key = string_to_encryption_static_key(&my_encryption_secret_key)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
         let my_signature_secret_key = string_to_signature_secret_key(&my_signature_secret_key)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
         let receiver_public_key = string_to_encryption_public_key(&receiver_public_key)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-
+    
         let inner = ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key);
-
+    
         Ok(Self { inner: Some(inner) })
     }
 
@@ -89,18 +63,20 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    // fn message_schema_type(&mut self, content: Py<PyMessageSchemaType>) -> PyResult<()> {
-    //     Python::with_gil(|py| {
-    //         let content_ref = content.as_ref(py).borrow();
-    //         if let Some(mut inner) = self.inner.take() {
-    //             inner.message_schema_type(content_ref.inner.clone());
-    //             self.inner = Some(inner);
-    //             Ok(())
-    //         } else {
-    //             Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
-    //         }
-    //     })
-    // }
+    fn message_schema_type(&mut self, content: Py<PyMessageSchemaType>) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let content_ref = content.as_ref(py).borrow();
+            let rust_content = content_ref.inner.clone();
+            if let Some(inner) = self.inner.take() {
+                let mut inner_clone = inner.clone();
+                inner_clone.message_schema_type(rust_content);
+                self.inner = Some(inner);
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
+            }
+        })
+    }
 
     fn internal_metadata(&mut self, sender_subidentity: String, recipient_subidentity: String, encryption: Py<PyEncryptionMethod>) -> PyResult<()> {
         Python::with_gil(|py| {
@@ -128,19 +104,19 @@ impl PyShinkaiMessageBuilder {
         })
     }
 
-    // fn internal_metadata_with_schema(&mut self, sender_subidentity: String, recipient_subidentity: String, inbox: String, message_schema: Py<PyMessageSchemaType>, encryption: Py<PyEncryptionMethod>) -> PyResult<()> {
-    //     Python::with_gil(|py| {
-    //         let encryption_ref = encryption.as_ref(py).borrow();
-    //         let message_schema_ref = message_schema.as_ref(py).borrow();
-    //         if let Some(inner) = self.inner.take() {
-    //             let new_inner = inner.internal_metadata_with_schema(sender_subidentity, recipient_subidentity, inbox, message_schema_ref.inner.clone(), encryption_ref.inner.clone());
-    //             self.inner = Some(new_inner);
-    //             Ok(())
-    //         } else {
-    //             Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
-    //         }
-    //     })
-    // }
+    fn internal_metadata_with_schema(&mut self, sender_subidentity: String, recipient_subidentity: String, inbox: String, message_schema: Py<PyMessageSchemaType>, encryption: Py<PyEncryptionMethod>) -> PyResult<()> {
+        Python::with_gil(|py| {
+            let encryption_ref = encryption.as_ref(py).borrow();
+            let message_schema_ref = message_schema.as_ref(py).borrow();
+            if let Some(inner) = self.inner.take() {
+                let new_inner = inner.internal_metadata_with_schema(sender_subidentity, recipient_subidentity, inbox, message_schema_ref.inner.clone(), encryption_ref.inner.clone());
+                self.inner = Some(new_inner);
+                Ok(())
+            } else {
+                Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
+            }
+        })
+    }
 
     fn empty_encrypted_internal_metadata(&mut self) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
@@ -230,4 +206,6 @@ impl PyShinkaiMessageBuilder {
         builder.external_metadata(receiver, sender)?;
         builder.build_to_string()
     }
+
+    
 }

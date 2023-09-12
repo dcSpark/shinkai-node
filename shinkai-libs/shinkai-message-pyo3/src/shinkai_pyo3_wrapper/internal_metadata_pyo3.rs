@@ -7,38 +7,18 @@ use super::encryption_method_pyo3::PyEncryptionMethod;
 #[pymethods]
 impl PyInternalMetadata {
     #[new]
-    #[args(kwargs = "**")]
-    fn new(kwargs: Option<&PyDict>) -> PyResult<Self> {
-        let mut inner = InternalMetadata {
-            sender_subidentity: String::new(),
-            recipient_subidentity: String::new(),
-            inbox: String::new(),
-            signature: String::new(),
-            encryption: EncryptionMethod::None, // Default is None
-        };
-
-        if let Some(kwargs) = kwargs {
-            for (key, val) in kwargs {
-                match key.to_string().as_str() {
-                    "sender_subidentity" => inner.sender_subidentity = val.extract()?,
-                    "recipient_subidentity" => inner.recipient_subidentity = val.extract()?,
-                    "inbox" => inner.inbox = val.extract()?,
-                    "signature" => inner.signature = val.extract()?,
-                    "encryption" => {
-                        let encryption_str: String = val.extract()?;
-                        inner.encryption = EncryptionMethod::from_str(&encryption_str);
-                    },
-                    _ => {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                            "Invalid keyword argument: {}",
-                            key
-                        )))
-                    }
-                }
-            }
-        }
-
-        Ok(Self { inner })
+    fn new(sender_subidentity: String, recipient_subidentity: String, inbox: String, signature: String, encryption: Py<PyEncryptionMethod>) -> PyResult<Self> {
+        Python::with_gil(|py| {
+            let encryption_ref = encryption.as_ref(py).borrow();
+            let inner = InternalMetadata {
+                sender_subidentity,
+                recipient_subidentity,
+                inbox,
+                signature,
+                encryption: encryption_ref.inner.clone(),
+            };
+            Ok(Self { inner })
+        })
     }
 
     #[getter]

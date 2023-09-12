@@ -11,33 +11,14 @@ use super::shinkai_message_pyo3::PyExternalMetadata;
 #[pymethods]
 impl PyExternalMetadata {
     #[new]
-    #[args(kwargs = "**")]
-    fn new(kwargs: Option<&PyDict>) -> PyResult<Self> {
-        let mut inner = ExternalMetadata {
-            sender: String::new(),
-            recipient: String::new(),
-            scheduled_time: String::new(),
-            signature: String::new(),
-            other: String::new(),
+    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String) -> PyResult<Self> {
+        let inner = ExternalMetadata {
+            sender,
+            recipient,
+            scheduled_time,
+            signature,
+            other,
         };
-
-        if let Some(kwargs) = kwargs {
-            for (key, val) in kwargs {
-                match key.to_string().as_str() {
-                    "sender" => inner.sender = val.extract()?,
-                    "recipient" => inner.recipient = val.extract()?,
-                    "scheduled_time" => inner.scheduled_time = val.extract()?,
-                    "signature" => inner.signature = val.extract()?,
-                    "other" => inner.other = val.extract()?,
-                    _ => {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                            "Invalid keyword argument: {}",
-                            key
-                        )))
-                    }
-                }
-            }
-        }
 
         Ok(Self { inner })
     }
