@@ -1,4 +1,5 @@
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::utils::job_prompts::JOB_INIT_PROMPT;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use reqwest::Identity;
@@ -352,21 +353,24 @@ impl AgentManager {
         }
     }
 
+    // When a new message is supplied to the job, the decision phase of the new step begins running
+    // (with its existing step history as context) which triggers calling the Agent's LLM.
     async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
-        // When a new message is supplied to the job, the decision phase of the new step begins running
-        // (with its existing step history as context) which triggers calling the Agent's LLM.
-
-        // Append current time as ISO8601 to step history
-        let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
-
-        // Prepare context/latest message
+        // Fetch the job
         let job_id = job.job_id().to_string();
         let full_job = { self.db.lock().await.get_job(&job_id).unwrap() };
+
+        // Fetch context, if this is the first message of the job (new job just created), prefill step history with the default initial prompt
         let mut context = full_job.step_history.clone();
+        if context.len() == 1 {
+            context.insert(0, JOB_INIT_PROMPT.clone());
+            self.db
+                .lock()
+                .await
+                .add_step_history(job_id.clone(), JOB_INIT_PROMPT.clone())?;
+        }
+
         let last_message = context.pop().ok_or(JobManagerError::ContentParseFailed)?.clone();
-        context.push(time_with_comment);
-        println!("decision_phase> context: {:?}", context);
-        println!("decision_phase> last message: {:?}", last_message);
 
         // Acquire Agent
         let agent_id = full_job.parent_agent_id;
@@ -378,6 +382,12 @@ impl AgentManager {
                 break;
             }
         }
+
+        // Append current time as ISO8601 to step history
+        let time_with_comment = format!("{}: {}", "Current datetime ", Utc::now().to_rfc3339());
+        context.push(time_with_comment);
+        println!("decision_phase> context: {:?}", context);
+        println!("decision_phase> last message: {:?}", last_message);
 
         // Execute LLM inferencing
         let response = match agent_found {

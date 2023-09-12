@@ -1,7 +1,8 @@
 pub mod args;
-pub mod environment;
-pub mod keys;
-pub mod printer;
 pub mod cli;
-pub mod qr_code_setup;
+pub mod environment;
+pub mod job_prompts;
+pub mod keys;
 pub mod logging_helpers;
+pub mod printer;
+pub mod qr_code_setup;

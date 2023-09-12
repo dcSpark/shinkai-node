@@ -280,14 +280,16 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn add_step_history(&self, job_id: String, step: String) -> Result<(), ShinkaiDBError> {
+    /// Adds a step to a job's step history
+    pub fn add_step_history(&self, job_id: String, step_output: String) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("{}_step_history", &job_id);
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
         let current_time = ShinkaiTime::generate_time_now();
-        self.db.put_cf(cf_handle, current_time.as_bytes(), step.as_bytes())?;
+        self.db
+            .put_cf(cf_handle, current_time.as_bytes(), step_output.as_bytes())?;
         Ok(())
     }
 
