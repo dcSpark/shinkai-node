@@ -225,6 +225,7 @@ impl AgentManager {
         }
     }
 
+    /// Processes a job creation message
     pub async fn handle_job_creation_schema(
         &mut self,
         job_creation: JobCreationInfo,
@@ -274,6 +275,7 @@ impl AgentManager {
         }
     }
 
+    /// Processes a job message and starts the decision phase
     pub async fn handle_job_message_schema(
         &mut self,
         message: ShinkaiMessage,
@@ -357,12 +359,16 @@ impl AgentManager {
         // Append current time as ISO8601 to step history
         let time_with_comment = format!("{}: {}", "Current datetime in RFC3339", Utc::now().to_rfc3339());
 
+        // Prepare context/latest message
         let job_id = job.job_id().to_string();
         let full_job = { self.db.lock().await.get_job(&job_id).unwrap() };
         let mut context = full_job.step_history.clone();
+        let last_message = context.pop().ok_or(JobManagerError::ContentParseFailed)?.clone();
         context.push(time_with_comment);
         println!("decision_phase> context: {:?}", context);
+        println!("decision_phase> last message: {:?}", last_message);
 
+        // Acquire Agent
         let agent_id = full_job.parent_agent_id;
         let mut agent_found = None;
         for agent in &self.agents {
@@ -373,11 +379,11 @@ impl AgentManager {
             }
         }
 
+        // Execute LLM inferencing
         let response = match agent_found {
             Some(agent) => {
                 // Create a new async task where the agent's execute method will run
                 // Note: agent execute run in a separate thread
-                let last_message = context.pop().ok_or(JobManagerError::ContentParseFailed)?.clone();
                 tokio::spawn(async move {
                     let mut agent = agent.lock().await;
                     agent.execute(last_message.to_string(), context, job_id).await;
