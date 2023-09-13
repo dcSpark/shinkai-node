@@ -6,6 +6,15 @@ use shinkai_message_primitives::{
     shinkai_utils::encryption::EncryptionMethod,
 };
 
+#[pymodule]
+fn shinkai_message_pyo3(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<PyShinkaiMessage>()?;
+    m.add_class::<PyExternalMetadata>()?;
+    m.add_class::<PyInternalMetadata>()?;
+    // Add any other classes or functions you want to expose to Python here
+    Ok(())
+}
+
 #[pyclass]
 pub struct PyShinkaiMessage {
     pub inner: ShinkaiMessage,

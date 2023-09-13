@@ -24,3 +24,4 @@ tmp_*.js
 qr_code_profile_*.png
 qr_code_device_*.png
 .venv/
+shinkai-libs/shinkai-message-pyo3/tests/__pycache__
