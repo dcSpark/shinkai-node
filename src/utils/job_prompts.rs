@@ -1,6 +1,84 @@
 use lazy_static::lazy_static;
 
 lazy_static! {
+    static ref task_bootstrap_prompt: String = String::from(
+        r#"
+    You are an assistant running in a system who only has access to a series of tools and your own knowledge. The user has asked you:
+
+    `What is the weather like today in New York?`
+
+    
+    If it is a task not pertaining to recent/current knowledge and you can respond respond directly without any external help, respond using the following EBNF and absolutely nothing else:
+
+    `"{" "answer" ":" string "}"`
+
+    If you do not have the ability to respond correctly yourself, it is your goal is to find the final tool that will provide you with the capabilities you need. 
+    Search to find tools which you can use, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("tool-search" ":" string) "}"
+
+    Only respond with an answer if you are not using any tools. Make sure the response matches the EBNF and includes absolutely nothing else. 
+
+    ```json
+    "#
+    );
+    static ref tool_selection_prompt: String = String::from(
+        r#"
+
+    You are an assistant running in a system who only has access to a series of tools and your own knowledge. The user has asked the system:
+
+    `What is the weather like today in New York?`
+
+    Here are up to 10 of the most relevant tools available:
+    1. Name: Weather Fetch - Description: Requests weather via an API given a city name.
+    2. Name: Country Population - Description: Provides population numbers given a country name.
+    3. Name: HTTP GET - Description: Issues an http get request to a specified URL. Note: Only fetch URLs from user's input or from output of other tools.
+
+    It is your goal to select the final tool that will enable the system to accomplish the user's task. The system may end up needing to chain multiple tools to acquire all needed info/data, but the goal right now is to find the final tool.
+    Select the name of the tool from the list above that fulfill this, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("tool" ":" string) "}"
+
+    If none of the tools match explain what the issue is by responding using the following EBNF and absolutely nothing else:
+
+    "{" ("error" ":" string) "}"
+
+
+    ```json
+
+
+
+        "#
+    );
+    static ref tool_ebnf_prompt: String = String::from(
+        r#"
+
+    You are an assistant running in a system who only has access to a series of tools and your own knowledge. The user has asked the system:
+
+    `What is the weather like today in New York?`
+
+    The system has selected the following tool to be used:
+
+    Name: Weather Fetch
+    Description: Requests weather via an API given a city name.
+    Tool Input EBNF: ...
+    Tool Output EBNF: ...
+
+    Your goal is to decide whether you have all of the information you need to fill out the Tool Input EBNF.
+
+    If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("prepared" ":" true) "}"
+    
+    If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data by responding using the following EBNF and absolutely nothing else:
+
+    "{" ("tool-search" ":" string) "}"
+
+    ```json
+
+
+    "#
+    );
     pub static ref JOB_INIT_PROMPT: String = String::from(
         r#"You are an agent who is currently running a job which receives task requests as messages, and outputs new messages that have tool calls which will be executed. When you respond, you must specify a list of one or more messages, with only the messages returned, no explanation or any other text. But make sure to explain in the content of the message the included results of the tools, and include the sub variable like `$1`.
 
