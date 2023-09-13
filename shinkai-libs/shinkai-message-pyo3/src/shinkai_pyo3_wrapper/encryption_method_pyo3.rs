@@ -2,11 +2,26 @@ use std::str::FromStr;
 use pyo3::exceptions::PyValueError;
 use pyo3::{ToPyObject, PyObject, Python, PyErr, pyclass};
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
+use pyo3::prelude::*;
 
 #[pyclass]
 #[derive(Clone)]
 pub struct PyEncryptionMethod {
     pub inner: EncryptionMethod,
+}
+
+#[pymethods]
+impl PyEncryptionMethod {
+    #[new]
+    #[args(value = "\"None\"")]
+    pub fn new(value: &str) -> Self {
+        let inner = match value {
+            "None" => EncryptionMethod::None,
+            // Add other cases here for other possible values of EncryptionMethod
+            _ => panic!("Invalid value for EncryptionMethod"),
+        };
+        PyEncryptionMethod { inner }
+    }
 }
 
 impl FromStr for PyEncryptionMethod {

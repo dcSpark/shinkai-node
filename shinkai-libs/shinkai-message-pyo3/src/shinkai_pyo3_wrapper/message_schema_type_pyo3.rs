@@ -12,17 +12,17 @@ pub struct PyMessageSchemaType {
 #[pymethods]
 impl PyMessageSchemaType {
     #[new]
-    fn new(schema_type: String) -> PyResult<Self> {
+    pub fn new(schema_type: String) -> PyResult<Self> {
         let inner = MessageSchemaType::from_str(&schema_type)
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid schema type"))?;
         Ok(Self { inner })
     }
 
-    fn to_str(&self) -> PyResult<&'static str> {
+    pub fn to_str(&self) -> PyResult<&'static str> {
         Ok(self.inner.to_str())
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 }

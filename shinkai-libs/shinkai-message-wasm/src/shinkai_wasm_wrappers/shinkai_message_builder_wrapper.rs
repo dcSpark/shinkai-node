@@ -1,5 +1,6 @@
 use crate::shinkai_wasm_wrappers::{shinkai_message_wrapper::ShinkaiMessageWrapper, wasm_shinkai_message::SerdeWasmMethods, shinkai_wasm_error::{WasmErrorWrapper, ShinkaiWasmError}};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+
 use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{shinkai_utils::{encryption::{string_to_encryption_static_key, string_to_encryption_public_key, encryption_public_key_to_string, EncryptionMethod}, signatures::{string_to_signature_secret_key, signature_public_key_to_string}, shinkai_message_builder::{ShinkaiMessageBuilder, ProfileName}}, shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType, RegistrationCodeRequest, MessageSchemaType, APIGetMessagesFromInboxRequest, APIAddAgentRequest, APIReadUpToTimeRequest, JobScope, JobCreation, JobMessage}, schemas::{registration_code::RegistrationCode, inbox_name::InboxName, agents::serialized_agent::SerializedAgent}};

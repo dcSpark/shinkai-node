@@ -2109,10 +2109,16 @@ dependencies = [
 name = "shinkai_message_pyo3"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
+ "hex",
  "maturin",
  "pyo3",
+ "rand 0.8.5",
+ "rand_os",
+ "serde",
  "serde_json",
  "shinkai_message_primitives",
+ "x25519-dalek",
 ]
 
 [[package]]
