@@ -13,7 +13,7 @@ use lazy_static::lazy_static;
 // 3b. If it can then we mark this analysis step as "prepared" and go back to 3a for the next bootstrap plan task.
 // 3c. If not we tell the LLM to search for tools that would work for this task.
 // 4a. We return a list of tools to it, and ask it to either select one, or return an error message.
-// 4b. If it returns an error message, it means the plan can not be completed/Agent has failed, and we exit/ send message back to user with the error message.
+// 4b. If it returns an error message, it means the plan can not be completed/Agent has failed, and we exit/send message back to user with the error message (15).
 // 4c. If it chooses one, we fetch the tool info including the input EBNF.
 // 5a. We now show the input EBNF to the LLM, and ask it whether or not it has all the needed knowledge + potential data in the current context to be able to use the tool. (In either case  after the LLM chooses)
 // 5b. The LLM says it has all the needed info, then we add the tool's name/input EBNF to the current context, and either go back to 3a for the next bootstrap plan task if the task is now finished/prepared, or go to 6 if this tool was searched for to find an input for another tool.
@@ -28,6 +28,7 @@ use lazy_static::lazy_static;
 // 12. With the tool executed, we now inference the LLM with just the context + the input EBNF of the next tool that it needs to fill out (we can skip user's request text).
 // 13. We iterate through the entire execution plan (looping back/forth between 11/12) and arrive at the end with a context filled with all relevant data needed to answer the user's initial request.
 // 14. We inference the LLM one last time, providing it just the context + list of executed tools, and telling it to respond to the user's request by using/summarizing the results.
+// 15. We add a Shinkai message into the job's inbox with the LLM's response, allowing the user to see the result.
 //
 //
 //
