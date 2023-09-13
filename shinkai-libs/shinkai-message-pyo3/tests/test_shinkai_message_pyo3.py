@@ -1,50 +1,39 @@
 import unittest
 import shinkai_message_pyo3
+import json
 
 class TestShinkaiMessagePyO3(unittest.TestCase):
-    def test_shinkai_message(self):
-        # Create a ShinkaiMessage object
-        message = shinkai_message_pyo3.PyShinkaiMessage()
+    def test_ack_message(self):
+        my_encryption_secret_key = "d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159"
+        my_signature_secret_key = "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119"
+        receiver_public_key = "798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679"
+        sender = "@@sender.shinkai"
+        receiver = "@@receiver.shinkai"
 
-        # Set the fields of the message
-        message.body = shinkai_message_pyo3.PyMessageBody()
-        message.external_metadata = shinkai_message_pyo3.PyExternalMetadata()
-        message.encryption = shinkai_message_pyo3.PyEncryptionMethod()
-        message.version = shinkai_message_pyo3.PyShinkaiVersion()
-
-        # Test that the fields were set correctly
-        self.assertIsInstance(message.body, shinkai_message_pyo3.PyMessageBody)
-        self.assertIsInstance(message.external_metadata, shinkai_message_pyo3.PyExternalMetadata)
-        self.assertIsInstance(message.encryption, shinkai_message_pyo3.PyEncryptionMethod)
-        self.assertIsInstance(message.version, shinkai_message_pyo3.PyShinkaiVersion)
-
-         # Print a message to stdout
-        print("All tests passed for shinkai_message_pyo3!")
-
-    def test_terminate_message(self):
-        # Define some test inputs
-        my_encryption_secret_key = "test_encryption_key"
-        my_signature_secret_key = "test_signature_key"
-        receiver_public_key = "test_receiver_key"
-        sender = "test_sender"
-        receiver = "test_receiver"
-
-        # Call terminate_message with the test inputs
-        result = shinkai_message_pyo3.terminate_message(
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.ack_message(
             my_encryption_secret_key,
             my_signature_secret_key,
             receiver_public_key,
             sender,
-            receiver,
+            receiver
         )
 
-        # Check that terminate_message returned a string
-        self.assertIsInstance(result, str)
+        # print("Result of ack_message:", result)
 
-        # Optionally, if you know what the output should look like, you can check that the output is correct
-        # For example, if you know that the output should be a JSON string, you can parse it and check its contents
-        # result_json = json.loads(result)
-        # self.assertEqual(result_json["some_field"], "some_value")
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_raw_content"], "ACK")
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_content_schema"], "Empty")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["sender_subidentity"], "")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["recipient_subidentity"], "")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["inbox"], "inbox::@@receiver.shinkai::@@sender.shinkai::false")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["encryption"], "None")
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@sender.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@receiver.shinkai")
+        self.assertEqual(result_json["encryption"], "None")
+        self.assertEqual(result_json["version"], "V1_0")
 
 if __name__ == '__main__':
     unittest.main()
