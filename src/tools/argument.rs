@@ -53,7 +53,7 @@ impl ToolArgument {
             let ebnf = input_arg.labled_ebnf();
 
             // ebnf_result.push_str(&format!(r#""{}": {}, "#, name, name));
-            ebnf_result.push_str(&format!(r#""tool": {}, "#, name));
+            ebnf_result.push_str(&format!(r#""{}": {}, "#, name, name));
 
             // Add descriptions to argument definitions if set to true
             if add_arg_descriptions {
