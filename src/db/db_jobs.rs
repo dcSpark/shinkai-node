@@ -193,7 +193,6 @@ impl ShinkaiDB {
         let cf_job_id_name = format!("jobtopic_{}", job_id);
         let cf_job_id_scope_name = format!("{}_scope", job_id);
         let cf_job_id_step_history_name = format!("{}_step_history", job_id);
-        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
 
         // Get the needed cf handles
         let cf_job_id_scope = self
@@ -208,12 +207,6 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_job_id_step_history_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
-        let cf_job_id_unprocessed_messages =
-            self.db
-                .cf_handle(&cf_job_id_unprocessed_messages_name)
-                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
-                    cf_job_id_unprocessed_messages_name,
-                ))?;
 
         // Begin fetching the data from the DB
         let scope_value = self
@@ -261,13 +254,7 @@ impl ShinkaiDB {
         }
 
         // Reads all of the unprocessed messages by iterating
-        let mut unprocessed_messages: Vec<String> = Vec::new();
-        let iter = self.db.iterator_cf(cf_job_id_unprocessed_messages, IteratorMode::Start);
-        for item in iter {
-            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-            let message = std::str::from_utf8(&value)?.to_string();
-            unprocessed_messages.push(message);
-        }
+        let unprocessed_messages = self.get_unprocessed_messages(job_id)?;
 
         Ok((
             scope,
@@ -316,6 +303,69 @@ impl ShinkaiDB {
         Ok(jobs)
     }
 
+    /// Fetches all unprocessed messages for a specific Job from the DB
+    fn get_unprocessed_messages(&self, job_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
+        // Get the iterator
+        let iter = self.get_unprocessed_messages_iterator(job_id)?;
+
+        // Reads all of the unprocessed messages by iterating
+        let mut unprocessed_messages: Vec<String> = Vec::new();
+        for item in iter {
+            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let message = std::str::from_utf8(&value)?.to_string();
+            unprocessed_messages.push(message);
+        }
+
+        Ok(unprocessed_messages)
+    }
+
+    /// Fetches an iterator over all unprocessed messages for a specific Job from the DB
+    fn get_unprocessed_messages_iterator<'a>(
+        &'a self,
+        job_id: &str,
+    ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, ShinkaiDBError> {
+        // Get the needed cf handle
+        let cf_job_id_unprocessed_messages = self._get_unprocessed_messages_handle(job_id)?;
+
+        // Get the iterator
+        let iter = self.db.iterator_cf(cf_job_id_unprocessed_messages, IteratorMode::Start);
+
+        Ok(iter)
+    }
+
+    /// Removes the oldest unprocessed message for a specific Job from the DB
+    pub fn remove_oldest_unprocessed_message(&self, job_id: &str) -> Result<(), ShinkaiDBError> {
+        // Get the needed cf handle
+        let cf_job_id_unprocessed_messages = self._get_unprocessed_messages_handle(job_id)?;
+
+        // Get the iterator
+        let mut iter = self.get_unprocessed_messages_iterator(job_id)?;
+
+        // Get the oldest message (first item in the iterator)
+        if let Some(Ok((key, _))) = iter.next() {
+            // Remove the oldest message from the DB
+            self.db.delete_cf(cf_job_id_unprocessed_messages, key)?;
+        }
+
+        Ok(())
+    }
+
+    /// Fetches the column family handle for unprocessed messages of a specific Job
+    fn _get_unprocessed_messages_handle(&self, job_id: &str) -> Result<&rocksdb::ColumnFamily, ShinkaiDBError> {
+        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", job_id);
+
+        // Get the needed cf handle
+        let cf_job_id_unprocessed_messages =
+            self.db
+                .cf_handle(&cf_job_id_unprocessed_messages_name)
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
+                    cf_job_id_unprocessed_messages_name,
+                ))?;
+
+        Ok(cf_job_id_unprocessed_messages)
+    }
+
+    /// Updates the Job to being finished
     pub fn update_job_to_finished(&self, job_id: String) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("jobtopic_{}", &job_id);
         let cf_handle = self
