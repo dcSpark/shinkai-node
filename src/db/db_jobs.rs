@@ -36,6 +36,7 @@ impl JobInfo {
     }
 }
 
+// TODO: Replace all db writes with the profile-bound interface
 impl ShinkaiDB {
     pub fn create_new_job(&mut self, job_id: String, agent_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
@@ -297,6 +298,7 @@ impl ShinkaiDB {
         Ok(jobs)
     }
 
+    /// Fetches all jobs under a specific Agent
     pub fn get_agent_jobs(&self, agent_id: String) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_name = format!("agentid_{}", &agent_id);
         let cf_handle = self
