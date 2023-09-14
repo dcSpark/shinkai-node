@@ -29,10 +29,24 @@ fn main() {
     let is_activated = Arc::new(Mutex::new(true));
     let is_activated_clone = Arc::clone(&is_activated);
 
+    // Create a new WhisperContext
+    let ctx = Arc::new(Mutex::new(
+        WhisperContext::new("./models/ggml-tiny.bin").expect("failed to load model"),
+    ));
+    let ctx_clone = Arc::clone(&ctx);
+
     // Start a new thread for audio capture
     thread::spawn(move || {
         let host = cpal::default_host();
-        let device = host.default_input_device().expect("Failed to get default input device");
+        let device = host
+            .input_devices()
+            .unwrap()
+            .find(|d| d.name().unwrap() == "MacBook Pro Microphone")
+            .expect("Failed to get MacBook Pro Microphone");
+
+        println!("Selected input device: {}", device.name().unwrap());
+        println!("Default input config: {:?}", device.default_input_config().unwrap());
+
         let config = device
             .default_input_config()
             .expect("Failed to get default input config");
@@ -40,9 +54,9 @@ fn main() {
         let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
         match config.sample_format() {
-            cpal::SampleFormat::F32 => run::<f32>(&device, &config.into(), err_fn, is_activated_clone),
-            cpal::SampleFormat::I16 => run::<i16>(&device, &config.into(), err_fn, is_activated_clone),
-            cpal::SampleFormat::U16 => run::<u16>(&device, &config.into(), err_fn, is_activated_clone),
+            cpal::SampleFormat::F32 => run::<f32>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
+            cpal::SampleFormat::I16 => run::<i16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
+            cpal::SampleFormat::U16 => run::<u16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
             _ => panic!("unsupported sample format"),
         }
     });
@@ -113,48 +127,73 @@ fn main() {
 
 fn run<T>(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     err_fn: fn(cpal::StreamError),
     is_activated: Arc<Mutex<bool>>,
+    ctx: Arc<Mutex<WhisperContext>>,
 ) where
     T: cpal::Sample + cpal::SizedSample + Into<f32>,
 {
+    // Testing code to check that the audio capture is working
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: config.sample_rate.0,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = hound::WavWriter::create("../../output.wav", spec).unwrap();
+    let config_clone = config.clone();
+
+    // Create a buffer to accumulate audio data
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+
+    // Normal Code
     let stream = device
         .build_input_stream(
-            config,
+            &config_clone,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
                 let is_activated = is_activated.lock().unwrap();
                 if *is_activated {
-                    // Convert the audio data to f32
-                    let audio_data: Vec<f32> = data.iter().map(|sample| (*sample).into()).collect();
+                    // Convert the audio data to f32 and add it to the buffer
+                    let mut buffer = buffer.lock().unwrap();
+                    buffer.extend(data.iter().map(|sample| (*sample).into()));
 
-                    // Create a new WhisperContext and State for each call to state.full()
-                    let ctx = WhisperContext::new("./models/ggml-tiny.bin").expect("failed to load model");
-                    let mut state = ctx.create_state().expect("failed to create state");
+                    // If the buffer has more than 2-3 seconds of audio data, process it
+                    if buffer.len() >= (2 * config.sample_rate.0 as usize) {
 
-                    // Create a new FullParams instance for each call to state.full()
-                    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-                    params.set_n_threads(1);
-                    // Disable anything that prints to stdout.
-                    params.set_print_special(false);
-                    params.set_print_progress(false);
-                    params.set_print_realtime(false);
-                    params.set_print_timestamps(false);
+                        let buffer_clone = buffer.clone();
+                        for sample in buffer_clone {
+                            let sample_f32: f32 = sample.into();
+                            writer.write_sample(sample_f32).unwrap();
+                        }
+                        let ctx = ctx.lock().unwrap();
+                        let mut state = ctx.create_state().expect("failed to create state");
 
-                    // Run the model
-                    state.full(params, &audio_data).expect("failed to run model");
+                        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+                        params.set_n_threads(1);
+                        params.set_print_special(false);
+                        params.set_print_progress(false);
+                        params.set_print_realtime(false);
+                        params.set_print_timestamps(false);
 
-                    // Fetch the results
-                    let num_segments = state.full_n_segments().expect("failed to get number of segments");
-                    for i in 0..num_segments {
-                        let segment = state.full_get_segment_text(i).expect("failed to get segment");
-                        let start_timestamp = state
-                            .full_get_segment_t0(i)
-                            .expect("failed to get segment start timestamp");
-                        let end_timestamp = state
-                            .full_get_segment_t1(i)
-                            .expect("failed to get segment end timestamp");
-                        println!("[{} - {}]: {}", start_timestamp, end_timestamp, segment);
+                        state.full(params, &buffer).expect("failed to run model");
+
+                        let num_segments = state.full_n_segments().expect("failed to get number of segments");
+                        for i in 0..num_segments {
+                            let segment = state.full_get_segment_text(i).expect("failed to get segment");
+                            println!("Segment {}: {}", i, segment);
+
+                            let start_timestamp = state
+                                .full_get_segment_t0(i)
+                                .expect("failed to get segment start timestamp");
+                            let end_timestamp = state
+                                .full_get_segment_t1(i)
+                                .expect("failed to get segment end timestamp");
+                            println!("[{} - {}]: {}", start_timestamp, end_timestamp, segment);
+                        }
+
+                        // Clear the buffer
+                        buffer.clear();
                     }
                 }
             },
@@ -164,7 +203,7 @@ fn run<T>(
         .unwrap();
     stream.play().unwrap();
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }
 

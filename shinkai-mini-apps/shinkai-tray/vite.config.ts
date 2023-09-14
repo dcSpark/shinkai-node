@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // https://vitejs.dev/config/
-export default defineConfig(async () => ({
+export default defineConfig(() => ({
   plugins: [react()],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
@@ -13,6 +13,10 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
+    watch: {
+      // Exclude output.wav from being watched
+      ignored: ['**/output.wav']
+    },
   },
   // 3. to make use of `TAURI_DEBUG` and other env variables
   // https://tauri.studio/v1/api/config#buildconfig.beforedevcommand
