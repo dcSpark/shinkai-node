@@ -51,33 +51,35 @@ impl ShinkaiDB {
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
         let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
         let cf_job_id_unread_list_name = format!("job_inbox::{}::false_unread_list", &job_id);
+        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
 
-        // Check that the profile name exists in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesIdentityType
+        // Check that the cf handles exist, and create them
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
             || self.db.cf_handle(&cf_job_id_step_history_name).is_some()
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
             || self.db.cf_handle(&cf_job_id_perms_name).is_some()
             || self.db.cf_handle(&cf_job_id_unread_list_name).is_some()
+            || self.db.cf_handle(&cf_job_id_unprocessed_messages_name).is_some()
         {
-            return Err(ShinkaiDBError::ProfileNameAlreadyExists);
+            return Err(ShinkaiDBError::JobAlreadyExists(cf_job_id_name.to_string()));
         }
 
         if self.db.cf_handle(&cf_agent_id_name).is_none() {
             self.db.create_cf(&cf_agent_id_name, &cf_opts)?;
         }
-
         self.db.create_cf(&cf_job_id_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_scope_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_step_history_name, &cf_opts)?;
         self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_unread_list_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_unprocessed_messages_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
 
-        // Generate time now used as a key. it should be safe because it's generated here so it shouldn't be duplicated (presumably)
+        // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated (presumably)
         let current_time = ShinkaiTime::generate_time_now();
         let scope_bytes = scope.to_bytes()?;
 
@@ -122,6 +124,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    /// Fetches a job from the DB
     pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
         let (
             scope,
@@ -130,7 +133,7 @@ impl ShinkaiDB {
             parent_agent_id,
             conversation_inbox,
             step_history,
-            unprocessed_messges,
+            unprocessed_messages,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -142,11 +145,13 @@ impl ShinkaiDB {
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
+            unprocessed_messages,
         };
 
         Ok(job)
     }
 
+    /// Fetches a job from the DB as a Box<dyn JobLik>
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
         let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _, unprocessed_messages) =
             self.get_job_data(job_id, false)?;
@@ -160,6 +165,7 @@ impl ShinkaiDB {
             scope,
             conversation_inbox_name: conversation_inbox,
             step_history: Vec::new(), // Empty step history for JobLike
+            unprocessed_messages,
         };
 
         Ok(Box::new(job))
@@ -273,6 +279,7 @@ impl ShinkaiDB {
         ))
     }
 
+    /// Fetches all jobs
     pub fn get_all_jobs(&self) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_handle = self
             .db

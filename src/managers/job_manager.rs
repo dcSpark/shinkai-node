@@ -36,23 +36,23 @@ pub trait JobLike: Send + Sync {
 
 #[derive(Clone, Debug)]
 pub struct Job {
-    // based on uuid
+    // Based on uuid
     pub job_id: String,
     // Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
     pub datetime_created: String,
-    // determines if the job is finished or not
+    // Marks if the job is finished or not
     pub is_finished: bool,
-    // identity of the parent agent. We just use a full identity name for simplicity
+    // Identity of the parent agent. We just use a full identity name for simplicity
     pub parent_agent_id: String,
-    // what storage buckets and/or documents are accessible to the LLM via vector search
-    // and/or direct querying based off bucket name/key
+    // What VectorResources the Job has access to when performing vector searches
     pub scope: JobScope,
-    // an inbox where messages to the agent from the user and messages from the agent are stored,
+    // An inbox where messages to the agent from the user and messages from the agent are stored,
     // enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
-    // A step history (an ordered list of all messages submitted to the LLM which triggered a step to execute,
-    // including everything in the conversation inbox + any messages from the agent recursively calling itself or otherwise)
+    // The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
     pub step_history: Vec<String>,
+    // An ordered list of the latest messages sent to the job which are yet to be processed
+    pub unprocessed_messages: Vec<String>,
 }
 
 impl JobLike for Job {
@@ -287,7 +287,7 @@ impl AgentManager {
             let mut shinkai_db = self.db.lock().await;
             println!("handle_job_message_schema> job_message: {:?}", job_message);
             shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
-            // shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
+            shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
 
             //
             // Todo: Implement unprocessed messages logic
