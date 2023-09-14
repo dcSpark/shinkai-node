@@ -1,6 +1,7 @@
-use super::{agent::Agent, IdentityManager};
+use super::IdentityManager;
+use crate::agent::agent::Agent;
+use crate::agent::job::{Job, JobId, JobLike};
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::job::job::{Job, JobId, JobLike};
 use chrono::Utc;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use shinkai_message_primitives::{

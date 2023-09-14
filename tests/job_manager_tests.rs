@@ -32,7 +32,7 @@ mod tests {
             utils::hash_string,
         },
     };
-    use shinkai_node::job::job::{Job, JobId, JobLike};
+    use shinkai_node::agent::job::{Job, JobId, JobLike};
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{

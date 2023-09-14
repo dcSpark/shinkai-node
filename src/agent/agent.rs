@@ -1,4 +1,4 @@
-use crate::managers::providers::Provider;
+use super::providers::Provider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{
@@ -145,7 +145,10 @@ impl Agent {
 }
 
 impl Agent {
-    pub fn from_serialized_agent(serialized_agent: SerializedAgent, sender: mpsc::Sender<(Vec<JobPreMessage>, String)>) -> Self {
+    pub fn from_serialized_agent(
+        serialized_agent: SerializedAgent,
+        sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
+    ) -> Self {
         Self::new(
             serialized_agent.id,
             serialized_agent.full_identity_name,
@@ -236,7 +239,9 @@ mod tests {
         );
 
         tokio::spawn(async move {
-            agent.execute("Test".to_string(), context, "some_job_1".to_string()).await;
+            agent
+                .execute("Test".to_string(), context, "some_job_1".to_string())
+                .await;
         });
 
         let val = tokio::time::timeout(std::time::Duration::from_millis(600), rx.recv()).await;
