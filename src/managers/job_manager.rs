@@ -1,5 +1,5 @@
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::utils::job_prompts::JOB_INIT_PROMPT;
+use crate::utils::job_prompts::PromptGenerator;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use reqwest::Identity;
@@ -287,10 +287,28 @@ impl AgentManager {
             let mut shinkai_db = self.db.lock().await;
             println!("handle_job_message_schema> job_message: {:?}", job_message);
             shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
-            shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
+            // shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
+
+            //
+            // Todo: Implement unprocessed messages logic
+            // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
+            // However if unprocessed message count  == 0, then:
+            // 0. You add the unprocessed message to the list in the DB
+            // 1. Start a while loop where every time you fetch the unprocessed messages for the job from the DB and check if there's >= 1
+            // 2. You read the first/front unprocessed message (not pop from the back)
+            // 3. You start analysis phase to generate the analysis plan.
+            // 4. You then take the analysis plan and process the execution phase.
+            // 5. Once execution phase succeeds, you then delete the message from the unprocessed list in the DB
+            //    and take the result and append it both to the Job inbox and step history
+            // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially
+
+            //
+            // let current_unprocessed_message_count = ...
+            shinkai_db.add_to_unprocessed_messages_list(job.job_id().to_string(), job_message.content.clone())?;
+
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
-            let _ = self.decision_phase(&**job).await?;
+            // let _ = self.decision_phase(&**job).await?;
             return Ok(job_message.job_id.clone());
         } else {
             return Err(JobManagerError::JobNotFound);
@@ -362,18 +380,18 @@ impl AgentManager {
 
         // Fetch context, if this is the first message of the job (new job just created), prefill step history with the default initial prompt
         let mut context = full_job.step_history.clone();
-        if context.len() == 1 {
-            context.insert(0, JOB_INIT_PROMPT.clone());
-            self.db
-                .lock()
-                .await
-                .add_step_history(job_id.clone(), JOB_INIT_PROMPT.clone())?;
-        }
+        // if context.len() == 1 {
+        //     context.insert(0, JOB_INIT_PROMPT.clone());
+        //     self.db
+        //         .lock()
+        //         .await
+        //         .add_step_history(job_id.clone(), JOB_INIT_PROMPT.clone())?;
+        // }
 
         let last_message = context.pop().ok_or(JobManagerError::ContentParseFailed)?.clone();
 
         // Acquire Agent
-        let agent_id = full_job.parent_agent_id;
+        let agent_id = full_job.parent_agent_id.clone();
         let mut agent_found = None;
         for agent in &self.agents {
             let locked_agent = agent.lock().await;
@@ -383,32 +401,37 @@ impl AgentManager {
             }
         }
 
+        match agent_found {
+            Some(agent) => self.decision_iteration(full_job, context, last_message, agent).await,
+            None => Err(Box::new(JobManagerError::AgentNotFound)),
+        }
+    }
+
+    async fn decision_iteration(
+        &self,
+        job: Job,
+        mut context: Vec<String>,
+        last_message: String,
+        agent: Arc<Mutex<Agent>>,
+    ) -> Result<(), Box<dyn Error>> {
         // Append current time as ISO8601 to step history
         let time_with_comment = format!("{}: {}", "Current datetime ", Utc::now().to_rfc3339());
         context.push(time_with_comment);
-        println!("decision_phase> context: {:?}", context);
-        println!("decision_phase> last message: {:?}", last_message);
+        println!("decision_iteration> context: {:?}", context);
+        println!("decision_iteration> last message: {:?}", last_message);
 
         // Execute LLM inferencing
-        let response = match agent_found {
-            Some(agent) => {
-                // Create a new async task where the agent's execute method will run
-                // Note: agent execute run in a separate thread
-                tokio::spawn(async move {
-                    let mut agent = agent.lock().await;
-                    agent.execute(last_message.to_string(), context, job_id).await;
-                })
-                .await?;
-                Ok(())
-            }
-            None => Err(Box::new(JobManagerError::AgentNotFound)),
-        };
-        println!("decision_phase> response: {:?}", response);
+        let response = tokio::spawn(async move {
+            let mut agent = agent.lock().await;
+            agent.execute(last_message, context, job.job_id().to_string()).await;
+        })
+        .await?;
+        println!("decision_iteration> response: {:?}", response);
 
         // TODO: update this fn so it allows for recursion
         // let is_valid = self.is_decision_phase_output_valid().await;
         // if is_valid == false {
-        //     self.decision_phase(job).await?;
+        //     self.decision_iteration(job, context, last_message, agent).await?;
         // }
 
         // The expected output from the LLM is one or more `Premessage`s (a message that potentially

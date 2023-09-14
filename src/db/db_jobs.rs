@@ -123,8 +123,15 @@ impl ShinkaiDB {
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<Job, ShinkaiDBError> {
-        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, step_history) =
-            self.get_job_data(job_id, true)?;
+        let (
+            scope,
+            is_finished,
+            datetime_created,
+            parent_agent_id,
+            conversation_inbox,
+            step_history,
+            unprocessed_messges,
+        ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
         let job = Job {
@@ -141,7 +148,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
-        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _) =
+        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _, unprocessed_messages) =
             self.get_job_data(job_id, false)?;
 
         // Construct the job
@@ -158,15 +165,30 @@ impl ShinkaiDB {
         Ok(Box::new(job))
     }
 
+    /// Fetches data for a specific Job from the DB
     fn get_job_data(
         &self,
         job_id: &str,
         fetch_step_history: bool,
-    ) -> Result<(JobScope, bool, String, String, InboxName, Option<Vec<String>>), ShinkaiDBError> {
+    ) -> Result<
+        (
+            JobScope,
+            bool,
+            String,
+            String,
+            InboxName,
+            Option<Vec<String>>,
+            Vec<String>,
+        ),
+        ShinkaiDBError,
+    > {
+        // Define cf names for all data we need to fetch
         let cf_job_id_name = format!("jobtopic_{}", job_id);
         let cf_job_id_scope_name = format!("{}_scope", job_id);
         let cf_job_id_step_history_name = format!("{}_step_history", job_id);
+        let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
 
+        // Get the needed cf handles
         let cf_job_id_scope = self
             .db
             .cf_handle(&cf_job_id_scope_name)
@@ -175,7 +197,18 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_job_id_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
+        let cf_job_id_step_history = self
+            .db
+            .cf_handle(&cf_job_id_step_history_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
+        let cf_job_id_unprocessed_messages =
+            self.db
+                .cf_handle(&cf_job_id_unprocessed_messages_name)
+                .ok_or(ShinkaiDBError::ColumnFamilyNotFound(
+                    cf_job_id_unprocessed_messages_name,
+                ))?;
 
+        // Begin fetching the data from the DB
         let scope_value = self
             .db
             .get_cf(cf_job_id_scope, job_id)?
@@ -187,11 +220,6 @@ impl ShinkaiDB {
             .get_cf(cf_job_id, JobInfo::IsFinished.to_str().as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
-
-        let cf_job_id_step_history = self
-            .db
-            .cf_handle(&cf_job_id_step_history_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
 
         let datetime_created_value = self
             .db
@@ -207,7 +235,6 @@ impl ShinkaiDB {
 
         let mut conversation_inbox: Option<InboxName> = None;
         let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
-
         let conversation_inbox_value = self
             .db
             .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
@@ -215,6 +242,8 @@ impl ShinkaiDB {
         let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
         conversation_inbox = Some(InboxName::new(inbox_name)?);
 
+        // Reads all of the step history by iterating
+        let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
         if let Some(ref mut step_history) = step_history {
             let iter = self.db.iterator_cf(cf_job_id_step_history, IteratorMode::Start);
             for item in iter {
@@ -224,6 +253,15 @@ impl ShinkaiDB {
             }
         }
 
+        // Reads all of the unprocessed messages by iterating
+        let mut unprocessed_messages: Vec<String> = Vec::new();
+        let iter = self.db.iterator_cf(cf_job_id_unprocessed_messages, IteratorMode::Start);
+        for item in iter {
+            let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+            let message = std::str::from_utf8(&value)?.to_string();
+            unprocessed_messages.push(message);
+        }
+
         Ok((
             scope,
             is_finished,
@@ -231,6 +269,7 @@ impl ShinkaiDB {
             parent_agent_id,
             conversation_inbox.unwrap(),
             step_history,
+            unprocessed_messages,
         ))
     }
 
@@ -280,16 +319,27 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Adds a step to a job's step history
-    pub fn add_step_history(&self, job_id: String, step_output: String) -> Result<(), ShinkaiDBError> {
+    /// Adds a message to a job's unprocessed messages list
+    pub fn add_to_unprocessed_messages_list(&self, job_id: String, message: String) -> Result<(), ShinkaiDBError> {
+        let cf_name = format!("{}_unprocessed_messages", &job_id);
+        let cf_handle = self
+            .db
+            .cf_handle(&cf_name)
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
+        let current_time = ShinkaiTime::generate_time_now();
+        self.db.put_cf(cf_handle, current_time.as_bytes(), message.as_bytes())?;
+        Ok(())
+    }
+
+    /// Adds a String to a job's step history
+    pub fn add_step_history(&self, job_id: String, content: String) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("{}_step_history", &job_id);
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
         let current_time = ShinkaiTime::generate_time_now();
-        self.db
-            .put_cf(cf_handle, current_time.as_bytes(), step_output.as_bytes())?;
+        self.db.put_cf(cf_handle, current_time.as_bytes(), content.as_bytes())?;
         Ok(())
     }
 
