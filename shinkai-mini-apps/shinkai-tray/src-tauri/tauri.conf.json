@@ -1,18 +1,21 @@
 {
   "build": {
-    "beforeDevCommand": "trunk serve",
-    "beforeBuildCommand": "trunk build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
     "distDir": "../dist",
-    "withGlobalTauri": true
+    "withGlobalTauri": false
   },
   "package": {
     "productName": "shinkai-tray",
-    "version": "0.1.0"
+    "version": "0.0.0"
   },
   "tauri": {
     "allowlist": {
       "all": false,
+      "globalShortcut": {
+        "all": true
+      },
       "shell": {
         "all": false,
         "open": true
@@ -35,16 +38,14 @@
     },
     "windows": [
       {
+        "title": "Main",
         "fullscreen": false,
         "resizable": true,
-        "title": "shinkai-tray",
-        "width": 800,
-        "height": 600,
-        "minWidth": 800,
-        "minHeight": 600
+        "width": 400,
+        "height": 300
       }
     ],
-    "systemTray": {
+     "systemTray": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true
     }

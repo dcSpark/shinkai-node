@@ -13,9 +13,11 @@ edition = "2021"
 tauri-build = { version = "1.4", features = [] }
 
 [dependencies]
-tauri = { version = "1.4", features = [ "system-tray", "shell-open"] }
+tauri = { version = "1.4", features = [ "global-shortcut-all", "system-tray", "shell-open"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+whisper-rs = "0.8.0"
+cpal = { version = "0.15.2", features = ["asio"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
