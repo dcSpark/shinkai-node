@@ -296,8 +296,8 @@ impl AgentManager {
             // 0. You add the unprocessed message to the list in the DB
             // 1. Start a while loop where every time you fetch the unprocessed messages for the job from the DB and check if there's >= 1
             // 2. You read the first/front unprocessed message (not pop from the back)
-            // 3. You start analysis phase to generate the analysis plan.
-            // 4. You then take the analysis plan and process the execution phase.
+            // 3. You start analysis phase to generate the execution plan.
+            // 4. You then take the execution plan and process the execution phase.
             // 5. Once execution phase succeeds, you then delete the message from the unprocessed list in the DB
             //    and take the result and append it both to the Job inbox and step history
             // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially

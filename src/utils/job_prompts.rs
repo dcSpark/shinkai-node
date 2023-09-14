@@ -23,7 +23,7 @@ use lazy_static::lazy_static;
 //
 // 8. We now move to the "execution phase".
 // 9. Using the execution plan, we move forward alternating between inferencing the LLM and executing a tool, as dictated by the plan.
-// 10. To start we inference the LLM with the user's initial request text + the input EBNF of the first tool, and tell the LLM to fill out the input EBNF with real data.
+// 10. To start we inference the LLM with the first step in the plan + the input EBNF of the first tool, and tell the LLM to fill out the input EBNF with real data.
 // 11. The input JSON is taken and the tool is called/executed, with the results being added into the context.
 // 12. With the tool executed, we now inference the LLM with just the context + the input EBNF of the next tool that it needs to fill out (we can skip user's request text).
 // 13. We iterate through the entire execution plan (looping back/forth between 11/12) and arrive at the end with a context filled with all relevant data needed to answer the user's initial request.
@@ -35,7 +35,7 @@ use lazy_static::lazy_static;
 //
 
 lazy_static! {
-    static ref bootstrap_plan__prompt: String = String::from(
+    static ref bootstrap_plan_prompt: String = String::from(
         r#"
 
     You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
