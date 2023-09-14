@@ -52,7 +52,8 @@ impl ToolArgument {
             let name = &input_arg.name;
             let ebnf = input_arg.labled_ebnf();
 
-            ebnf_result.push_str(&format!(r#""{}": {}, "#, name, name));
+            // ebnf_result.push_str(&format!(r#""{}": {}, "#, name, name));
+            ebnf_result.push_str(&format!(r#""tool": {}, "#, name));
 
             // Add descriptions to argument definitions if set to true
             if add_arg_descriptions {
@@ -66,7 +67,7 @@ impl ToolArgument {
         }
 
         // Add the toolkit name to the required inputs for the tool
-        ebnf_result.push_str(&format!(r#""{}": {}, "#, "toolkit_name", toolkit_name));
+        ebnf_result.push_str(&format!(r#""{}": {}, "#, "toolkit", toolkit_name));
 
         ebnf_result.push_str("}\n");
         ebnf_result.push_str(&ebnf_arg_definitions);

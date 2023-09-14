@@ -35,14 +35,14 @@ use lazy_static::lazy_static;
 //
 
 lazy_static! {
-    static ref top_level_plan_bootstrap_prompt: String = String::from(
+    static ref bootstrap_plan__prompt: String = String::from(
         r#"
 
     You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
 
  The user has asked the system:
 
-    `What is the weather like today in New York?`
+    `{}`
 
 Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
 
@@ -165,4 +165,28 @@ Respond using the following EBNF and absolutely nothing else:
 
     "#
     );
+}
+
+pub struct PromptGenerator {}
+
+impl PromptGenerator {
+    pub fn bootstrap_plan_prompt(job_task: String) -> String {
+        format!(
+            r#"
+    You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
+
+    The user has asked the system:
+
+        `{}`
+
+    Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
+
+    Keep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step.
+
+    Respond using the following EBNF and absolutely nothing else:
+    "{{" "plan" ":" "[" string ("," string)* "]" "}}"
+    "#,
+            job_task
+        )
+    }
 }
