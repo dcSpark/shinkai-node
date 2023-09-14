@@ -23,6 +23,7 @@ use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod db;
+mod job;
 mod managers;
 mod network;
 mod resources;

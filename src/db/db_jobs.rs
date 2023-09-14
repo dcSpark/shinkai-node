@@ -1,12 +1,9 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::job_manager::{Job, JobLike};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use rand::RngCore;
-use rocksdb::{Error, IteratorMode, Options, WriteBatch};
+use crate::job::job::{Job, JobLike};
+use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobScope;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 enum JobInfo {
     IsFinished,

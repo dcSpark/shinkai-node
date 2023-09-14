@@ -3,7 +3,6 @@ use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
     Options, SingleThreaded, WriteBatch, DB,
 };
-
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
