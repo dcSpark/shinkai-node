@@ -5,6 +5,8 @@ pub enum AgentError {
     ApiKeyNotSet,
     ReqwestError(reqwest::Error),
     MissingInitialStepInExecutionPlan,
+    FailedExtractingJSONObjectFromResponse(String),
+    FailedInferencingLocalLLM,
 }
 
 impl fmt::Display for AgentError {
@@ -16,7 +18,13 @@ impl fmt::Display for AgentError {
                 f,
                 "The provided execution plan does not have an InitialExecutionStep as its first element."
             ),
+            AgentError::FailedExtractingJSONObjectFromResponse(s) => {
+                write!(f, "Could not find JSON Object in the LLM's response: {}", s)
+            }
             AgentError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
+            AgentError::FailedInferencingLocalLLM => {
+                write!(f, "Failed inferencing and getting a valid response from the local LLM")
+            }
         }
     }
 }
@@ -30,6 +38,12 @@ impl fmt::Debug for AgentError {
             AgentError::MissingInitialStepInExecutionPlan => {
                 f.debug_tuple("MissingInitialStepInExecutionPlan").finish()
             }
+            AgentError::FailedExtractingJSONObjectFromResponse(err) => f
+                .debug_tuple("FailedExtractingJSONObjectFromResponse")
+                .field(err)
+                .finish(),
+
+            AgentError::FailedInferencingLocalLLM => f.debug_tuple("FailedInferencingLocalLLM").finish(),
         }
     }
 }

@@ -2,6 +2,7 @@ use super::error::JobManagerError;
 use super::IdentityManager;
 use crate::agent::agent::Agent;
 use crate::agent::job::{Job, JobId, JobLike};
+use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
@@ -244,6 +245,11 @@ impl AgentManager {
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
             let _ = self.decision_phase(&**job).await?;
+
+            // After analysis phase, we execute the resulting execution plan
+            //    let executor = PlanExecutor::new(agent, execution_plan)?;
+            //    executor.execute_plan();
+
             return Ok(job_message.job_id.clone());
         } else {
             return Err(JobManagerError::JobNotFound);
@@ -358,7 +364,7 @@ impl AgentManager {
         // Execute LLM inferencing
         let response = tokio::spawn(async move {
             let mut agent = agent.lock().await;
-            agent.inference(last_message, context, job.job_id().to_string()).await;
+            agent.inference(last_message).await;
         })
         .await?;
         println!("decision_iteration> response: {:?}", response);
@@ -369,15 +375,6 @@ impl AgentManager {
         //     self.decision_iteration(job, context, last_message, agent).await?;
         // }
 
-        // The expected output from the LLM is one or more `Premessage`s (a message that potentially
-        // still has computation that needs to be performed via tools to fill out its contents).
-        // If the output from the LLM does not fit the expected structure, then the LLM is queried again
-        // with the exact same inputs until a valid output is provided (potentially supplying extra text
-        // each time to the LLM clarifying the previous result was invalid with an example/error message).
-
-        // Make sure the output is valid
-        // If not valid, keep calling the LLM until a valid output is produced
-        // Return the output
         Ok(())
     }
 

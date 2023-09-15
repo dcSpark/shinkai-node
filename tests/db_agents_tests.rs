@@ -1,8 +1,10 @@
-use shinkai_node::{
-    db::{db_errors::ShinkaiDBError, ShinkaiDB},
-};
+use mockito::Server;
+use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{OpenAI, SleepAPI};
+use shinkai_node::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use std::fs;
 use std::path::Path;
+use tokio::sync::mpsc;
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -11,7 +13,14 @@ fn setup() {
 
 #[cfg(test)]
 mod tests {
-    use shinkai_message_primitives::{shinkai_utils::utils::hash_string, schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::{OpenAI, SerializedAgent, AgentAPIModel}}};
+    use shinkai_message_primitives::{
+        schemas::{
+            agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent},
+            shinkai_name::ShinkaiName,
+        },
+        shinkai_utils::utils::hash_string,
+    };
+    use shinkai_node::agent::{agent::Agent, error::AgentError};
 
     use super::*;
 
@@ -28,7 +37,8 @@ mod tests {
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
+                .unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -73,7 +83,8 @@ mod tests {
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
+                .unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -152,7 +163,8 @@ mod tests {
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
+            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
+                .unwrap(),
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -176,5 +188,101 @@ mod tests {
         assert!(result.is_ok(), "Failed to remove toolkit from agent access");
         let toolkits = db.get_agent_toolkits_accessible(&test_agent.id).unwrap();
         assert_eq!(vec!["toolkit2"], toolkits);
+    }
+
+    #[tokio::test]
+    async fn test_agent_creation() {
+        let (tx, mut rx) = mpsc::channel(1);
+        let sleep_api = SleepAPI {};
+        let agent = Agent::new(
+            "1".to_string(),
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
+            tx,
+            false,
+            Some("http://localhost:8000".to_string()),
+            Some("paramparam".to_string()),
+            AgentAPIModel::Sleep(sleep_api),
+            vec!["tk1".to_string(), "tk2".to_string()],
+            vec!["sb1".to_string(), "sb2".to_string()],
+            vec!["allowed1".to_string(), "allowed2".to_string()],
+        );
+
+        assert_eq!(agent.id, "1");
+        assert_eq!(
+            agent.full_identity_name,
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap()
+        );
+        assert_eq!(agent.perform_locally, false);
+        assert_eq!(agent.external_url, Some("http://localhost:8000".to_string()));
+        assert_eq!(agent.toolkit_permissions, vec!["tk1".to_string(), "tk2".to_string()]);
+        assert_eq!(
+            agent.storage_bucket_permissions,
+            vec!["sb1".to_string(), "sb2".to_string()]
+        );
+        assert_eq!(
+            agent.allowed_message_senders,
+            vec!["allowed1".to_string(), "allowed2".to_string()]
+        );
+
+        let handle = tokio::spawn(async move { agent.inference("Test".to_string()).await });
+        let result: Result<JsonValue, AgentError> = handle.await.unwrap();
+        assert_eq!(result.unwrap(), JsonValue::Bool(true))
+    }
+
+    #[tokio::test]
+    async fn test_agent_call_external_api_openai() {
+        let mut server = Server::new();
+        let _m = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer mockapikey")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+        "id": "chatcmpl-123",
+        "object": "chat.completion",
+        "created": 1677652288,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": "{ \"answer\": \"\\n\\nHello there, how may I assist you today?\" }"
+            },
+            "finish_reason": "stop"
+        }],
+        "usage": {
+            "prompt_tokens": 9,
+            "completion_tokens": 12,
+            "total_tokens": 21 
+        }
+    }"#,
+            )
+            .create();
+
+        let (tx, _rx) = mpsc::channel(1);
+        let openai = OpenAI {
+            model_type: "gpt-3.5-turbo".to_string(),
+        };
+        let agent = Agent::new(
+            "1".to_string(),
+            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
+            tx,
+            false,
+            Some(server.url()), // use the url of the mock server
+            Some("mockapikey".to_string()),
+            AgentAPIModel::OpenAI(openai),
+            vec!["tk1".to_string(), "tk2".to_string()],
+            vec!["sb1".to_string(), "sb2".to_string()],
+            vec!["allowed1".to_string(), "allowed2".to_string()],
+        );
+
+        let response = agent.inference("Hello!".to_string()).await;
+        match response {
+            Ok(res) => assert_eq!(
+                res["answer"].as_str().unwrap(),
+                "\n\nHello there, how may I assist you today?".to_string()
+            ),
+            Err(e) => panic!("Error when calling API: {}", e),
+        }
     }
 }

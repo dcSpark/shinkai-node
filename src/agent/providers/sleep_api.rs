@@ -2,38 +2,20 @@ use super::AgentError;
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
-use shinkai_message_primitives::{
-    schemas::agents::serialized_agent::SleepAPI,
-    shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient},
-};
+use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SleepAPI;
 use tokio::time::Duration;
 
 #[async_trait]
 impl LLMProvider for SleepAPI {
-    type Response = (); // Empty tuple as a stand-in for no data
-
-    fn parse_response(_: &str) -> Result<Self::Response, Box<dyn std::error::Error>> {
-        Ok(())
-    }
-
-    fn extract_content(_: &Self::Response) -> Vec<JobPreMessage> {
-        vec![JobPreMessage {
-            tool_calls: Vec::new(),
-            content: "OK".to_string(),
-            recipient: JobRecipient::SelfNode,
-        }]
-    }
-
     async fn call_api(
         &self,
         _: &Client,
         _: Option<&String>,
         _: Option<&String>,
         _: &str,
-        _: Vec<String>,
-    ) -> Result<Vec<JobPreMessage>, AgentError> {
+    ) -> Result<JsonValue, AgentError> {
         tokio::time::sleep(Duration::from_millis(500)).await;
-        Ok(Self::extract_content(&()))
+        Ok(JsonValue::Bool(true))
     }
 }

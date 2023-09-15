@@ -43,7 +43,7 @@ impl<'a> PlanExecutor<'a> {
     // TODO: Properly implement this once we have jobs update for context + agent infernece/use tool
     /// Executes the plan step-by-step, performing all inferencing & tool calls.
     /// All content sent for inferencing and all responses from the LLM are saved in self.inference_trace
-    pub async fn execute(&mut self) -> Result<(), AgentError> {
+    pub async fn execute_plan(&mut self) -> Result<(), AgentError> {
         for step in &self.execution_plan {
             match step {
                 ExecutionStep::Inference(inference_step) => {
