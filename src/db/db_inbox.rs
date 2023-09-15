@@ -146,7 +146,7 @@ impl ShinkaiDB {
         };
 
         // Fetch the column family for all messages
-        let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
+        let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
 
         // Create an iterator for the specified inbox
         let mut iter = match &until_offset_key {
@@ -201,10 +201,10 @@ impl ShinkaiDB {
                 )))
             }
         };
-    
+
         // Create an iterator for the specified unread_list, starting from the beginning
         let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-    
+
         // Iterate through the unread_list and delete all messages up to the specified offset
         for item in iter {
             // Handle the Result returned by the iterator
@@ -214,7 +214,7 @@ impl ShinkaiDB {
                         Ok(s) => s,
                         Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
                     };
-    
+
                     if key_str <= up_to_offset {
                         // Delete the message from the unread_list
                         self.db.delete_cf(unread_list_cf, key)?;
@@ -226,7 +226,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-    
+
         Ok(())
     }
 
@@ -249,7 +249,7 @@ impl ShinkaiDB {
         };
 
         // Fetch the column family for all messages
-        let messages_cf = self.db.cf_handle(Topic::AllMessages.as_str()).unwrap();
+        let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
 
         // Create an iterator for the specified unread_list
         let mut iter = match &from_offset_key {
@@ -270,7 +270,7 @@ impl ShinkaiDB {
             }
             None => None,
         };
-        
+
         let mut messages = Vec::new();
         let mut first_message = true;
         for item in iter.take(n) {

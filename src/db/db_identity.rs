@@ -17,8 +17,8 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 impl ShinkaiDB {
     pub fn get_encryption_public_key(&self, identity_public_key: &str) -> Result<String, ShinkaiDBError> {
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
 
         // Get the associated profile name for the identity public key
         let profile_name = match self.db.get_cf(cf_identity, identity_public_key)? {
@@ -37,14 +37,14 @@ impl ShinkaiDB {
         let my_node_identity_name = my_node_identity.get_node_name();
         println!("my_node_identity_name: {}", my_node_identity_name);
 
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap(); // Added this line
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        let cf_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
+        let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?; // Added this line
 
         // Handle node related information
-        let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
-        let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
+        let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
+        let cf_node_identity = self.cf_handle(Topic::ExternalNodeIdentityKey.as_str())?;
 
         let node_encryption_public_key = match self.db.get_cf(cf_node_encryption, &my_node_identity_name)? {
             Some(value) => {
@@ -143,11 +143,11 @@ impl ShinkaiDB {
 
     pub fn get_all_profiles_and_devices(&self, my_node_identity: ShinkaiName) -> Result<Vec<Identity>, ShinkaiDBError> {
         let my_node_identity_name = my_node_identity.get_node_name();
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
-        let cf_device = self.db.cf_handle(Topic::DevicesIdentityKey.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        let cf_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
+        let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?;
+        let cf_device = self.cf_handle(Topic::DevicesIdentityKey.as_str())?;
 
         let (node_encryption_public_key, node_signature_public_key) =
             self.get_local_node_keys(my_node_identity.clone())?;
@@ -213,10 +213,10 @@ impl ShinkaiDB {
                     identity.full_identity_name.to_string(),
                 ))?;
 
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_identity_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
-        let cf_permission_type = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        let cf_identity_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
+        let cf_permission_type = self.cf_handle(Topic::ProfilesPermission.as_str())?;
 
         // Check that the full identity name doesn't exist in the columns
         if self.db.get_cf(cf_identity, &profile_name)?.is_some()
@@ -273,7 +273,7 @@ impl ShinkaiDB {
             .clone()
             .get_profile_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(profile_name.to_string()))?;
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
+        let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?;
         match self.db.get_cf(cf_permission, profile_name.clone())? {
             Some(value) => {
                 let permission_str = std::str::from_utf8(&value).map_err(|_| {
@@ -296,7 +296,7 @@ impl ShinkaiDB {
         let device_name = device_name.to_string();
 
         // Get a handle to the devices' permissions column family
-        let cf_permission = self.db.cf_handle(Topic::DevicesPermissions.as_str()).unwrap();
+        let cf_permission = self.cf_handle(Topic::DevicesPermissions.as_str())?;
 
         // Attempt to get the permission value for the device name
         match self.db.get_cf(cf_permission, device_name.clone())? {
@@ -395,14 +395,14 @@ impl ShinkaiDB {
         };
 
         // First, make sure that the profile the device is to be linked with exists
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
         if self.db.get_cf(cf_identity, profile_name.clone())?.is_none() {
             return Err(ShinkaiDBError::ProfileNotFound(profile_name.to_string()));
         }
 
         // Get a handle to the device column family
-        let cf_device_identity = self.db.cf_handle(Topic::DevicesIdentityKey.as_str()).unwrap();
-        let cf_device_encryption = self.db.cf_handle(Topic::DevicesEncryptionKey.as_str()).unwrap();
+        let cf_device_identity = self.cf_handle(Topic::DevicesIdentityKey.as_str())?;
+        let cf_device_encryption = self.cf_handle(Topic::DevicesEncryptionKey.as_str())?;
 
         // Check that the full device identity name doesn't already exist in the column
         if self
@@ -435,7 +435,7 @@ impl ShinkaiDB {
         );
 
         // Handle for DevicePermissions column family
-        let cf_device_permissions = self.db.cf_handle(Topic::DevicesPermissions.as_str()).unwrap();
+        let cf_device_permissions = self.cf_handle(Topic::DevicesPermissions.as_str())?;
 
         // Convert device.permission_type to a suitable format (e.g., string) for storage
         let permission_str = device.permission_type.to_string();
@@ -454,9 +454,9 @@ impl ShinkaiDB {
     }
 
     pub fn remove_profile(&self, name: &str) -> Result<(), ShinkaiDBError> {
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_permission = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        let cf_permission = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
 
         // Check that the profile name exists in ProfilesIdentityKey, ProfilesEncryptionKey and ProfilesIdentityType
         if self.db.get_cf(cf_identity, name)?.is_none()
@@ -616,8 +616,8 @@ impl ShinkaiDB {
             .get_profile_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;
 
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
 
         let profile_encryption_public_key_bytes = self
             .db
@@ -656,7 +656,7 @@ impl ShinkaiDB {
         &self,
         full_identity_name: &str,
     ) -> Result<EncryptionPublicKey, ShinkaiDBError> {
-        let cf_encryption = self.db.cf_handle(Topic::ProfilesEncryptionKey.as_str()).unwrap();
+        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
         match self.db.get_cf(cf_encryption, full_identity_name)? {
             Some(value) => {
                 let key_string = String::from_utf8(value.to_vec()).map_err(|_| ShinkaiDBError::Utf8ConversionError)?;
@@ -667,7 +667,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_identity_type(&self, full_identity_name: &str) -> Result<StandardIdentityType, ShinkaiDBError> {
-        let cf_type = self.db.cf_handle(Topic::ProfilesIdentityType.as_str()).unwrap();
+        let cf_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
         match self.db.get_cf(cf_type, full_identity_name)? {
             Some(value) => {
                 let identity_type_str = String::from_utf8(value.to_vec()).unwrap();
@@ -681,7 +681,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_permissions(&self, full_identity_name: &str) -> Result<IdentityPermissions, ShinkaiDBError> {
-        let cf_permission = self.db.cf_handle(Topic::ProfilesPermission.as_str()).unwrap();
+        let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?;
         match self.db.get_cf(cf_permission, full_identity_name)? {
             Some(value) => {
                 let permissions_str = String::from_utf8(value.to_vec()).unwrap();

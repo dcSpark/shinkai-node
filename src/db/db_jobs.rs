@@ -84,9 +84,9 @@ impl ShinkaiDB {
         let current_time = ShinkaiTime::generate_time_now();
         let scope_bytes = scope.to_bytes()?;
 
-        let cf_job_id = self.db.cf_handle(&cf_job_id_name).unwrap();
-        let cf_agent_id = self.db.cf_handle(&cf_agent_id_name).unwrap();
-        let cf_job_id_scope = self.db.cf_handle(&cf_job_id_scope_name).unwrap();
+        let cf_job_id = self.cf_handle(&cf_job_id_name)?;
+        let cf_agent_id = self.cf_handle(&cf_agent_id_name)?;
+        let cf_job_id_scope = self.cf_handle(&cf_job_id_scope_name)?;
 
         batch.put_cf(cf_agent_id, current_time.as_bytes(), job_id.as_bytes());
         batch.put_cf(cf_job_id_scope, job_id.as_bytes(), &scope_bytes);

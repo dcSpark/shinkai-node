@@ -1,4 +1,5 @@
 use super::identity_network_manager::IdentityNetworkManager;
+use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
@@ -200,7 +201,7 @@ impl IdentityManager {
         self.local_identities.clone()
     }
 
-    pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, rocksdb::Error> {
+    pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         let db = self.db.lock().await;
         db.get_all_agents()
     }
