@@ -1,5 +1,5 @@
 use super::AgentError;
-use super::Provider;
+use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use shinkai_message_primitives::{
 use tokio::time::Duration;
 
 #[async_trait]
-impl Provider for SleepAPI {
+impl LLMProvider for SleepAPI {
     type Response = (); // Empty tuple as a stand-in for no data
 
     fn parse_response(_: &str) -> Result<Self::Response, Box<dyn std::error::Error>> {

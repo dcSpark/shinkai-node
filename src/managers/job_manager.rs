@@ -358,7 +358,7 @@ impl AgentManager {
         // Execute LLM inferencing
         let response = tokio::spawn(async move {
             let mut agent = agent.lock().await;
-            agent.execute(last_message, context, job.job_id().to_string()).await;
+            agent.inference(last_message, context, job.job_id().to_string()).await;
         })
         .await?;
         println!("decision_iteration> response: {:?}", response);

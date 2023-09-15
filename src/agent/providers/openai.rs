@@ -1,5 +1,5 @@
 use super::AgentError;
-use super::Provider;
+use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -40,7 +40,7 @@ struct Usage {
 }
 
 #[async_trait]
-impl Provider for OpenAI {
+impl LLMProvider for OpenAI {
     type Response = Response;
 
     fn parse_response(response_body: &str) -> Result<Self::Response, Box<dyn Error>> {

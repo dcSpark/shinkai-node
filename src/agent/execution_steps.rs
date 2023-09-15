@@ -1,7 +1,7 @@
+use super::{agent::Agent, error::AgentError};
+use crate::agent::job_prompts::PromptGenerator;
 use crate::tools::router::ShinkaiTool;
 use std::collections::HashMap;
-
-use super::error::AgentError;
 
 // 1. We start with all execution plans filling the context and saving the user's message with an InitialExecutionStep
 // 2. We then iterate through the rest of the steps.
@@ -11,32 +11,80 @@ use super::error::AgentError;
 // 6. We then save the final execution context (eventually adding summarization/pruning) as the Job's persistent context, save all of the prompts/responses from the LLM in the step history, and add a ShinkaiMessage into the Job inbox with the final response.
 
 /// Struct that executes a plan (Vec<ExecutionStep>) generated from the analysis phase
-pub struct PlanExecutor {
-    context: HashMap<String, String>,
+#[derive(Clone, Debug)]
+pub struct PlanExecutor<'a> {
+    agent: &'a Agent,
+    execution_context: HashMap<String, String>,
     user_message: String,
     execution_plan: Vec<ExecutionStep>,
+    inference_trace: Vec<String>,
 }
 
-impl PlanExecutor {
-    pub fn new(execution_plan: Vec<ExecutionStep>) -> Result<Self, AgentError> {
+impl<'a> PlanExecutor<'a> {
+    pub fn new(agent: &'a Agent, execution_plan: &Vec<ExecutionStep>) -> Result<Self, AgentError> {
         match execution_plan.get(0) {
-            Some(ExecutionStep::Initial(initial_step)) => Ok(Self {
-                context: initial_step.initial_context.clone(),
-                user_message: initial_step.user_message.clone(),
-                execution_plan,
-            }),
+            Some(ExecutionStep::Initial(initial_step)) => {
+                let mut execution_plan = execution_plan.to_vec();
+                let execution_context = initial_step.initial_execution_context.clone();
+                let user_message = initial_step.user_message.clone();
+                execution_plan.remove(0); // Remove the initial step
+                Ok(Self {
+                    agent,
+                    execution_context,
+                    user_message,
+                    execution_plan,
+                    inference_trace: vec![],
+                })
+            }
             _ => Err(AgentError::MissingInitialStepInExecutionPlan),
         }
     }
+
+    // TODO: Properly implement this once we have jobs update for context + agent infernece/use tool
+    /// Executes the plan step-by-step, performing all inferencing & tool calls.
+    /// All content sent for inferencing and all responses from the LLM are saved in self.inference_trace
+    pub async fn execute(&mut self) -> Result<(), AgentError> {
+        for step in &self.execution_plan {
+            match step {
+                ExecutionStep::Inference(inference_step) => {
+
+                    // 1. Generate the content to be sent using prompt generator/self/step
+                    // PromptGenerator::...
+
+                    // 2. Save the content to be sent to the LLM
+                    // self.inference_trace.push(content)
+
+                    // 3. Inference
+                    // self.agent
+                    //     .inference(
+                    //         inference_step.content.clone(),
+                    //     )
+                    //     .await;
+
+                    // 4. Save full response to trace
+                    // self.inference_trace.push(response)
+
+                    // 5. Find & parse the JSON in the response
+                }
+                ExecutionStep::Tool(tool_step) => {
+                    // self.agent.use_tool(tool_step.tool.clone()).await?;
+                }
+                _ => (),
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Initial data to be used by the PlanExecutor, primarily to fill up the context
+/// Initial data to be consumed while creating the PlanExecutor, primarily to fill up the initial_execution_context
+#[derive(Clone, Debug)]
 pub struct InitialExecutionStep {
-    initial_context: HashMap<String, String>,
+    initial_execution_context: HashMap<String, String>,
     user_message: String,
 }
 
 /// An execution step that the LLM decided it could perform without any tools.
+#[derive(Clone, Debug)]
 pub struct InferenceExecutionStep {
     plan_task_message: String,
     output_name: String,
@@ -45,11 +93,13 @@ pub struct InferenceExecutionStep {
 /// An execution step that requires executing a ShinkaiTool.
 /// Of note `output_name` is used to label the output of the tool with an alternate name
 /// before adding the results into the execution context
+#[derive(Clone, Debug)]
 pub struct ToolExecutionStep {
     tool: ShinkaiTool,
     output_name: String,
 }
 
+#[derive(Clone, Debug)]
 pub enum ExecutionStep {
     Initial(InitialExecutionStep),
     Inference(InferenceExecutionStep),

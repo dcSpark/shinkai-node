@@ -1,5 +1,5 @@
 use super::error::AgentError;
-use super::providers::Provider;
+use super::providers::LLMProvider;
 use reqwest::Client;
 use shinkai_message_primitives::{
     schemas::{
@@ -111,7 +111,7 @@ impl Agent {
         }
     }
 
-    pub async fn execute(&self, content: String, context: Vec<String>, job_id: String) {
+    pub async fn inference(&self, content: String, context: Vec<String>, job_id: String) {
         if self.perform_locally {
             // No need to spawn a new task here
             self.process_locally(content.clone(), context.clone(), job_id).await;
@@ -207,7 +207,7 @@ mod tests {
 
         tokio::spawn(async move {
             agent
-                .execute("Test".to_string(), context, "some_job_1".to_string())
+                .inference("Test".to_string(), context, "some_job_1".to_string())
                 .await;
         });
 
