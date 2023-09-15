@@ -1,23 +1,14 @@
+use super::identity_network_manager::IdentityNetworkManager;
 use crate::db::ShinkaiDB;
 use crate::network::node_error::NodeError;
 use crate::network::node_message_handlers::verify_message_signature;
-use crate::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_public_key_to_string_ref,
-};
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    signature_public_key_to_string, signature_public_key_to_string_ref,
-};
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-use super::identity_network_manager::IdentityNetworkManager;
 
 #[derive(Clone)]
 pub struct IdentityManager {

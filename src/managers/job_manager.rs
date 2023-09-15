@@ -1,3 +1,4 @@
+use super::error::JobManagerError;
 use super::IdentityManager;
 use crate::agent::agent::Agent;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -242,7 +243,7 @@ impl AgentManager {
 
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
-            // let _ = self.decision_phase(&**job).await?;
+            let _ = self.decision_phase(&**job).await?;
             return Ok(job_message.job_id.clone());
         } else {
             return Err(JobManagerError::JobNotFound);
@@ -393,68 +394,5 @@ impl AgentManager {
         // 2. Convert the Premessage into a Message
         // Return the list of Messages
         unimplemented!()
-    }
-}
-
-#[derive(Debug)]
-pub enum JobManagerError {
-    NotAJobMessage,
-    JobNotFound,
-    JobCreationDeserializationFailed,
-    JobMessageDeserializationFailed,
-    JobPreMessageDeserializationFailed,
-    MessageTypeParseFailed,
-    IO(String),
-    ShinkaiDB(ShinkaiDBError),
-    ShinkaiNameError(ShinkaiNameError),
-    AgentNotFound,
-    ContentParseFailed,
-}
-
-impl fmt::Display for JobManagerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            JobManagerError::NotAJobMessage => write!(f, "Message is not a job message"),
-            JobManagerError::JobNotFound => write!(f, "Job not found"),
-            JobManagerError::JobCreationDeserializationFailed => {
-                write!(f, "Failed to deserialize JobCreationInfo message")
-            }
-            JobManagerError::JobMessageDeserializationFailed => write!(f, "Failed to deserialize JobMessage"),
-            JobManagerError::JobPreMessageDeserializationFailed => write!(f, "Failed to deserialize JobPreMessage"),
-            JobManagerError::MessageTypeParseFailed => write!(f, "Could not parse message type"),
-            JobManagerError::IO(err) => write!(f, "IO error: {}", err),
-            JobManagerError::ShinkaiDB(err) => write!(f, "Shinkai DB error: {}", err),
-            JobManagerError::AgentNotFound => write!(f, "Agent not found"),
-            JobManagerError::ContentParseFailed => write!(f, "Failed to parse content"),
-            JobManagerError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for JobManagerError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            JobManagerError::ShinkaiDB(err) => Some(err),
-            JobManagerError::ShinkaiNameError(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl From<Box<dyn std::error::Error>> for JobManagerError {
-    fn from(err: Box<dyn std::error::Error>) -> JobManagerError {
-        JobManagerError::IO(err.to_string())
-    }
-}
-
-impl From<ShinkaiDBError> for JobManagerError {
-    fn from(err: ShinkaiDBError) -> JobManagerError {
-        JobManagerError::ShinkaiDB(err)
-    }
-}
-
-impl From<ShinkaiNameError> for JobManagerError {
-    fn from(err: ShinkaiNameError) -> JobManagerError {
-        JobManagerError::ShinkaiNameError(err)
     }
 }

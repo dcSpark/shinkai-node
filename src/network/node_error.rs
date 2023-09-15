@@ -1,6 +1,8 @@
-use shinkai_message_primitives::{shinkai_message::shinkai_message_error::ShinkaiMessageError, schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError}};
-use crate::{managers::job_manager::JobManagerError, db::db_errors::ShinkaiDBError};
-
+use crate::{db::db_errors::ShinkaiDBError, managers::error::JobManagerError};
+use shinkai_message_primitives::{
+    schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
+    shinkai_message::shinkai_message_error::ShinkaiMessageError,
+};
 
 #[derive(Debug)]
 pub struct NodeError {
