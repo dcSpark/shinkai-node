@@ -1,10 +1,10 @@
 use std::fmt;
 
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
-use serde_json::Result;
 use regex::Regex;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde_json::Result;
 
-use crate::schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, agents::serialized_agent::SerializedAgent};
+use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
@@ -17,7 +17,7 @@ pub enum MessageSchemaType {
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
     TextContent,
-    Empty
+    Empty,
 }
 
 impl MessageSchemaType {
@@ -95,7 +95,7 @@ impl JobScope {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct JobCreation {
+pub struct JobCreationInfo {
     pub scope: JobScope,
 }
 
@@ -214,9 +214,9 @@ pub struct RegistrationCodeRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum IdentityPermissions {
-    Admin, // can create and delete other profiles
+    Admin,    // can create and delete other profiles
     Standard, // can add / remove devices
-    None, // none of the above
+    None,     // none of the above
 }
 
 impl IdentityPermissions {
@@ -272,7 +272,7 @@ impl Serialize for RegistrationCodeType {
             RegistrationCodeType::Device(device_name) => {
                 let s = format!("device:{}", device_name);
                 serializer.serialize_str(&s)
-            },
+            }
             RegistrationCodeType::Profile => serializer.serialize_str("profile"),
         }
     }
@@ -289,7 +289,7 @@ impl<'de> Deserialize<'de> for RegistrationCodeType {
             Some(&"device") => {
                 let device_name = parts.get(1).unwrap_or(&"main");
                 Ok(RegistrationCodeType::Device(device_name.to_string()))
-            },
+            }
             Some(&"profile") => Ok(RegistrationCodeType::Profile),
             _ => Err(serde::de::Error::custom("Unexpected variant")),
         }

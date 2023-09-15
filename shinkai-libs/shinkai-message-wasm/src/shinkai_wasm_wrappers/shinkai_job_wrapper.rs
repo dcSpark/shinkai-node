@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
-use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::{JobScope, JobCreation, JobMessage}, schemas::inbox_name::InboxName};
+use shinkai_message_primitives::{
+    schemas::inbox_name::InboxName,
+    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage, JobScope},
+};
 use wasm_bindgen::prelude::*;
 
 use crate::shinkai_wasm_wrappers::shinkai_wasm_error::ShinkaiWasmError;
@@ -36,7 +39,7 @@ impl JobScopeWrapper {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JobCreationWrapper {
-    inner: JobCreation,
+    inner: JobCreationInfo,
 }
 
 #[wasm_bindgen]
@@ -44,7 +47,7 @@ impl JobCreationWrapper {
     #[wasm_bindgen(constructor)]
     pub fn new(scope_js: &JsValue) -> Result<JobCreationWrapper, JsValue> {
         let scope: JobScope = serde_wasm_bindgen::from_value(scope_js.clone())?;
-        let job_creation = JobCreation { scope };
+        let job_creation = JobCreationInfo { scope };
         Ok(JobCreationWrapper { inner: job_creation })
     }
 
@@ -66,13 +69,13 @@ impl JobCreationWrapper {
 
     #[wasm_bindgen]
     pub fn from_json_str(s: &str) -> Result<JobCreationWrapper, JsValue> {
-        let deserialized: JobCreation = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let deserialized: JobCreationInfo = serde_json::from_str(s).map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(JobCreationWrapper { inner: deserialized })
     }
 
     #[wasm_bindgen]
     pub fn from_jsvalue(js_value: &JsValue) -> Result<JobCreationWrapper, JsValue> {
-        let deserialized: JobCreation = serde_wasm_bindgen::from_value(js_value.clone())?;
+        let deserialized: JobCreationInfo = serde_wasm_bindgen::from_value(js_value.clone())?;
         Ok(JobCreationWrapper { inner: deserialized })
     }
 
@@ -81,7 +84,9 @@ impl JobCreationWrapper {
         let buckets: Vec<InboxName> = Vec::new();
         let documents: Vec<String> = Vec::new();
         let job_scope = JobScope::new(Some(buckets), Some(documents));
-        Ok(JobCreationWrapper { inner: JobCreation { scope: job_scope } })
+        Ok(JobCreationWrapper {
+            inner: JobCreationInfo { scope: job_scope },
+        })
     }
 }
 
@@ -126,7 +131,10 @@ impl JobMessageWrapper {
 
     #[wasm_bindgen(js_name = fromStrings)]
     pub fn from_strings(job_id: &str, content: &str) -> JobMessageWrapper {
-        let job_message = JobMessage { job_id: job_id.to_string(), content: content.to_string() };
+        let job_message = JobMessage {
+            job_id: job_id.to_string(),
+            content: content.to_string(),
+        };
         JobMessageWrapper { inner: job_message }
     }
 }

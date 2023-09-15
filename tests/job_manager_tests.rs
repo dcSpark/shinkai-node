@@ -20,7 +20,7 @@ mod tests {
     use mockito::Server;
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent},
+            agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             inbox_name::InboxName,
             shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         },
@@ -32,11 +32,12 @@ mod tests {
             utils::hash_string,
         },
     };
+    use shinkai_node::agent::job::{Job, JobId, JobLike};
     use shinkai_node::{
         db::ShinkaiDB,
         managers::{
             identity_manager,
-            job_manager::{AgentManager, JobLike, JobManager},
+            job_manager::{AgentManager, JobManager},
         },
     };
     use std::collections::HashMap;
@@ -118,7 +119,7 @@ mod tests {
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
-            model: AgentAPIModel::OpenAI(openai),
+            model: AgentLLMInterface::OpenAI(openai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],
@@ -130,7 +131,13 @@ mod tests {
         }
 
         // Create JobManager
-        let mut job_manager = JobManager::new(db_arc.clone(), identity_manager, clone_signature_secret_key(&node1_identity_sk), node_profile_name.clone()).await;
+        let mut job_manager = JobManager::new(
+            db_arc.clone(),
+            identity_manager,
+            clone_signature_secret_key(&node1_identity_sk),
+            node_profile_name.clone(),
+        )
+        .await;
 
         // Create a JobCreationMessage ShinkaiMessage
         let scope = JobScope {

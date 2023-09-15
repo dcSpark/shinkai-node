@@ -109,13 +109,13 @@ impl ShinkaiDB {
         &self,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
-    ) -> Result<String, Error> {
+    ) -> Result<String, ShinkaiDBError> {
         let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 64];
         rng.fill_bytes(&mut random_bytes);
         let new_code = hex::encode(random_bytes);
 
-        let cf = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
+        let cf = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
 
         let code_info = RegistrationCodeInfo {
             status: RegistrationCodeStatus::Unused,
@@ -139,7 +139,7 @@ impl ShinkaiDB {
         device_encryption_public_key: Option<&str>,
     ) -> Result<(), ShinkaiDBError> {
         // Check if the code exists in Topic::OneTimeRegistrationCodes and its value is unused
-        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
+        let cf_codes = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
         let code_info: RegistrationCodeInfo = match self.db.get_cf(cf_codes, registration_code)? {
             Some(value) => RegistrationCodeInfo::from_slice(&value),
             None => return Err(ShinkaiDBError::CodeNonExistent),
@@ -343,7 +343,7 @@ impl ShinkaiDB {
     }
 
     pub fn get_registration_code_info(&self, registration_code: &str) -> Result<RegistrationCodeInfo, ShinkaiDBError> {
-        let cf_codes = self.db.cf_handle(Topic::OneTimeRegistrationCodes.as_str()).unwrap();
+        let cf_codes = self.cf_handle(Topic::OneTimeRegistrationCodes.as_str())?;
         match self.db.get_cf(cf_codes, registration_code)? {
             Some(value) => Ok(RegistrationCodeInfo::from_slice(&value)),
             None => Err(ShinkaiDBError::CodeNonExistent),
@@ -351,7 +351,7 @@ impl ShinkaiDB {
     }
 
     pub fn check_profile_existence(&self, profile_name: &str) -> Result<(), ShinkaiDBError> {
-        let cf_identity = self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()).unwrap();
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
 
         if self.db.get_cf(cf_identity, profile_name)?.is_none() {
             return Err(ShinkaiDBError::ProfileNotFound(profile_name.to_string()));
@@ -368,8 +368,8 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
-        let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
-        let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
+        let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
+        let cf_node_identity = self.cf_handle(Topic::ExternalNodeIdentityKey.as_str())?;
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -391,8 +391,8 @@ impl ShinkaiDB {
     ) -> Result<(EncryptionPublicKey, SignaturePublicKey), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
-        let cf_node_encryption = self.db.cf_handle(Topic::ExternalNodeEncryptionKey.as_str()).unwrap();
-        let cf_node_identity = self.db.cf_handle(Topic::ExternalNodeIdentityKey.as_str()).unwrap();
+        let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
+        let cf_node_identity = self.cf_handle(Topic::ExternalNodeIdentityKey.as_str())?;
 
         // Get the encryption key
         let encryption_pk_string = self

@@ -49,7 +49,7 @@ fn test_default_js_toolkit_json_parsing() {
     assert_eq!(toolkit.name, "Google Calendar Toolkit");
     assert_eq!(
         toolkit.tools[0].ebnf_inputs(false).replace("\n", ""),
-        r#"{"calendar_id": calendar_id, "text": text, "send_updates": send_updates, "toolkit_name": Google Calendar Toolkit, }calendar_id :== ([a-zA-Z0-9_]+)?text :== ([a-zA-Z0-9_]+)send_updates :== ("all" | "externalOnly" | "none")?"#
+        r#"{"calendar_id": calendar_id, "text": text, "send_updates": send_updates, "toolkit": Google Calendar Toolkit, }calendar_id :== ([a-zA-Z0-9_]+)?text :== ([a-zA-Z0-9_]+)send_updates :== ("all" | "externalOnly" | "none")?"#
     );
 
     assert_eq!(toolkit.header_definitions.len(), 4);
@@ -200,7 +200,8 @@ fn test_tool_router_and_toolkit_flow() {
 
 // A fake test which purposefully fails so that we can generate embeddings
 // for all existing rust tools and print them into console (so we can copy-paste)
-// and hard-code them in rust_tools.rs
+// and hard-code them in rust_tools.rs.
+// Temporary solution
 // #[test]
 // fn generate_rust_tool_embeddings() {
 //     setup();

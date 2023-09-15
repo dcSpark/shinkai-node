@@ -5,8 +5,8 @@ use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAg
 
 impl ShinkaiDB {
     // Fetches all agents from the Agents topic
-    pub fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, Error> {
-        let cf = self.db.cf_handle(Topic::Agents.as_str()).unwrap();
+    pub fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+        let cf = self.cf_handle(Topic::Agents.as_str())?;
         let mut result = Vec::new();
 
         let iter = self.db.iterator_cf(cf, rocksdb::IteratorMode::Start);
@@ -16,7 +16,7 @@ impl ShinkaiDB {
                     let agent: SerializedAgent = from_slice(value.as_ref()).unwrap();
                     result.push(agent);
                 }
-                Err(e) => return Err(e),
+                Err(e) => return Err(ShinkaiDBError::RocksDBError(e)),
             }
         }
 
@@ -41,8 +41,8 @@ impl ShinkaiDB {
         let mut batch = rocksdb::WriteBatch::default();
 
         // Get handles to the newly created column families
-        let cf_profiles_access = self.db.cf_handle(&cf_name_profiles_access).unwrap();
-        let cf_toolkits_accessible = self.db.cf_handle(&cf_name_toolkits_accessible).unwrap();
+        let cf_profiles_access = self.cf_handle(&cf_name_profiles_access)?;
+        let cf_toolkits_accessible = self.cf_handle(&cf_name_toolkits_accessible)?;
 
         // Write profiles_with_access and toolkits_accessible to respective columns
         for profile in &agent.allowed_message_senders {
@@ -54,7 +54,7 @@ impl ShinkaiDB {
 
         // Serialize the agent to bytes and write it to the Agents topic
         let bytes = to_vec(&agent).unwrap();
-        let cf_agents = self.db.cf_handle(Topic::Agents.as_str()).unwrap();
+        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
         batch.put_cf(cf_agents, agent.id.as_bytes(), &bytes);
 
         // Write the batch
@@ -69,7 +69,7 @@ impl ShinkaiDB {
         let cf_name_toolkits_accessible = format!("agent_{}_toolkits_accessible", agent_id);
 
         // Get cf handle for Agents topic
-        let cf_agents = self.db.cf_handle(Topic::Agents.as_str()).unwrap();
+        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
 
         // Start write batch for atomic operation
         let mut batch = rocksdb::WriteBatch::default();
@@ -139,7 +139,7 @@ impl ShinkaiDB {
 
     pub fn get_agent(&self, agent_id: &str) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
         // Get cf handle for Agents topic
-        let cf_agents = self.db.cf_handle(Topic::Agents.as_str()).unwrap();
+        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
 
         // Fetch the agent's bytes by their id from the Agents topic
         let agent_bytes = self.db.get_cf(cf_agents, agent_id.as_bytes())?;
@@ -236,12 +236,12 @@ impl ShinkaiDB {
             ))?;
         let all_agents = self.get_all_agents()?;
         let mut result = Vec::new();
-    
+
         for agent in all_agents {
             let cf_name = format!("agent_{}_profiles_with_access", agent.id);
-            let cf = self.db.cf_handle(&cf_name).unwrap();
+            let cf = self.cf_handle(&cf_name)?;
             let profiles = self.get_column_family_data(cf)?;
-    
+
             if profiles.contains(&profile) {
                 result.push(agent);
             } else {
@@ -251,7 +251,7 @@ impl ShinkaiDB {
                 }
             }
         }
-    
+
         Ok(result)
     }
 }

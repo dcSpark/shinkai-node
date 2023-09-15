@@ -3,9 +3,7 @@ use std::{fs, path::Path};
 use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobScope;
-use shinkai_node::{
-    db::ShinkaiDB,
-};
+use shinkai_node::db::ShinkaiDB;
 
 fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: JobScope) {
     match db.create_new_job(job_id, agent_id, scope) {
@@ -23,8 +21,11 @@ fn setup() {
 mod tests {
     use std::collections::HashSet;
 
-    use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::JobScope, shinkai_utils::utils::hash_string, schemas::inbox_name::InboxName};
-    use shinkai_node::{db::db_errors::ShinkaiDBError, managers::agent};
+    use shinkai_message_primitives::{
+        schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::JobScope,
+        shinkai_utils::utils::hash_string,
+    };
+    use shinkai_node::{agent::agent, db::db_errors::ShinkaiDBError};
 
     use super::*;
 
@@ -148,7 +149,10 @@ mod tests {
 
         match shinkai_db.get_job(&job_id) {
             Ok(_) => panic!("Expected an error when getting a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())),
+            Err(e) => assert_eq!(
+                e,
+                ShinkaiDBError::ColumnFamilyNotFound("non_existent_job_scope".to_string())
+            ),
         }
     }
 
@@ -184,7 +188,10 @@ mod tests {
 
         match shinkai_db.update_job_to_finished(job_id.clone()) {
             Ok(_) => panic!("Expected an error when updating a non-existent job"),
-            Err(e) => assert_eq!(e, ShinkaiDBError::ProfileNameNonExistent(format!("jobtopic_{}", job_id))),
+            Err(e) => assert_eq!(
+                e,
+                ShinkaiDBError::ProfileNameNonExistent(format!("jobtopic_{}", job_id))
+            ),
         }
     }
 

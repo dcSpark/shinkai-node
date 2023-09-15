@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use shinkai_message_primitives::schemas::{shinkai_name::ShinkaiName, agents::serialized_agent::SerializedAgent};
+use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
 
-use super::agent::{Agent};
+use super::agent::Agent;
 
 impl From<Agent> for SerializedAgent {
     fn from(agent: Agent) -> Self {

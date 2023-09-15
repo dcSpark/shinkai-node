@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
-use rocksdb::{AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, Error, IteratorMode, Options, WriteBatch, DB};
+use rocksdb::{
+    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
+    Options, SingleThreaded, WriteBatch, DB,
+};
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
@@ -54,7 +57,7 @@ impl Topic {
             Self::VectorResources => "resources",
             Self::Agents => "agents",
             Self::Toolkits => "toolkits",
-            Self::MessagesToRetry => "mesages_to_retry"
+            Self::MessagesToRetry => "mesages_to_retry",
         }
     }
 }
@@ -186,6 +189,31 @@ impl ShinkaiDB {
         self.get_cf(topic, new_key)
     }
 
+    /// Iterates over the provided column family
+    pub fn iterator_cf<'a>(
+        &'a self,
+        cf: &impl AsColumnFamilyRef,
+    ) -> Result<DBIteratorWithThreadMode<'a, DB>, ShinkaiDBError> {
+        Ok(self.db.iterator_cf(cf, IteratorMode::Start))
+    }
+
+    /// Iterates over the provided column family profile-bounded, meaning that
+    /// we filter out all keys in the iterator which are not profile-bounded to the
+    /// correct profile, before returning the iterator.
+    pub fn iterator_cf_pb<'a>(
+        &'a self,
+        cf: &impl AsColumnFamilyRef,
+        profile: &ShinkaiName,
+    ) -> Result<impl Iterator<Item = Result<(Box<[u8]>, Box<[u8]>), rocksdb::Error>> + 'a, ShinkaiDBError> {
+        let profile_prefix = ShinkaiDB::get_profile_name(profile)?.into_bytes();
+        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
+        let filtered_iter = iter.filter(move |result| match result {
+            Ok((key, _)) => key.starts_with(&profile_prefix),
+            Err(_) => false,
+        });
+        Ok(filtered_iter)
+    }
+
     /// Saves the value inside of the key at the provided column family
     pub fn put_cf<K, V>(&self, cf: &impl AsColumnFamilyRef, key: K, value: V) -> Result<(), ShinkaiDBError>
     where
@@ -229,6 +257,10 @@ impl ShinkaiDB {
         self.delete_cf(cf, new_key)
     }
 
+    /// Fetches the ColumnFamily handle.
+    pub fn cf_handle(&self, name: &str) -> Result<&ColumnFamily, ShinkaiDBError> {
+        self.db.cf_handle(name).ok_or(ShinkaiDBError::FailedFetchingCF)
+    }
     /// Saves the WriteBatch to the database
     pub fn write(&self, batch: WriteBatch) -> Result<(), ShinkaiDBError> {
         Ok(self.db.write(batch)?)
@@ -237,6 +269,12 @@ impl ShinkaiDB {
     /// Profile-bound saves the WriteBatch to the database
     pub fn write_pb(&self, pb_batch: ProfileBoundWriteBatch) -> Result<(), ShinkaiDBError> {
         self.write(pb_batch.write_batch)
+    }
+
+    /// Validates if the key has the provided profile name properly prepended to it
+    pub fn validate_profile_bound_key(key: &str, profile: &ShinkaiName) -> Result<bool, ShinkaiDBError> {
+        let profile_name = ShinkaiDB::get_profile_name(profile)?;
+        Ok(key.starts_with(&profile_name))
     }
 
     /// Prepends the profile name to the provided key to make it "profile bound"

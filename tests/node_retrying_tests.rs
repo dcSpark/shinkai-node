@@ -1,17 +1,17 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod, encryption_public_key_to_string,
+    clone_static_secret_key, encryption_public_key_to_string, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::managers::agent;
+use shinkai_node::agent::agent;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
@@ -154,8 +154,8 @@ fn node_retrying_test() {
                 .await;
             }
 
-             // Send message from Node 2 subidentity to Node 1
-             {
+            // Send message from Node 2 subidentity to Node 1
+            {
                 eprintln!("\n\n### Sending message from a node 2 profile to node 1 profile\n\n");
 
                 let message_content = "test body content".to_string();
@@ -183,10 +183,7 @@ fn node_retrying_test() {
                 eprintln!("\n\n unchanged message: {:?}", unchanged_message);
 
                 // Shutdown Node 1
-                node1_commands_sender
-                    .send(NodeCommand::Shutdown)
-                    .await
-                    .unwrap();
+                node1_commands_sender.send(NodeCommand::Shutdown).await.unwrap();
 
                 let (res_send_msg_sender, res_send_msg_receiver): (
                     async_channel::Sender<Result<(), APIError>>,
@@ -216,7 +213,7 @@ fn node_retrying_test() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap();
-             }
+            }
         });
 
         let _ = tokio::try_join!(node1_handler, node2_handler, interactions_handler).unwrap();
