@@ -16,6 +16,9 @@
       "globalShortcut": {
         "all": true
       },
+      "fs": {
+        "all": true
+      },
       "shell": {
         "all": false,
         "open": true

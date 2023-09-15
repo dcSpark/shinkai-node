@@ -1,13 +1,28 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use cpal::BackendSpecificError;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::BackendSpecificError;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu};
 use tauri::{Manager, SystemTrayMenuItem};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
+
+#[derive(serde::Deserialize)]
+struct OnboardingData {
+    node_address: String,
+    registration_code: String,
+}
+
+#[tauri::command]
+fn process_onboarding_data(data: OnboardingData) -> String {
+    // Process the data here
+    // For now, let's just print the data and return a success message
+    println!("Node Address: {}", data.node_address);
+    println!("Registration Code: {}", data.registration_code);
+    "Data received successfully".to_string()
+}
 
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit");
@@ -27,7 +42,7 @@ fn main() {
 
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
-    let is_activated = Arc::new(Mutex::new(true));
+    let is_activated = Arc::new(Mutex::new(false)); // change to true
     let is_activated_clone = Arc::clone(&is_activated);
 
     // Create a new WhisperContext
@@ -63,6 +78,7 @@ fn main() {
     });
 
     tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![process_onboarding_data])
         .setup(|app| Ok(()))
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
