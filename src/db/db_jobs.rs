@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::agent::job::{Job, JobLike};
 use rocksdb::{IteratorMode, Options, WriteBatch};
@@ -122,6 +125,13 @@ impl ShinkaiDB {
 
         // Save an empty hashmap for the initial execution context
         let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
+        let empty_hashmap: HashMap<String, String> = HashMap::new();
+        let hashmap_bytes = bincode::serialize(&empty_hashmap).unwrap();
+        batch.put_cf(
+            cf_job_id_execution_context,
+            &cf_job_id_execution_context_name,
+            &hashmap_bytes,
+        );
 
         self.db.write(batch)?;
 
@@ -138,6 +148,7 @@ impl ShinkaiDB {
             conversation_inbox,
             step_history,
             unprocessed_messages,
+            execution_context,
         ) = self.get_job_data(job_id, true)?;
 
         // Construct the job
@@ -150,6 +161,7 @@ impl ShinkaiDB {
             conversation_inbox_name: conversation_inbox,
             step_history: step_history.unwrap_or_else(Vec::new),
             unprocessed_messages,
+            execution_context,
         };
 
         Ok(job)
@@ -157,8 +169,16 @@ impl ShinkaiDB {
 
     /// Fetches a job from the DB as a Box<dyn JobLik>
     pub fn get_job_like(&self, job_id: &str) -> Result<Box<dyn JobLike>, ShinkaiDBError> {
-        let (scope, is_finished, datetime_created, parent_agent_id, conversation_inbox, _, unprocessed_messages) =
-            self.get_job_data(job_id, false)?;
+        let (
+            scope,
+            is_finished,
+            datetime_created,
+            parent_agent_id,
+            conversation_inbox,
+            _,
+            unprocessed_messages,
+            execution_context,
+        ) = self.get_job_data(job_id, false)?;
 
         // Construct the job
         let job = Job {
@@ -170,6 +190,7 @@ impl ShinkaiDB {
             conversation_inbox_name: conversation_inbox,
             step_history: Vec::new(), // Empty step history for JobLike
             unprocessed_messages,
+            execution_context,
         };
 
         Ok(Box::new(job))
@@ -189,6 +210,7 @@ impl ShinkaiDB {
             InboxName,
             Option<Vec<String>>,
             Vec<String>,
+            HashMap<String, String>,
         ),
         ShinkaiDBError,
     > {
@@ -267,6 +289,7 @@ impl ShinkaiDB {
             conversation_inbox.unwrap(),
             step_history,
             unprocessed_messages,
+            self.get_job_execution_context(job_id)?,
         ))
     }
 
@@ -304,6 +327,44 @@ impl ShinkaiDB {
             jobs.push(job);
         }
         Ok(jobs)
+    }
+
+    /// Sets/updates the execution context for a Job in the DB
+    pub fn set_job_execution_context(
+        &self,
+        job_id: &str,
+        context: HashMap<String, String>,
+    ) -> Result<(), ShinkaiDBError> {
+        let cf_job_id_execution_context_name = format!("{}_execution_context", job_id);
+        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
+
+        let context_bytes = bincode::serialize(&context).map_err(|_| {
+            ShinkaiDBError::SomeError("Failed converting execution context hashmap to bytes".to_string())
+        })?;
+        self.put_cf(
+            cf_job_id_execution_context,
+            &cf_job_id_execution_context_name,
+            &context_bytes,
+        )?;
+
+        Ok(())
+    }
+
+    /// Gets the execution context for a job
+    pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, ShinkaiDBError> {
+        let cf_job_id_execution_context_name = format!("{}_execution_context", job_id);
+        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
+
+        let context_bytes = self
+            .db
+            .get_cf(cf_job_id_execution_context, &cf_job_id_execution_context_name)?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
+
+        let context = bincode::deserialize(&context_bytes).map_err(|_| {
+            ShinkaiDBError::SomeError("Failed converting execution context bytes to hashmap".to_string())
+        })?;
+
+        Ok(context)
     }
 
     /// Fetches all unprocessed messages for a specific Job from the DB

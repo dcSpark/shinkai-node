@@ -34,7 +34,7 @@ pub struct Job {
     /// An ordered list of the latest messages sent to the job which are yet to be processed
     pub unprocessed_messages: Vec<String>,
     // /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
-    // pub execution_context: HashMap<String, String>,
+    pub execution_context: HashMap<String, String>,
 }
 
 impl JobLike for Job {
