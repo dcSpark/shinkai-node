@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::JobScope};
 
 pub type JobId = String;
@@ -14,23 +16,25 @@ pub trait JobLike: Send + Sync {
 // Todo: Add a persistent_context: String
 #[derive(Clone, Debug)]
 pub struct Job {
-    // Based on uuid
+    /// Based on uuid
     pub job_id: String,
-    // Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
+    /// Format: "20230702T20533481346" or Utc::now().format("%Y%m%dT%H%M%S%f").to_string();
     pub datetime_created: String,
-    // Marks if the job is finished or not
+    /// Marks if the job is finished or not
     pub is_finished: bool,
-    // Identity of the parent agent. We just use a full identity name for simplicity
+    /// Identity of the parent agent. We just use a full identity name for simplicity
     pub parent_agent_id: String,
-    // What VectorResources the Job has access to when performing vector searches
+    /// What VectorResources the Job has access to when performing vector searches
     pub scope: JobScope,
-    // An inbox where messages to the agent from the user and messages from the agent are stored,
-    // enabling each job to have a classical chat/conversation UI
+    /// An inbox where messages to the agent from the user and messages from the agent are stored,
+    /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
-    // The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
+    /// The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
     pub step_history: Vec<String>,
-    // An ordered list of the latest messages sent to the job which are yet to be processed
+    /// An ordered list of the latest messages sent to the job which are yet to be processed
     pub unprocessed_messages: Vec<String>,
+    // /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
+    // pub execution_context: HashMap<String, String>,
 }
 
 impl JobLike for Job {

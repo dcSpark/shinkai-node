@@ -257,6 +257,10 @@ impl ShinkaiDB {
         self.delete_cf(cf, new_key)
     }
 
+    /// Fetches the ColumnFamily handle.
+    pub fn cf_handle(&self, name: &str) -> Result<&ColumnFamily, ShinkaiDBError> {
+        self.db.cf_handle(name).ok_or(ShinkaiDBError::FailedFetchingCF)
+    }
     /// Saves the WriteBatch to the database
     pub fn write(&self, batch: WriteBatch) -> Result<(), ShinkaiDBError> {
         Ok(self.db.write(batch)?)

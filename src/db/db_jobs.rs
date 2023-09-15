@@ -50,6 +50,7 @@ impl ShinkaiDB {
         let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
         let cf_job_id_unread_list_name = format!("job_inbox::{}::false_unread_list", &job_id);
         let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
+        let cf_job_id_execution_context_name = format!("{}_execution_context", &job_id);
 
         // Check that the cf handles exist, and create them
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
@@ -59,6 +60,7 @@ impl ShinkaiDB {
             || self.db.cf_handle(&cf_job_id_perms_name).is_some()
             || self.db.cf_handle(&cf_job_id_unread_list_name).is_some()
             || self.db.cf_handle(&cf_job_id_unprocessed_messages_name).is_some()
+            || self.db.cf_handle(&cf_job_id_execution_context_name).is_some()
         {
             return Err(ShinkaiDBError::JobAlreadyExists(cf_job_id_name.to_string()));
         }
@@ -73,6 +75,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_unread_list_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_unprocessed_messages_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_execution_context_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -116,6 +119,9 @@ impl ShinkaiDB {
             .cf_handle(Topic::Inbox.as_str())
             .expect("to be able to access Topic::Inbox");
         batch.put_cf(cf_inbox, &cf_conversation_inbox_name, &cf_conversation_inbox_name);
+
+        // Save an empty hashmap for the initial execution context
+        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
 
         self.db.write(batch)?;
 
