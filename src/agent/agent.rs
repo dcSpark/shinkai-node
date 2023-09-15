@@ -23,9 +23,9 @@ pub struct Agent {
     pub external_url: Option<String>, // external API URL
     pub api_key: Option<String>,
     pub model: AgentLLMInterface,
-    pub toolkit_permissions: Vec<String>, // list of toolkits the agent has access to
-    pub storage_bucket_permissions: Vec<String>, // list of storage buckets the agent has access to
-    pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
+    pub toolkit_permissions: Vec<String>,        // Todo: remove as not used
+    pub storage_bucket_permissions: Vec<String>, // Todo: remove as not used
+    pub allowed_message_senders: Vec<String>,    // list of sub-identities allowed to message the agent
 }
 
 impl Agent {
