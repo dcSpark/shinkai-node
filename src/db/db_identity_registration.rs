@@ -128,6 +128,25 @@ impl ShinkaiDB {
         Ok(new_code)
     }
 
+    pub fn main_profile_exists(&self, node_name: &str) -> Result<bool, ShinkaiDBError> {
+        let profile_name = "main".to_string();
+        let current_identity_name =
+            match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
+                Ok(name) => name,
+                Err(_) => {
+                    return Err(ShinkaiDBError::InvalidIdentityName(format!(
+                        "{}/{}",
+                        node_name, profile_name
+                    )))
+                }
+            };
+
+        match self.get_profile(current_identity_name.clone())? {
+            None => Ok(false),
+            Some(_) => Ok(true),
+        }
+    }
+
     pub fn use_registration_code(
         &self,
         registration_code: &str,

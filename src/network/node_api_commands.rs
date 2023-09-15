@@ -659,8 +659,6 @@ impl Node {
 
         // Decrypt the message
         let message_to_decrypt = msg.clone();
-        let sender_encryption_pk_string = encryption_public_key_to_string(sender_encryption_pk);
-        let encryption_secret_key_string = encryption_secret_key_to_string(self.encryption_secret_key.clone());
 
         let decrypted_message =
             message_to_decrypt.decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)?;
@@ -678,7 +676,7 @@ impl Node {
         );
 
         // Extract values from the ShinkaiMessage
-        let code = registration_code.code;
+        let mut code = registration_code.code;
         let registration_name = registration_code.registration_name;
         let profile_identity_pk = registration_code.profile_identity_pk;
         let profile_encryption_pk = registration_code.profile_encryption_pk;
@@ -698,6 +696,46 @@ impl Node {
 
         let db = self.db.lock().await;
         println!("handle_registration_code_usage> before use_registration_code");
+
+        // if first_device_registration_needs_code is false
+        // then create a new registration code and use it
+        // else use the code provided
+        if self.first_device_needs_registration_code == false {
+            let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
+                Ok(exists) => exists,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("Failed to check if main profile exists: {}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            };
+
+            if main_profile_exists == false {
+                let code_type = RegistrationCodeType::Device("main".to_string());
+                let permissions = IdentityPermissions::Admin;
+
+                match db.generate_registration_new_code(permissions, code_type) {
+                    Ok(new_code) => {
+                        code = new_code;
+                    }
+                    Err(err) => {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::BAD_REQUEST.as_u16(),
+                                error: "Internal Server Error".to_string(),
+                                message: format!("Failed to generate registration code: {}", err),
+                            }))
+                            .await;
+                    }
+                }
+            }
+        }
+
         db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
@@ -1281,7 +1319,7 @@ impl Node {
             (node_addr, recipient_profile_name_string),
             &mut db_guard,
             self.identity_manager.clone(),
-            true
+            true,
         )
         .await?;
 

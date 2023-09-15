@@ -92,6 +92,7 @@ fn main() {
                 node_env.ping_interval,
                 node_commands_receiver,
                 db_path,
+                node_env.first_device_needs_registration_code
             )
             .await
         }),

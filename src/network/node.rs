@@ -225,6 +225,8 @@ pub struct Node {
     pub db: Arc<Mutex<ShinkaiDB>>,
     // The job manager
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    // First device needs registration code
+    pub first_device_needs_registration_code: bool,
 }
 
 impl Node {
@@ -238,6 +240,7 @@ impl Node {
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         db_path: String,
+        first_device_needs_registration_code: bool,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -284,6 +287,7 @@ impl Node {
             identity_manager,
             db: db_arc,
             job_manager: None,
+            first_device_needs_registration_code,
         }
     }
 

@@ -8,6 +8,7 @@ pub struct NodeEnvironment {
     pub ping_interval: u64,
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
+    pub first_device_needs_registration_code: bool,
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {
@@ -37,6 +38,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse port number");
 
+    // TODO: remove this and just assume one device per profile
     let starting_num_qr_profiles: u32 = env::var("STARTING_NUM_QR_PROFILES")
         .unwrap_or_else(|_| "0".to_string())
         .parse()
@@ -46,6 +48,11 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .unwrap_or_else(|_| "1".to_string())
         .parse()
         .expect("Failed to parse starting number of QR devices");
+
+    let first_device_needs_registration_code: bool = env::var("FIRST_DEVICE_NEEDS_REGISTRATION_CODE")
+        .unwrap_or_else(|_| "true".to_string())
+        .parse()
+        .expect("Failed to parse needs registration code");
 
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
@@ -58,5 +65,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         ping_interval,
         starting_num_qr_profiles,
         starting_num_qr_devices,
+        first_device_needs_registration_code,
     }
 }
