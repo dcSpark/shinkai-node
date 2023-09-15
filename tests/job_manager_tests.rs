@@ -20,7 +20,7 @@ mod tests {
     use mockito::Server;
     use shinkai_message_primitives::{
         schemas::{
-            agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent},
+            agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             inbox_name::InboxName,
             shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         },
@@ -119,7 +119,7 @@ mod tests {
             perform_locally: false,
             external_url: Some(server.url()),
             api_key: Some("mockapikey".to_string()),
-            model: AgentAPIModel::OpenAI(openai),
+            model: AgentLLMInterface::OpenAI(openai),
             toolkit_permissions: vec!["toolkit1".to_string(), "toolkit2".to_string()],
             storage_bucket_permissions: vec!["storage1".to_string(), "storage2".to_string()],
             allowed_message_senders: vec!["sender1".to_string(), "sender2".to_string()],

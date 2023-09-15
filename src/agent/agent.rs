@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
     schemas::{
-        agents::serialized_agent::{AgentAPIModel, SerializedAgent},
+        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
         shinkai_name::ShinkaiName,
     },
     shinkai_message::shinkai_message_schemas::{JobPreMessage, JobRecipient},
@@ -19,10 +19,10 @@ pub struct Agent {
     pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
     pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     pub client: Client,
-    pub perform_locally: bool,        // flag to perform computation locally or not
+    pub perform_locally: bool,        // Todo: Remove as not used anymore
     pub external_url: Option<String>, // external API URL
     pub api_key: Option<String>,
-    pub model: AgentAPIModel,
+    pub model: AgentLLMInterface,
     pub toolkit_permissions: Vec<String>, // list of toolkits the agent has access to
     pub storage_bucket_permissions: Vec<String>, // list of storage buckets the agent has access to
     pub allowed_message_senders: Vec<String>, // list of sub-identities allowed to message the agent
@@ -36,7 +36,7 @@ impl Agent {
         perform_locally: bool,
         external_url: Option<String>,
         api_key: Option<String>,
-        model: AgentAPIModel,
+        model: AgentLLMInterface,
         toolkit_permissions: Vec<String>,
         storage_bucket_permissions: Vec<String>,
         allowed_message_senders: Vec<String>,
@@ -60,23 +60,9 @@ impl Agent {
         }
     }
 
-    pub async fn call_external_api(&self, content: &str) -> Result<JsonValue, AgentError> {
-        match &self.model {
-            AgentAPIModel::OpenAI(openai) => {
-                openai
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content)
-                    .await
-            }
-            AgentAPIModel::Sleep(sleep_api) => {
-                sleep_api
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), content)
-                    .await
-            }
-        }
-    }
-
-    /// TODO: Probably just throw this away, and move this logic into a LocalLLM struct that implements the Provider trait
-    pub async fn inference_locally(&self, content: String) -> Result<JsonValue, AgentError> {
+    /// Inferences an LLM locally based on info held in the Agent
+    /// TODO: For now just mocked, eventually get around to this, and create a struct that implements the Provider trait to unify local with remote interface.
+    async fn inference_locally(&self, content: String) -> Result<JsonValue, AgentError> {
         // Here we run our GPU-intensive task on a separate thread
         let handle = tokio::task::spawn_blocking(move || {
             let mut map = Map::new();
@@ -98,12 +84,28 @@ impl Agent {
     /// meaning that they tell/force the LLM to always respond in JSON. We automatically
     /// parse the JSON object out of the response into a JsonValue, or error if no object is found.
     pub async fn inference(&self, content: String) -> Result<JsonValue, AgentError> {
-        if self.perform_locally {
-            // No need to spawn a new task here
-            return self.inference_locally(content.clone()).await;
-        } else {
-            // Call external API
-            return self.call_external_api(&content.clone()).await;
+        match &self.model {
+            AgentLLMInterface::OpenAI(openai) => {
+                openai
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        &content,
+                    )
+                    .await
+            }
+            AgentLLMInterface::Sleep(sleep_api) => {
+                sleep_api
+                    .call_api(
+                        &self.client,
+                        self.external_url.as_ref(),
+                        self.api_key.as_ref(),
+                        &content,
+                    )
+                    .await
+            }
+            AgentLLMInterface::LocalLLM(local_llm) => self.inference_locally(content.to_string()).await,
         }
     }
 }

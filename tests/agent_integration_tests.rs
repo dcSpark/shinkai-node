@@ -1,5 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentAPIModel, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
@@ -151,7 +151,7 @@ fn node_agent_registration() {
                     perform_locally: false,
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
-                    model: AgentAPIModel::OpenAI(open_ai),
+                    model: AgentLLMInterface::OpenAI(open_ai),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

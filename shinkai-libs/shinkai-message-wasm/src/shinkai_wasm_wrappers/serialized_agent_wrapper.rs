@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
-use shinkai_message_primitives::schemas::{agents::serialized_agent::{SerializedAgent, AgentAPIModel}, shinkai_name::ShinkaiName};
+use shinkai_message_primitives::schemas::{
+    agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+    shinkai_name::ShinkaiName,
+};
 use wasm_bindgen::prelude::*;
 
 pub trait SerializedAgentJsValueConversion {
@@ -66,7 +69,7 @@ impl SerializedAgentJsValueConversion for SerializedAgent {
         };
         let api_key = if api_key.is_empty() { None } else { Some(api_key) };
         let model = model
-            .parse::<AgentAPIModel>()
+            .parse::<AgentLLMInterface>()
             .map_err(|_| JsValue::from_str("Invalid model"))?;
         let toolkit_permissions = if toolkit_permissions.is_empty() {
             Vec::new()
