@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use cpal::BackendSpecificError;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -31,7 +32,7 @@ fn main() {
 
     // Create a new WhisperContext
     let ctx = Arc::new(Mutex::new(
-        WhisperContext::new("./models/ggml-tiny.bin").expect("failed to load model"),
+        WhisperContext::new("./models/ggml-base-q5_1.bin").expect("failed to load model"),
     ));
     let ctx_clone = Arc::clone(&ctx);
 
@@ -159,8 +160,7 @@ fn run<T>(
                     buffer.extend(data.iter().map(|sample| (*sample).into()));
 
                     // If the buffer has more than 2-3 seconds of audio data, process it
-                    if buffer.len() >= (2 * config.sample_rate.0 as usize) {
-
+                    if buffer.len() >= (4 * config.sample_rate.0 as usize) {
                         let buffer_clone = buffer.clone();
                         for sample in buffer_clone {
                             let sample_f32: f32 = sample.into();
@@ -170,13 +170,16 @@ fn run<T>(
                         let mut state = ctx.create_state().expect("failed to create state");
 
                         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-                        params.set_n_threads(1);
+                        params.set_n_threads(2);
+                        // params.set_translate(true);
                         params.set_print_special(false);
                         params.set_print_progress(false);
                         params.set_print_realtime(false);
                         params.set_print_timestamps(false);
 
-                        state.full(params, &buffer).expect("failed to run model");
+                        let audio_data = whisper_rs::convert_stereo_to_mono_audio(&buffer).unwrap();
+
+                        state.full(params, &audio_data).expect("failed to run model");
 
                         let num_segments = state.full_n_segments().expect("failed to get number of segments");
                         for i in 0..num_segments {
@@ -203,7 +206,7 @@ fn run<T>(
         .unwrap();
     stream.play().unwrap();
     loop {
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
