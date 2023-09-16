@@ -25,6 +25,7 @@ use tokio::runtime::Runtime;
 use crate::utils::node_test_api::{
     api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
+use crate::utils::node_test_performance::{Category, PerformanceCheck};
 
 mod utils;
 use mockito::Server;
@@ -71,7 +72,7 @@ fn node_agent_registration() {
             0,
             node1_commands_receiver,
             node1_db_path,
-            true
+            true,
         );
 
         println!("Starting Node");
@@ -186,7 +187,6 @@ fn node_agent_registration() {
                 )
                 .await;
             }
-
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for a Job");
