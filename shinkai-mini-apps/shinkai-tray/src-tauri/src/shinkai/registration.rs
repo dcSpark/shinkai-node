@@ -23,11 +23,11 @@ pub fn process_onboarding_data(data: OnboardingData) -> String {
     let device_encryption_keys = shinkai_message_primitives::shinkai_utils::encryption::ephemeral_encryption_keys();
     let device_signing_keys = shinkai_message_primitives::shinkai_utils::signatures::ephemeral_signature_keypair();
 
-    let message = shinkai_message_primitives::shinkai_utils::shinkai_message_builder::use_code_registration_for_profile(
+    // let message = shinkai_message_primitives::shinkai_utils::shinkai_message_builder::use_code_registration_for_profile(
+    //     profile_encryption_keys.0,
+    //     profile_signing_keys.0,
 
-    )
-
-
+    // )
 
     "Data received successfully".to_string()
 }

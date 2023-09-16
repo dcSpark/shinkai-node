@@ -25,7 +25,6 @@ use tokio::runtime::Runtime;
 use crate::utils::node_test_api::{
     api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
-use crate::utils::node_test_performance::{Category, PerformanceCheck};
 
 mod utils;
 use mockito::Server;

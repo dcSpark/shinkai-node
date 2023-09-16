@@ -127,6 +127,11 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
+    // GET v1/shinkai_health
+    let shinkai_health = warp::path!("v1" / "shinkai_health")
+        .and(warp::get())
+        .and_then(shinkai_health_handler);
+
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
     // let get_last_messages = {
@@ -271,6 +276,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(create_registration_code)
         .or(use_registration_code)
         .or(get_all_subidentities)
+        .or(shinkai_health)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -579,6 +585,10 @@ async fn use_registration_code_handler(
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
+}
+
+async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::json(&json!({ "status": "ok" })))
 }
 
 async fn get_all_subidentities_handler(
