@@ -8,9 +8,10 @@ export IDENTITY_SECRET_KEY="df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce805
 export ENCRYPTION_SECRET_KEY="d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159"
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node1.shinkai"
-export RUST_LOG=warn,error,info,debug
+export RUST_LOG=warn,error,info
 export STARTING_NUM_QR_PROFILES="1"
 export STARTING_NUM_QR_DEVICES="1"
+export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 
 if [ -z "$1" ]
 then

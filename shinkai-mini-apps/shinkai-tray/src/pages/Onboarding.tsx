@@ -10,7 +10,7 @@ const Onboarding: React.FC<OnboardingProps> = ({
   setView,
   setIsOnboardingCompleted,
 }) => {
-  const [nodeAddress, setNodeAddress] = useState("");
+  const [nodeAddress, setNodeAddress] = useState("http://localhost:13013");
   const [registrationCode, setRegistrationCode] = useState("");
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -43,15 +43,15 @@ const Onboarding: React.FC<OnboardingProps> = ({
           onChange={(e) => setNodeAddress(e.target.value)}
         />
       </label>
-      <label>
+      {/* <label>
         Registration Code:
         <input
           type="text"
           value={registrationCode}
           onChange={(e) => setRegistrationCode(e.target.value)}
         />
-      </label>
-      <input type="submit" value="Submit" style={{ cursor: "pointer" }} />
+      </label> */}
+      <input type="submit" value="Register" style={{ cursor: "pointer" }} />
     </form>
   );
 };
