@@ -18,6 +18,12 @@ export PYTHON_SYS_EXECUTABLE="$python_path"
 # Print the Python version
 python --version
 
+# Create a virtual environment if it doesn't exist
+if [ ! -d "./venv" ]
+then
+    python -m venv venv
+fi
+
 # Activate your virtual environment
 source ./venv/bin/activate
 
