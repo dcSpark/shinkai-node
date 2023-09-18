@@ -1,5 +1,11 @@
 FROM rust:bookworm
 
+# Install Python3 and pip
+RUN apt-get update && apt-get install -y python3 python3-pip
+
+# Install maturin
+RUN pip3 install maturin
+
 # Install nvm 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 ENV NVM_DIR /usr/local/nvm
@@ -24,3 +30,6 @@ COPY . .
 
 WORKDIR /app/shinkai-libs/shinkai-message-wasm
 RUN wasm-pack build
+
+WORKDIR /app/shinkai-libs/shinkai-message-pyo3
+RUN maturin build

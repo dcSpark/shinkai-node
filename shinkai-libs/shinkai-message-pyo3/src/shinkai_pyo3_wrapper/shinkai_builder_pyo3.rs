@@ -7,7 +7,7 @@ use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreation,
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo,
         JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
     },
     shinkai_utils::{
@@ -818,7 +818,7 @@ impl PyShinkaiMessageBuilder {
                 }
             };
 
-            let job_creation = JobCreation { scope: scope.inner };
+            let job_creation = JobCreationInfo { scope: scope.inner };
             let body = match serde_json::to_string(&job_creation) {
                 Ok(body) => body,
                 Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),

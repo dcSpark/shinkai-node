@@ -84,4 +84,10 @@ You need to compile the wasm library from `shinkai-message-wasm` and copy the re
 npm run test.unit
 ```
 
+### Shinkai PYO3 Tests
+
+
+### Further CI Development
+
+Use `act -j test-wasm -P self-hosted=nektos/act-environments-ubuntu:18.04 --container-architecture linux/amd64` to run the tests locally in a docker container. This is useful for debugging CI issues.
 
