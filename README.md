@@ -86,6 +86,9 @@ npm run test.unit
 
 ### Shinkai PYO3 Tests
 
+Run the following command to run the tests:
+
+`cd shinkai-libs/shinkai-message-pyo3 && ./run_tests.sh`
 
 ### Further CI Development
 
