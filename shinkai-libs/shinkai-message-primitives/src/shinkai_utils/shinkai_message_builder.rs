@@ -599,6 +599,53 @@ impl ShinkaiMessageBuilder {
         )
     }
 
+    pub fn initial_registration_with_no_code_for_device(
+        my_device_encryption_sk: EncryptionStaticKey,
+        my_device_signature_sk: SignatureStaticKey,
+        profile_encryption_sk: EncryptionStaticKey,
+        profile_signature_sk: SignatureStaticKey,
+        registration_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk);
+        let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
+        let other = encryption_public_key_to_string(my_device_encryption_pk);
+
+        let identity_type = "device".to_string();
+        let permission_type = "admin".to_string();
+
+        let registration_code = RegistrationCode {
+            code: "".to_string(),
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_device_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        let body = serde_json::to_string(&registration_code).map_err(|_| "Failed to serialize data to JSON")?;
+        let other = encryption_public_key_to_string(my_device_encryption_pk.clone());
+
+        ShinkaiMessageBuilder::new(my_device_encryption_sk, my_device_signature_sk, my_device_encryption_pk)
+            .message_raw_content(body)
+            .body_encryption(EncryptionMethod::None)
+            .internal_metadata_with_schema(
+                sender_subidentity,
+                "".to_string(),
+                "".to_string(),
+                MessageSchemaType::UseRegistrationCode,
+                EncryptionMethod::None,
+            )
+            .external_metadata_with_other(receiver.clone(), sender, other)
+            .build()
+    }
+
     pub fn get_all_inboxes_for_profile(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SignatureStaticKey,
@@ -1034,6 +1081,63 @@ mod tests {
         let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, recipient);
         assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+    }
+
+    #[test]
+    fn test_initial_registration_with_no_code_for_device() {
+        let (my_device_identity_sk, my_device_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (my_device_encryption_sk, my_device_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+
+        let recipient = "@@other_node.shinkai".to_string();
+        let sender = recipient.clone();
+        let sender_subidentity = "main".to_string();
+
+        let registration_name = "registration_name".to_string();
+
+        let message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+            my_device_encryption_sk.clone(),
+            my_device_identity_sk,
+            profile_encryption_sk,
+            profile_identity_sk,
+            registration_name.clone(),
+            sender_subidentity.clone(),
+            sender.clone(),
+            recipient.clone(),
+        );
+        println!("message_result: {:?}", message_result);
+        assert!(message_result.is_ok());
+        let message = message_result.unwrap();
+
+        assert_eq!(message.encryption, EncryptionMethod::None);
+
+        if let MessageBody::Unencrypted(shinkai_body) = message.body {
+            if let MessageData::Unencrypted(shinkai_data) = shinkai_body.message_data {
+                // Parse the decrypted content from a JSON string to a RegistrationCode struct
+                let parsed_content: Result<RegistrationCode, _> =
+                    serde_json::from_str(&shinkai_data.message_raw_content);
+                match &parsed_content {
+                    Ok(registration_code) => {
+                        println!("Parsed content: {:?}", registration_code);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to parse content: {:?}", e);
+                    }
+                }
+
+                let registration_code = parsed_content.unwrap();
+                assert_eq!(registration_code.code, "");
+                assert_eq!(registration_code.registration_name, registration_name);
+                assert_eq!(registration_code.permission_type, "admin");
+                assert_eq!(registration_code.identity_type, "device");
+            }
+            assert_eq!(shinkai_body.internal_metadata.sender_subidentity, sender_subidentity);
+        }
+
+        let external_metadata = message.external_metadata;
+        assert_eq!(external_metadata.sender, recipient);
     }
 
     #[test]

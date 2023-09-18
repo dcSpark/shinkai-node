@@ -92,6 +92,7 @@ fn main() {
                 node_env.ping_interval,
                 node_commands_receiver,
                 db_path,
+                node_env.first_device_needs_registration_code
             )
             .await
         }),
@@ -111,18 +112,7 @@ fn main() {
     // Run the API server and node in separate tasks
     rt.block_on(async {
         // Node task
-        let node_task = if let Ok(_) = env::var("CONNECT_ADDR") {
-            if let Ok(_) = env::var("CONNECT_PK") {
-                eprintln!("CONNECT_ADDR and CONNECT_PK environment variables are set. Trying to connect to the node.");
-                tokio::spawn(async move { connect_node.lock().await.start().await.unwrap() })
-            } else {
-                eprintln!("CONNECT_PK environment variable is not set.");
-                tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
-            }
-        } else {
-            eprintln!("CONNECT_ADDR environment variable is not set.");
-            tokio::spawn(async move { start_node.lock().await.start().await.unwrap() })
-        };
+        let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
 
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {

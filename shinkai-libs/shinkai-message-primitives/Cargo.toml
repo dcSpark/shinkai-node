@@ -22,7 +22,7 @@ anyhow = "1.0.72"
 thiserror = "1.0.44"
 console_log = "0.2"
 log = "0.4.14"
-hex = "=0.4.2"
+hex = "=0.4.3"
 
 [dependencies.serde]
 version = "1.0.188"

@@ -185,7 +185,7 @@ impl ShinkaiDB {
             }
         }
         messages.reverse();
-        print_content_time_messages(messages.clone());
+        // print_content_time_messages(messages.clone());
         Ok(messages)
     }
 
@@ -305,7 +305,7 @@ impl ShinkaiDB {
             }
         }
 
-        print_content_time_messages(messages.clone());
+        // print_content_time_messages(messages.clone());
         Ok(messages)
     }
 

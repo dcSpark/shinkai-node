@@ -1,7 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::IntoPyDict;
 use serde_json::Result;
-use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::{JobScope, JobCreation}, schemas::inbox_name::InboxName};
+use shinkai_message_primitives::{shinkai_message::shinkai_message_schemas::{JobScope, JobCreationInfo}, schemas::inbox_name::InboxName};
 
 use super::shinkai_name_pyo3::PyInboxName;
 
@@ -49,5 +49,5 @@ impl PyJobScope {
 
 #[pyclass]
 pub struct PyJobCreation {
-    pub inner: JobCreation,
+    pub inner: JobCreationInfo,
 }

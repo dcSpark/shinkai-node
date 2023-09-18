@@ -71,6 +71,7 @@ fn node_agent_registration() {
             0,
             node1_commands_receiver,
             node1_db_path,
+            true,
         );
 
         println!("Starting Node");
@@ -185,7 +186,6 @@ fn node_agent_registration() {
                 )
                 .await;
             }
-
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for a Job");

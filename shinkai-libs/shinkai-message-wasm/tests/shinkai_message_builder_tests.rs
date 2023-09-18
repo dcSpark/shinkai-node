@@ -6,16 +6,25 @@ mod tests {
     use serde_wasm_bindgen::from_value;
     use shinkai_message_primitives::schemas::inbox_name::InboxName;
     use shinkai_message_primitives::schemas::registration_code::RegistrationCode;
-    use shinkai_message_primitives::shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody, MessageData, ShinkaiBody, ExternalMetadata};
-    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{RegistrationCodeRequest, JobScope, JobMessage};
-    use shinkai_message_primitives::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, encryption_secret_key_to_string, encryption_public_key_to_string, EncryptionMethod};
-    use shinkai_message_primitives::shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, signature_secret_key_to_string};
+    use shinkai_message_primitives::shinkai_message::shinkai_message::{
+        ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
+    };
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+        JobMessage, JobScope, RegistrationCodeRequest,
+    };
+    use shinkai_message_primitives::shinkai_utils::encryption::{
+        encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+        EncryptionMethod,
+    };
+    use shinkai_message_primitives::shinkai_utils::signatures::{
+        signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
+    };
     use shinkai_message_wasm::shinkai_utils::encryption::convert_encryption_sk_string_to_encryption_pk_string;
     use shinkai_message_wasm::shinkai_wasm_wrappers::inbox_name_wrapper::InboxNameWrapper;
+    use shinkai_message_wasm::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
     use shinkai_message_wasm::{ShinkaiMessageBuilderWrapper, ShinkaiMessageWrapper};
     use wasm_bindgen::prelude::*;
     use wasm_bindgen_test::*;
-    use shinkai_message_wasm::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
 
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
@@ -397,10 +406,7 @@ mod tests {
 
         // Check internal metadata
         assert_eq!(decrypted_message.get_recipient_subidentity().unwrap(), "".to_string());
-        assert_eq!(
-            decrypted_message.get_sender_subidentity().unwrap(),
-            "".to_string()
-        );
+        assert_eq!(decrypted_message.get_sender_subidentity().unwrap(), "".to_string());
 
         // Check external metadata
         let external_metadata = decrypted_message.external_metadata;
@@ -483,6 +489,73 @@ mod tests {
 
         // Check external metadata
         let external_metadata = decrypted_message.external_metadata;
+        assert_eq!(external_metadata.sender, receiver_node);
+        assert_eq!(external_metadata.recipient, receiver_node);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen_test]
+    fn test_initial_registration_with_no_code_for_device() {
+        // Initialize test data
+        let (my_device_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (my_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
+        let (profile_sk, _) = unsafe_deterministic_signature_keypair(1);
+        let (profile_encryption_sk, _) = unsafe_deterministic_encryption_keypair(1);
+        let (_, receiver_public_key) = unsafe_deterministic_encryption_keypair(2);
+
+        let my_device_encryption_sk_string = encryption_secret_key_to_string(my_device_encryption_sk.clone());
+        let my_device_sk_string = signature_secret_key_to_string(my_device_sk);
+        let profile_encryption_sk_string = encryption_secret_key_to_string(profile_encryption_sk.clone());
+        let profile_sk_string = signature_secret_key_to_string(profile_sk);
+
+        let sender_profile = "sender_profile".to_string();
+        let receiver_node = "@@receiver_node.shinkai".to_string();
+        let registration_name = "test_registration".to_string();
+
+        // Call the function and check the result
+        let message_result = ShinkaiMessageBuilderWrapper::initial_registration_with_no_code_for_device(
+            my_device_encryption_sk_string.clone(),
+            my_device_sk_string.clone(),
+            profile_encryption_sk_string.clone(),
+            profile_sk_string.clone(),
+            registration_name.clone(),
+            sender_profile.clone(),
+            receiver_node.clone(),
+            receiver_node.clone(),
+        );
+
+        if let Err(e) = &message_result {
+            eprintln!("Error occurred: {:?}", e);
+            panic!(
+                "initial_registration_with_no_code_for_device() returned an error: {:?}",
+                e
+            );
+        }
+        assert!(message_result.is_ok());
+
+        let message_result_string = message_result.unwrap();
+        let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_result_string).unwrap();
+
+        // Deserialize the body and check its content
+        let content = message.get_message_content().unwrap();
+
+        let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
+        assert_eq!(registration_code.registration_name, registration_name);
+        assert_eq!(registration_code.identity_type, "device");
+        assert_eq!(registration_code.permission_type, "admin");
+        let encryption_pk_string =
+            convert_encryption_sk_string_to_encryption_pk_string(my_device_encryption_sk_string.clone()).unwrap();
+        let profile_encryption_pk_string =
+            convert_encryption_sk_string_to_encryption_pk_string(profile_encryption_sk_string.clone()).unwrap();
+        assert_eq!(registration_code.device_encryption_pk, encryption_pk_string);
+        assert_eq!(registration_code.profile_encryption_pk, profile_encryption_pk_string);
+
+        // Check internal metadata
+        assert_eq!(message.get_sender_subidentity().unwrap(), sender_profile);
+        assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
+
+        // Check external metadata
+        let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, receiver_node);
         assert_eq!(external_metadata.recipient, receiver_node);
     }

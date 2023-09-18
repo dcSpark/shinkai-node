@@ -127,6 +127,11 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
+    // GET v1/shinkai_health
+    let shinkai_health = warp::path!("v1" / "shinkai_health")
+        .and(warp::get())
+        .and_then(shinkai_health_handler);
+
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
     // let get_last_messages = {
@@ -271,6 +276,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(create_registration_code)
         .or(use_registration_code)
         .or(get_all_subidentities)
+        .or(shinkai_health)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -557,6 +563,13 @@ async fn create_registration_code_handler(
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct APIUseRegistrationCodeSuccessResponse {
+    pub message: String,
+    pub encryption_public_key: String,
+    pub identity_public_key: String,
+}
+
 async fn use_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -573,12 +586,23 @@ async fn use_registration_code_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+        Ok(success_response) => {
+            let response = serde_json::json!({
+                "message": success_response.message,
+                "encryption_public_key": success_response.encryption_public_key,
+                "identity_public_key": success_response.identity_public_key
+            });
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        },
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
+}
+
+async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::json(&json!({ "status": "ok" })))
 }
 
 async fn get_all_subidentities_handler(

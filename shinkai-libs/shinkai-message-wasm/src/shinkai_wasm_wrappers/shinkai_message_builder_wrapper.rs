@@ -462,6 +462,65 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
+    pub fn initial_registration_with_no_code_for_device(
+        my_device_encryption_sk: String,
+        my_device_signature_sk: String,
+        profile_encryption_sk: String,
+        profile_signature_sk: String,
+        registration_name: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<String, JsValue> {
+        let my_device_encryption_sk_type = string_to_encryption_static_key(&my_device_encryption_sk)?;
+        let my_device_signature_sk_type = string_to_signature_secret_key(&my_device_signature_sk)?;
+        let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
+        let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
+
+        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk_type);
+        let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk_type);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
+
+        let other = encryption_public_key_to_string(my_device_encryption_pk);
+
+        let identity_type = "device".to_string();
+        let permission_type = "admin".to_string();
+
+        let registration_code = RegistrationCode {
+            code: "".to_string(),
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_device_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        let body = serde_json::to_string(&registration_code).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let other = encryption_public_key_to_string(my_device_encryption_pk.clone());
+        let schema_jsvalue = JsValue::from_str(MessageSchemaType::TextContent.to_str());
+        let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
+
+        let mut builder =
+            ShinkaiMessageBuilderWrapper::new(my_device_encryption_sk, my_device_signature_sk, encryption_public_key_to_string(my_device_encryption_pk))?;
+
+        let _ = builder.message_raw_content(body);
+        let _ = builder.no_body_encryption();
+        let _ = builder.empty_non_encrypted_internal_metadata();
+        let _ = builder.external_metadata_with_other(receiver, sender, other.to_string());
+        let _ = builder.internal_metadata_with_schema(
+            sender_subidentity,
+            "".to_string(),
+            "".to_string(),
+            schema_jsvalue,
+            internal_encryption,
+        );
+        builder.build_to_string()
+    }
+
+    #[wasm_bindgen]
     pub fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,

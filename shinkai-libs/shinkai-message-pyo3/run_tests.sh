@@ -1,10 +1,16 @@
 #!/bin/bash
 
+# Create a virtual environment if it doesn't exist
+if [ ! -d "./venv" ]
+then
+    python -m venv venv
+fi
+
 # Activate your virtual environment
 source ./venv/bin/activate
 
 # Run maturin develop and capture its output
-output=$(maturin develop)
+output=$(maturin build -i python)
 
 # If maturin develop is successful, extract the path of the built wheel file
 if [ $? -eq 0 ]; then
