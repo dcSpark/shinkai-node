@@ -1,5 +1,7 @@
 use lazy_static::lazy_static;
 
+use super::error::AgentError;
+
 //
 // Core Job Step Flow
 //
@@ -167,26 +169,74 @@ Respond using the following EBNF and absolutely nothing else:
     );
 }
 
-pub struct PromptGenerator {}
+pub struct JobPromptGenerator {}
 
-impl PromptGenerator {
-    pub fn bootstrap_plan_prompt(job_task: String) -> String {
-        format!(
-            r#"
-    You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
+impl JobPromptGenerator {
+    pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
+        let mut prompt = Prompt::new(
+            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string()
+        );
+        prompt.add_content(format!("The user has asked the system:\n\n`{}`", job_task));
+        prompt.add_content(String::from(
+            "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
+        ));
+        prompt.add_ebnf(String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"));
 
-    The user has asked the system:
-
-        `{}`
-
-    Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
-
-    Keep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step.
-
-    Respond using the following EBNF and absolutely nothing else:
-    "{{" "plan" ":" "[" string ("," string)* "]" "}}"
-    "#,
-            job_task
-        )
+        prompt
     }
+}
+
+pub struct Prompt {
+    system_message: String,
+    pub sub_prompts: Vec<SubPrompt>,
+}
+
+impl Prompt {
+    pub fn new(system_message: String) -> Self {
+        Self {
+            system_message,
+            sub_prompts: Vec::new(),
+        }
+    }
+
+    /// Appends a Content to the end of the current list of sub prompts
+    pub fn add_content(&mut self, content: String) {
+        self.sub_prompts.push(SubPrompt::Content(content));
+    }
+
+    /// Appends an EBNF to the end of the current list of sub prompts
+    pub fn add_ebnf(&mut self, ebnf: String) {
+        self.sub_prompts.push(SubPrompt::EBNF(ebnf));
+    }
+
+    /// Returns the system message
+    pub fn system_message(&self) -> &String {
+        &self.system_message
+    }
+
+    /// Generates the user message to be used when inferencing an LLM
+    /// by processing all of the sub_prompts
+    pub fn user_message(self) -> String {
+        let json_response_required = String::from("```json");
+        let content = self
+            .sub_prompts
+            .into_iter()
+            .map(|sub_prompt| match sub_prompt {
+                SubPrompt::Content(content) => content,
+                SubPrompt::EBNF(ebnf) => format!(
+                    "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
+                    ebnf
+                ),
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+            + "\n"
+            + &json_response_required;
+        content
+    }
+}
+
+pub enum SubPrompt {
+    Content(String),
+    EBNF(String),
 }

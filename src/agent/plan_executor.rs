@@ -1,5 +1,4 @@
 use super::{agent::Agent, error::AgentError};
-use crate::agent::job_prompts::PromptGenerator;
 use crate::tools::router::ShinkaiTool;
 use std::collections::HashMap;
 
