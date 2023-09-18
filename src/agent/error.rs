@@ -7,6 +7,7 @@ pub enum AgentError {
     MissingInitialStepInExecutionPlan,
     FailedExtractingJSONObjectFromResponse(String),
     FailedInferencingLocalLLM,
+    UserPromptMissingEBNFDefinition,
 }
 
 impl fmt::Display for AgentError {
@@ -24,6 +25,9 @@ impl fmt::Display for AgentError {
             AgentError::ReqwestError(err) => write!(f, "Reqwest error: {}", err),
             AgentError::FailedInferencingLocalLLM => {
                 write!(f, "Failed inferencing and getting a valid response from the local LLM")
+            }
+            AgentError::UserPromptMissingEBNFDefinition => {
+                write!(f, "At least 1 EBNF subprompt must be defined for the user message.")
             }
         }
     }
@@ -44,6 +48,7 @@ impl fmt::Debug for AgentError {
                 .finish(),
 
             AgentError::FailedInferencingLocalLLM => f.debug_tuple("FailedInferencingLocalLLM").finish(),
+            AgentError::UserPromptMissingEBNFDefinition => f.debug_tuple("UserPromptMissingEBNFDefinition").finish(),
         }
     }
 }
