@@ -563,6 +563,13 @@ async fn create_registration_code_handler(
     }
 }
 
+#[derive(Debug, Deserialize, Clone)]
+pub struct APIUseRegistrationCodeSuccessResponse {
+    pub message: String,
+    pub encryption_public_key: String,
+    pub identity_public_key: String,
+}
+
 async fn use_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -579,7 +586,14 @@ async fn use_registration_code_handler(
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+        Ok(success_response) => {
+            let response = serde_json::json!({
+                "message": success_response.message,
+                "encryption_public_key": success_response.encryption_public_key,
+                "identity_public_key": success_response.identity_public_key
+            });
+            Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
+        },
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),

@@ -86,7 +86,7 @@ pub async fn api_registration_device_node_profile_main(
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
-            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
@@ -199,7 +199,7 @@ pub async fn api_registration_profile_node(
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
-            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
@@ -486,4 +486,81 @@ pub async fn api_message_job(
 
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
     }
+}
+
+pub async fn api_initial_registration_with_no_code_for_device(
+    node_commands_sender: Sender<NodeCommand>,
+    node_profile_name: &str,
+    node_identity_name: &str,
+    node_encryption_pk: EncryptionPublicKey,
+    device_encryption_sk: EncryptionStaticKey,
+    device_signature_sk: SignatureStaticKey,
+    profile_encryption_sk: EncryptionStaticKey,
+    profile_signature_sk: SignatureStaticKey,
+    device_name_for_profile: &str,
+) {
+    let recipient = node_identity_name.to_string();
+    let sender = recipient.clone();
+    let sender_subidentity = "main".to_string();
+
+    let message_result = ShinkaiMessageBuilder::initial_registration_with_no_code_for_device(
+        device_encryption_sk.clone(),
+        clone_signature_secret_key(&device_signature_sk),
+        profile_encryption_sk.clone(),
+        clone_signature_secret_key(&profile_signature_sk),
+        device_name_for_profile.clone().to_string(),
+        sender_subidentity.clone(),
+        sender.clone(),
+        recipient.clone(),
+    )
+    .unwrap();
+
+    eprintln!("message_result: {:?}", message_result);
+
+    let (res_use_registration_sender, res_use_registraton_receiver) = async_channel::bounded(2);
+
+    node_commands_sender
+        .send(NodeCommand::APIUseRegistrationCode {
+            msg: message_result,
+            res: res_use_registration_sender,
+        })
+        .await
+        .unwrap();
+    let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
+    eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
+    match node2_use_registration_code {
+        Ok(code) => {
+            assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name);
+            assert_eq!(code.encryption_public_key, encryption_public_key_to_string(node_encryption_pk), "{} used registration code", node_profile_name);
+        }
+        Err(e) => panic!("Registration code error: {:?}", e),
+    }
+
+    let (res_all_subidentities_sender, res_all_subidentities_receiver): (
+        async_channel::Sender<Result<Vec<Identity>, APIError>>,
+        async_channel::Receiver<Result<Vec<Identity>, APIError>>,
+    ) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::GetAllSubidentitiesDevicesAndAgents(
+            res_all_subidentities_sender,
+        ))
+        .await
+        .unwrap();
+    let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
+    eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
+
+    assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
+    eprintln!(
+        "{}",
+        format!(
+            "{} subidentity: {:?}",
+            node_profile_name,
+            node2_all_subidentities[0].get_full_identity_name()
+        )
+    );
+    assert_eq!(
+        node2_all_subidentities[1].get_full_identity_name(),
+        format!("{}/main/device/{}", node_identity_name, device_name_for_profile),
+        "Node has the right subidentity"
+    );
 }

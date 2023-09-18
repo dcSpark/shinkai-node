@@ -35,7 +35,7 @@ use crate::network::node_message_handlers::{
 };
 use crate::schemas::identity::{Identity, StandardIdentity};
 
-use super::node_api::APIError;
+use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
 use super::node_error::NodeError;
 
 pub enum NodeCommand {
@@ -65,7 +65,7 @@ pub enum NodeCommand {
     // Command to make the node use a registration code encapsulated in a `ShinkaiMessage`. The sender will receive the result.
     APIUseRegistrationCode {
         msg: ShinkaiMessage,
-        res: Sender<Result<String, APIError>>,
+        res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     },
     // Command to request the external profile data associated with a profile name. The sender will receive the data.
     IdentityNameToExternalProfileData {

@@ -81,7 +81,7 @@ pub async fn local_registration_profile_node(
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
-            Ok(code) => assert_eq!(code, "true".to_string(), "{} used registration code", node_profile_name),
+            Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
