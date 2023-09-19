@@ -11,6 +11,8 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 
 mod audio;
 mod shinkai;
+mod db;
+mod models;
 
 use audio::transcribe::run;
 use shinkai::registration::process_onboarding_data;
