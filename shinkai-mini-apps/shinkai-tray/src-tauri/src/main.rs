@@ -3,6 +3,8 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::BackendSpecificError;
+use db::db::TrayDB;
+use models::setup_data::SetupData;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu};
@@ -10,16 +12,14 @@ use tauri::{Manager, SystemTrayMenuItem};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 
 mod audio;
+mod db;
+mod models;
 mod shinkai;
 
 use audio::transcribe::run;
 use shinkai::registration::process_onboarding_data;
 
-#[derive(serde::Deserialize)]
-struct OnboardingData {
-    node_address: String,
-    registration_code: String,
-}
+use crate::shinkai::registration::validate_setup_data;
 
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit");
@@ -74,8 +74,11 @@ fn main() {
         }
     });
 
+    let db = TrayDB::new("db").unwrap();
+
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![process_onboarding_data])
+        .manage(db)
+        .invoke_handler(tauri::generate_handler![process_onboarding_data, validate_setup_data])
         .setup(|app| Ok(()))
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {

@@ -116,6 +116,8 @@ impl ShinkaiDB {
         let mut db_opts = Options::default();
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
+        // if we want to enable compression
+        // db_opts.set_compression_type(DBCompressionType::Lz4);
 
         let cf_names = if Path::new(db_path).exists() {
             // If the database file exists, get the list of column families from the database
