@@ -1,7 +1,7 @@
 import React, { Dispatch, SetStateAction, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { APIUseRegistrationCodeSuccessResponse } from "@shinkai_network/shinkai-message-ts/src/models/Payloads";
-import { submitInitialRegistrationNoCode } from "@shinkai_network/shinkai-message-ts/src/api";
+import { APIUseRegistrationCodeSuccessResponse } from "../shinkai-message-ts/src/models/Payloads";
+import { submitInitialRegistrationNoCode } from "../shinkai-message-ts/src/api";
 
 interface OnboardingProps {
   setView: Dispatch<SetStateAction<string>>;
@@ -38,7 +38,8 @@ const Onboarding: React.FC<OnboardingProps> = ({
     my_device_identity_pk: "",
   });
 
-  const finishSetup = async () => {
+  const finishSetup = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setStatus("loading");
     let success = false;
     let responseData: APIUseRegistrationCodeSuccessResponse | undefined;
@@ -57,36 +58,26 @@ const Onboarding: React.FC<OnboardingProps> = ({
         };
       }
 
+      // Pass updatedSetupData to the Rust backend
+      try {
+        const response = await invoke("process_onboarding_data", {
+          data: updatedSetupData,
+        });
+        console.log(response);
+      } catch (err) {
+        console.error("Error invoking process_onboarding_data:", err);
+      }
+
       setStatus("success");
       localStorage.setItem("setupComplete", "true");
-      // history.push("/home");
+      setView("home");
     } else {
       setStatus("error");
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    console.log("Onboarding data submitted: ", nodeAddress, registrationCode);
-    event.preventDefault();
-    try {
-      const response = await invoke("process_onboarding_data", {
-        data: {
-          node_address: nodeAddress,
-          registration_code: registrationCode,
-        },
-      });
-      console.log(response);
-
-      // Update the state in the App component
-      //   setIsOnboardingCompleted(true);
-      setView("home");
-    } catch (err) {
-      console.error("Error invoking process_onboarding_data:", err);
-    }
-  };
-
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={finishSetup}>
       <label>
         Node Address:
         <input
