@@ -384,6 +384,7 @@ export const submitInitialRegistrationNoCode = async (
   setupData: SetupPayload
 ): Promise<{ success: boolean; data?: APIUseRegistrationCodeSuccessResponse }> => {
   try {
+    console.log('submitInitialRegistrationNoCode setupData:', setupData);
     const messageStr =
       ShinkaiMessageBuilderWrapper.initial_registration_with_no_code_for_device(
         setupData.my_device_encryption_sk,

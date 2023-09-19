@@ -1,33 +1,29 @@
-use serde::Deserialize;
-use reqwest::Error;
-use shinkai_message_primitives;
+use std::sync::Arc;
 
-#[derive(Deserialize)]
-pub struct OnboardingData {
-    node_address: String,
-    registration_code: String,
+use reqwest::Error;
+use serde::Deserialize;
+use shinkai_message_primitives;
+use tauri::async_runtime::Mutex;
+
+use crate::{db::db::TrayDB, models::setup_data::SetupData};
+
+#[tauri::command]
+pub fn process_onboarding_data(data: SetupData, db: tauri::State<'_, TrayDB>) -> Result<String, String> {
+    println!("data: {:?}", data);
+
+    // Write the data to the database
+    db.write_setup_data(data).map_err(|e| e.to_string())?;
+
+    Ok("Data received successfully".to_string())
 }
 
 #[tauri::command]
-pub fn process_onboarding_data(data: OnboardingData) -> String {
-    // The rest of your function here...
-    // Process the data here
-    // For now, let's just print the data and return a success message
-    println!("Node Address: {}", data.node_address);
-    println!("Registration Code: {}", data.registration_code);
+pub fn validate_setup_data(db: tauri::State<'_, TrayDB>) -> Result<bool, String> {
+    let setup_data = db.read_setup_data().map_err(|e| e.to_string())?;
 
-    // Generate keys
-    let profile_encryption_keys = shinkai_message_primitives::shinkai_utils::encryption::ephemeral_encryption_keys();
-    let profile_signing_keys = shinkai_message_primitives::shinkai_utils::signatures::ephemeral_signature_keypair();
-
-    let device_encryption_keys = shinkai_message_primitives::shinkai_utils::encryption::ephemeral_encryption_keys();
-    let device_signing_keys = shinkai_message_primitives::shinkai_utils::signatures::ephemeral_signature_keypair();
-
-    // let message = shinkai_message_primitives::shinkai_utils::shinkai_message_builder::use_code_registration_for_profile(
-    //     profile_encryption_keys.0,
-    //     profile_signing_keys.0,
-
-    // )
-
-    "Data received successfully".to_string()
+    Ok(!setup_data.node_encryption_pk.is_empty() &&
+       !setup_data.node_address.is_empty() &&
+       !setup_data.my_device_encryption_sk.is_empty() &&
+       !setup_data.my_device_identity_sk.is_empty() &&
+       !setup_data.registration_name.is_empty())
 }
