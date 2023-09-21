@@ -47,18 +47,20 @@ function App() {
   }, []);
 
   return (
-    <div className="container">
-      {!isOnboardingCompleted && (
-        <Onboarding
-          setView={setView}
-          setIsOnboardingCompleted={setIsOnboardingCompleted}
-        />
-      )}
-      {isOnboardingCompleted && view === "home" && <Home setView={setView} />}
-      {isOnboardingCompleted && view === "settings" && <Settings setView={setView} />}
-      {isOnboardingCompleted && view === "create_task" && (
-        <CreateTaskView setView={setView} />
-      )}
+    <div className="h-full">
+      <div className="rounded-lg bg-app-gradient shadow-2xl border border-gray-800 backdrop-blur-md text-white">
+        {!isOnboardingCompleted && (
+          <Onboarding
+            setView={setView}
+            setIsOnboardingCompleted={setIsOnboardingCompleted}
+          />
+        )}
+        {isOnboardingCompleted && view === "home" && <Home setView={setView} />}
+        {isOnboardingCompleted && view === "settings" && <Settings setView={setView} />}
+        {isOnboardingCompleted && view === "create_task" && (
+          <CreateTaskView setView={setView} />
+        )}
+      </div>
     </div>
   );
 }
