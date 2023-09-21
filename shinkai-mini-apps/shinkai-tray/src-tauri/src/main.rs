@@ -42,37 +42,37 @@ fn main() {
     let is_activated = Arc::new(Mutex::new(false)); // change to true
     let is_activated_clone = Arc::clone(&is_activated);
 
-    // Create a new WhisperContext
-    let ctx = Arc::new(Mutex::new(
-        WhisperContext::new("./models/ggml-base-q5_1.bin").expect("failed to load model"),
-    ));
-    let ctx_clone = Arc::clone(&ctx);
+    // // Create a new WhisperContext
+    // let ctx = Arc::new(Mutex::new(
+    //     WhisperContext::new("./models/ggml-base-q5_1.bin").expect("failed to load model"),
+    // ));
+    // let ctx_clone = Arc::clone(&ctx);
 
-    // Start a new thread for audio capture
-    thread::spawn(move || {
-        let host = cpal::default_host();
-        let device = host
-            .input_devices()
-            .unwrap()
-            .find(|d| d.name().unwrap() == "MacBook Pro Microphone")
-            .expect("Failed to get MacBook Pro Microphone");
+    // // Start a new thread for audio capture
+    // thread::spawn(move || {
+    //     let host = cpal::default_host();
+    //     let device = host
+    //         .input_devices()
+    //         .unwrap()
+    //         .find(|d| d.name().unwrap() == "MacBook Pro Microphone")
+    //         .expect("Failed to get MacBook Pro Microphone");
 
-        println!("Selected input device: {}", device.name().unwrap());
-        println!("Default input config: {:?}", device.default_input_config().unwrap());
+    //     println!("Selected input device: {}", device.name().unwrap());
+    //     println!("Default input config: {:?}", device.default_input_config().unwrap());
 
-        let config = device
-            .default_input_config()
-            .expect("Failed to get default input config");
+    //     let config = device
+    //         .default_input_config()
+    //         .expect("Failed to get default input config");
 
-        let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+    //     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
-        match config.sample_format() {
-            cpal::SampleFormat::F32 => run::<f32>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
-            cpal::SampleFormat::I16 => run::<i16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
-            cpal::SampleFormat::U16 => run::<u16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
-            _ => panic!("unsupported sample format"),
-        }
-    });
+    //     match config.sample_format() {
+    //         cpal::SampleFormat::F32 => run::<f32>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
+    //         cpal::SampleFormat::I16 => run::<i16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
+    //         cpal::SampleFormat::U16 => run::<u16>(&device, config.into(), err_fn, is_activated_clone, ctx_clone),
+    //         _ => panic!("unsupported sample format"),
+    //     }
+    // });
 
     let db = TrayDB::new("db").unwrap();
 
