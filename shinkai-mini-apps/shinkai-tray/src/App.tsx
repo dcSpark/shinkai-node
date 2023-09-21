@@ -5,14 +5,13 @@ import Home from "./pages/Home";
 import Settings from "./pages/Settings";
 import CreateTaskView from "./pages/CreateTask";
 import Onboarding from "./pages/Onboarding";
-import { readTextFile, writeFile } from "@tauri-apps/api/fs";
 import { invoke } from "@tauri-apps/api";
 
 function App() {
   const [view, setView] = useState("home");
+  // eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
   const [taskInputVisible, setTaskInputVisible] = useState(false);
   const [isOnboardingCompleted, setIsOnboardingCompleted] = useState<boolean>(false);
-  const [taskInput, setTaskInput] = useState("");
 
   useEffect(() => {
     listen("create_task", () => {
@@ -47,23 +46,19 @@ function App() {
       });
   }, []);
 
-  const handleTaskInput = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setTaskInput(event.target.value);
-  };
-
-  const handleTaskSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    console.log("Task submitted: ", taskInput);
-    setTaskInput("");
-    setTaskInputVisible(false);
-  };
-
   return (
     <div className="container">
-      {!isOnboardingCompleted && <Onboarding setView={setView} setIsOnboardingCompleted={setIsOnboardingCompleted} />}
+      {!isOnboardingCompleted && (
+        <Onboarding
+          setView={setView}
+          setIsOnboardingCompleted={setIsOnboardingCompleted}
+        />
+      )}
       {isOnboardingCompleted && view === "home" && <Home setView={setView} />}
       {isOnboardingCompleted && view === "settings" && <Settings setView={setView} />}
-      {isOnboardingCompleted && view === "create_task" && <CreateTaskView setView={setView} />}
+      {isOnboardingCompleted && view === "create_task" && (
+        <CreateTaskView setView={setView} />
+      )}
     </div>
   );
 }
