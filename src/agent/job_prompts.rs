@@ -1,3 +1,5 @@
+use crate::tools::router::ShinkaiTool;
+
 use super::error::AgentError;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -183,111 +185,123 @@ impl JobPromptGenerator {
 
     pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
         let mut prompt = Prompt::new();
-        prompt.add_system_message_content(
-            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string()
+        prompt.add_content(
+            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
+            SubPromptType::System,
         );
-        prompt.add_user_message_content(format!("The user has asked the system:\n\n`{}`", job_task));
-        prompt.add_user_message_content(String::from(
-            "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
-        ));
-        prompt.add_user_message_ebnf(String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"));
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_content(
+            String::from(
+                "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
+            ),
+            SubPromptType::System,
+        );
+        prompt.add_ebnf(
+            String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"),
+            SubPromptType::System,
+        );
 
         prompt
     }
 
-    pub fn tool_ebnf_prompt(
-        context: HashMap<String, String>,
-        task: String,
-        tool_name: String,
-        toolkit_name: String,
-        description: String,
-        tool_input_ebnf: String,
-    ) -> Prompt {
+    /// Prompt for having the LLM validate whether inputs for a given tool are available
+    pub fn tool_inputs_validation_prompt(context: HashMap<String, String>, task: String, tool: ShinkaiTool) -> Prompt {
         let context_string = Self::parse_context_to_string(context);
+        let tool_summary = tool.formatted_tool_summary(true); // true to include EBNF output
 
         let mut prompt = Prompt::new();
-        prompt.add_system_message_content(format!(
-            "You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:\n\n```\n{}\n```\n",
-            context_string
-        ));
+        prompt.add_content(
+            format!(
+                "You are an assistant running in a system who only has access to a series of tools, your own knowledge. The current context of acquired info includes:\n\n```\n{}\n```\n",
+                context_string
+            ),
+            SubPromptType::System,
+        );
 
-        prompt.add_user_message_content(format!("The current task at hand is:\n\n`{}`", task));
+        prompt.add_content(
+            format!("The current task at hand is:\n\n`{}`", task),
+            SubPromptType::User,
+        );
 
-        prompt.add_user_message_content(format!(
-            "The system has selected the following tool to be used:\n\nTool Name: {}\nToolkit Name: {}\nDescription: {}\nTool Input EBNF: `{}`",
-            tool_name, toolkit_name, description, tool_input_ebnf
-        ));
+        prompt.add_content(
+            format!("We have selected the following tool to be used:\n\n{}", tool_summary),
+            SubPromptType::System,
+        );
 
-        prompt.add_user_message_content(String::from(
-            "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully."
-        ));
+        prompt.add_content(
+            String::from(
+                "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
+            ),
+            SubPromptType::System,
+        );
 
-        prompt.add_user_message_ebnf(String::from("{{\"prepared\": true}}"));
-        prompt.add_user_message_ebnf(String::from("{{\"tool-search\": \"string\"}}"));
+        prompt.add_ebnf(String::from("{{\"prepared\": true}}"), SubPromptType::User);
+
+        prompt.add_content(
+            String::from(
+
+                "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from("{{\"tool-search\": \"string\"}}"), SubPromptType::User);
 
         prompt
     }
 }
 
+pub enum SubPromptType {
+    User,
+    System,
+}
+
+pub enum SubPrompt {
+    Content(SubPromptType, String),
+    EBNF(SubPromptType, String),
+}
+
 pub struct Prompt {
-    pub system_message_sub_prompts: Vec<SubPrompt>,
-    pub user_message_sub_prompts: Vec<SubPrompt>,
+    pub sub_prompts: Vec<SubPrompt>,
 }
 
 impl Prompt {
     pub fn new() -> Self {
         Self {
-            system_message_sub_prompts: Vec::new(),
-            user_message_sub_prompts: Vec::new(),
+            sub_prompts: Vec::new(),
         }
     }
 
-    /// Appends a Content to the end of the current list of system message sub prompts
-    pub fn add_system_message_content(&mut self, content: String) {
-        self.system_message_sub_prompts.push(SubPrompt::Content(content));
+    /// Adds a content sub-prompt
+    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
     }
 
-    /// Appends an EBNF to the end of the current list of system message sub prompts
-    pub fn add_system_message_ebnf(&mut self, ebnf: String) {
-        self.system_message_sub_prompts.push(SubPrompt::EBNF(ebnf));
+    /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
+    /// string that specifies the output must match this EBNF string.
+    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
     }
 
-    /// Appends a Content to the end of the current list of user message sub prompts
-    pub fn add_user_message_content(&mut self, content: String) {
-        self.user_message_sub_prompts.push(SubPrompt::Content(content));
-    }
-
-    /// Appends an EBNF to the end of the current list of user message sub prompts
-    pub fn add_user_message_ebnf(&mut self, ebnf: String) {
-        self.user_message_sub_prompts.push(SubPrompt::EBNF(ebnf));
-    }
-
-    /// Generates the system message by processing all of the system message sub prompts
-    pub fn system_message(&self) -> String {
-        self.generate_message(&self.system_message_sub_prompts)
-    }
-
-    /// Generates the user message by processing all of the user message sub prompts
-    pub fn user_message(&self) -> Result<String, AgentError> {
+    /// Processes all sub-prompts into a single output String.
+    /// Validates that there is at least one EBNF sub-prompt to ensure
+    /// the LLM knows what to output.
+    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
         if !self
-            .user_message_sub_prompts
+            .sub_prompts
             .iter()
-            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_)))
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _)))
         {
             return Err(AgentError::UserPromptMissingEBNFDefinition);
         }
 
-        Ok(self.generate_message(&self.user_message_sub_prompts))
-    }
-
-    /// Helper method to generate a message from a list of sub prompts
-    fn generate_message(&self, sub_prompts: &[SubPrompt]) -> String {
         let json_response_required = String::from("```json");
-        let content = sub_prompts
+        let content = self
+            .sub_prompts
             .iter()
             .map(|sub_prompt| match sub_prompt {
-                SubPrompt::Content(content) => content.clone(),
-                SubPrompt::EBNF(ebnf) => format!(
+                SubPrompt::Content(_, content) => content.clone(),
+                SubPrompt::EBNF(_, ebnf) => format!(
                     "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
                     ebnf
                 ),
@@ -296,11 +310,6 @@ impl Prompt {
             .join("\n")
             + "\n"
             + &json_response_required;
-        content
+        Ok(content)
     }
-}
-
-pub enum SubPrompt {
-    Content(String),
-    EBNF(String),
 }
