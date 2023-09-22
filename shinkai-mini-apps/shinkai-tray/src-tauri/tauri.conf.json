@@ -41,14 +41,14 @@
     },
     "windows": [
       {
-        "title": "Main",
+        "title": "Shinkai",
         "fullscreen": false,
         "resizable": true,
-        "width": 400,
-        "height": 300
+        "width": 800,
+        "height": 500
       }
     ],
-     "systemTray": {
+    "systemTray": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true
     }
