@@ -16,6 +16,18 @@ module.exports = {
       },
     },
     extend: {
+      fontFamily: {
+        inter: ["Inter", "sans-serif"],
+      },
+      colors: {
+        primary: {
+          600: "#FF7E7F",
+          700: "#FF5E5F",
+          800: "#FF3E3F",
+        },
+        foreground: "#FFFFFF",
+        "muted-foreground": "#c7c7c7",
+      },
       backgroundImage: {
         "app-gradient":
           "linear-gradient(90deg, rgba(0, 0, 0, 0.30) 0%, rgba(0, 0, 0, 0.20) 100%)",

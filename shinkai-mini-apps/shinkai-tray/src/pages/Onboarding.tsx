@@ -152,7 +152,8 @@ const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingComplet
   const isLoading = status === "loading";
 
   return (
-    <div>
+    <div className="p-10">
+      <h1 className="text-center text-3xl font-semibold mb-4">Register</h1>
       <Form {...setupDataForm}>
         <form onSubmit={setupDataForm.handleSubmit(onSubmit)} className="space-y-8">
           <FormField
@@ -168,7 +169,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingComplet
               </FormItem>
             )}
           />
-          <Button className="w-full" type="submit" disabled={isLoading}>
+          <Button className="w-full" variant="default" type="submit" disabled={isLoading}>
             {isLoading && <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />}
             Submit
           </Button>
