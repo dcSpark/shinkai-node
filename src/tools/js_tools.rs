@@ -17,20 +17,6 @@ impl JSTool {
         Ok(())
     }
 
-    /// Returns a string that includes all of the input arguments' EBNF definitions
-    pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
-        ToolArgument::generate_ebnf_for_args(self.input_args.clone(), self.toolkit_name.clone(), add_arg_descriptions)
-    }
-
-    /// Returns a string that includes all of the input arguments' EBNF definitions
-    pub fn ebnf_outputs(&self, add_arg_descriptions: bool) -> String {
-        ToolArgument::generate_ebnf_for_args(
-            self.output_args.clone(),
-            self.toolkit_name.clone(),
-            add_arg_descriptions,
-        )
-    }
-
     /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
