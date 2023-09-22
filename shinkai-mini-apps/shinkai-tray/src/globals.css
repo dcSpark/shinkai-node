@@ -23,8 +23,5 @@
 html,
 body,
 #root {
-  @apply h-full font-inter;
-}
-body {
-  @apply bg-[#19242D] text-white;
+  @apply h-full font-inter rounded-lg overflow-hidden border-0 bg-[#19242D] text-white  shadow-2xl;
 }

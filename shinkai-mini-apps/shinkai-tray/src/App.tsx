@@ -47,7 +47,13 @@ function App() {
   }, []);
 
   return (
-    <div className="h-full bg-app-gradient border border-gray-800 backdrop-blur-md shadow-2xl text-white">
+    <div className="h-full bg-cover bg-app-gradient text-white">
+      <div
+        data-tauri-drag-region
+        className="flex select-none cursor-default justify-center items-center h-8 text-xs"
+      >
+        Custom Topbar (draggable)
+      </div>
       {!isOnboardingCompleted && (
         <Onboarding
           setView={setView}
