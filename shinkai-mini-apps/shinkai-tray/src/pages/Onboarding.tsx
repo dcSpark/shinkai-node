@@ -1,7 +1,6 @@
-import React, { Dispatch, SetStateAction, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { APIUseRegistrationCodeSuccessResponse } from "../shinkai-message-ts/src/models/Payloads";
-import { submitInitialRegistrationNoCode } from "../shinkai-message-ts/src/api";
 import {
   generateEncryptionKeys,
   generateSignatureKeys,
@@ -20,11 +19,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ReloadIcon } from "@radix-ui/react-icons";
+import { useNavigate } from "react-router-dom";
+import { HOME_PATH } from "../routes/name";
+import { submitInitialRegistrationNoCode } from "../shinkai-message-ts/src/api";
+import { useAuth } from "../store/auth-context";
 
-interface OnboardingProps {
-  setView: Dispatch<SetStateAction<string>>;
-  setIsOnboardingCompleted: Dispatch<SetStateAction<boolean>>;
-}
 const formSchema = z.object({
   registration_code: z.string(),
   profile: z.string(),
@@ -47,8 +46,11 @@ const formSchema = z.object({
   my_device_identity_pk: z.string(),
 });
 
-const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingCompleted }) => {
+const OnboardingPage = () => {
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
+  const { setSetupData } = useAuth();
+  const navigate = useNavigate();
+
   const setupDataForm = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -76,6 +78,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingComplet
     fetch("http://127.0.0.1:9550/v1/shinkai_health")
       .then((response) => response.json())
       .then((data) => {
+        console.log(data, "data");
         if (data.status === "ok") {
           setupDataForm.setValue("node_address", "http://127.0.0.1:9550");
         }
@@ -136,14 +139,13 @@ const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingComplet
         const response = await invoke("process_onboarding_data", {
           data: updatedSetupData,
         });
-        console.log(response);
-        setIsOnboardingCompleted(true);
+        console.log(response, "onboarding");
+        setSetupData(updatedSetupData);
         setStatus("success");
       } catch (err) {
         console.error("Error invoking process_onboarding_data:", err);
       }
-
-      setView("home");
+      navigate(HOME_PATH);
     } else {
       setStatus("error");
     }
@@ -179,4 +181,4 @@ const Onboarding: React.FC<OnboardingProps> = ({ setView, setIsOnboardingComplet
   );
 };
 
-export default Onboarding;
+export default OnboardingPage;
