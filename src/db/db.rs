@@ -106,6 +106,7 @@ impl ProfileBoundWriteBatch {
     }
 }
 
+#[derive(Debug)]
 pub struct ShinkaiDB {
     pub db: DB,
     pub path: String,

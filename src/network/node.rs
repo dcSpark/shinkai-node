@@ -398,6 +398,7 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
+            let socket = Arc::new(Mutex::new(socket));
             let db = Arc::clone(&self.db);
             let identity_manager = Arc::clone(&self.identity_manager);
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
@@ -406,6 +407,7 @@ impl Node {
 
             tokio::spawn(async move {
                 let mut buffer = Vec::new();
+                let mut socket = socket.lock().await;
                 socket.read_to_end(&mut buffer).await.unwrap();
 
                 let destination_socket = socket.peer_addr().expect("Failed to get peer address");
@@ -449,7 +451,6 @@ impl Node {
         self.peers.insert((peer_address, profile_name.clone()), Utc::now());
 
         let peer = (peer_address, profile_name.clone());
-        let mut db_lock = self.db.lock().await;
 
         let sender = self.node_profile_name.clone().get_node_name();
 
@@ -473,7 +474,7 @@ impl Node {
             receiver_public_key,
             sender,
             receiver,
-            &mut db_lock,
+            Arc::clone(&self.db),
             self.identity_manager.clone(),
         )
         .await?;
@@ -481,44 +482,51 @@ impl Node {
     }
 
     // Send a message to a peer.
-    pub async fn send(
-        message: &ShinkaiMessage,
-        my_encryption_sk: EncryptionStaticKey,
+    pub fn send(
+        message: ShinkaiMessage,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
-        db: &mut ShinkaiDB,
+        db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
-    ) -> Result<(), NodeError> {
+    ) {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
-        // let mut stream = TcpStream::connect(address).await?;
-        let stream = TcpStream::connect(address).await;
-        match stream {
-            Ok(mut stream) => {
-                let encoded_msg = message.encode_message()?;
-                // println!("send> Encoded Message: {:?}", encoded_msg);
-                stream.write_all(encoded_msg.as_ref()).await?;
-                stream.flush().await?;
-                info!("Sent message to {}", stream.peer_addr()?);
-                if save_to_db_flag {
-                    Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+
+        let message = Arc::new(message);
+        let peer = Arc::new(peer);
+
+        tokio::spawn(async move {
+            let stream = TcpStream::connect(address).await;
+            match stream {
+                Ok(mut stream) => {
+                    let encoded_msg = message.encode_message().unwrap();
+                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let _ = stream.flush().await;
+                    info!("Sent message to {}", stream.peer_addr().unwrap());
+                    if save_to_db_flag {
+                        let _ = Node::save_to_db(
+                            true,
+                            &message,
+                            Arc::clone(&my_encryption_sk).as_ref().clone(),
+                            db.clone(),
+                            maybe_identity_manager.clone(),
+                        )
+                        .await;
+                    }
                 }
-                Ok(())
+                Err(e) => {
+                    println!("Failed to connect to {}: {}", address, e);
+                }
             }
-            Err(e) => {
-                // handle the error
-                println!("Failed to connect to {}: {}", address, e);
-                // TODO: it should save the message to db to retry every x^2
-                Ok(())
-            }
-        }
+        });
     }
 
     pub async fn save_to_db(
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: &mut ShinkaiDB,
+        db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
@@ -576,6 +584,7 @@ impl Node {
 
         // TODO: add identity to this fn so we can check for permissions
         println!("save_to_db> message_to_save: {:?}", message_to_save.clone());
+        let mut db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),
@@ -630,12 +639,11 @@ impl Node {
 
         // Save to db
         {
-            let mut db = maybe_db.lock().await;
             Node::save_to_db(
                 false,
                 &message,
                 clone_static_secret_key(&my_encryption_secret_key),
-                &mut db,
+                maybe_db.clone(),
                 maybe_identity_manager.clone(),
             )
             .await?;

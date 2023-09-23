@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use super::{node_api::{APIError, APIUseRegistrationCodeSuccessResponse}, node_error::NodeError, node_message_handlers::verify_message_signature, Node};
 use crate::{
     db::db_errors::ShinkaiDBError,
@@ -1323,20 +1325,16 @@ impl Node {
         // that way the recipient will be able to verify it
         let signature_sk = clone_signature_secret_key(&self.identity_secret_key);
         let encrypted_msg = encrypted_msg.sign_outer_layer(&signature_sk)?;
-
-        let mut db_guard = self.db.lock().await;
-
         let node_addr = external_global_identity.addr.unwrap();
 
         Node::send(
-            &encrypted_msg,
-            clone_static_secret_key(&self.encryption_secret_key),
+            encrypted_msg,
+            Arc::new(clone_static_secret_key(&self.encryption_secret_key)),
             (node_addr, recipient_profile_name_string),
-            &mut db_guard,
+            self.db.clone(),
             self.identity_manager.clone(),
             true,
-        )
-        .await?;
+        );
 
         if res.send(Ok(())).await.is_err() {
             eprintln!("Failed to send response");
