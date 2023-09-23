@@ -145,6 +145,7 @@ impl ShinkaiDB {
                 Topic::VectorResources.as_str().to_string(),
                 Topic::Agents.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
+                Topic::MessagesToRetry.as_str().to_string(),
             ]
         };
 
@@ -482,5 +483,52 @@ impl ShinkaiDB {
         }
 
         Ok(messages)
+    }
+
+    /// Adds a message to the MessagesToRetry column family.
+    pub fn add_message_to_retry(
+        &self,
+        message: &ShinkaiMessage,
+        retry_time: DateTime<Utc>,
+        retry_count: u32,
+    ) -> Result<(), ShinkaiDBError> {
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash();
+
+        // Create a composite key by concatenating the retry_time, retry_count and the hash_key, with a separator
+        let composite_key = format!("{}:::{}:::{}", retry_time.to_rfc3339(), retry_count, hash_key);
+
+        // Convert ShinkaiMessage into bytes for storage
+        let message_bytes = message.encode_message()?;
+
+        // Retrieve the handle to the "MessagesToRetry" column family
+        let messages_to_retry_cf = self.get_cf_handle(Topic::MessagesToRetry).unwrap();
+
+        // Insert the message into the "MessagesToRetry" column family using the composite key
+        self.db.put_cf(messages_to_retry_cf, composite_key, message_bytes)?;
+
+        Ok(())
+    }
+
+    /// Removes a message from the MessagesToRetry column family.
+    pub fn remove_message_from_retry(
+        &self,
+        message: &ShinkaiMessage,
+        retry_time: DateTime<Utc>,
+        retry_count: u32,
+    ) -> Result<(), ShinkaiDBError> {
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash();
+
+        // Create a composite key by concatenating the retry_time, retry_count and the hash_key, with a separator
+        let composite_key = format!("{}:::{}:::{}", retry_time.to_rfc3339(), retry_count, hash_key);
+
+        // Retrieve the handle to the "MessagesToRetry" column family
+        let messages_to_retry_cf = self.get_cf_handle(Topic::MessagesToRetry).unwrap();
+
+        // Delete the message from the "MessagesToRetry" column family using the composite key
+        self.db.delete_cf(messages_to_retry_cf, composite_key)?;
+
+        Ok(())
     }
 }

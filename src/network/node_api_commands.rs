@@ -1334,6 +1334,7 @@ impl Node {
             self.db.clone(),
             self.identity_manager.clone(),
             true,
+            None
         );
 
         if res.send(Ok(())).await.is_err() {

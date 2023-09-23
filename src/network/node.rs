@@ -489,12 +489,11 @@ impl Node {
         db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
+        retry: Option<u32>,
     ) {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
-
         let message = Arc::new(message);
-        let peer = Arc::new(peer);
 
         tokio::spawn(async move {
             let stream = TcpStream::connect(address).await;
@@ -514,9 +513,19 @@ impl Node {
                         )
                         .await;
                     }
+                    // If retry is enabled, remove the message from retry list on successful send
+                    if let Some(retry_count) = retry {
+                        let mut db = db.lock().await;
+                        db.remove_message_from_retry(&message, Utc::now(), retry_count).unwrap();
+                    }
                 }
                 Err(e) => {
                     println!("Failed to connect to {}: {}", address, e);
+                    // If retry is enabled, add the message to retry list on failure
+                    if let Some(retry_count) = retry {
+                        let mut db = db.lock().await;
+                        db.add_message_to_retry(&message, Utc::now(), retry_count).unwrap();
+                    }
                 }
             }
         });

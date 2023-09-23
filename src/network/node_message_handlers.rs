@@ -291,7 +291,8 @@ pub async fn send_ack(
         peer,
         maybe_db,
         maybe_identity_manager,
-        false
+        false,
+        None
     );
     Ok(())
 }
@@ -336,6 +337,7 @@ pub async fn ping_pong(
         maybe_db,
         maybe_identity_manager,
         false,
+        None
     );
     Ok(())
 }
