@@ -18,6 +18,7 @@ module.exports = {
     extend: {
       fontFamily: {
         inter: ["Inter", "sans-serif"],
+        newake: ["Newake", "sans-serif"],
       },
       colors: {
         primary: {
