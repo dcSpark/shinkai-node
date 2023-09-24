@@ -33,7 +33,7 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, string_to_signature_public_key},
     },
 };
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 use std::{
     cell::RefCell,
     io::{self, Error},
@@ -332,7 +332,6 @@ impl Node {
 
     pub async fn ping_all(&self) -> io::Result<()> {
         info!("{} > Pinging all peers {} ", self.listen_address, self.peers.len());
-        let mut db_lock = self.db.lock().await;
         for (peer, _) in self.peers.clone() {
             let sender = self.node_profile_name.clone().get_node_name();
             let receiver_profile_identity = self
@@ -354,7 +353,7 @@ impl Node {
                 receiver_public_key,
                 sender,
                 receiver,
-                &mut db_lock,
+                Arc::clone(&self.db),
                 self.identity_manager.clone(),
             )
             .await;

@@ -25,6 +25,7 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::db_errors::ShinkaiDBError;
+use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::error::JobManagerError;
 use crate::managers::identity_manager::{self};
@@ -305,6 +306,9 @@ impl Node {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
+        let retry_interval_secs = 2;
+        let mut retry_interval = async_std::stream::interval(Duration::from_secs(retry_interval_secs));
+
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
         } else {
@@ -321,12 +325,14 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
+            let retry_future = retry_interval.next().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future);
+            pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
+                    retry = retry_future => self.retry_messages().await?,
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
@@ -398,6 +404,7 @@ impl Node {
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
+            let socket = Arc::new(Mutex::new(socket));
             let db = Arc::clone(&self.db);
             let identity_manager = Arc::clone(&self.identity_manager);
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
@@ -406,6 +413,7 @@ impl Node {
 
             tokio::spawn(async move {
                 let mut buffer = Vec::new();
+                let mut socket = socket.lock().await;
                 socket.read_to_end(&mut buffer).await.unwrap();
 
                 let destination_socket = socket.peer_addr().expect("Failed to get peer address");
@@ -425,6 +433,38 @@ impl Node {
                 }
             });
         }
+    }
+
+    async fn retry_messages(&self) -> Result<(), NodeError> {
+        let current_time = chrono::Local::now();
+        eprintln!(
+            "\n\n*** Retrying messages at {}",
+            current_time.format("%Y-%m-%d %H:%M:%S")
+        );
+        let db_lock = self.db.lock().await;
+        let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
+        eprintln!("Messages to retry: {:?}", messages_to_retry);
+
+        for retry_message in messages_to_retry {
+            eprintln!("Retrying message: {:?}", retry_message.message);
+            let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
+            // let peer = (message.destination_socket, message.receiver.clone()); // Replace with actual peer
+            let save_to_db_flag = true;
+            let retry = Some(3);
+
+            // Retry the message
+            Node::send(
+                retry_message.message,
+                Arc::new(encrypted_secret_key),
+                retry_message.peer,
+                self.db.clone(),
+                self.identity_manager.clone(),
+                save_to_db_flag,
+                retry,
+            );
+        }
+
+        Ok(())
     }
 
     // indicates if the node is ready or not
@@ -449,7 +489,6 @@ impl Node {
         self.peers.insert((peer_address, profile_name.clone()), Utc::now());
 
         let peer = (peer_address, profile_name.clone());
-        let mut db_lock = self.db.lock().await;
 
         let sender = self.node_profile_name.clone().get_node_name();
 
@@ -473,7 +512,7 @@ impl Node {
             receiver_public_key,
             sender,
             receiver,
-            &mut db_lock,
+            Arc::clone(&self.db),
             self.identity_manager.clone(),
         )
         .await?;
@@ -481,44 +520,68 @@ impl Node {
     }
 
     // Send a message to a peer.
-    pub async fn send(
-        message: &ShinkaiMessage,
-        my_encryption_sk: EncryptionStaticKey,
+    pub fn send(
+        message: ShinkaiMessage,
+        my_encryption_sk: Arc<EncryptionStaticKey>,
         peer: (SocketAddr, ProfileName),
-        db: &mut ShinkaiDB,
+        db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
         save_to_db_flag: bool,
-    ) -> Result<(), NodeError> {
+        retry: Option<u32>,
+    ) {
         println!("Sending {:?} to {:?}", message, peer);
         let address = peer.0;
-        // let mut stream = TcpStream::connect(address).await?;
-        let stream = TcpStream::connect(address).await;
-        match stream {
-            Ok(mut stream) => {
-                let encoded_msg = message.encode_message()?;
-                // println!("send> Encoded Message: {:?}", encoded_msg);
-                stream.write_all(encoded_msg.as_ref()).await?;
-                stream.flush().await?;
-                info!("Sent message to {}", stream.peer_addr()?);
-                if save_to_db_flag {
-                    Node::save_to_db(true, message, my_encryption_sk, db, maybe_identity_manager).await?;
+        let message = Arc::new(message);
+
+        tokio::spawn(async move {
+            let stream = TcpStream::connect(address).await;
+            match stream {
+                Ok(mut stream) => {
+                    let encoded_msg = message.encode_message().unwrap();
+                    let _ = stream.write_all(encoded_msg.as_ref()).await;
+                    let _ = stream.flush().await;
+                    info!("Sent message to {}", stream.peer_addr().unwrap());
+                    if save_to_db_flag {
+                        let _ = Node::save_to_db(
+                            true,
+                            &message,
+                            Arc::clone(&my_encryption_sk).as_ref().clone(),
+                            db.clone(),
+                            maybe_identity_manager.clone(),
+                        )
+                        .await;
+                    }
+                    // If retry is enabled, remove the message from retry list on successful send
+                    if let Some(retry_count) = retry {
+                        let db = db.lock().await;
+                        db.remove_message_from_retry(&message, Utc::now(), retry_count).unwrap();
+                    }
                 }
-                Ok(())
+                Err(e) => {
+                    println!("Failed to connect to {}: {}", address, e);
+                    // If retry is enabled, add the message to retry list on failure
+                    let retry_count = retry.unwrap_or(0) + 1;
+                    let db = db.lock().await;
+                    let retry_message = RetryMessage {
+                        retry_count: retry_count,
+                        message: message.as_ref().clone(),
+                        peer: peer.clone(),
+                        save_to_db_flag,
+                    };
+                    // Calculate the delay for the next retry
+                    let delay_seconds = (4 as u64).pow(retry_count - 1);
+                    let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
+                    db.add_message_to_retry(&retry_message, retry_time).unwrap();
+                }
             }
-            Err(e) => {
-                // handle the error
-                println!("Failed to connect to {}: {}", address, e);
-                // TODO: it should save the message to db to retry every x^2
-                Ok(())
-            }
-        }
+        });
     }
 
     pub async fn save_to_db(
         am_i_sender: bool,
         message: &ShinkaiMessage,
         my_encryption_sk: EncryptionStaticKey,
-        db: &mut ShinkaiDB,
+        db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> io::Result<()> {
         // We want to save it decrypted if possible
@@ -576,6 +639,7 @@ impl Node {
 
         // TODO: add identity to this fn so we can check for permissions
         println!("save_to_db> message_to_save: {:?}", message_to_save.clone());
+        let mut db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),
@@ -630,12 +694,11 @@ impl Node {
 
         // Save to db
         {
-            let mut db = maybe_db.lock().await;
             Node::save_to_db(
                 false,
                 &message,
                 clone_static_secret_key(&my_encryption_secret_key),
-                &mut db,
+                maybe_db.clone(),
                 maybe_identity_manager.clone(),
             )
             .await?;

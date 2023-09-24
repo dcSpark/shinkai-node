@@ -106,6 +106,7 @@ impl ProfileBoundWriteBatch {
     }
 }
 
+#[derive(Debug)]
 pub struct ShinkaiDB {
     pub db: DB,
     pub path: String,
@@ -144,6 +145,7 @@ impl ShinkaiDB {
                 Topic::VectorResources.as_str().to_string(),
                 Topic::Agents.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
+                Topic::MessagesToRetry.as_str().to_string(),
             ]
         };
 
@@ -481,5 +483,5 @@ impl ShinkaiDB {
         }
 
         Ok(messages)
-    }
+    }   
 }

@@ -175,7 +175,6 @@ pub async fn handle_ping(
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
     println!("{} > Got ping from {:?}", receiver_address, unsafe_sender_address);
-    let mut db_lock = maybe_db.lock().await;
     ping_pong(
         (sender_address, sender_profile_name.clone()),
         PingPong::Pong,
@@ -184,7 +183,7 @@ pub async fn handle_ping(
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
-        &mut db_lock,
+        maybe_db,
         maybe_identity_manager,
     )
     .await
@@ -213,12 +212,11 @@ pub async fn handle_default_encryption(
     );
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
-        Ok(decrypted_message) => {
+        Ok(_) => {
             println!(
                 "{} > Got message from {:?}. Sending ACK",
                 receiver_address, unsafe_sender_address
             );
-            let mut db_lock = maybe_db.lock().await;
             send_ack(
                 (sender_address.clone(), sender_profile_name.clone()),
                 clone_static_secret_key(my_encryption_secret_key),
@@ -226,7 +224,7 @@ pub async fn handle_default_encryption(
                 sender_encryption_pk,
                 my_node_profile_name.to_string(),
                 sender_profile_name,
-                &mut db_lock,
+                maybe_db,
                 maybe_identity_manager,
             )
             .await
@@ -255,7 +253,6 @@ pub async fn handle_other_cases(
         "{} > Got message from {:?}. Sending ACK",
         receiver_address, unsafe_sender_address
     );
-    let mut db_lock = maybe_db.lock().await;
     send_ack(
         (sender_address.clone(), sender_profile_name.clone()),
         clone_static_secret_key(my_encryption_secret_key),
@@ -263,7 +260,7 @@ pub async fn handle_other_cases(
         sender_encryption_pk,
         my_node_profile_name.to_string(),
         sender_profile_name,
-        &mut db_lock,
+        maybe_db,
         maybe_identity_manager,
     )
     .await
@@ -276,7 +273,7 @@ pub async fn send_ack(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &mut ShinkaiDB,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
     let msg = ShinkaiMessageBuilder::ack_message(
@@ -289,14 +286,14 @@ pub async fn send_ack(
     .unwrap();
 
     Node::send(
-        &msg,
-        clone_static_secret_key(&encryption_secret_key),
+        msg,
+        Arc::new(clone_static_secret_key(&encryption_secret_key)),
         peer,
-        db,
+        maybe_db,
         maybe_identity_manager,
-        false
-    )
-    .await?;
+        false,
+        None
+    );
     Ok(())
 }
 
@@ -316,7 +313,7 @@ pub async fn ping_pong(
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
-    db: &mut ShinkaiDB,
+    maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
     let message = match ping_or_pong {
@@ -334,12 +331,13 @@ pub async fn ping_pong(
     )
     .unwrap();
     Node::send(
-        &msg,
-        clone_static_secret_key(&encryption_secret_key),
+        msg,
+        Arc::new(clone_static_secret_key(&encryption_secret_key)),
         peer,
-        db,
+        maybe_db,
         maybe_identity_manager,
         false,
-    )
-    .await
+        None
+    );
+    Ok(())
 }
