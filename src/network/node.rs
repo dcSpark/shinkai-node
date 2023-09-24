@@ -25,6 +25,7 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::db::db_errors::ShinkaiDBError;
+use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::error::JobManagerError;
 use crate::managers::identity_manager::{self};
@@ -305,6 +306,9 @@ impl Node {
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
+        let retry_interval_secs = 2;
+        let mut retry_interval = async_std::stream::interval(Duration::from_secs(retry_interval_secs));
+
         let ping_interval_secs = if self.ping_interval_secs == 0 {
             315576000 * 10 // 10 years in seconds
         } else {
@@ -321,12 +325,14 @@ impl Node {
         loop {
             let ping_future = ping_interval.next().fuse();
             let commands_future = commands_clone.next().fuse();
+            let retry_future = retry_interval.next().fuse();
 
             // TODO: update this to read onchain data and update db
             // let check_peers_future = check_peers_interval.next().fuse();
-            pin_mut!(ping_future, commands_future);
+            pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
+                    retry = retry_future => self.retry_messages().await?,
                     listen = listen_future => unreachable!(),
                     ping = ping_future => self.ping_all().await?,
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
@@ -429,6 +435,38 @@ impl Node {
         }
     }
 
+    async fn retry_messages(&self) -> Result<(), NodeError> {
+        let current_time = chrono::Local::now();
+        eprintln!(
+            "\n\n*** Retrying messages at {}",
+            current_time.format("%Y-%m-%d %H:%M:%S")
+        );
+        let db_lock = self.db.lock().await;
+        let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
+        eprintln!("Messages to retry: {:?}", messages_to_retry);
+
+        for retry_message in messages_to_retry {
+            eprintln!("Retrying message: {:?}", retry_message.message);
+            let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
+            // let peer = (message.destination_socket, message.receiver.clone()); // Replace with actual peer
+            let save_to_db_flag = true;
+            let retry = Some(3);
+
+            // Retry the message
+            Node::send(
+                retry_message.message,
+                Arc::new(encrypted_secret_key),
+                retry_message.peer,
+                self.db.clone(),
+                self.identity_manager.clone(),
+                save_to_db_flag,
+                retry,
+            );
+        }
+
+        Ok(())
+    }
+
     // indicates if the node is ready or not
     pub async fn is_node_ready(&self) -> bool {
         let identity_manager_guard = self.identity_manager.lock().await;
@@ -515,17 +553,25 @@ impl Node {
                     }
                     // If retry is enabled, remove the message from retry list on successful send
                     if let Some(retry_count) = retry {
-                        let mut db = db.lock().await;
+                        let db = db.lock().await;
                         db.remove_message_from_retry(&message, Utc::now(), retry_count).unwrap();
                     }
                 }
                 Err(e) => {
                     println!("Failed to connect to {}: {}", address, e);
                     // If retry is enabled, add the message to retry list on failure
-                    if let Some(retry_count) = retry {
-                        let mut db = db.lock().await;
-                        db.add_message_to_retry(&message, Utc::now(), retry_count).unwrap();
-                    }
+                    let retry_count = retry.unwrap_or(0) + 1;
+                    let db = db.lock().await;
+                    let retry_message = RetryMessage {
+                        retry_count: retry_count,
+                        message: message.as_ref().clone(),
+                        peer: peer.clone(),
+                        save_to_db_flag,
+                    };
+                    // Calculate the delay for the next retry
+                    let delay_seconds = (4 as u64).pow(retry_count - 1);
+                    let retry_time = Utc::now() + chrono::Duration::seconds(delay_seconds as i64);
+                    db.add_message_to_retry(&retry_message, retry_time).unwrap();
                 }
             }
         });

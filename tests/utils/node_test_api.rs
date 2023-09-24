@@ -84,7 +84,7 @@ pub async fn api_registration_device_node_profile_main(
             .await
             .unwrap();
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
-        eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
+        eprintln!("node_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
             Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
             Err(e) => panic!("Registration code error: {:?}", e),
@@ -103,7 +103,7 @@ pub async fn api_registration_device_node_profile_main(
             .await
             .unwrap();
         let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
-        eprintln!("node2_all_subidentities: {:?}", node2_all_subidentities);
+        eprintln!("node_all_subidentities: {:?}", node2_all_subidentities);
 
         assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
         eprintln!(
