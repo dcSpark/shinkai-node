@@ -13,7 +13,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 
 import MainLayout from "../pages/layout/main-layout";
 import HomePage from "../pages/home";
-import AddAgentPage from "../pages/add-agent";
+import CreateAgentPage from "../pages/create-agent";
 import CreateChatPage from "../pages/create-chat";
 import CreateJobPage from "../pages/create-job";
 import OnboardingPage from "../pages/onboarding";
@@ -61,7 +61,7 @@ const AppRoutes = () => {
           path={ADD_AGENT_PATH}
           element={
             <ProtectedRoute>
-              <AddAgentPage />
+              <CreateAgentPage />
             </ProtectedRoute>
           }
         />

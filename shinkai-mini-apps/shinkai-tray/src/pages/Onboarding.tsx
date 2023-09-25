@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
-import { APIUseRegistrationCodeSuccessResponse } from "../shinkai-message-ts/src/models/Payloads";
+import { useEffect } from "react";
 import {
   generateEncryptionKeys,
   generateSignatureKeys,
@@ -21,8 +19,9 @@ import { z } from "zod";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { useNavigate } from "react-router-dom";
 import { HOME_PATH } from "../routes/name";
-import { submitInitialRegistrationNoCode } from "../shinkai-message-ts/src/api";
 import { useAuth } from "../store/auth-context";
+import { useSubmitRegistration } from "../api/mutations/submitRegistation/useSubmitRegistration";
+import ErrorMessage from "../components/ui/error-message";
 
 const formSchema = z.object({
   registration_code: z.string(),
@@ -47,9 +46,8 @@ const formSchema = z.object({
 });
 
 const OnboardingPage = () => {
-  const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
-  const { setSetupData } = useAuth();
   const navigate = useNavigate();
+  const { setSetupData } = useAuth();
 
   const setupDataForm = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,6 +69,28 @@ const OnboardingPage = () => {
       my_device_encryption_pk: "",
       my_device_identity_sk: "",
       my_device_identity_pk: "",
+    },
+  });
+
+  const {
+    isLoading,
+    isError,
+    error,
+    mutateAsync: submitRegistration,
+  } = useSubmitRegistration({
+    onSuccess: (response) => {
+      if (response.success) {
+        const responseData = response.data;
+        const updatedSetupData = {
+          ...setupDataForm.getValues(),
+          node_encryption_pk: responseData?.encryption_public_key ?? "",
+          node_signature_pk: responseData?.identity_public_key ?? "",
+        };
+        setSetupData(updatedSetupData);
+        navigate(HOME_PATH);
+      } else {
+        throw new Error("Failed to submit registration");
+      }
     },
   });
 
@@ -119,42 +139,11 @@ const OnboardingPage = () => {
   }, []);
 
   async function onSubmit(currentValues: z.infer<typeof formSchema>) {
-    // Do something with the form values.
-    console.log(currentValues, "abc!");
-    setStatus("loading");
-    const response = await submitInitialRegistrationNoCode(currentValues);
-
-    if (response.success) {
-      const responseData: APIUseRegistrationCodeSuccessResponse | undefined =
-        response.data;
-      if (!responseData) return;
-
-      const updatedSetupData = {
-        ...currentValues,
-        node_encryption_pk: responseData.encryption_public_key,
-        node_signature_pk: responseData.identity_public_key,
-      };
-
-      try {
-        const response = await invoke("process_onboarding_data", {
-          data: updatedSetupData,
-        });
-        console.log(response, "onboarding");
-        setSetupData(updatedSetupData);
-        setStatus("success");
-      } catch (err) {
-        console.error("Error invoking process_onboarding_data:", err);
-      }
-      navigate(HOME_PATH);
-    } else {
-      setStatus("error");
-    }
+    submitRegistration(currentValues);
   }
 
-  const isLoading = status === "loading";
-
   return (
-    <div className="p-10">
+    <div className="p-10 max-w-lg mx-auto">
       <h1 className="text-center text-3xl font-semibold mb-4">Register</h1>
       <Form {...setupDataForm}>
         <form onSubmit={setupDataForm.handleSubmit(onSubmit)} className="space-y-8">
@@ -171,6 +160,7 @@ const OnboardingPage = () => {
               </FormItem>
             )}
           />
+          {isError && <ErrorMessage message={error.message} />}
           <Button className="w-full" variant="default" type="submit" disabled={isLoading}>
             {isLoading && <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />}
             Submit

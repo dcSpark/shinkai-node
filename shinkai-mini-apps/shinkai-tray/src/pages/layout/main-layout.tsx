@@ -41,26 +41,31 @@ export function Footer() {
 
   const goToCreateJob = () => {
     navigate(CREATE_JOB_PATH);
+    setOpen(false);
   };
   const goToCreateChat = () => {
     navigate(CREATE_CHAT_PATH);
+    setOpen(false);
   };
   const goToCreateAgent = () => {
     navigate(ADD_AGENT_PATH);
+    setOpen(false);
   };
 
   const goToProfile = () => {
     navigate(SETTINGS_PATH);
+    setOpen(false);
   };
   const goToSettings = () => {
     navigate(SETTINGS_PATH);
+    setOpen(false);
   };
 
   const handleCommandCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.metaKey || e.ctrlKey) {
       switch (e.key) {
         case "1":
-          goToCreateAgent();
+          goToCreateJob();
           break;
         case "2":
           goToCreateChat();
@@ -101,7 +106,7 @@ export function Footer() {
           align="start"
           className="bg-black border-0 bg-gradient-to-r from-[#19242D] to-[#19242D]/90 rounded-md shadow-xl p-4"
           sideOffset={2}
-          alignOffset={0}
+          alignOffset={-25}
           asChild
         >
           <Command
