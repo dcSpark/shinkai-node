@@ -1,7 +1,4 @@
-import {
-  ApiConfig,
-  submitInitialRegistrationNoCode,
-} from "@shinkai_network/shinkai-message-ts/api";
+import { submitInitialRegistrationNoCode } from "@shinkai_network/shinkai-message-ts/api";
 
 export type SetupDataArgs = {
   my_device_encryption_sk: string;
@@ -18,8 +15,6 @@ export type SetupDataArgs = {
   node_address: string;
 };
 export const submitRegistration = async (setupData: SetupDataArgs) => {
-  ApiConfig.getInstance().setEndpoint("http://localhost:9550");
-
   const response = await submitInitialRegistrationNoCode(setupData);
   return response;
 };

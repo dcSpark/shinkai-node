@@ -1,5 +1,4 @@
 import {
-  ApiConfig,
   createJob as createJobApi,
   sendMessageToJob,
 } from "@shinkai_network/shinkai-message-ts/api";
@@ -20,8 +19,6 @@ export const createJob = async ({
   profile_encryption_sk,
   profile_identity_sk,
 }: CreateJobInput) => {
-  ApiConfig.getInstance().setEndpoint("http://localhost:9550");
-
   const sender = shinkaiIdentity + "/" + profile;
   const receiver = shinkaiIdentity;
   const receiver_subidentity = `${profile}/agent/${agentId}`;

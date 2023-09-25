@@ -161,7 +161,12 @@ const CreateAgentPage = () => {
 
           {isError && <ErrorMessage message={error.message} />}
 
-          <Button className="w-full" type="submit" isLoading={isLoading}>
+          <Button
+            className="w-full"
+            type="submit"
+            isLoading={isLoading}
+            disabled={isLoading}
+          >
             Create Agent
           </Button>
         </form>
