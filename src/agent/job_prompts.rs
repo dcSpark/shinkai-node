@@ -1,4 +1,8 @@
+use crate::tools::router::ShinkaiTool;
+
+use super::error::AgentError;
 use lazy_static::lazy_static;
+use std::collections::HashMap;
 
 //
 // Core Job Step Flow
@@ -167,26 +171,145 @@ Respond using the following EBNF and absolutely nothing else:
     );
 }
 
-pub struct PromptGenerator {}
+pub struct JobPromptGenerator {}
 
-impl PromptGenerator {
-    pub fn bootstrap_plan_prompt(job_task: String) -> String {
-        format!(
-            r#"
-    You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
+impl JobPromptGenerator {
+    /// Parses an execution context hashmap to string to be added into a content subprompt
+    fn parse_context_to_string(context: HashMap<String, String>) -> String {
+        context
+            .into_iter()
+            .map(|(key, value)| format!("{}: {}", key, value))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
 
-    The user has asked the system:
+    pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_content(
+            String::from(
+                "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
+            ),
+            SubPromptType::System,
+        );
+        prompt.add_ebnf(
+            String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"),
+            SubPromptType::System,
+        );
 
-        `{}`
+        prompt
+    }
 
-    Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
+    /// Prompt for having the LLM validate whether inputs for a given tool are available
+    pub fn tool_inputs_validation_prompt(context: HashMap<String, String>, task: String, tool: ShinkaiTool) -> Prompt {
+        let context_string = Self::parse_context_to_string(context);
+        let tool_summary = tool.formatted_tool_summary(true); // true to include EBNF output
 
-    Keep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step.
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are an assistant running in a system who only has access to a series of tools, your own knowledge. The current context of acquired info includes:\n\n```\n{}\n```\n",
+                context_string
+            ),
+            SubPromptType::System,
+        );
 
-    Respond using the following EBNF and absolutely nothing else:
-    "{{" "plan" ":" "[" string ("," string)* "]" "}}"
-    "#,
-            job_task
-        )
+        prompt.add_content(
+            format!("The current task at hand is:\n\n`{}`", task),
+            SubPromptType::User,
+        );
+
+        prompt.add_content(
+            format!("We have selected the following tool to be used:\n\n{}", tool_summary),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            String::from(
+                "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from("{{\"prepared\": true}}"), SubPromptType::User);
+
+        prompt.add_content(
+            String::from(
+
+                "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from("{{\"tool-search\": \"string\"}}"), SubPromptType::User);
+
+        prompt
+    }
+}
+
+pub enum SubPromptType {
+    User,
+    System,
+}
+
+pub enum SubPrompt {
+    Content(SubPromptType, String),
+    EBNF(SubPromptType, String),
+}
+
+pub struct Prompt {
+    pub sub_prompts: Vec<SubPrompt>,
+}
+
+impl Prompt {
+    pub fn new() -> Self {
+        Self {
+            sub_prompts: Vec::new(),
+        }
+    }
+
+    /// Adds a content sub-prompt
+    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
+    }
+
+    /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
+    /// string that specifies the output must match this EBNF string.
+    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
+    }
+
+    /// Processes all sub-prompts into a single output String.
+    /// Validates that there is at least one EBNF sub-prompt to ensure
+    /// the LLM knows what to output.
+    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+        if !self
+            .sub_prompts
+            .iter()
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _)))
+        {
+            return Err(AgentError::UserPromptMissingEBNFDefinition);
+        }
+
+        let json_response_required = String::from("```json");
+        let content = self
+            .sub_prompts
+            .iter()
+            .map(|sub_prompt| match sub_prompt {
+                SubPrompt::Content(_, content) => content.clone(),
+                SubPrompt::EBNF(_, ebnf) => format!(
+                    "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
+                    ebnf
+                ),
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+            + "\n"
+            + &json_response_required;
+        Ok(content)
     }
 }

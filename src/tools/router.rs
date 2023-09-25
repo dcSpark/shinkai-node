@@ -69,8 +69,42 @@ impl ShinkaiTool {
         }
     }
 
-    /// Formats the tool's info into a String to be used for generating the tool's embedding.
+    /// Returns a string that includes all of the input arguments' EBNF definitions
+    pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
+        ToolArgument::generate_ebnf_for_args(
+            self.input_args().clone(),
+            self.toolkit_name().clone(),
+            add_arg_descriptions,
+        )
+    }
 
+    /// Returns a string that includes all of the input arguments' EBNF definitions
+    pub fn ebnf_outputs(&self, add_arg_descriptions: bool) -> String {
+        ToolArgument::generate_ebnf_for_args(
+            self.output_args().clone(),
+            self.toolkit_name().clone(),
+            add_arg_descriptions,
+        )
+    }
+
+    /// Returns a formatted summary of the tool
+    pub fn formatted_tool_summary(&self, ebnf_output: bool) -> String {
+        let mut summary = format!(
+            "Tool Name: {}\nToolkit Name: {}\nDescription: {}\nTool Input EBNF: `{}`",
+            self.name(),
+            self.toolkit_name(),
+            self.description(),
+            self.ebnf_inputs(false)
+        );
+
+        if ebnf_output {
+            summary.push_str(&format!("\nTool Output EBNF: `{}`", self.ebnf_outputs(false)));
+        }
+
+        summary
+    }
+
+    /// Formats the tool's info into a String to be used for generating the tool's embedding.
     pub fn format_embedding_string(&self) -> String {
         let mut embedding_string = format!("{}:{}\n", self.name(), self.description());
 
@@ -110,6 +144,18 @@ impl ShinkaiTool {
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
         let deserialized: Self = serde_json::from_str(json).map_err(|e| ToolError::ParseError(e.to_string()))?;
         Ok(deserialized)
+    }
+}
+
+impl From<RustTool> for ShinkaiTool {
+    fn from(tool: RustTool) -> Self {
+        ShinkaiTool::Rust(tool)
+    }
+}
+
+impl From<JSTool> for ShinkaiTool {
+    fn from(tool: JSTool) -> Self {
+        ShinkaiTool::JS(tool)
     }
 }
 
