@@ -147,6 +147,18 @@ impl ShinkaiTool {
     }
 }
 
+impl From<RustTool> for ShinkaiTool {
+    fn from(tool: RustTool) -> Self {
+        ShinkaiTool::Rust(tool)
+    }
+}
+
+impl From<JSTool> for ShinkaiTool {
+    fn from(tool: JSTool) -> Self {
+        ShinkaiTool::JS(tool)
+    }
+}
+
 /// A top level struct which indexes JSTools installed in the Shinkai Node
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ToolRouter {

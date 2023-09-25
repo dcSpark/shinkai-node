@@ -48,7 +48,9 @@ fn test_default_js_toolkit_json_parsing() {
 
     assert_eq!(toolkit.name, "Google Calendar Toolkit");
     assert_eq!(
-        toolkit.tools[0].ebnf_inputs(false).replace("\n", ""),
+        ShinkaiTool::from(toolkit.tools[0].clone())
+            .ebnf_inputs(false)
+            .replace("\n", ""),
         r#"{"calendar_id": calendar_id, "text": text, "send_updates": send_updates, "toolkit": Google Calendar Toolkit, }calendar_id :== ([a-zA-Z0-9_]+)?text :== ([a-zA-Z0-9_]+)send_updates :== ("all" | "externalOnly" | "none")?"#
     );
 
