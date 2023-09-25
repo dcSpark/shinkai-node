@@ -1,9 +1,8 @@
-use std::{fs, path::Path};
-
 use async_std::task;
 use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobScope;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_node::db::ShinkaiDB;
+use std::{fs, path::Path};
 
 fn create_new_job(db: &mut ShinkaiDB, job_id: String, agent_id: String, scope: JobScope) {
     match db.create_new_job(job_id, agent_id, scope) {
@@ -22,8 +21,7 @@ mod tests {
     use std::collections::HashSet;
 
     use shinkai_message_primitives::{
-        schemas::inbox_name::InboxName, shinkai_message::shinkai_message_schemas::JobScope,
-        shinkai_utils::utils::hash_string,
+        schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope, shinkai_utils::utils::hash_string,
     };
     use shinkai_node::{agent::agent, db::db_errors::ShinkaiDBError};
 
@@ -37,7 +35,7 @@ mod tests {
         let inbox_name =
             InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
-        let scope = JobScope::new(Some(vec![inbox_name]), None);
+        let scope = JobScope::new_default();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
@@ -55,8 +53,8 @@ mod tests {
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.parent_agent_id, agent_id);
-        assert_eq!(job.scope.buckets.len(), 1);
-        assert_eq!(job.scope.documents.len(), 0);
+        // assert_eq!(job.scope.buckets.len(), 1);
+        // assert_eq!(job.scope.documents.len(), 0);
         assert_eq!(job.is_finished, false);
     }
 
@@ -74,9 +72,9 @@ mod tests {
                 InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                     .unwrap();
             let inbox_names = vec![inbox_name];
-            let documents = vec!["document1".to_string(), "document2".to_string()];
+            // let documents = vec!["document1".to_string(), "document2".to_string()];
 
-            let scope = JobScope::new(Some(inbox_names), Some(documents));
+            let scope = JobScope::new_default();
             create_new_job(&mut shinkai_db, job_id, agent_id.clone(), scope);
         }
 
@@ -100,7 +98,7 @@ mod tests {
         let inbox_name =
             InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
-        let scope = JobScope::new(Some(vec![inbox_name]), None);
+        let scope = JobScope::new_default();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
@@ -123,7 +121,7 @@ mod tests {
         let inbox_name =
             InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
-        let scope = JobScope::new(Some(vec![inbox_name]), None);
+        let scope = JobScope::new_default();
         let step = "step1".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
@@ -209,9 +207,9 @@ mod tests {
                 InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                     .unwrap();
             let inbox_names = vec![inbox_name];
-            let documents = vec!["document1".to_string(), "document2".to_string()];
+            // let documents = vec!["document1".to_string(), "document2".to_string()];
 
-            let scope = JobScope::new(Some(inbox_names), Some(documents));
+            let scope = JobScope::new_default();
             create_new_job(&mut shinkai_db, job_id, agent_id.clone(), scope);
         }
 

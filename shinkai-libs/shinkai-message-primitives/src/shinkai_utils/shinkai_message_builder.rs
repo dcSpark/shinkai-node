@@ -1,6 +1,6 @@
-use serde::Serialize;
-
+use crate::shinkai_utils::job_scope::JobScope;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
         },
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            JobCreationInfo, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{

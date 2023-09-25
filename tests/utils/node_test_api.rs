@@ -6,12 +6,13 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, JobScope, MessageSchemaType, RegistrationCodeType,
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
@@ -86,7 +87,12 @@ pub async fn api_registration_device_node_profile_main(
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
-            Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
+            Ok(code) => assert_eq!(
+                code.message,
+                "true".to_string(),
+                "{} used registration code",
+                node_profile_name
+            ),
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
@@ -199,7 +205,12 @@ pub async fn api_registration_profile_node(
         let node2_use_registration_code = res_use_registraton_receiver.recv().await.unwrap();
         eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
         match node2_use_registration_code {
-            Ok(code) => assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name),
+            Ok(code) => assert_eq!(
+                code.message,
+                "true".to_string(),
+                "{} used registration code",
+                node_profile_name
+            ),
             Err(e) => panic!("Registration code error: {:?}", e),
         }
 
@@ -410,10 +421,7 @@ pub async fn api_create_job(
     recipient_subidentity: &str,
 ) -> String {
     {
-        let job_scope = JobScope {
-            buckets: vec![],
-            documents: vec![],
-        };
+        let job_scope = JobScope::new_default();
 
         let full_sender = format!("{}/{}", sender, sender_subidentity);
         eprintln!("@@ full_sender: {}", full_sender);
@@ -530,8 +538,18 @@ pub async fn api_initial_registration_with_no_code_for_device(
     eprintln!("node2_use_registration_code: {:?}", node2_use_registration_code);
     match node2_use_registration_code {
         Ok(code) => {
-            assert_eq!(code.message, "true".to_string(), "{} used registration code", node_profile_name);
-            assert_eq!(code.encryption_public_key, encryption_public_key_to_string(node_encryption_pk), "{} used registration code", node_profile_name);
+            assert_eq!(
+                code.message,
+                "true".to_string(),
+                "{} used registration code",
+                node_profile_name
+            );
+            assert_eq!(
+                code.encryption_public_key,
+                encryption_public_key_to_string(node_encryption_pk),
+                "{} used registration code",
+                node_profile_name
+            );
         }
         Err(e) => panic!("Registration code error: {:?}", e),
     }

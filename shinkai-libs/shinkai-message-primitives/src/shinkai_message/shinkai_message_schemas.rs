@@ -1,10 +1,9 @@
-use std::fmt;
-
+use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use crate::shinkai_utils::job_scope::JobScope;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
-
-use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
@@ -57,40 +56,6 @@ impl MessageSchemaType {
             Self::Empty => true,
             _ => false,
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobScope {
-    pub buckets: Vec<InboxName>,
-    pub documents: Vec<String>, // TODO: link to embedding of documents uploaded
-}
-
-impl JobScope {
-    pub fn new(buckets: Option<Vec<InboxName>>, documents: Option<Vec<String>>) -> Self {
-        Self {
-            buckets: buckets.unwrap_or_else(Vec::<InboxName>::new),
-            documents: documents.unwrap_or_else(Vec::new),
-        }
-    }
-
-    pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let j = serde_json::to_string(self)?;
-        Ok(j.into_bytes())
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
-        serde_json::from_slice(bytes)
-    }
-
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
     }
 }
 
