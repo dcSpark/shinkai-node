@@ -1,29 +1,35 @@
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::{
-    base_vector_resources::BaseVectorResource, vector_resource_types::VectorResourcePointer,
+    base_vector_resources::BaseVectorResource,
+    source::{SourcePointer, VRSource},
+    vector_resource_types::VectorResourcePointer,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SourceFile {
-    // Define the fields for SourceFile
+pub struct LocalScopeEntry {
+    pub resource: BaseVectorResource,
+    pub source: VRSource,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct SourceFilePointer {
-    // Define the fields for SourceFilePointer
+pub struct DBScopeEntry {
+    pub resource_pointer: VectorResourcePointer,
+    pub source: VRSource,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LocalScope {
-    pub resources: Vec<(BaseVectorResource, SourceFile)>,
+    pub entries: Vec<LocalScopeEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DBScope {
-    pub resources: Vec<(VectorResourcePointer, SourceFilePointer)>,
+    pub entries: Vec<DBScopeEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+/// Job's scope which includes both local entries (source/vector resource stored locally only in job)
+/// and DB entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
     pub local: LocalScope,
     pub database: DBScope,
@@ -36,8 +42,8 @@ impl JobScope {
 
     pub fn new_default() -> Self {
         Self {
-            local: LocalScope { resources: Vec::new() },
-            database: DBScope { resources: Vec::new() },
+            local: LocalScope { entries: Vec::new() },
+            database: DBScope { entries: Vec::new() },
         }
     }
 
