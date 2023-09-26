@@ -123,18 +123,13 @@ const ChatConversation = () => {
   };
 
   const isLoading = isSendingMessageToJob || isSendingMessageToInbox;
-  const isSuccess =
-    isSendingMessageToInboxSuccess ||
-    isSendingMessageToJobSuccess ||
-    isChatConversationSuccess;
 
   const fetchPreviousMessages = () => {
-    const firstMessage = data?.pages[0][0];
+    const firstMessage = data?.pages?.[0]?.[0];
     if (!firstMessage) return;
     const timeKey = firstMessage?.external_metadata?.scheduled_time;
     const hashKey = calculateMessageHash(firstMessage);
     const firstMessageKey = `${timeKey}:::${hashKey}`;
-    console.log(firstMessageKey, "firstMessageKey");
     fetchPreviousPage({ pageParam: { lastKey: firstMessageKey } });
   };
 
@@ -142,7 +137,11 @@ const ChatConversation = () => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
-  }, [isSuccess]);
+  }, [
+    isSendingMessageToInboxSuccess,
+    isSendingMessageToJobSuccess,
+    isChatConversationSuccess,
+  ]);
 
   useEffect(() => {
     if (inView) {
@@ -172,7 +171,7 @@ const ChatConversation = () => {
         <div className="space-y-5">
           <Button
             variant="ghost"
-            className=""
+            className="h-10"
             ref={ref}
             disabled={!hasPreviousPage || isFetching}
             onClick={fetchPreviousMessages}
