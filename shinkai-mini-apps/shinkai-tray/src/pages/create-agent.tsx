@@ -52,14 +52,15 @@ const CreateAgentPage = () => {
   });
 
   const onSubmit = async (data: z.infer<typeof addAgentSchema>) => {
+    if (!setupData) return;
     createAgent({
-      sender_subidentity: setupData?.profile ?? "",
-      node_name: setupData?.shinkai_identity ?? "",
+      sender_subidentity: setupData.profile,
+      node_name: setupData.shinkai_identity,
       agent: {
         allowed_message_senders: [],
         api_key: data.apikey,
         external_url: data.externalUrl,
-        full_identity_name: `${setupData?.shinkai_identity}/${setupData?.profile}/agent/${data.agentName}`,
+        full_identity_name: `${setupData.shinkai_identity}/${setupData.profile}/agent/${data.agentName}`,
         id: data.agentName,
         perform_locally: data.performLocally,
         storage_bucket_permissions: [],
@@ -71,11 +72,11 @@ const CreateAgentPage = () => {
         },
       },
       setupDetailsState: {
-        my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-        my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-        node_encryption_pk: setupData?.node_encryption_pk ?? "",
-        profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-        profile_identity_sk: setupData?.profile_identity_sk ?? "",
+        my_device_encryption_sk: setupData.my_device_encryption_sk,
+        my_device_identity_sk: setupData.my_device_identity_sk,
+        node_encryption_pk: setupData.node_encryption_pk,
+        profile_encryption_sk: setupData.profile_encryption_sk,
+        profile_identity_sk: setupData.profile_identity_sk,
       },
     });
   };

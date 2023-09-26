@@ -4,6 +4,7 @@ import { MessageCircleIcon } from "lucide-react";
 import { useAuth } from "../../store/auth-context";
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
 import { cn } from "../../lib/utils";
+import { ScrollArea } from "../../components/ui/scroll-area";
 
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   const resolved = useResolvedPath(to);
@@ -44,17 +45,19 @@ const ChatLayout = () => {
     <div className="flex h-full">
       {inboxIds.length > 0 ? (
         <>
-          <div className="flex-[380px] max-w-[380px] py-4 px-2 flex flex-col justify-between">
+          <div className="flex-[380px] max-w-[380px] py-4 px-2 flex flex-col">
             <h2 className="mb-4 px-2">Recent Conversations</h2>
-            <div className="space-y-2 flex-1 overflow-auto">
-              {inboxIds.map((inboxId) => (
-                <MessageButton
-                  key={inboxId}
-                  inboxId={inboxId}
-                  to={`/inboxes/${inboxId}`}
-                />
-              ))}
-            </div>
+            <ScrollArea>
+              <div className="space-y-2">
+                {inboxIds.map((inboxId) => (
+                  <MessageButton
+                    key={inboxId}
+                    inboxId={inboxId}
+                    to={`/inboxes/${inboxId}`}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
           </div>
           <Separator orientation="vertical" />{" "}
         </>

@@ -54,16 +54,17 @@ const CreateJobPage = () => {
   });
 
   const onSubmit = async (data: z.infer<typeof createJobSchema>) => {
+    if (!setupData) return;
     createJob({
-      shinkaiIdentity: setupData?.shinkai_identity ?? "",
-      profile: setupData?.profile ?? "",
+      shinkaiIdentity: setupData.shinkai_identity,
+      profile: setupData.profile,
       agentId: data.model,
       content: data.description,
-      my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-      my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-      node_encryption_pk: setupData?.node_encryption_pk ?? "",
-      profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-      profile_identity_sk: setupData?.profile_identity_sk ?? "",
+      my_device_encryption_sk: setupData.my_device_encryption_sk,
+      my_device_identity_sk: setupData.my_device_identity_sk,
+      node_encryption_pk: setupData.node_encryption_pk,
+      profile_encryption_sk: setupData.profile_encryption_sk,
+      profile_identity_sk: setupData.profile_identity_sk,
     });
   };
   return (

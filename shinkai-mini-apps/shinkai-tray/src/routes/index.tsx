@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
@@ -23,8 +23,6 @@ import ChatConversation from "../pages/chat/chat-conversation";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { setupData } = useAuth();
-  const { pathname } = useLocation();
-  console.log("pathname ", pathname);
 
   useEffect(() => {
     ApiConfig.getInstance().setEndpoint(setupData?.node_address ?? "");

@@ -24,7 +24,8 @@
         "open": true
       },
       "window": {
-        "startDragging": true
+        "startDragging": true,
+        "close": true
       }
     },
     "bundle": {
