@@ -7,6 +7,7 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::source::{SourceReference, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::fs;
 use std::path::Path;
@@ -34,7 +35,7 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
         generator,
         "Shinkai Introduction",
         Some(desc),
-        Some("http://shinkai.com"),
+        VRSource::new_uri_ref("http://shinkai.com"),
         data_tags,
     )
     .unwrap();
@@ -117,7 +118,7 @@ fn test_multi_resource_db_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        Some("animalwildlife.com"),
+        VRSource::new_uri_ref("animalwildlife.com"),
         "animal_resource",
     );
 

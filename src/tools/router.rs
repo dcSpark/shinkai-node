@@ -7,6 +7,7 @@ use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::map_resource::MapVectorResource;
+use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
 use std::collections::HashMap;
 
@@ -170,7 +171,7 @@ impl ToolRouter {
     pub fn new() -> Self {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
-        let source = None;
+        let source = VRSource::None;
         let resource_id = "tool_router";
 
         // Initialize the MapVectorResource and add all of the rust tools by default

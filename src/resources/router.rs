@@ -3,6 +3,7 @@ use shinkai_vector_resources::base_vector_resources::VectorResourceBaseType;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
     DataContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
 };
@@ -21,7 +22,7 @@ impl VectorResourceRouter {
     pub fn new() -> Self {
         let name = "VectorResource Router";
         let desc = Some("Enables performing vector searches to find relevant resources.");
-        let source = None;
+        let source = VRSource::None;
         let resource_id = "resource_router";
         VectorResourceRouter {
             routing_resource: MapVectorResource::new_empty(name, desc, source, resource_id),

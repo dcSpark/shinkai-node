@@ -5,6 +5,7 @@ use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
+use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 
 /// An enum that represents the different traversal approaches
@@ -29,7 +30,7 @@ pub enum TraversalMethod {
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
-    fn source(&self) -> Option<&str>;
+    fn source(&self) -> VRSource;
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
@@ -64,14 +65,11 @@ pub trait VectorResource {
             .description()
             .map(|description| format!(", Description: {}", description))
             .unwrap_or_default();
-        let source = self
-            .source()
-            .map(|source| format!(", Source: {}", source))
-            .unwrap_or_default();
+        let source_string = self.source().format_source_string();
 
         // Take keywords until we hit an upper 500 character cap to ensure
         // we do not go past the embedding LLM context window.
-        let pre_keyword_length = name.len() + desc.len() + source.len();
+        let pre_keyword_length = name.len() + desc.len() + source_string.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
             if pre_keyword_length + keyword_string.len() + phrase.len() <= MAX_EMBEDDING_STRING_SIZE {
@@ -79,7 +77,7 @@ pub trait VectorResource {
             }
         }
 
-        format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
+        format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
     }
 
     /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.

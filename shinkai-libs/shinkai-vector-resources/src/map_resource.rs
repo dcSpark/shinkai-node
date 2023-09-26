@@ -3,6 +3,7 @@ use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, RemoteModel};
 use crate::resource_errors::VectorResourceError;
+use crate::source::VRSource;
 use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
 use serde_json;
 use std::collections::HashMap;
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 pub struct MapVectorResource {
     name: String,
     description: Option<String>,
-    source: Option<String>,
+    source: VRSource,
     resource_id: String,
     resource_embedding: Embedding,
     resource_base_type: VectorResourceBaseType,
@@ -41,8 +42,8 @@ impl VectorResource for MapVectorResource {
         self.description.as_deref()
     }
 
-    fn source(&self) -> Option<&str> {
-        self.source.as_deref()
+    fn source(&self) -> VRSource {
+        self.source.clone()
     }
 
     fn resource_id(&self) -> &str {
@@ -98,7 +99,7 @@ impl MapVectorResource {
     pub fn new(
         name: &str,
         desc: Option<&str>,
-        source: Option<&str>,
+        source: VRSource,
         resource_id: &str,
         resource_embedding: Embedding,
         chunk_embeddings: HashMap<String, Embedding>,
@@ -108,7 +109,7 @@ impl MapVectorResource {
         MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
-            source: source.map(String::from),
+            source: source,
             resource_id: String::from(resource_id),
             resource_embedding,
             chunk_embeddings,
@@ -121,7 +122,7 @@ impl MapVectorResource {
     }
 
     /// Initializes an empty `MapVectorResource` with empty defaults.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: Option<&str>, resource_id: &str) -> Self {
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, resource_id: &str) -> Self {
         MapVectorResource::new(
             name,
             desc,
