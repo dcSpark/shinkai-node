@@ -17,6 +17,10 @@ pub enum MessageSchemaType {
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
     TextContent,
+    FormattedMultiContent, // new
+    SymmetricKeyExchange, // new
+    EncryptedFileContent,
+    JobMessageMultiContent, // new
     Empty,
 }
 
@@ -28,10 +32,14 @@ impl MessageSchemaType {
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "UseRegistrationCode" => Some(Self::UseRegistrationCode),
-            "TextContent" => Some(Self::TextContent),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
+            "TextContent" => Some(Self::TextContent),
+            "FormattedMultiContent" => Some(Self::FormattedMultiContent),
+            "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
+            "EncryptedFileContent" => Some(Self::EncryptedFileContent),
+            "JobMessageMultiContent" => Some(Self::JobMessageMultiContent),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -44,10 +52,14 @@ impl MessageSchemaType {
             Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::UseRegistrationCode => "UseRegistrationCode",
-            Self::TextContent => "TextContent",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
+            Self::TextContent => "TextContent",
+            Self::FormattedMultiContent => "FormattedMultiContent",
+            Self::SymmetricKeyExchange => "SymmetricKeyExchange",
+            Self::EncryptedFileContent => "FileContent",
+            Self::JobMessageMultiContent => "JobMessageMultiContent",
             Self::Empty => "",
         }
     }
@@ -58,6 +70,18 @@ impl MessageSchemaType {
             _ => false,
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct JobMessageMultiContent {
+    pub job_id: String,
+    pub content: String,
+    pub files: Vec<String>, // is string ok? do we need String, String? they are pointers to local files.
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SymmetricKeyExchange {
+    pub shared_secret_key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

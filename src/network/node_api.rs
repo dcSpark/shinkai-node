@@ -1,5 +1,6 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
+use futures::TryStreamExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -9,6 +10,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use warp::Filter;
+use futures::StreamExt;
+use futures::TryFutureExt;
 
 #[derive(serde::Deserialize)]
 struct NameToExternalProfileData {
@@ -254,6 +257,30 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move || get_all_subidentities_handler(node_commands_sender.clone()))
     };
 
+    // POST v1/create_files_inbox_with_symmetric_key
+    let create_files_inbox_with_symmetric_key = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "create_files_inbox_with_symmetric_key")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                create_files_inbox_with_symmetric_key_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/add_file_to_inbox_with_symmetric_key/{string1}/{string2}
+    let add_file_to_inbox_with_symmetric_key = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_file_to_inbox_with_symmetric_key" / String / String)
+            .and(warp::post())
+            .and(warp::multipart::form())
+            .and_then(
+                move |string1: String, string2: String, form: warp::multipart::FormData| {
+                    handle_file_upload(node_commands_sender.clone(), string1, string2, form)
+                },
+            )
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -277,6 +304,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(use_registration_code)
         .or(get_all_subidentities)
         .or(shinkai_health)
+        .or(create_files_inbox_with_symmetric_key)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -377,6 +405,43 @@ async fn identity_name_to_external_profile_data_handler(
         signature_public_key: signature_public_key_to_string(external_profile_data.node_signature_public_key),
         encryption_public_key: encryption_public_key_to_string(external_profile_data.node_encryption_public_key),
     }))
+}
+
+async fn handle_file_upload(
+    node_commands_sender: Sender<NodeCommand>,
+    public_key: String,
+    encrypted_nonce: String,
+    form: warp::multipart::FormData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let mut stream = Box::pin(
+        form.filter_map(|part_result| async move {
+            if let Ok(part) = part_result {
+                if part.filename().is_some() {
+                    return Some(Ok(part) as Result<_, warp::Rejection>);
+                }
+            }
+            None
+        })
+    );
+
+    if let Some(Ok(file)) = stream.next().await {
+        let (res_sender, res_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .clone()
+            .send(NodeCommand::APIAddFileToInboxWithSymmetricKey { file, public_key, encrypted_nonce, res: res_sender })
+            .map_err(|_| warp::reject::reject()).await?;
+        let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+        match result {
+            Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+            Err(error) => Ok(warp::reply::with_status(
+                warp::reply::json(&error),
+                StatusCode::from_u16(error.code).unwrap(),
+            )),
+        }
+    } else {
+        Err(warp::reject::reject())
+    }
 }
 
 async fn get_public_key_handler(
@@ -536,6 +601,21 @@ async fn mark_as_read_up_to_handler(
     .await
 }
 
+async fn create_files_inbox_with_symmetric_key_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APICreateFilesInboxWithSymmetricKey {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
 async fn create_registration_code_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
@@ -593,7 +673,7 @@ async fn use_registration_code_handler(
                 "identity_public_key": success_response.identity_public_key
             });
             Ok(warp::reply::with_status(warp::reply::json(&response), StatusCode::OK))
-        },
+        }
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&error),
             StatusCode::from_u16(error.code).unwrap(),
