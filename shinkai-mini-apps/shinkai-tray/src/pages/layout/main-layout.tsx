@@ -154,7 +154,7 @@ const MainLayout = () => {
     <div className="relative flex flex-col h-full bg-cover bg-app-gradient text-white">
       <div
         data-tauri-drag-region
-        className="flex select-none cursor-default justify-center items-center h-8 text-xs"
+        className="flex shrink-0 select-none cursor-default justify-center items-center h-8 text-xs"
       >
         Custom Topbar (draggable)
       </div>

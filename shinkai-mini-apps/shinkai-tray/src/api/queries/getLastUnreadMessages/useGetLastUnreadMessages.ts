@@ -5,7 +5,7 @@ import { getLastUnreadMessages } from ".";
 
 export const useGetLastUnreadMessages = (input: GetLastUnreadMessagesInput) => {
   const response = useQuery({
-    queryKey: [FunctionKey.GET_CHAT_CONVERSATION, input],
+    queryKey: [FunctionKey.GET_UNREAD_CHAT_CONVERSATION, input],
     queryFn: () => getLastUnreadMessages(input),
     enabled: !!input.inboxId,
   });

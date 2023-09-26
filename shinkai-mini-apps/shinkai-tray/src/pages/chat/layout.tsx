@@ -8,6 +8,7 @@ import { cn } from "../../lib/utils";
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   const resolved = useResolvedPath(to);
   const match = useMatch({ path: resolved.pathname, end: true });
+  console.log(resolved.pathname, "pathname", match);
 
   return (
     <Link
@@ -15,7 +16,7 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
       to={to}
       className={cn(
         "text-muted-foreground flex w-full items-center gap-2 px-2 py-2 hover:bg-slate-800 rounded-lg",
-        match && "bg-slate-800"
+        match && "bg-slate-800 text-foreground"
       )}
     >
       <MessageCircleIcon className="shrink-0 w-4 h-4" />
@@ -44,17 +45,15 @@ const ChatLayout = () => {
       {inboxIds.length > 0 ? (
         <>
           <div className="flex-[380px] max-w-[380px] py-4 px-2 flex flex-col justify-between">
-            <div>
-              <h2 className="mb-4 px-2">Recent Conversations</h2>
-              <div className="space-y-2">
-                {inboxIds.map((inboxId) => (
-                  <MessageButton
-                    key={inboxId}
-                    inboxId={inboxId}
-                    to={`/inboxes/${encodeURIComponent(inboxId)}`}
-                  />
-                ))}
-              </div>
+            <h2 className="mb-4 px-2">Recent Conversations</h2>
+            <div className="space-y-2 flex-1 overflow-auto">
+              {inboxIds.map((inboxId) => (
+                <MessageButton
+                  key={inboxId}
+                  inboxId={inboxId}
+                  to={`/inboxes/${inboxId}`}
+                />
+              ))}
             </div>
           </div>
           <Separator orientation="vertical" />{" "}

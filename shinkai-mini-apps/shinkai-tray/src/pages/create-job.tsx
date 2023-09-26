@@ -23,7 +23,6 @@ import { useAgents } from "../api/queries/getAgents/useGetAgents";
 import { useAuth } from "../store/auth-context";
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
 import { useNavigate } from "react-router-dom";
-import { HOME_PATH } from "../routes/name";
 
 const createJobSchema = z.object({
   model: z.string(),
@@ -43,9 +42,10 @@ const CreateJobPage = () => {
     node_encryption_pk: setupData?.node_encryption_pk ?? "",
   });
 
-  const { mutateAsync: createJob } = useCreateJob({
-    onSuccess: () => {
-      navigate(HOME_PATH);
+  const { isLoading, mutateAsync: createJob } = useCreateJob({
+    onSuccess: (data) => {
+      // TODO: job_inbox, false is hardcoded
+      navigate(`/inboxes/job_inbox::${data.jobId}::false`);
     },
   });
 
@@ -113,7 +113,12 @@ const CreateJobPage = () => {
             />
           </div>
 
-          <Button className="w-full" type="submit">
+          <Button
+            className="w-full"
+            type="submit"
+            isLoading={isLoading}
+            disabled={isLoading}
+          >
             Create Job
           </Button>
         </form>

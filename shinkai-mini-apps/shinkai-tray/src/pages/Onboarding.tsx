@@ -16,7 +16,6 @@ import { Input } from "../components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ReloadIcon } from "@radix-ui/react-icons";
 import { useNavigate } from "react-router-dom";
 import { HOME_PATH } from "../routes/name";
 import { useAuth } from "../store/auth-context";
@@ -95,10 +94,10 @@ const OnboardingPage = () => {
   });
 
   useEffect(() => {
+    setSetupData(null);
     fetch("http://127.0.0.1:9550/v1/shinkai_health")
       .then((response) => response.json())
       .then((data) => {
-        console.log(data, "data");
         if (data.status === "ok") {
           setupDataForm.setValue("node_address", "http://127.0.0.1:9550");
         }
@@ -161,8 +160,13 @@ const OnboardingPage = () => {
             )}
           />
           {isError && <ErrorMessage message={error.message} />}
-          <Button className="w-full" variant="default" type="submit" disabled={isLoading}>
-            {isLoading && <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />}
+          <Button
+            className="w-full"
+            variant="default"
+            type="submit"
+            isLoading={isLoading}
+            disabled={isLoading}
+          >
             Submit
           </Button>
         </form>
