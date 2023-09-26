@@ -1,7 +1,4 @@
 import { Outlet, useNavigate } from "react-router-dom";
-
-("use client");
-
 import * as React from "react";
 import { GearIcon, LightningBoltIcon, PersonIcon } from "@radix-ui/react-icons";
 
@@ -86,7 +83,7 @@ export function Footer() {
   };
 
   return (
-    <div className="flex items-center justify-start text-sm text-muted-foreground bg-app-gradient py-2 px-2">
+    <div className="flex items-center justify-start text-sm text-muted-foreground bg-app-gradient py-2 px-2 pl-4">
       <ShinkaiLogo className="w-4 h-4 mr-2 text-primary-600" />
       <Popover open={open} onOpenChange={setOpen} modal>
         <PopoverTrigger
@@ -94,9 +91,9 @@ export function Footer() {
           onClick={() => setOpen(true)}
           aria-expanded={open}
         >
-          <span className="">
-            Actions{" "}
-            <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+          <span className="text-xs">
+            Actions
+            <kbd className="ml-2 pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
               <span className="text-xs">⌘</span>K
             </kbd>
           </span>

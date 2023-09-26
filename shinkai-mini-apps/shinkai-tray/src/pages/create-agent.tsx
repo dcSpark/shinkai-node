@@ -146,7 +146,7 @@ const CreateAgentPage = () => {
                   <Select onValueChange={field.onChange} defaultValue={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a verified email to display" />
+                        <SelectValue placeholder="Select your Model" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

@@ -1,5 +1,5 @@
-import { ApiConfig, getProfileAgents } from "@shinkai_network/shinkai-message-ts/api";
-import { GetAgents } from "./types";
+import { getProfileAgents } from "@shinkai_network/shinkai-message-ts/api";
+import type { GetAgentsInput } from "./types";
 
 export const getAgents = async ({
   sender,
@@ -8,8 +8,7 @@ export const getAgents = async ({
   my_device_encryption_sk,
   my_device_identity_sk,
   node_encryption_pk,
-}: GetAgents) => {
-  ApiConfig.getInstance().setEndpoint("http://localhost:9550");
+}: GetAgentsInput) => {
   const result = await getProfileAgents(sender, senderSubidentity, shinkaiIdentity, {
     my_device_encryption_sk,
     my_device_identity_sk,
