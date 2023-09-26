@@ -9,7 +9,6 @@ import { ScrollArea } from "../../components/ui/scroll-area";
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   const resolved = useResolvedPath(to);
   const match = useMatch({ path: resolved.pathname, end: true });
-  console.log(resolved.pathname, "pathname", match);
 
   return (
     <Link

@@ -2,7 +2,7 @@ import type { JobCredentialsPayload } from "@shinkai_network/shinkai-message-ts/
 
 export type GetChatConversationInput = JobCredentialsPayload & {
   inboxId: string;
-  count: number;
+  count?: number;
   lastKey?: string;
   shinkaiIdentity: string;
   profile: string;

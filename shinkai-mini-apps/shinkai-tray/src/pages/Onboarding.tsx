@@ -21,6 +21,7 @@ import { HOME_PATH } from "../routes/name";
 import { useAuth } from "../store/auth-context";
 import { useSubmitRegistration } from "../api/mutations/submitRegistation/useSubmitRegistration";
 import ErrorMessage from "../components/ui/error-message";
+import { queryClient } from "../api/constants";
 
 const formSchema = z.object({
   registration_code: z.string(),
@@ -94,7 +95,10 @@ const OnboardingPage = () => {
   });
 
   useEffect(() => {
+    // clean up
     setSetupData(null);
+    queryClient.clear();
+
     fetch("http://127.0.0.1:9550/v1/shinkai_health")
       .then((response) => response.json())
       .then((data) => {
