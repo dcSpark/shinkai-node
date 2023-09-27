@@ -16,32 +16,22 @@ pub struct DBScopeEntry {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct LocalScope {
-    pub entries: Vec<LocalScopeEntry>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct DBScope {
-    pub entries: Vec<DBScopeEntry>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// Job's scope which includes both local entries (source/vector resource stored locally only in job)
 /// and DB entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
-    pub local: LocalScope,
-    pub database: DBScope,
+    pub local: Vec<LocalScopeEntry>,
+    pub database: Vec<DBScopeEntry>,
 }
 
 impl JobScope {
-    pub fn new(local: LocalScope, database: DBScope) -> Self {
+    pub fn new(local: Vec<LocalScopeEntry>, database: Vec<DBScopeEntry>) -> Self {
         Self { local, database }
     }
 
     pub fn new_default() -> Self {
         Self {
-            local: LocalScope { entries: Vec::new() },
-            database: DBScope { entries: Vec::new() },
+            local: Vec::new(),
+            database: Vec::new(),
         }
     }
 
