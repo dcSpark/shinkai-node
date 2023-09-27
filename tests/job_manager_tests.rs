@@ -35,11 +35,9 @@ mod tests {
     };
     use shinkai_node::agent::job::{Job, JobId, JobLike};
     use shinkai_node::{
+        agent::job_manager::{AgentManager, JobManager},
         db::ShinkaiDB,
-        managers::{
-            identity_manager,
-            job_manager::{AgentManager, JobManager},
-        },
+        managers::identity_manager,
     };
     use std::collections::HashMap;
     use std::sync::Arc;

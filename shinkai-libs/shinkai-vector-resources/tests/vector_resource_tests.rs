@@ -4,6 +4,7 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
+use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{DataContent, TraversalMethod, VectorResource};
 use std::fs::File;
 use std::io;
@@ -90,7 +91,7 @@ fn test_manual_resource_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        Some("animalwildlife.com"),
+        VRSource::new_uri("animalwildlife.com"),
         "animal_resource",
     );
 

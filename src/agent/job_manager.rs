@@ -1,10 +1,10 @@
 use super::error::JobManagerError;
-use super::IdentityManager;
 use crate::agent::agent::Agent;
 use crate::agent::job::{Job, JobId, JobLike};
 pub use crate::agent::job_execution::*;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::managers::IdentityManager;
 use chrono::Utc;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use shinkai_message_primitives::{

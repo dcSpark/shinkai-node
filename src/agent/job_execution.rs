@@ -1,11 +1,11 @@
+use super::error::JobManagerError;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobId, JobLike};
+use crate::agent::job_manager::{AgentManager, JobManager};
 use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::error::JobManagerError;
-use crate::managers::job_manager::{AgentManager, JobManager};
 use chrono::Utc;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use serde_json::{Map, Value as JsonValue};
