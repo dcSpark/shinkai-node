@@ -90,15 +90,12 @@ impl JobManager {
         });
     }
 
-    pub async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
-        self.agent_manager.lock().await.decision_phase(job).await
+    pub async fn analysis_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
+        self.agent_manager.lock().await.analysis_phase(job).await
     }
 
-    pub async fn execution_phase(
-        &self,
-        pre_messages: Vec<JobPreMessage>,
-    ) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
-        self.agent_manager.lock().await.execution_phase(pre_messages).await
+    pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
+        self.agent_manager.lock().await.execution_phase().await
     }
 }
 
@@ -163,7 +160,7 @@ impl AgentManager {
     }
 
     /// Processes a job creation message
-    pub async fn handle_job_creation_schema(
+    pub async fn process_job_creation(
         &mut self,
         job_creation: JobCreationInfo,
         agent_id: &String,
@@ -212,8 +209,8 @@ impl AgentManager {
         }
     }
 
-    /// Processes a job message and starts the decision phase
-    pub async fn handle_job_message_schema(
+    /// Processes a job message which will trigger a job step
+    pub async fn process_job_step(
         &mut self,
         message: ShinkaiMessage,
         job_message: JobMessage,
@@ -221,7 +218,7 @@ impl AgentManager {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
             let mut shinkai_db = self.db.lock().await;
-            println!("handle_job_message_schema> job_message: {:?}", job_message);
+            println!("process_job_step> job_message: {:?}", job_message);
             shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
             shinkai_db.add_step_history(job.job_id().to_string(), job_message.content.clone())?;
 
@@ -244,7 +241,7 @@ impl AgentManager {
 
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
-            let _ = self.decision_phase(&**job).await?;
+            let _ = self.analysis_phase(&**job).await?;
 
             // After analysis phase, we execute the resulting execution plan
             //    let executor = PlanExecutor::new(agent, execution_plan)?;
@@ -285,19 +282,12 @@ impl AgentManager {
                                 let agent_id = agent_name.get_agent_name().ok_or(JobManagerError::AgentNotFound)?;
                                 let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_job_creation_schema(job_creation, &agent_id).await
+                                self.process_job_creation(job_creation, &agent_id).await
                             }
                             MessageSchemaType::JobMessageSchema => {
                                 let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                self.handle_job_message_schema(message, job_message).await
-                            }
-                            MessageSchemaType::PreMessageSchema => {
-                                let pre_message: JobPreMessage = serde_json::from_str(&data.message_raw_content)
-                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
-                                // TODO: we should be able to extract the job_id from the inbox
-                                self.handle_pre_message_schema(pre_message, "".to_string(), message)
-                                    .await
+                                self.process_job_step(message, job_message).await
                             }
                             _ => {
                                 // Handle Empty message type if needed, or return an error if it's not a valid job message
@@ -314,7 +304,7 @@ impl AgentManager {
 
     // When a new message is supplied to the job, the decision phase of the new step begins running
     // (with its existing step history as context) which triggers calling the Agent's LLM.
-    async fn decision_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
+    async fn analysis_phase(&self, job: &dyn JobLike) -> Result<(), Box<dyn Error>> {
         // Fetch the job
         let job_id = job.job_id().to_string();
         let full_job = { self.db.lock().await.get_job(&job_id).unwrap() };
@@ -343,12 +333,12 @@ impl AgentManager {
         }
 
         match agent_found {
-            Some(agent) => self.decision_iteration(full_job, context, last_message, agent).await,
+            Some(agent) => self.analysis_iteration(full_job, context, last_message, agent).await,
             None => Err(Box::new(JobManagerError::AgentNotFound)),
         }
     }
 
-    async fn decision_iteration(
+    async fn analysis_iteration(
         &self,
         job: Job,
         mut context: Vec<String>,
@@ -370,7 +360,7 @@ impl AgentManager {
         println!("decision_iteration> response: {:?}", response);
 
         // TODO: update this fn so it allows for recursion
-        // let is_valid = self.is_decision_phase_output_valid().await;
+        // let is_valid = self.is_analysis_phase_output_valid().await;
         // if is_valid == false {
         //     self.decision_iteration(job, context, last_message, agent).await?;
         // }
@@ -378,18 +368,14 @@ impl AgentManager {
         Ok(())
     }
 
-    async fn is_decision_phase_output_valid(&self) -> bool {
+    async fn is_analysis_phase_output_valid(&self) -> bool {
         // Check if the output is valid
         // If not valid, return false
         // If valid, return true
         unimplemented!()
     }
 
-    async fn execution_phase(&self, pre_messages: Vec<JobPreMessage>) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
-        // For each Premessage:
-        // 1. Call the necessary tools to fill out the contents
-        // 2. Convert the Premessage into a Message
-        // Return the list of Messages
+    async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
         unimplemented!()
     }
 }
