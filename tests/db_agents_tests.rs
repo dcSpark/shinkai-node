@@ -20,7 +20,7 @@ mod tests {
         },
         shinkai_utils::utils::hash_string,
     };
-    use shinkai_node::agent::{agent::Agent, error::AgentError};
+    use shinkai_node::agent::{agent::Agent, error::AgentError, job_prompts::JobPromptGenerator};
 
     use super::*;
 
@@ -224,7 +224,11 @@ mod tests {
             vec!["allowed1".to_string(), "allowed2".to_string()]
         );
 
-        let handle = tokio::spawn(async move { agent.inference("Test".to_string()).await });
+        let handle = tokio::spawn(async move {
+            agent
+                .inference(JobPromptGenerator::basic_instant_response_prompt("Test".to_string()))
+                .await
+        });
         let result: Result<JsonValue, AgentError> = handle.await.unwrap();
         assert_eq!(result.unwrap(), JsonValue::Bool(true))
     }
@@ -276,7 +280,9 @@ mod tests {
             vec!["allowed1".to_string(), "allowed2".to_string()],
         );
 
-        let response = agent.inference("Hello!".to_string()).await;
+        let response = agent
+            .inference(JobPromptGenerator::basic_instant_response_prompt("Hello!".to_string()))
+            .await;
         match response {
             Ok(res) => assert_eq!(
                 res["answer"].as_str().unwrap(),

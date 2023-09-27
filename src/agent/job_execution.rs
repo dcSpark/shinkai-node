@@ -1,4 +1,5 @@
 use crate::agent::agent::Agent;
+use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
@@ -7,6 +8,7 @@ use crate::managers::error::JobManagerError;
 use crate::managers::job_manager::{AgentManager, JobManager};
 use chrono::Utc;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
+use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::{
@@ -89,7 +91,7 @@ impl AgentManager {
         // and have multiple methods like process_analysis_inference which use different
         // prompts and are called as needed to arrive at a full execution plan ready to be returned
 
-        match agent_found {
+        let inference_response = match agent_found {
             Some(agent) => {
                 self.process_analysis_inference(
                     full_job,
@@ -100,10 +102,14 @@ impl AgentManager {
                 )
                 .await
             }
-            None => Err(Box::new(JobManagerError::AgentNotFound)),
-        }
+            None => Err(Box::new(JobManagerError::AgentNotFound) as Box<dyn std::error::Error>),
+        };
+
+        Ok(())
     }
 
+    /// Temporary method that does no chaining/advanced prompting/context usage,
+    /// but simply inferences the LLM to get a direct response back
     async fn process_analysis_inference(
         &self,
         job: Job,
@@ -111,37 +117,36 @@ impl AgentManager {
         agent: Arc<Mutex<Agent>>,
         execution_context: HashMap<String, String>,
         analysis_context: HashMap<String, String>,
-    ) -> Result<(), Box<dyn Error>> {
-        // let time_with_comment = format!("{}: {}", "Current datetime ", Utc::now().to_rfc3339());
+    ) -> Result<JsonValue, Box<dyn Error>> {
         println!("analysis_inference>  message: {:?}", message);
 
         // Generate the needed prompt
-        let filled_prompt = JobPromptGenerator::temporary_instant_inference_prompt(message)
-            .generate_single_output_string()
-            .unwrap();
-
+        let filled_prompt = JobPromptGenerator::basic_instant_response_prompt(message.clone());
         // Execute LLM inferencing
+        let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
-            let mut agent = agent.lock().await;
-            agent.inference(filled_prompt).await;
+            let mut agent = agent_cloned.lock().await;
+            agent.inference(filled_prompt).await
         })
         .await?;
-        println!("decision_iteration> response: {:?}", response);
 
-        // TODO: update this fn so it allows for recursion
-        // let is_valid = self.is_analysis_phase_output_valid().await;
-        // if is_valid == false {
-        //     self.decision_iteration(job, context, last_message, agent).await?;
+        println!("analysis_inference> response: {:?}", response);
+
+        // TODO: Later update all methods to AgentError
+        Ok(response.unwrap())
+
+        // TODO: Later implement re-run logic like below, but as a while loop in analysis phase/some wrapper retry method.
+        // Because we can't do normal recursion in async.
+        //
+        // match response {
+        //     Err(AgentError::FailedExtractingJSONObjectFromResponse(s)) => {
+        //         println!("{}", s);
+        //         let new_message = format!("{}. You must return a valid JSON object as a response.", message);
+        //         self.process_analysis_inference(job, new_message, agent, execution_context, analysis_context)
+        //             .await
+        //     }
+        //     _ => Ok(response.unwrap()),
         // }
-
-        Ok(())
-    }
-
-    async fn is_analysis_phase_output_valid(&self) -> bool {
-        // Check if the output is valid
-        // If not valid, return false
-        // If valid, return true
-        unimplemented!()
     }
 
     pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {

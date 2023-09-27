@@ -90,10 +90,6 @@ impl JobManager {
             }
         });
     }
-
-    pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
-        self.agent_manager.lock().await.execution_phase().await
-    }
 }
 
 pub struct AgentManager {

@@ -58,3 +58,12 @@ impl From<reqwest::Error> for AgentError {
         AgentError::ReqwestError(err)
     }
 }
+
+impl std::error::Error for AgentError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            AgentError::ReqwestError(err) => Some(err),
+            _ => None,
+        }
+    }
+}
