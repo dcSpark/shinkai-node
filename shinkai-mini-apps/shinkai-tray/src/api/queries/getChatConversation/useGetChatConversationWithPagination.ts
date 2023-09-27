@@ -12,9 +12,12 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
       getChatConversation({
         ...input,
         lastKey: pageParam?.lastKey ?? undefined,
+        count: CONVERSATION_PAGINATION_LIMIT,
       }),
     getPreviousPageParam: (firstPage) => {
-      return firstPage?.length === CONVERSATION_PAGINATION_LIMIT;
+      const firstMessage = firstPage?.[0];
+      const timeKey = firstMessage?.external_metadata?.scheduled_time;
+      return timeKey ?? false;
     },
   });
   return response;
