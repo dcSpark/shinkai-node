@@ -183,6 +183,19 @@ impl JobPromptGenerator {
             .join("\n")
     }
 
+    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
+    pub fn temporary_instant_inference_prompt(job_task: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
     pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
