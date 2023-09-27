@@ -52,7 +52,10 @@ const ChatConversation = () => {
   const { inboxId = "" } = useParams();
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const { ref, inView } = useInView();
+  const prevChatHeightRef = useRef<number>(null);
+  const { ref, inView } = useInView({
+    triggerOnce: false,
+  });
 
   const chatForm = useForm<z.infer<typeof chatSchema>>({
     resolver: zodResolver(chatSchema),
@@ -66,7 +69,7 @@ const ChatConversation = () => {
     fetchPreviousPage,
     hasPreviousPage,
     isFetching,
-    isFetchingNextPage,
+    isFetchingPreviousPage,
     isSuccess: isChatConversationSuccess,
   } = useGetChatConversationWithPagination({
     inboxId: inboxId as string,
@@ -138,17 +141,56 @@ const ChatConversation = () => {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [
-    isSendingMessageToInboxSuccess,
     isSendingMessageToJobSuccess,
+    isSendingMessageToInboxSuccess,
     isChatConversationSuccess,
   ]);
+  // useEffect(() => {
+  //   const handleScroll = async () => {
+  //     if (!chatContainerRef.current) return;
+  //     console.dir(chatContainerRef.current);
+  //     if (chatContainerRef.current.scrollTop === 0) {
+  //       await fetchPreviousMessages();
+  //       const firstMessageElement = chatContainerRef.current.querySelector(
+  //         ".message-chat:nth-child(6)"
+  //       );
+  //       console.log(firstMessageElement, "firstMessageElement");
+  //       if (firstMessageElement) {
+  //         firstMessageElement.scrollIntoView({ block: "start", behavior: "smooth" });
+  //       }
+  //       // debugger;
+  //       // const firstMessageElement =
+  //       //   chatContainerRef.current.querySelector("div:first-child");
+  //       // if (firstMessageElement) {
+  //       //   firstMessageElement.scrollIntoView({ behavior: "smooth" });
+  //       //   // debugger;
+  //       // }
+  //     }
+  //   };
+  //   chatContainerRef.current?.addEventListener("scroll", handleScroll);
+  //   return () => {
+  //     chatContainerRef.current?.removeEventListener("scroll", handleScroll);
+  //   };
+  // });
 
-  useEffect(() => {
-    if (inView) {
-      fetchPreviousMessages();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView]);
+  // useEffect(() => {
+  //   if (inView) {
+  //     console.log("in view first");
+
+  //     fetchPreviousMessages();
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [inView]);
+  // useEffect(() => {
+  //   if (isChatConversationSuccess && chatContainerRef.current) {
+  //     const firstMessageElement = chatContainerRef.current.querySelector(
+  //       ".chat-message:first-child"
+  //     );
+  //     if (firstMessageElement) {
+  //       firstMessageElement.scrollIntoView({ block: "start", behavior: "smooth" });
+  //     }
+  //   }
+  // }, [isChatConversationSuccess]);
 
   return (
     <div className="w-full flex flex-col justify-between pt-2">
@@ -168,15 +210,15 @@ const ChatConversation = () => {
         </Button>
       </div>
       <ScrollArea className="h-full px-4" ref={chatContainerRef}>
-        <div className="space-y-5">
+        {!isFetching && (
           <Button
             variant="ghost"
-            className="h-10"
+            className="inline mx-auto"
             ref={ref}
             disabled={!hasPreviousPage || isFetching}
             onClick={fetchPreviousMessages}
           >
-            {isFetchingNextPage ? (
+            {isFetchingPreviousPage ? (
               <Loader className="flex w-full justify-center text-white" />
             ) : hasPreviousPage ? (
               "Load previous"
@@ -184,6 +226,8 @@ const ChatConversation = () => {
               "All messages has been loaded."
             )}
           </Button>
+        )}
+        <div className="space-y-5">
           {data?.pages.map((group, i) => (
             <Fragment key={i}>
               {group.map((message) => {
@@ -197,7 +241,7 @@ const ChatConversation = () => {
                 return (
                   <div
                     key={message.external_metadata?.scheduled_time}
-                    className="flex items-center gap-2 rounded-lg p-2 py-6 bg-[rgba(217,217,217,0.04)]"
+                    className="message-chat flex items-center gap-2 rounded-lg p-2 py-6 bg-[rgba(217,217,217,0.04)]"
                   >
                     <p
                       className={cn(
