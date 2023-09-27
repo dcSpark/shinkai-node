@@ -3,7 +3,7 @@ import { getChatConversation } from ".";
 import { GetChatConversationInput } from "./types";
 import { FunctionKey } from "../../constants";
 
-export const CONVERSATION_PAGINATION_LIMIT = 6;
+export const CONVERSATION_PAGINATION_LIMIT = 10;
 
 export const useGetChatConversationWithPagination = (input: GetChatConversationInput) => {
   const response = useInfiniteQuery({

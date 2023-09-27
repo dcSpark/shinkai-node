@@ -39,7 +39,6 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.46.2",
-    "react-intersection-observer": "^9.5.2",
     "react-router-dom": "^6.16.0",
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
@@ -47,6 +46,7 @@
   },
   "devDependencies": {
     "@tanstack/eslint-plugin-query": "^4.34.1",
+    "@tanstack/react-query-devtools": "^4.35.3",
     "@tauri-apps/cli": "^1.4.0",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",

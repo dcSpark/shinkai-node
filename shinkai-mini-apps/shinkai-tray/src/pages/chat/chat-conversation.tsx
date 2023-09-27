@@ -25,8 +25,7 @@ import {
   isJobInbox,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
-import { useInView } from "react-intersection-observer";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Loader } from "lucide-react";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
@@ -52,10 +51,7 @@ const ChatConversation = () => {
   const { inboxId = "" } = useParams();
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const prevChatHeightRef = useRef<number>(null);
-  const { ref, inView } = useInView({
-    triggerOnce: false,
-  });
+  const prevChatHeightRef = useRef<number>(0);
 
   const chatForm = useForm<z.infer<typeof chatSchema>>({
     resolver: zodResolver(chatSchema),
@@ -127,14 +123,43 @@ const ChatConversation = () => {
 
   const isLoading = isSendingMessageToJob || isSendingMessageToInbox;
 
-  const fetchPreviousMessages = () => {
+  const fetchPreviousMessages = useCallback(async () => {
+    if (!hasPreviousPage) return;
     const firstMessage = data?.pages?.[0]?.[0];
     if (!firstMessage) return;
     const timeKey = firstMessage?.external_metadata?.scheduled_time;
     const hashKey = calculateMessageHash(firstMessage);
     const firstMessageKey = `${timeKey}:::${hashKey}`;
-    fetchPreviousPage({ pageParam: { lastKey: firstMessageKey } });
-  };
+    await fetchPreviousPage({ pageParam: { lastKey: firstMessageKey } });
+  }, [data?.pages, fetchPreviousPage, hasPreviousPage]);
+
+  const handleScroll = useCallback(async () => {
+    const chatContainerElement = chatContainerRef.current;
+    if (!chatContainerElement) return;
+    const currentHeight = chatContainerElement.scrollHeight;
+    const prevHeight = prevChatHeightRef.current;
+
+    if (chatContainerElement.scrollTop < 100 && hasPreviousPage) {
+      await fetchPreviousMessages();
+      prevChatHeightRef.current = currentHeight;
+      chatContainerElement.scrollTop = currentHeight - prevHeight;
+    }
+  }, [fetchPreviousMessages, hasPreviousPage]);
+
+  useEffect(() => {
+    const chatContainerElement = chatContainerRef.current;
+    if (!chatContainerElement) return;
+    chatContainerElement.addEventListener("scroll", handleScroll);
+    return () => {
+      chatContainerElement.removeEventListener("scroll", handleScroll);
+    };
+  }, [
+    hasPreviousPage,
+    isFetching,
+    isFetchingPreviousPage,
+    isChatConversationSuccess,
+    handleScroll,
+  ]);
 
   useLayoutEffect(() => {
     if (chatContainerRef.current) {
@@ -145,52 +170,6 @@ const ChatConversation = () => {
     isSendingMessageToInboxSuccess,
     isChatConversationSuccess,
   ]);
-  // useEffect(() => {
-  //   const handleScroll = async () => {
-  //     if (!chatContainerRef.current) return;
-  //     console.dir(chatContainerRef.current);
-  //     if (chatContainerRef.current.scrollTop === 0) {
-  //       await fetchPreviousMessages();
-  //       const firstMessageElement = chatContainerRef.current.querySelector(
-  //         ".message-chat:nth-child(6)"
-  //       );
-  //       console.log(firstMessageElement, "firstMessageElement");
-  //       if (firstMessageElement) {
-  //         firstMessageElement.scrollIntoView({ block: "start", behavior: "smooth" });
-  //       }
-  //       // debugger;
-  //       // const firstMessageElement =
-  //       //   chatContainerRef.current.querySelector("div:first-child");
-  //       // if (firstMessageElement) {
-  //       //   firstMessageElement.scrollIntoView({ behavior: "smooth" });
-  //       //   // debugger;
-  //       // }
-  //     }
-  //   };
-  //   chatContainerRef.current?.addEventListener("scroll", handleScroll);
-  //   return () => {
-  //     chatContainerRef.current?.removeEventListener("scroll", handleScroll);
-  //   };
-  // });
-
-  // useEffect(() => {
-  //   if (inView) {
-  //     console.log("in view first");
-
-  //     fetchPreviousMessages();
-  //   }
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [inView]);
-  // useEffect(() => {
-  //   if (isChatConversationSuccess && chatContainerRef.current) {
-  //     const firstMessageElement = chatContainerRef.current.querySelector(
-  //       ".chat-message:first-child"
-  //     );
-  //     if (firstMessageElement) {
-  //       firstMessageElement.scrollIntoView({ block: "start", behavior: "smooth" });
-  //     }
-  //   }
-  // }, [isChatConversationSuccess]);
 
   return (
     <div className="w-full flex flex-col justify-between pt-2">
@@ -209,25 +188,22 @@ const ChatConversation = () => {
           <DotsVerticalIcon className="w-4 h-4" />
         </Button>
       </div>
-      <ScrollArea className="h-full px-4" ref={chatContainerRef}>
-        {!isFetching && (
-          <Button
-            variant="ghost"
-            className="inline mx-auto"
-            ref={ref}
-            disabled={!hasPreviousPage || isFetching}
-            onClick={fetchPreviousMessages}
-          >
-            {isFetchingPreviousPage ? (
-              <Loader className="flex w-full justify-center text-white" />
-            ) : hasPreviousPage ? (
-              "Load previous"
-            ) : (
-              "All messages has been loaded."
-            )}
-          </Button>
-        )}
-        <div className="space-y-5">
+      <ScrollArea className="h-full px-4 " ref={chatContainerRef}>
+        <Button
+          variant="ghost"
+          className="inline mx-auto"
+          disabled={!hasPreviousPage || isFetching}
+          onClick={fetchPreviousMessages}
+        >
+          {isFetchingPreviousPage ? (
+            <Loader className="flex w-full justify-center text-white" />
+          ) : hasPreviousPage ? (
+            "Load previous"
+          ) : (
+            "All messages has been loaded."
+          )}
+        </Button>
+        <div className="chat-messages space-y-5 ">
           {data?.pages.map((group, i) => (
             <Fragment key={i}>
               {group.map((message) => {
