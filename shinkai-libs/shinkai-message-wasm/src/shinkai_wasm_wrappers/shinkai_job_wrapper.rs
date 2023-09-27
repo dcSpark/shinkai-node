@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
     schemas::inbox_name::InboxName,
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage, JobScope},
+    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
 };
 use wasm_bindgen::prelude::*;
 
@@ -18,9 +19,7 @@ pub struct JobScopeWrapper {
 impl JobScopeWrapper {
     #[wasm_bindgen(constructor)]
     pub fn new(buckets_js: &JsValue, documents_js: &JsValue) -> Result<JobScopeWrapper, JsValue> {
-        let buckets: Vec<InboxName> = serde_wasm_bindgen::from_value(buckets_js.clone())?;
-        let documents: Vec<String> = serde_wasm_bindgen::from_value(documents_js.clone())?;
-        let job_scope = JobScope::new(Some(buckets), Some(documents));
+        let job_scope = JobScope::new_default();
         Ok(JobScopeWrapper { inner: job_scope })
     }
 
@@ -81,9 +80,7 @@ impl JobCreationWrapper {
 
     #[wasm_bindgen(js_name = empty)]
     pub fn empty() -> Result<JobCreationWrapper, JsValue> {
-        let buckets: Vec<InboxName> = Vec::new();
-        let documents: Vec<String> = Vec::new();
-        let job_scope = JobScope::new(Some(buckets), Some(documents));
+        let job_scope = JobScope::new_default();
         Ok(JobCreationWrapper {
             inner: JobCreationInfo { scope: job_scope },
         })

@@ -9,13 +9,12 @@ mod tests {
     use shinkai_message_primitives::shinkai_message::shinkai_message::{
         ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
     };
-    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-        JobMessage, JobScope, RegistrationCodeRequest,
-    };
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, RegistrationCodeRequest};
     use shinkai_message_primitives::shinkai_utils::encryption::{
         encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
         EncryptionMethod,
     };
+    use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
     use shinkai_message_primitives::shinkai_utils::signatures::{
         signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
     };
