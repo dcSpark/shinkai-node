@@ -91,7 +91,7 @@ fn test_manual_resource_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri("animalwildlife.com"),
+        VRSource::new_uri_ref("animalwildlife.com"),
         "animal_resource",
     );
 
@@ -137,7 +137,7 @@ fn test_manual_resource_vector_search() {
     let mut map_resource = MapVectorResource::new_empty(
         "Tech Facts",
         Some("A collection of facts about technology"),
-        Some("veryrealtechfacts.com"),
+        VRSource::new_uri_ref("veryrealtechfacts.com"),
         "tech_resource",
     );
 
@@ -162,7 +162,7 @@ fn test_manual_resource_vector_search() {
     let mut fruit_doc = DocumentVectorResource::new_empty(
         "Fruit Facts",
         Some("A collection of facts about fruits"),
-        Some("ostensiblyrealfruitfacts.com"),
+        VRSource::new_uri_ref("ostensiblyrealfruitfacts.com"),
         "fruit_resource",
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -240,7 +240,7 @@ fn test_manual_syntactic_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "CV Data From Resume",
         Some("A bunch of data theoretically parsed out of a CV"),
-        None,
+        VRSource::None,
         "cv_data",
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
