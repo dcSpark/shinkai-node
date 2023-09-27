@@ -102,7 +102,18 @@ impl AgentManager {
                 .await
             }
             None => Err(Box::new(AgentError::AgentNotFound) as Box<dyn std::error::Error>),
-        };
+        }?;
+
+        // TODO: Save inference response to job inbox
+        //
+        let mut shinkai_db = self.db.lock().await;
+        shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
+        // let builder = ShinkaiMessageBuilder::new(...);
+        // builder.empty_non_encrypted_internal_metadata();
+        // builder.message_raw_content(inference_response.to_string());
+        // let message = builder.build().unwrap();
+        // shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+        std::mem::drop(shinkai_db); // require to avoid deadlock
 
         Ok(())
     }
