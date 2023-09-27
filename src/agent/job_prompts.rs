@@ -184,7 +184,7 @@ impl JobPromptGenerator {
     }
 
     /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn temporary_instant_inference_prompt(job_task: String) -> Prompt {
+    pub fn basic_instant_response_prompt(job_task: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
@@ -296,10 +296,9 @@ impl Prompt {
         self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
     }
 
-    /// Processes all sub-prompts into a single output String.
     /// Validates that there is at least one EBNF sub-prompt to ensure
     /// the LLM knows what to output.
-    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+    pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
         if !self
             .sub_prompts
             .iter()
@@ -307,6 +306,19 @@ impl Prompt {
         {
             return Err(AgentError::UserPromptMissingEBNFDefinition);
         }
+        Ok(())
+    }
+
+    fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
+        format!(
+            "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
+            ebnf
+        )
+    }
+
+    /// Processes all sub-prompts into a single output String.
+    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+        self.check_ebnf_included()?;
 
         let json_response_required = String::from("```json");
         let content = self
@@ -314,15 +326,37 @@ impl Prompt {
             .iter()
             .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(_, content) => content.clone(),
-                SubPrompt::EBNF(_, ebnf) => format!(
-                    "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
-                    ebnf
-                ),
+                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
             })
             .collect::<Vec<String>>()
             .join("\n")
             + "\n"
             + &json_response_required;
         Ok(content)
+    }
+
+    /// Processes all sub-prompts into a single output String in OpenAI's message format.
+    pub fn generate_openai_messages(&self) -> Result<String, AgentError> {
+        self.check_ebnf_included()?;
+
+        let messages = self
+            .sub_prompts
+            .iter()
+            .map(|sub_prompt| match sub_prompt {
+                SubPrompt::Content(prompt_type, content) => {
+                    let role = match prompt_type {
+                        SubPromptType::User => "user",
+                        SubPromptType::System => "system",
+                    };
+                    format!(r#"{{"role": "{}", "content": "{}"}}"#, role, content)
+                }
+                SubPrompt::EBNF(_, ebnf) => {
+                    return self.generate_ebnf_response_string(ebnf);
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(",\n");
+
+        Ok(messages)
     }
 }

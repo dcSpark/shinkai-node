@@ -1,3 +1,5 @@
+use crate::agent::job_prompts::Prompt;
+
 use super::AgentError;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -43,7 +45,7 @@ impl LLMProvider for OpenAI {
         client: &Client,
         url: Option<&String>,
         api_key: Option<&String>,
-        content: &str,
+        prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
@@ -52,13 +54,13 @@ impl LLMProvider for OpenAI {
                     r#"{{
                             "model": "{}",
                             "messages": [
-                                {{"role": "system", "content": "You are a helpful assistant."}},
-                                {{"role": "user", "content": "{}"}}
+                                {}
                             ],
                             "temperature": 0,
                             "max_tokens": 1024
                         }}"#,
-                    self.model_type, content
+                    self.model_type,
+                    prompt.generate_openai_messages()?
                 );
 
                 let res = client
