@@ -1,4 +1,3 @@
-use super::error::JobManagerError;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobId, JobLike};
@@ -28,7 +27,7 @@ impl AgentManager {
         &mut self,
         message: ShinkaiMessage,
         job_message: JobMessage,
-    ) -> Result<String, JobManagerError> {
+    ) -> Result<String, AgentError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
             let job = job.clone();
             let mut shinkai_db = self.db.lock().await;
@@ -62,15 +61,15 @@ impl AgentManager {
 
             return Ok(job_message.job_id.clone());
         } else {
-            return Err(JobManagerError::JobNotFound);
+            return Err(AgentError::JobNotFound);
         }
     }
 
     // Begins processing the analysis phase of the job
-    pub async fn analysis_phase(&self, job: &dyn JobLike, job_message: JobMessage) -> Result<(), Box<dyn Error>> {
+    pub async fn analysis_phase(&self, job: &dyn JobLike, job_message: JobMessage) -> Result<(), AgentError> {
         // Fetch the job
         let job_id = job.job_id().to_string();
-        let full_job = { self.db.lock().await.get_job(&job_id).unwrap() };
+        let full_job = { self.db.lock().await.get_job(&job_id)? };
 
         // Acquire Agent
         let agent_id = full_job.parent_agent_id.clone();
@@ -102,7 +101,7 @@ impl AgentManager {
                 )
                 .await
             }
-            None => Err(Box::new(JobManagerError::AgentNotFound) as Box<dyn std::error::Error>),
+            None => Err(Box::new(AgentError::AgentNotFound) as Box<dyn std::error::Error>),
         };
 
         Ok(())

@@ -1,7 +1,4 @@
-use crate::{
-    agent::error::{AgentError, JobManagerError},
-    db::db_errors::ShinkaiDBError,
-};
+use crate::{agent::error::AgentError, db::db_errors::ShinkaiDBError};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
@@ -44,10 +41,10 @@ impl From<ShinkaiMessageError> for NodeError {
     }
 }
 
-impl From<JobManagerError> for NodeError {
-    fn from(error: JobManagerError) -> Self {
+impl From<AgentError> for NodeError {
+    fn from(error: AgentError) -> Self {
         NodeError {
-            message: format!("JobManagerError occurred: {}", error),
+            message: format!("AgentError occurred: {}", error),
         }
     }
 }

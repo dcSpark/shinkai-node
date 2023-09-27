@@ -24,7 +24,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::agent::error::JobManagerError;
+use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;

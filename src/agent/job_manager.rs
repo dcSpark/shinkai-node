@@ -1,4 +1,4 @@
-use super::error::JobManagerError;
+use super::error::AgentError;
 use crate::agent::agent::Agent;
 use crate::agent::job::{Job, JobId, JobLike};
 pub use crate::agent::job_execution::*;
@@ -49,12 +49,12 @@ impl JobManager {
         job_manager
     }
 
-    pub async fn process_job_message(&mut self, shinkai_message: ShinkaiMessage) -> Result<String, JobManagerError> {
+    pub async fn process_job_message(&mut self, shinkai_message: ShinkaiMessage) -> Result<String, AgentError> {
         let mut agent_manager = self.agent_manager.lock().await;
         if agent_manager.is_job_message(shinkai_message.clone()) {
             agent_manager.process_job_message(shinkai_message).await
         } else {
-            Err(JobManagerError::NotAJobMessage)
+            Err(AgentError::NotAJobMessage)
         }
     }
 
@@ -157,13 +157,13 @@ impl AgentManager {
         &mut self,
         job_creation: JobCreationInfo,
         agent_id: &String,
-    ) -> Result<String, JobManagerError> {
+    ) -> Result<String, AgentError> {
         let job_id = format!("jobid_{}", uuid::Uuid::new_v4());
         {
             let mut shinkai_db = self.db.lock().await;
             match shinkai_db.create_new_job(job_id.clone(), agent_id.clone(), job_creation.scope) {
                 Ok(_) => (),
-                Err(err) => return Err(JobManagerError::ShinkaiDB(err)),
+                Err(err) => return Err(AgentError::ShinkaiDB(err)),
             };
 
             match shinkai_db.get_job(&job_id) {
@@ -190,13 +190,13 @@ impl AgentManager {
 
                     let job_id_to_return = match agent_found {
                         Some(_) => Ok(job_id.clone()),
-                        None => Err(anyhow::Error::new(JobManagerError::AgentNotFound)),
+                        None => Err(anyhow::Error::new(AgentError::AgentNotFound)),
                     };
 
-                    job_id_to_return.map_err(|_| JobManagerError::AgentNotFound)
+                    job_id_to_return.map_err(|_| AgentError::AgentNotFound)
                 }
                 Err(err) => {
-                    return Err(JobManagerError::ShinkaiDB(err));
+                    return Err(AgentError::ShinkaiDB(err));
                 }
             }
         }
@@ -208,7 +208,7 @@ impl AgentManager {
         pre_message: JobPreMessage,
         job_id: String,
         shinkai_message: ShinkaiMessage,
-    ) -> Result<String, JobManagerError> {
+    ) -> Result<String, AgentError> {
         println!("handle_pre_message_schema> pre_message: {:?}", pre_message);
 
         self.db
@@ -218,7 +218,7 @@ impl AgentManager {
         Ok(String::new())
     }
 
-    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, JobManagerError> {
+    pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
         match message.clone().body {
             MessageBody::Unencrypted(body) => {
                 match body.message_data {
@@ -228,26 +228,26 @@ impl AgentManager {
                             MessageSchemaType::JobCreationSchema => {
                                 let agent_name =
                                     ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
-                                let agent_id = agent_name.get_agent_name().ok_or(JobManagerError::AgentNotFound)?;
+                                let agent_id = agent_name.get_agent_name().ok_or(AgentError::AgentNotFound)?;
                                 let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
-                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                    .map_err(|_| AgentError::ContentParseFailed)?;
                                 self.process_job_creation(job_creation, &agent_id).await
                             }
                             MessageSchemaType::JobMessageSchema => {
                                 let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
-                                    .map_err(|_| JobManagerError::ContentParseFailed)?;
+                                    .map_err(|_| AgentError::ContentParseFailed)?;
                                 self.process_job_step(message, job_message).await
                             }
                             _ => {
                                 // Handle Empty message type if needed, or return an error if it's not a valid job message
-                                Err(JobManagerError::NotAJobMessage)
+                                Err(AgentError::NotAJobMessage)
                             }
                         }
                     }
-                    _ => Err(JobManagerError::NotAJobMessage),
+                    _ => Err(AgentError::NotAJobMessage),
                 }
             }
-            _ => Err(JobManagerError::NotAJobMessage),
+            _ => Err(AgentError::NotAJobMessage),
         }
     }
 }
