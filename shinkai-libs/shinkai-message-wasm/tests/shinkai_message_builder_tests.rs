@@ -196,12 +196,7 @@ mod tests {
         let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
-        let scope = JobScope {
-            // get_job_inbox_name_from_params
-            buckets: vec![InboxName::new("job_inbox::job2::false".to_string()).unwrap()],
-            documents: vec!["document1".to_string(), "document2".to_string()],
-        };
-
+        let scope = JobScope::new_default();
         let job_id = "job123".to_string();
         let content = scope.to_json_str().unwrap();
         let node_sender = "@@sender_node.shinkai".to_string();
@@ -212,6 +207,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilderWrapper::job_message(
             job_id.clone(),
             content.clone(),
+            String::new(),
             my_encryption_sk_string.clone(),
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
