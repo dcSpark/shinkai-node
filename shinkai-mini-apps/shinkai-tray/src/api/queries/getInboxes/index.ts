@@ -21,5 +21,5 @@ export const getInboxes = async ({
       node_encryption_pk,
     }
   );
-  return inboxes;
+  return inboxes.map((inbox) => encodeURIComponent(inbox));
 };

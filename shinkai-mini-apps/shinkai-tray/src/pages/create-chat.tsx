@@ -13,7 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "../components/ui/button";
 import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../store/auth-context";
-// import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Input } from "../components/ui/input";
 import { useCreateChat } from "../api/mutations/createChat/useCreateChat";
 
@@ -24,13 +24,13 @@ const createChatSchema = z.object({
 
 const CreateChatPage = () => {
   const { setupData } = useAuth();
-  // const navigate = useNavigate();
+  const navigate = useNavigate();
 
   const { isLoading, mutateAsync: createChat } = useCreateChat({
     onSuccess: (data) => {
       console.log(data, "chat");
       // TODO: job_inbox, false is hardcoded
-      // navigate(`/inboxes/job_inbox::${data.jobId}::false`);
+      navigate(`/inboxes/${data.inboxId}`);
     },
   });
 

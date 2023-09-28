@@ -36,10 +36,7 @@ const chatSchema = z.object({
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const parseMessage = (message: any) => {
-  if (!message.body) {
-    return message.body?.encrypted.content;
-  }
+const getMessageFromJob = (message: any) => {
   if ("unencrypted" in message.body) {
     return JSON.parse(
       message.body.unencrypted.message_data.unencrypted.message_raw_content
@@ -47,13 +44,18 @@ const parseMessage = (message: any) => {
   }
   return message.body.unencrypted.message_data.encrypted.content;
 };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getMessageFromChat = (message: any) => {
+  return message.body.unencrypted.message_data.unencrypted.message_raw_content;
+};
 
 const ChatConversation = () => {
-  const { inboxId = "" } = useParams();
+  const { inboxId: encodedInboxId = "" } = useParams();
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const prevChatHeightRef = useRef<number>(0);
 
+  const inboxId = decodeURIComponent(encodedInboxId);
   const chatForm = useForm<z.infer<typeof chatSchema>>({
     resolver: zodResolver(chatSchema),
     defaultValues: {
@@ -218,7 +220,9 @@ const ChatConversation = () => {
                           isLocalMessage ? "text-muted-foreground" : "text-foreground"
                         )}
                       >
-                        {parseMessage(message)}
+                        {isJobInbox(inboxId)
+                          ? getMessageFromJob(message)
+                          : getMessageFromChat(message)}
                       </p>
                       <span className="text-xs text-gray-600">
                         {new Date(
