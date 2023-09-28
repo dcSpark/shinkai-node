@@ -36,7 +36,13 @@ impl JobManager {
         node_profile_name: ShinkaiName,
     ) -> Self {
         let (job_manager_sender, job_manager_receiver) = tokio::sync::mpsc::channel(100);
-        let agent_manager = AgentManager::new(db, identity_manager, job_manager_sender.clone()).await;
+        let agent_manager = AgentManager::new(
+            db,
+            identity_manager,
+            job_manager_sender.clone(),
+            clone_signature_secret_key(&identity_secret_key),
+        )
+        .await;
 
         let mut job_manager = Self {
             agent_manager: Arc::new(Mutex::new(agent_manager)),
@@ -98,6 +104,7 @@ pub struct AgentManager {
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
     pub agents: Vec<Arc<Mutex<Agent>>>,
+    pub identity_secret_key: SignatureStaticKey,
 }
 
 impl AgentManager {
@@ -105,6 +112,7 @@ impl AgentManager {
         db: Arc<Mutex<ShinkaiDB>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
         job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
+        identity_secret_key: SignatureStaticKey,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -133,6 +141,7 @@ impl AgentManager {
             job_manager_sender: job_manager_sender.clone(),
             identity_manager,
             agents,
+            identity_secret_key,
         };
 
         job_manager
@@ -258,7 +267,8 @@ impl AgentManager {
 
                                 // TODO: this needs to be improved depending on job_step
                                 if !job_message.files_inbox.is_empty() {
-                                    let files_map = self.get_message_multifiles(job_message.files_inbox.clone()).await?;
+                                    let files_map =
+                                        self.get_message_multifiles(job_message.files_inbox.clone()).await?;
                                     println!("process_job_message> files_map: {:?}", files_map);
                                 }
 

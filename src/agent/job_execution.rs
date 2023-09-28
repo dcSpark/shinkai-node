@@ -9,6 +9,7 @@ use crate::schemas::identity::Identity;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use serde_json::{Map, Value as JsonValue};
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::{
@@ -76,10 +77,12 @@ impl AgentManager {
         // Acquire Agent
         let agent_id = full_job.parent_agent_id.clone();
         let mut agent_found = None;
+        let mut profile_name = String::new();
         for agent in &self.agents {
             let locked_agent = agent.lock().await;
             if locked_agent.id == agent_id {
                 agent_found = Some(agent.clone());
+                profile_name = locked_agent.full_identity_name.full_name.clone();
                 break;
             }
         }
@@ -96,7 +99,7 @@ impl AgentManager {
             Some(agent) => {
                 self.process_analysis_inference(
                     full_job,
-                    job_message.content,
+                    job_message.content.clone(),
                     agent,
                     prev_execution_context,
                     analysis_context,
@@ -106,32 +109,23 @@ impl AgentManager {
             None => Err(Box::new(AgentError::AgentNotFound) as Box<dyn std::error::Error>),
         }?;
 
-        // TODO: Save inference response to job inbox
-        //
+        // Save the step history
         let mut shinkai_db = self.db.lock().await;
+        shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
 
-        // Get the node keys
-        let (node_encryption_key, node_signature_key) = if let Some(agent) = agent_found {
-            let locked_agent = agent.lock().await;
-            let name = locked_agent.full_identity_name;
-            match shinkai_db.get_local_node_keys(name) {
-                Ok((encryption_key, signature_key)) => (Some(encryption_key), Some(signature_key)),
-                Err(_) => (None, None), // Handle error appropriately
-            }
-        } else {
-            (None, None)
-        };
+        // Save inference response to job inbox
+        let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            job_id.clone(),
+            inference_response.to_string(),
+            identity_secret_key_clone,
+            profile_name.clone(),
+            profile_name.clone(),
+        )
+        .unwrap();
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
-        let builder = ShinkaiMessageBuilder::new(
-            node_encryption_key.unwrap(),
-            node_signature_key.unwrap(),
-            node_signature_key.unwrap(),
-        );
-        builder.empty_non_encrypted_internal_metadata();
-        builder.message_raw_content(inference_response.to_string());
-        let message = builder.build().unwrap();
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db); // require to avoid deadlock
 
         Ok(())
