@@ -14,10 +14,11 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
         lastKey: pageParam?.lastKey ?? undefined,
         count: CONVERSATION_PAGINATION_LIMIT,
       }),
-    getPreviousPageParam: (firstPage) => {
-      const firstMessage = firstPage?.[0];
-      const timeKey = firstMessage?.external_metadata?.scheduled_time;
-      return timeKey ?? false;
+    getPreviousPageParam: (firstPage, allPages) => {
+      // const firstMessage = firstPage?.[0];
+      // const timeKey = firstMessage?.external_metadata?.scheduled_time;
+      // return timeKey ?? false;
+      return allPages[0]?.length > CONVERSATION_PAGINATION_LIMIT - 2;
     },
   });
   return response;

@@ -20,7 +20,9 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
       )}
     >
       <MessageCircleIcon className="shrink-0 w-4 h-4" />
-      <span className="text-left text-xs line-clamp-1">{inboxId}</span>
+      <span className="text-left text-xs line-clamp-1">
+        {decodeURIComponent(inboxId)}
+      </span>
     </Link>
   );
 };

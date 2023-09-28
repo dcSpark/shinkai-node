@@ -54,6 +54,7 @@ const ChatConversation = () => {
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const prevChatHeightRef = useRef<number>(0);
+  const fromPreviousMessagesRef = useRef<boolean>(false);
 
   const inboxId = decodeURIComponent(encodedInboxId);
   const chatForm = useForm<z.infer<typeof chatSchema>>({
@@ -81,19 +82,14 @@ const ChatConversation = () => {
     profile_identity_sk: setupData?.profile_identity_sk ?? "",
   });
 
-  const {
-    mutateAsync: sendMessageToInbox,
-    isLoading: isSendingMessageToInbox,
-    isSuccess: isSendingMessageToInboxSuccess,
-  } = useSendMessageToInbox();
-  const {
-    mutateAsync: sendMessageToJob,
-    isLoading: isSendingMessageToJob,
-    isSuccess: isSendingMessageToJobSuccess,
-  } = useSendMessageToJob();
+  const { mutateAsync: sendMessageToInbox, isLoading: isSendingMessageToInbox } =
+    useSendMessageToInbox();
+  const { mutateAsync: sendMessageToJob, isLoading: isSendingMessageToJob } =
+    useSendMessageToJob();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
     if (!setupData) return;
+    fromPreviousMessagesRef.current = false;
     if (isJobInbox(inboxId)) {
       const sender = `${setupData.shinkai_identity}/${setupData.profile}`;
       const jobId = extractJobIdFromInbox(inboxId);
@@ -128,6 +124,7 @@ const ChatConversation = () => {
 
   const fetchPreviousMessages = useCallback(async () => {
     const firstMessage = data?.pages?.[0]?.[0];
+    fromPreviousMessagesRef.current = true;
     if (!firstMessage) return;
     const timeKey = firstMessage?.external_metadata?.scheduled_time;
     const hashKey = calculateMessageHash(firstMessage);
@@ -157,14 +154,15 @@ const ChatConversation = () => {
     };
   }, [handleScroll]);
 
-  useEffect(() => {
+  const scrollToBottom = () => {
     if (!chatContainerRef.current) return;
     chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-  }, [
-    isChatConversationSuccess,
-    isSendingMessageToJobSuccess,
-    isSendingMessageToInboxSuccess,
-  ]);
+  };
+  useEffect(() => {
+    if (!fromPreviousMessagesRef.current) {
+      scrollToBottom();
+    }
+  }, [data?.pages]);
 
   return (
     <div className="w-full flex flex-col justify-between pt-2">
@@ -212,7 +210,7 @@ const ChatConversation = () => {
                   return (
                     <div
                       key={message.external_metadata?.scheduled_time}
-                      className="message-chat flex items-center gap-2 rounded-lg p-2 py-6 bg-[rgba(217,217,217,0.04)]"
+                      className="flex items-center justify-between gap-2 rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
                     >
                       <p
                         className={cn(
@@ -224,11 +222,14 @@ const ChatConversation = () => {
                           ? getMessageFromJob(message)
                           : getMessageFromChat(message)}
                       </p>
-                      <span className="text-xs text-gray-600">
-                        {new Date(
-                          message?.external_metadata?.scheduled_time ?? ""
-                        ).toLocaleDateString()}
-                      </span>
+                      <p className="text-xs">
+                        <span className="text-muted-foreground">Sent at </span>
+                        <span className=" text-gray-600">
+                          {new Date(
+                            message?.external_metadata?.scheduled_time ?? ""
+                          ).toLocaleString()}
+                        </span>
+                      </p>
                     </div>
                   );
                 })}
@@ -248,6 +249,7 @@ const ChatConversation = () => {
                   <FormLabel className="sr-only">Enter message</FormLabel>
                   <FormControl>
                     <Textarea
+                      disabled={isLoading}
                       placeholder="Ask Shinkai AI"
                       onKeyDown={(e) => {
                         if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
