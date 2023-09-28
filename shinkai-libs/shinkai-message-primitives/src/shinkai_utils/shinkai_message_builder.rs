@@ -646,6 +646,32 @@ impl ShinkaiMessageBuilder {
             .build()
     }
 
+
+    pub fn create_files_inbox_with_sym_key(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        inbox: String,
+        symmetric_key_sk: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key)
+        .message_raw_content(symmetric_key_sk)
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .internal_metadata_with_schema(
+            sender_subidentity,
+            "".to_string(),
+            inbox.to_string(),
+            MessageSchemaType::SymmetricKeyExchange,
+            EncryptionMethod::None,
+        )
+        .external_metadata(receiver.clone(), sender)
+        .build()
+      
+    }
+
     pub fn get_all_inboxes_for_profile(
         my_subidentity_encryption_sk: EncryptionStaticKey,
         my_subidentity_signature_sk: SignatureStaticKey,

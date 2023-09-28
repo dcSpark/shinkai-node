@@ -32,7 +32,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 pub struct TestEnvironment {
     pub node1_identity_name: String,
-    pub node1_subidentity_name: String,
+    pub node1_profile_name: String,
     pub node1_device_name: String,
     pub node1_agent: String,
     pub node1_commands_sender: Sender<NodeCommand>,
@@ -60,7 +60,7 @@ where
 
     rt.block_on(async {
         let node1_identity_name = "@@node1_test.shinkai";
-        let node1_subidentity_name = "main";
+        let node1_profile_name = "main";
         let node1_device_name = "node1_device";
         let node1_agent = "node1_gpt_agent";
 
@@ -100,7 +100,7 @@ where
 
         let env = TestEnvironment {
             node1_identity_name: node1_identity_name.to_string(),
-            node1_subidentity_name: node1_subidentity_name.to_string(),
+            node1_profile_name: node1_profile_name.to_string(),
             node1_device_name: node1_device_name.to_string(),
             node1_agent: node1_agent.to_string(),
             node1_commands_sender,

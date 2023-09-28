@@ -16,10 +16,10 @@ pub enum MessageSchemaType {
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
     TextContent,
-    FormattedMultiContent, // new
-    SymmetricKeyExchange, // new
+    FormattedMultiContent, // TODO
+    SymmetricKeyExchange,
     EncryptedFileContent,
-    JobMessageMultiContent, // new
+    JobMessageMultiFiles,
     Empty,
 }
 
@@ -38,7 +38,7 @@ impl MessageSchemaType {
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
-            "JobMessageMultiContent" => Some(Self::JobMessageMultiContent),
+            "JobMessageMultiFiles" => Some(Self::JobMessageMultiFiles),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -58,7 +58,7 @@ impl MessageSchemaType {
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
-            Self::JobMessageMultiContent => "JobMessageMultiContent",
+            Self::JobMessageMultiFiles => "JobMessageMultiFiles",
             Self::Empty => "",
         }
     }
@@ -72,10 +72,10 @@ impl MessageSchemaType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobMessageMultiContent {
+pub struct JobMessageMultiFiles {
     pub job_id: String,
     pub content: String,
-    pub files: Vec<String>, // is string ok? do we need String, String? they are pointers to local files.
+    pub docs_inbox: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

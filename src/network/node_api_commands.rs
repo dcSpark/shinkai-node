@@ -3,7 +3,6 @@ use std::{convert::TryInto, sync::Arc};
 use super::{
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
-    node_message_handlers::verify_message_signature,
     Node,
 };
 use crate::{
@@ -16,11 +15,14 @@ use crate::{
     },
 };
 use async_channel::Sender;
-use chacha20poly1305::{ChaCha20Poly1305, aead::generic_array::GenericArray};
-use chrono::{TimeZone, Utc};
+use chacha20poly1305::aead::Aead;
+use chacha20poly1305::aead::NewAead;
+use chacha20poly1305::{aead::generic_array::GenericArray, ChaCha20Poly1305};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use futures::task::{Context, Poll};
+use futures::Stream;
+use futures::StreamExt;
 use log::{debug, error, info, trace, warn};
-use mupdf::Device;
 use reqwest::StatusCode;
 use shinkai_message_primitives::{
     schemas::{
@@ -37,12 +39,14 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key,
+            clone_static_secret_key, decrypt_with_chacha20poly1305, encryption_public_key_to_string,
+            encryption_secret_key_to_string, string_to_encryption_public_key,
         },
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
+use std::pin::Pin;
+use warp::Buf;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -86,6 +90,7 @@ impl Node {
                         &potentially_encrypted_msg.clone(),
                     )?;
 
+                    eprintln!("sender_name: {:?}", sender_name);
                     let sender_encryption_pk =
                         match self
                             .identity_manager
@@ -1235,7 +1240,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         // Validate the message
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::SymmetricKeyExchange))
             .await;
         let (msg, _) = match validation_result {
             Ok((msg, identity)) => (msg, identity),
@@ -1301,7 +1306,11 @@ impl Node {
                 // Create the files message inbox
                 match db.create_files_message_inbox(public_key_hex.clone()) {
                     Ok(_) => {
-                        let _ = res.send(Ok("Symmetric key stored and files message inbox created successfully".to_string())).await;
+                        let _ = res
+                            .send(Ok(
+                                "Symmetric key stored and files message inbox created successfully".to_string()
+                            ))
+                            .await;
                         Ok(())
                     }
                     Err(err) => {
@@ -1329,67 +1338,95 @@ impl Node {
 
     pub async fn api_add_file_to_inbox_with_symmetric_key(
         &self,
-        file: warp::multipart::Part,
+        filename: String,
+        file_data: Vec<u8>,
         public_key: String,
         encrypted_nonce: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        Ok(())
-        // let symmetric_key = {
-        //     let db = self.db.lock().await;
-        //     match db.read_symmetric_key(&public_key) {
-        //         Ok(key) => key,
-        //         Err(_) => {
-        //             let _ = res
-        //                 .send(Err(APIError {
-        //                     code: StatusCode::BAD_REQUEST.as_u16(),
-        //                     error: "Bad Request".to_string(),
-        //                     message: "Invalid public key".to_string(),
-        //                 }))
-        //                 .await;
-        //             return;
-        //         }
-        //     }
-        // };
-    
-        // if let Err(_) = hex::decode(&encrypted_nonce) {
-        //     let _ = res
-        //         .send(Err(APIError {
-        //             code: StatusCode::BAD_REQUEST.as_u16(),
-        //             error: "Bad Request".to_string(),
-        //             message: "Invalid encrypted nonce".to_string(),
-        //         }))
-        //         .await;
-        //     return;
-        // }
-        // let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(&symmetric_key));
-        // let nonce = GenericArray::from_slice(&encrypted_nonce);
-        // let decrypted_nonce = cipher.decrypt(nonce, encrypted_nonce.as_ref()).map_err(|_| NodeError::YourDecryptionErrorHere)?;
-    
-        // let mut file_data = Vec::new();
-        // let mut file_stream = file.into_stream();
-        // while let Some(Ok(chunk)) = file_stream.next().await {
-        //     file_data.extend_from_slice(&chunk);
-        // }
-        
-        // let decrypted_file = cipher.decrypt(&GenericArray::from_slice(&decrypted_nonce), file_data.as_ref())
-        //     .map_err(|_| NodeError::YourDecryptionErrorHere)?;
-    
-        // match self.db.lock().await.add_file_to_files_message_inbox(public_key, "file_name_here".to_string(), decrypted_file) {
-        //     Ok(_) => {
-        //         let _ = res.send(Ok("File added successfully".to_string())).await;
-        //         Ok(())
-        //     }
-        //     Err(err) => {
-        //         let _ = res.send(Err(APIError {
-        //             code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-        //             error: "Internal Server Error".to_string(),
-        //             message: format!("{}", err),
-        //         }))
-        //         .await;
-        //         Ok(())
-        //     }
-        // }
+        let symmetric_key_hex = {
+            let db = self.db.lock().await;
+            match db.read_symmetric_key(&public_key) {
+                Ok(key) => key,
+                Err(_) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::BAD_REQUEST.as_u16(),
+                            error: "Bad Request".to_string(),
+                            message: "Invalid public key".to_string(),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        };
+
+        let symmetric_key = match hex::decode(&symmetric_key_hex) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid symmetric key".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let symmetric_key_array: [u8; 32] = match symmetric_key.try_into() {
+            Ok(arr) => arr,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid symmetric key".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let symmetric_key = EncryptionStaticKey::from(symmetric_key_array);
+        let decrypted_file_result = decrypt_with_chacha20poly1305(&symmetric_key, &encrypted_nonce, &file_data);
+
+        let decrypted_file = match decrypted_file_result {
+            Ok(file) => file,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Failed to decrypt the file.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        match self
+            .db
+            .lock()
+            .await
+            .add_file_to_files_message_inbox(public_key, filename, decrypted_file)
+        {
+            Ok(_) => {
+                let _ = res.send(Ok("File added successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
     }
 
     pub async fn api_handle_send_onionized_message(

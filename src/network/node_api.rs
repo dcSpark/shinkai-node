@@ -1,5 +1,8 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
+use futures::Stream;
+use futures::StreamExt;
+use futures::TryFutureExt;
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
@@ -10,8 +13,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use warp::Filter;
-use futures::StreamExt;
-use futures::TryFutureExt;
+use warp::Buf;
+use warp::fs::file;
 
 #[derive(serde::Deserialize)]
 struct NameToExternalProfileData {
@@ -305,6 +308,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_all_subidentities)
         .or(shinkai_health)
         .or(create_files_inbox_with_symmetric_key)
+        .or(add_file_to_inbox_with_symmetric_key)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -412,32 +416,44 @@ async fn handle_file_upload(
     public_key: String,
     encrypted_nonce: String,
     form: warp::multipart::FormData,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let mut stream = Box::pin(
-        form.filter_map(|part_result| async move {
-            if let Ok(part) = part_result {
-                if part.filename().is_some() {
-                    return Some(Ok(part) as Result<_, warp::Rejection>);
-                }
+) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
+    let mut stream = Box::pin(form.filter_map(|part_result| async move {
+        if let Ok(part) = part_result {
+            if let Some(filename) = part.filename() {
+                let filename = filename.to_string();
+                let stream = part.stream().map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+                return Some((filename, stream));
             }
-            None
-        })
-    );
+        }
+        None
+    }));
 
-    if let Some(Ok(file)) = stream.next().await {
+    if let Some((filename, mut file_stream)) = stream.next().await {
+        let mut file_data = Vec::new();
+        while let Some(Ok(chunk)) = file_stream.next().await {
+            file_data.extend(chunk);
+        }
+
         let (res_sender, res_receiver) = async_channel::bounded(1);
         node_commands_sender
             .clone()
-            .send(NodeCommand::APIAddFileToInboxWithSymmetricKey { file, public_key, encrypted_nonce, res: res_sender })
-            .map_err(|_| warp::reject::reject()).await?;
+            .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                filename,
+                file: file_data,
+                public_key,
+                encrypted_nonce,
+                res: res_sender,
+            })
+            .map_err(|_| warp::reject::reject())
+            .await?;
         let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
         match result {
-            Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
-            Err(error) => Ok(warp::reply::with_status(
+            Ok(message) => Ok(Box::new(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK))),
+            Err(error) => Ok(Box::new(warp::reply::with_status(
                 warp::reply::json(&error),
                 StatusCode::from_u16(error.code).unwrap(),
-            )),
+            ))),
         }
     } else {
         Err(warp::reject::reject())

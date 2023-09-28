@@ -27,3 +27,4 @@ qr_code_device_*.png
 shinkai-libs/shinkai-message-pyo3/tests/__pycache__
 output.wav
 shinkai-libs/shinkai-message-pyo3/venv
+tmp_tests

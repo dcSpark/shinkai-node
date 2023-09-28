@@ -34,7 +34,7 @@ fn simple_node_registration_test() {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
             let node1_identity_name = env.node1_identity_name.clone();
-            let node1_subidentity_name = env.node1_subidentity_name.clone();
+            let node1_subidentity_name = env.node1_profile_name.clone();
             let node1_device_name = env.node1_device_name.clone();
             let node1_encryption_pk = env.node1_encryption_pk.clone();
             let node1_device_encryption_sk = env.node1_device_encryption_sk.clone();
@@ -47,7 +47,7 @@ fn simple_node_registration_test() {
                 eprintln!("\n\nRegister a Device with main Profile in Node1 and verify it");
                 api_initial_registration_with_no_code_for_device(
                     node1_commands_sender.clone(),
-                    env.node1_subidentity_name.as_str(),
+                    env.node1_profile_name.as_str(),
                     env.node1_identity_name.as_str(),
                     node1_encryption_pk,
                     node1_device_encryption_sk.clone(),
