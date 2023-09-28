@@ -25,10 +25,11 @@ import {
   isJobInbox,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Loader } from "lucide-react";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
+import { Skeleton } from "../../components/ui/skeleton";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -64,7 +65,7 @@ const ChatConversation = () => {
     data,
     fetchPreviousPage,
     hasPreviousPage,
-    isFetching,
+    isLoading: isChatConversationLoading,
     isFetchingPreviousPage,
     isSuccess: isChatConversationSuccess,
   } = useGetChatConversationWithPagination({
@@ -124,14 +125,13 @@ const ChatConversation = () => {
   const isLoading = isSendingMessageToJob || isSendingMessageToInbox;
 
   const fetchPreviousMessages = useCallback(async () => {
-    if (!hasPreviousPage) return;
     const firstMessage = data?.pages?.[0]?.[0];
     if (!firstMessage) return;
     const timeKey = firstMessage?.external_metadata?.scheduled_time;
     const hashKey = calculateMessageHash(firstMessage);
     const firstMessageKey = `${timeKey}:::${hashKey}`;
     await fetchPreviousPage({ pageParam: { lastKey: firstMessageKey } });
-  }, [data?.pages, fetchPreviousPage, hasPreviousPage]);
+  }, [data?.pages, fetchPreviousPage]);
 
   const handleScroll = useCallback(async () => {
     const chatContainerElement = chatContainerRef.current;
@@ -153,22 +153,15 @@ const ChatConversation = () => {
     return () => {
       chatContainerElement.removeEventListener("scroll", handleScroll);
     };
-  }, [
-    hasPreviousPage,
-    isFetching,
-    isFetchingPreviousPage,
-    isChatConversationSuccess,
-    handleScroll,
-  ]);
+  }, [handleScroll]);
 
-  useLayoutEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
+  useEffect(() => {
+    if (!chatContainerRef.current) return;
+    chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
   }, [
+    isChatConversationSuccess,
     isSendingMessageToJobSuccess,
     isSendingMessageToInboxSuccess,
-    isChatConversationSuccess,
   ]);
 
   return (
@@ -188,55 +181,55 @@ const ChatConversation = () => {
           <DotsVerticalIcon className="w-4 h-4" />
         </Button>
       </div>
-      <ScrollArea className="h-full px-4 " ref={chatContainerRef}>
-        <Button
-          variant="ghost"
-          className="inline mx-auto"
-          disabled={!hasPreviousPage || isFetching}
-          onClick={fetchPreviousMessages}
-        >
-          {isFetchingPreviousPage ? (
-            <Loader className="flex w-full justify-center text-white" />
-          ) : hasPreviousPage ? (
-            "Load previous"
-          ) : (
-            "All messages has been loaded."
-          )}
-        </Button>
-        <div className="chat-messages space-y-5 ">
-          {data?.pages.map((group, i) => (
-            <Fragment key={i}>
-              {group.map((message) => {
-                const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
-                let isLocalMessage = false;
-                if (message.body && "unencrypted" in message.body) {
-                  isLocalMessage =
-                    message.body.unencrypted.internal_metadata.sender_subidentity ===
-                    localIdentity;
-                }
-                return (
-                  <div
-                    key={message.external_metadata?.scheduled_time}
-                    className="message-chat flex items-center gap-2 rounded-lg p-2 py-6 bg-[rgba(217,217,217,0.04)]"
-                  >
-                    <p
-                      className={cn(
-                        "text-sm",
-                        isLocalMessage ? "text-muted-foreground" : "text-foreground"
-                      )}
+      <ScrollArea className="h-full px-4" ref={chatContainerRef}>
+        {isChatConversationSuccess && (
+          <div className="text-center py-2 text-xs">
+            {isFetchingPreviousPage || hasPreviousPage ? (
+              <Loader className="flex w-full justify-center text-white animate-spin" />
+            ) : (
+              "All messages has been loaded 🎈 "
+            )}
+          </div>
+        )}
+        <div className="space-y-5">
+          {isChatConversationLoading &&
+            [1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="w-full h-10 rounded-lg" />
+            ))}
+          {isChatConversationSuccess &&
+            data?.pages.map((group, i) => (
+              <Fragment key={i}>
+                {group.map((message) => {
+                  const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
+                  let isLocalMessage = false;
+                  if (message.body && "unencrypted" in message.body) {
+                    isLocalMessage =
+                      message.body.unencrypted.internal_metadata.sender_subidentity ===
+                      localIdentity;
+                  }
+                  return (
+                    <div
+                      key={message.external_metadata?.scheduled_time}
+                      className="message-chat flex items-center gap-2 rounded-lg p-2 py-6 bg-[rgba(217,217,217,0.04)]"
                     >
-                      {parseMessage(message)}
-                    </p>
-                    <span className="text-xs text-gray-600">
-                      {new Date(
-                        message?.external_metadata?.scheduled_time ?? ""
-                      ).toLocaleDateString()}
-                    </span>
-                  </div>
-                );
-              })}
-            </Fragment>
-          ))}
+                      <p
+                        className={cn(
+                          "text-sm",
+                          isLocalMessage ? "text-muted-foreground" : "text-foreground"
+                        )}
+                      >
+                        {parseMessage(message)}
+                      </p>
+                      <span className="text-xs text-gray-600">
+                        {new Date(
+                          message?.external_metadata?.scheduled_time ?? ""
+                        ).toLocaleDateString()}
+                      </span>
+                    </div>
+                  );
+                })}
+              </Fragment>
+            ))}
         </div>
       </ScrollArea>
 
