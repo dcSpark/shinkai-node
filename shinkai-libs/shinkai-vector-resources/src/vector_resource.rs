@@ -50,6 +50,7 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Regenerates and updates the resource's embedding.
+    #[cfg(feature = "native-http")]
     fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,

@@ -23,7 +23,7 @@ thiserror = "1.0.44"
 console_log = "0.2"
 log = "0.4.14"
 hex = "=0.4.3"
-shinkai_vector_resources = { path = "../shinkai-vector-resources" }
+shinkai_vector_resources = { path = "../shinkai-vector-resources", default-features = false }
 
 [dependencies.serde]
 version = "1.0.188"
