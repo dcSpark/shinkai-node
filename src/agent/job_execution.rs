@@ -5,8 +5,9 @@ use crate::agent::job_manager::{AgentManager, JobManager};
 use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::schemas::identity::Identity;
 use chrono::Utc;
-use ed25519_dalek::SecretKey as SignatureStaticKey;
+use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
@@ -20,6 +21,7 @@ use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl AgentManager {
     /// Processes a job message which will trigger a job step
@@ -108,11 +110,28 @@ impl AgentManager {
         //
         let mut shinkai_db = self.db.lock().await;
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
-        // let builder = ShinkaiMessageBuilder::new(...);
-        // builder.empty_non_encrypted_internal_metadata();
-        // builder.message_raw_content(inference_response.to_string());
-        // let message = builder.build().unwrap();
-        // shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+
+        // Get the node keys
+        let (node_encryption_key, node_signature_key) = if let Some(agent) = agent_found {
+            let locked_agent = agent.lock().await;
+            let name = locked_agent.full_identity_name;
+            match shinkai_db.get_local_node_keys(name) {
+                Ok((encryption_key, signature_key)) => (Some(encryption_key), Some(signature_key)),
+                Err(_) => (None, None), // Handle error appropriately
+            }
+        } else {
+            (None, None)
+        };
+
+        let builder = ShinkaiMessageBuilder::new(
+            node_encryption_key.unwrap(),
+            node_signature_key.unwrap(),
+            node_signature_key.unwrap(),
+        );
+        builder.empty_non_encrypted_internal_metadata();
+        builder.message_raw_content(inference_response.to_string());
+        let message = builder.build().unwrap();
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db); // require to avoid deadlock
 
         Ok(())
