@@ -878,7 +878,7 @@ impl PyShinkaiMessageBuilder {
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let job_id_clone = job_id.clone();
-            let job_message = JobMessage { job_id, content };
+            let job_message = JobMessage { job_id, content, files_inbox: "".to_string() };
 
             let body = match serde_json::to_string(&job_message) {
                 Ok(body) => body,

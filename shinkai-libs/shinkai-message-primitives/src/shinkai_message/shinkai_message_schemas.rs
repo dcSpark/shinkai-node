@@ -19,7 +19,6 @@ pub enum MessageSchemaType {
     FormattedMultiContent, // TODO
     SymmetricKeyExchange,
     EncryptedFileContent,
-    JobMessageMultiFiles,
     Empty,
 }
 
@@ -38,7 +37,6 @@ impl MessageSchemaType {
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
-            "JobMessageMultiFiles" => Some(Self::JobMessageMultiFiles),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -58,7 +56,6 @@ impl MessageSchemaType {
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
-            Self::JobMessageMultiFiles => "JobMessageMultiFiles",
             Self::Empty => "",
         }
     }
@@ -69,13 +66,6 @@ impl MessageSchemaType {
             _ => false,
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobMessageMultiFiles {
-    pub job_id: String,
-    pub content: String,
-    pub docs_inbox: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -93,6 +83,7 @@ pub struct JobMessage {
     // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
+    pub files_inbox: String,
 }
 
 impl JobMessage {

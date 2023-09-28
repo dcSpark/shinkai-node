@@ -414,6 +414,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
@@ -422,7 +423,7 @@ impl ShinkaiMessageBuilder {
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
@@ -451,7 +452,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox: "".to_string() };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
