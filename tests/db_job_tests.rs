@@ -53,8 +53,6 @@ mod tests {
         let job = shinkai_db.get_job(&job_id).unwrap();
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.parent_agent_id, agent_id);
-        // assert_eq!(job.scope.buckets.len(), 1);
-        // assert_eq!(job.scope.documents.len(), 0);
         assert_eq!(job.is_finished, false);
     }
 

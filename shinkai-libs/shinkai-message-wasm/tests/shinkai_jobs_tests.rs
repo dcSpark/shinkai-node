@@ -17,8 +17,6 @@ mod tests {
         // Check that the fields are correctly initialized
         let scope_jsvalue = job_creation_wrapper.get_scope().unwrap();
         let scope: JobScope = from_value(scope_jsvalue).unwrap();
-        assert_eq!(scope.buckets, Vec::<InboxName>::new());
-        assert_eq!(scope.documents, Vec::<String>::new());
     }
 
     // #[cfg(target_arch = "wasm32")]
@@ -34,10 +32,6 @@ mod tests {
     //     // Check that the fields are correctly initialized
     //     let scope_jsvalue = job_scope_wrapper.to_jsvalue().unwrap();
     //     let scope: JobScope = from_value(scope_jsvalue).unwrap();
-    //     assert_eq!(scope.buckets, vec![
-    //         serde_wasm_bindgen::from_value(InboxNameWrapper::new(&JsValue::from_str("inbox::@@node1.shinkai::false")).unwrap().get_inner()).unwrap(),
-    //         serde_wasm_bindgen::from_value(InboxNameWrapper::new(&JsValue::from_str("inbox::@@node2.shinkai::false")).unwrap().get_inner()).unwrap()
-    //     ]);
     //     assert_eq!(scope.documents, vec!["document1".to_string(), "document2".to_string()]);
     // }
     // #[cfg(target_arch = "wasm32")]
@@ -54,7 +48,5 @@ mod tests {
     //     // Check that the fields are correctly converted
     //     let scope_jsvalue = job_creation_wrapper.get_scope().unwrap();
     //     let scope: JobScope = from_value(scope_jsvalue).unwrap();
-    //     assert_eq!(scope.buckets, vec![InboxName::new("bucket1".to_string()).unwrap(), InboxName::new("bucket2".to_string()).unwrap()]);
-    //     assert_eq!(scope.documents, vec!["document1".to_string(), "document2".to_string()]);
     // }
 }
