@@ -16,6 +16,9 @@ pub enum MessageSchemaType {
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
     TextContent,
+    FormattedMultiContent, // TODO
+    SymmetricKeyExchange,
+    EncryptedFileContent,
     Empty,
 }
 
@@ -27,10 +30,13 @@ impl MessageSchemaType {
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "UseRegistrationCode" => Some(Self::UseRegistrationCode),
-            "TextContent" => Some(Self::TextContent),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
+            "TextContent" => Some(Self::TextContent),
+            "FormattedMultiContent" => Some(Self::FormattedMultiContent),
+            "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
+            "EncryptedFileContent" => Some(Self::EncryptedFileContent),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -43,10 +49,13 @@ impl MessageSchemaType {
             Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::UseRegistrationCode => "UseRegistrationCode",
-            Self::TextContent => "TextContent",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
+            Self::TextContent => "TextContent",
+            Self::FormattedMultiContent => "FormattedMultiContent",
+            Self::SymmetricKeyExchange => "SymmetricKeyExchange",
+            Self::EncryptedFileContent => "FileContent",
             Self::Empty => "",
         }
     }
@@ -59,6 +68,11 @@ impl MessageSchemaType {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SymmetricKeyExchange {
+    pub shared_secret_key: String,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct JobCreationInfo {
     pub scope: JobScope,
@@ -69,6 +83,7 @@ pub struct JobMessage {
     // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
+    pub files_inbox: String,
 }
 
 impl JobMessage {

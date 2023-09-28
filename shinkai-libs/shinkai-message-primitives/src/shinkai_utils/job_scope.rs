@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::{
-    base_vector_resources::BaseVectorResource, source::VRSource, vector_resource_types::VectorResourcePointer,
+    base_vector_resources::BaseVectorResource, vector_resource_types::VectorResourcePointer, source::VRSource,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

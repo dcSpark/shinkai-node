@@ -755,6 +755,7 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn job_message(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
@@ -763,7 +764,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
 

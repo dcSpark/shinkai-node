@@ -178,6 +178,7 @@ mod tests {
         let shinkai_job_message_encrypted = ShinkaiMessageBuilder::job_message(
             job_created_id.clone(),
             "hello?".to_string(),
+            "".to_string(),
             node1_encryption_sk.clone(),
             node1_identity_sk,
             node1_encryption_pk.clone(),

@@ -7,8 +7,7 @@ use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo,
-        JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
     },
     shinkai_utils::{
         encryption::{
@@ -879,7 +878,7 @@ impl PyShinkaiMessageBuilder {
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let job_id_clone = job_id.clone();
-            let job_message = JobMessage { job_id, content };
+            let job_message = JobMessage { job_id, content, files_inbox: "".to_string() };
 
             let body = match serde_json::to_string(&job_message) {
                 Ok(body) => body,
