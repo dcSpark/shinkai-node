@@ -33,6 +33,7 @@ pub enum Topic {
     Agents,
     Toolkits,
     MessagesToRetry,
+    MessageBoxSymmetricKeys,
 }
 
 impl Topic {
@@ -58,6 +59,8 @@ impl Topic {
             Self::Agents => "agents",
             Self::Toolkits => "toolkits",
             Self::MessagesToRetry => "mesages_to_retry",
+            Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
+
         }
     }
 }
@@ -146,6 +149,7 @@ impl ShinkaiDB {
                 Topic::Agents.as_str().to_string(),
                 Topic::Toolkits.as_str().to_string(),
                 Topic::MessagesToRetry.as_str().to_string(),
+                Topic::MessageBoxSymmetricKeys.as_str().to_string(),
             ]
         };
 

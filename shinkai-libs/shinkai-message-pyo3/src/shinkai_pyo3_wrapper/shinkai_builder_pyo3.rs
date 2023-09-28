@@ -7,8 +7,7 @@ use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo,
-        JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
     },
     shinkai_utils::{
         encryption::{

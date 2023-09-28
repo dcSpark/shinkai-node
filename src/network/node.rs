@@ -161,6 +161,16 @@ pub enum NodeCommand {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
     },
+    APICreateFilesInboxWithSymmetricKey {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIAddFileToInboxWithSymmetricKey {
+        file: warp::multipart::Part,
+        public_key: String,
+        encrypted_nonce: String,
+        res: Sender<Result<String, APIError>>,
+    },
     APIJobMessage {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
@@ -377,6 +387,8 @@ impl Node {
                             Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
                             Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
+                            Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
+                            Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(file, public_key, encrypted_nonce, res).await?,
                             _ => break,
                         }
                     }
