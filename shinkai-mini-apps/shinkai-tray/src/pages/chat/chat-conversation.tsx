@@ -227,7 +227,7 @@ const ChatConversation = () => {
                           : getMessageFromChat(message)}
                       </p> */}
                       <MarkdownPreview
-                        className="bg-transparent"
+                        className="bg-transparent text-foreground text-sm"
                         source={
                           isJobInbox(inboxId)
                             ? getMessageFromJob(message)
