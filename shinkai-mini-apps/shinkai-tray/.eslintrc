@@ -6,8 +6,8 @@
     "plugin:react-hooks/recommended",
     "plugin:import/recommended",
     "plugin:jsx-a11y/recommended",
-    "plugin:@typescript-eslint/recommended",
-    "eslint-config-prettier"
+    "eslint-config-prettier",
+    "plugin:@typescript-eslint/recommended"
   ],
   "plugins": [
     "@tanstack/eslint-plugin-query",
@@ -29,15 +29,8 @@
     }
   },
   "rules": {
-    "no-unused-vars": [
-      "error",
-      {
-        "vars": "all",
-        "args": "after-used",
-        "ignoreRestSiblings": true,
-        "argsIgnorePattern": "^_"
-      }
-    ],
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error"],
     "react/prop-types": "off",
     "react/react-in-jsx-scope": "off"
   }

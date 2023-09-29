@@ -25,3 +25,18 @@ body,
 #root {
   @apply h-full font-inter rounded-lg overflow-hidden border-0 bg-[#19242D] text-white  shadow-2xl;
 }
+
+.tiptap p.is-editor-empty:first-child::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+/* .tiptap p.is-empty::before {
+  color: #adb5bd;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+} */

@@ -29,6 +29,11 @@
     "@shinkai_network/shinkai-message-ts": "^0.0.3",
     "@tanstack/react-query": "^4.35.3",
     "@tauri-apps/api": "^1.4.0",
+    "@tiptap/extension-placeholder": "^2.1.11",
+    "@tiptap/pm": "^2.1.11",
+    "@tiptap/react": "^2.1.11",
+    "@tiptap/starter-kit": "^2.1.11",
+    "@uiw/react-md-editor": "^3.23.6",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "cmdk": "^0.2.0",
@@ -45,6 +50,7 @@
     "zod": "^3.22.2"
   },
   "devDependencies": {
+    "@tailwindcss/typography": "^0.5.10",
     "@tanstack/eslint-plugin-query": "^4.34.1",
     "@tanstack/react-query-devtools": "^4.35.3",
     "@tauri-apps/cli": "^1.4.0",

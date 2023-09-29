@@ -1,7 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../store/auth-context";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
-import { Textarea } from "../../components/ui/textarea";
 import { DotsVerticalIcon, PaperPlaneIcon } from "@radix-ui/react-icons";
 import { Button } from "../../components/ui/button";
 import {
@@ -30,6 +29,9 @@ import { ScrollArea } from "../../components/ui/scroll-area";
 import { Loader } from "lucide-react";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
 import { Skeleton } from "../../components/ui/skeleton";
+import { EditorContent, useEditor } from "@tiptap/react";
+import Placeholder from "@tiptap/extension-placeholder";
+import StarterKit from "@tiptap/starter-kit";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -240,6 +242,8 @@ const ChatConversation = () => {
 
       <div className="flex flex-col justify-start">
         <div className="bg-app-gradient p-2 pt-3 flex items-start gap-2">
+          {/* <EditorContent editor={editor} /> */}
+
           <Form {...chatForm}>
             <FormField
               control={chatForm.control}
@@ -248,14 +252,11 @@ const ChatConversation = () => {
                 <FormItem className="space-y-0 flex-1">
                   <FormLabel className="sr-only">Enter message</FormLabel>
                   <FormControl>
-                    <Textarea
+                    <MessageEditor
                       disabled={isLoading}
-                      placeholder="Ask Shinkai AI"
-                      onKeyDown={(e) => {
-                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                          chatForm.handleSubmit(onSubmit)();
-                        }
-                      }}
+                      // onChange={field.onChange}
+                      content={field.value}
+                      onSubmit={chatForm.handleSubmit(onSubmit)}
                       {...field}
                     />
                   </FormControl>
@@ -283,3 +284,43 @@ const ChatConversation = () => {
 };
 
 export default ChatConversation;
+
+const MessageEditor = ({
+  content,
+  onChange,
+  onSubmit,
+}: {
+  content: string;
+  onChange: (content: string) => void;
+  onSubmit: () => void;
+}) => {
+  const editor = useEditor({
+    editorProps: {
+      attributes: {
+        class: "prose prose-invert prose-xs mx-auto focus:outline-none",
+      },
+      handleDOMEvents: {
+        keydown: (_, event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            onSubmit?.();
+          }
+        },
+      },
+    },
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: "Enter message",
+      }),
+    ],
+    content,
+
+    onUpdate({ editor }) {
+      // onChange(editor.getHTML());
+      onChange(editor.getText());
+    },
+  });
+
+  return <EditorContent className="prose-" editor={editor} />;
+};
