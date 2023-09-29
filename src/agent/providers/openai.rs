@@ -22,14 +22,14 @@ pub struct Response {
 #[derive(Debug, Deserialize)]
 struct Choice {
     index: i32,
-    message: Message,
+    message: OpenAIApiMessage,
     finish_reason: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Message {
-    role: String,
-    content: String,
+pub struct OpenAIApiMessage {
+    pub role: String,
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -59,19 +59,19 @@ impl LLMProvider for OpenAI {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-                let messages_json_string = prompt.generate_openai_messages()?;
+
+                let messages = prompt.generate_openai_messages()?;
+                let messages_json = serde_json::to_value(&messages)?;
 
                 let payload = json!({
                     "model": self.model_type,
-                    "messages": serde_json::from_str::<JsonValue>(&messages_json_string)?,
+                    "messages": messages_json,
                     "temperature": 0,
                     "max_tokens": 1024
                 });
 
                 let body = serde_json::to_string(&payload)?;
-
-
-                eprintln!("body api chagpt: {}", body);
+                // eprintln!("body api chagpt: {}", body);
 
                 let res = client
                     .post(url)
@@ -81,17 +81,15 @@ impl LLMProvider for OpenAI {
                     .send()
                     .await?;
 
-                eprintln!("Status: {}", res.status());
-                eprintln!("Response: {:?}", res.text().await?);
-                // let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
-                // let response_string: String = data
-                //     .choices
-                //     .iter()
-                //     .map(|choice| choice.message.content.clone())
-                //     .collect::<Vec<String>>()
-                //     .join(" ");
-                // Self::extract_first_json_object(&response_string)
-                Self::extract_first_json_object("")
+                // eprintln!("Status: {}", res.status());
+                let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
+                let response_string: String = data
+                    .choices
+                    .iter()
+                    .map(|choice| choice.message.content.clone())
+                    .collect::<Vec<String>>()
+                    .join(" ");
+                Self::extract_first_json_object(&response_string)
             } else {
                 Err(AgentError::ApiKeyNotSet)
             }

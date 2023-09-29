@@ -1,6 +1,6 @@
 use crate::tools::router::ShinkaiTool;
 
-use super::error::AgentError;
+use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
 use std::collections::HashMap;
@@ -337,30 +337,29 @@ impl Prompt {
     }
 
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
-    pub fn generate_openai_messages(&self) -> Result<String, AgentError> {
+    pub fn generate_openai_messages(&self) -> Result<Vec<OpenAIApiMessage>, AgentError> {
         self.check_ebnf_included()?;
-
-        let messages = self
-            .sub_prompts
-            .iter()
-            .map(|sub_prompt| match sub_prompt {
+    
+        let messages_result: Result<Vec<OpenAIApiMessage>, AgentError> = self
+        .sub_prompts
+        .iter()
+        .map(|sub_prompt| {
+            match sub_prompt {
                 SubPrompt::Content(prompt_type, content) => {
                     let role = match prompt_type {
-                        SubPromptType::User => "user",
-                        SubPromptType::System => "system",
+                        SubPromptType::User => "user".to_string(),
+                        SubPromptType::System => "system".to_string(),
                     };
-                    let escaped_content = to_string(content)?;
-                    format!(r#"{{"role": "{}", "content": {}}}"#, role, escaped_content)
-                }
+                    Ok(OpenAIApiMessage { role, content: content.clone() })
+                },
                 SubPrompt::EBNF(_, ebnf) => {
                     let enbf_text = self.generate_ebnf_response_string(ebnf);
-                    let escaped_text = to_string(&enbf_text)?;
-                    format!(r#"{{"role": "system", "content": {}}}"#, escaped_text)
-                }
-            })
-            .collect::<Result<Vec<String>, AgentError>>()?
-            .join(",\n");
-
-        Ok(messages)
+                    Ok(OpenAIApiMessage { role: "system".to_string(), content: enbf_text })
+                },
+            }
+        })
+        .collect();
+    
+        messages_result
     }
 }
