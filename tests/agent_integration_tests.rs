@@ -200,7 +200,7 @@ fn node_agent_registration() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &message,
-                    ""
+                    "",
                 )
                 .await;
             }
@@ -228,18 +228,15 @@ fn node_agent_registration() {
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
 
-                //
-                // TODO: Write new tests for checking the job results
-                //
-                // println!("### node2_last_messages: {:?}", node2_last_messages);
-                // let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
-                // let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+                println!("### node2_last_messages: {:?}", node2_last_messages);
+                let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
-                // assert_eq!(
-                //     message_content_agent.content,
-                //     "\n\nHello there, how may I assist you today?".to_string()
-                // );
-                // assert!(node2_last_messages.len() == 2);
+                assert_eq!(
+                    message_content_agent.content,
+                    "Hello there, how may I assist you today?".to_string()
+                );
+                assert!(node2_last_messages.len() == 2);
             }
             {
                 // Check Profile inboxes (to confirm job's there)
@@ -309,14 +306,11 @@ fn node_agent_registration() {
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                 println!("### node2_last_messages: {:?}", node2_last_messages);
 
-                //
-                // TODO: Write new tests for checking the job results
-                //
-                // let shinkai_message_content_agent = node2_last_messages[2].get_message_content().unwrap();
-                // let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+                let shinkai_message_content_agent = node2_last_messages[2].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
-                // assert_eq!(message_content_agent.content, message.to_string());
-                // assert!(node2_last_messages.len() == 3);
+                assert_eq!(message_content_agent.content, message.to_string());
+                assert!(node2_last_messages.len() == 3);
 
                 let offset = format!(
                     "{}:::{}",
@@ -347,14 +341,11 @@ fn node_agent_registration() {
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
                 println!("### node2_last_messages unread pagination: {:?}", node2_last_messages);
 
-                //
-                // TODO: Write new tests for checking the job results
-                //
-                // let shinkai_message_content_agent = node2_last_messages[0].get_message_content().unwrap();
-                // let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
+                let shinkai_message_content_agent = node2_last_messages[0].get_message_content().unwrap();
+                let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
-                // assert!(node2_last_messages.len() == 2);
-                // assert_eq!(message_content_agent.content, message.to_string());
+                assert!(node2_last_messages.len() == 2);
+                assert_eq!(message_content_agent.content, message.to_string());
 
                 // we mark read until the offset
                 let read_msg = ShinkaiMessageBuilder::read_up_to_time(
@@ -409,10 +400,7 @@ fn node_agent_registration() {
                     node2_last_messages.len()
                 );
 
-                //
-                // TODO: Write new tests for checking the job results
-                //
-                // assert!(node2_last_messages.len() == 2);
+                assert!(node2_last_messages.len() == 2);
             }
             {
                 // Send a scheduled message

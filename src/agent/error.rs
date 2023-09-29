@@ -22,6 +22,7 @@ pub enum AgentError {
     ShinkaiNameError(ShinkaiNameError),
     AgentNotFound,
     ContentParseFailed,
+    InferenceJSONResponseMissingField(String),
 }
 
 impl fmt::Display for AgentError {
@@ -56,6 +57,9 @@ impl fmt::Display for AgentError {
             AgentError::AgentNotFound => write!(f, "Agent not found"),
             AgentError::ContentParseFailed => write!(f, "Failed to parse content"),
             AgentError::ShinkaiNameError(err) => write!(f, "ShinkaiName error: {}", err),
+            AgentError::InferenceJSONResponseMissingField(s) => {
+                write!(f, "JSON Response from LLM does not include needed field: {}", s)
+            }
         }
     }
 }

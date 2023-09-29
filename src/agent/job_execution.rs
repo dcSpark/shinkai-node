@@ -108,6 +108,12 @@ impl AgentManager {
             }
             None => Err(Box::new(AgentError::AgentNotFound) as Box<dyn std::error::Error>),
         }?;
+        let inference_content = match inference_response.get("answer") {
+            Some(answer) => answer
+                .as_str()
+                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
+            None => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
+        };
 
         // Save the step history
         let mut shinkai_db = self.db.lock().await;
@@ -118,7 +124,7 @@ impl AgentManager {
         let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.clone(),
-            inference_response.to_string(),
+            inference_content.to_string(),
             identity_secret_key_clone,
             profile_name.clone(),
             profile_name.clone(),
