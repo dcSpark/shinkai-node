@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use serde_json::Value as JsonValue;
 use serde_json::json;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 
 #[derive(Debug, Deserialize)]
@@ -66,8 +66,8 @@ impl LLMProvider for OpenAI {
                 let payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
-                    "temperature": 0,
-                    "max_tokens": 1024
+                    "temperature": 0.7,
+                    "max_tokens": 4097,
                 });
 
                 let body = serde_json::to_string(&payload)?;
