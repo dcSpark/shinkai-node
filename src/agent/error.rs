@@ -23,6 +23,7 @@ pub enum AgentError {
     AgentNotFound,
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
+    JSONSerializationError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -60,6 +61,7 @@ impl fmt::Display for AgentError {
             AgentError::InferenceJSONResponseMissingField(s) => {
                 write!(f, "JSON Response from LLM does not include needed field: {}", s)
             }
+            AgentError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
         }
     }
 }
@@ -96,5 +98,11 @@ impl From<ShinkaiNameError> for AgentError {
 impl From<Box<dyn std::error::Error>> for AgentError {
     fn from(err: Box<dyn std::error::Error>) -> AgentError {
         AgentError::IO(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AgentError {
+    fn from(err: serde_json::Error) -> AgentError {
+        AgentError::JSONSerializationError(err.to_string())
     }
 }

@@ -2,6 +2,7 @@ use crate::tools::router::ShinkaiTool;
 
 use super::error::AgentError;
 use lazy_static::lazy_static;
+use serde_json::to_string;
 use std::collections::HashMap;
 
 //
@@ -348,13 +349,16 @@ impl Prompt {
                         SubPromptType::User => "user",
                         SubPromptType::System => "system",
                     };
-                    format!(r#"{{"role": "{}", "content": "{}"}}"#, role, content)
+                    let escaped_content = to_string(content)?;
+                    format!(r#"{{"role": "{}", "content": {}}}"#, role, escaped_content)
                 }
                 SubPrompt::EBNF(_, ebnf) => {
-                    return self.generate_ebnf_response_string(ebnf);
+                    let enbf_text = self.generate_ebnf_response_string(ebnf);
+                    let escaped_text = to_string(&enbf_text)?;
+                    format!(r#"{{"role": "system", "content": {}}}"#, escaped_text)
                 }
             })
-            .collect::<Vec<String>>()
+            .collect::<Result<Vec<String>, AgentError>>()?
             .join(",\n");
 
         Ok(messages)

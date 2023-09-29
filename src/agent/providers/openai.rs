@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::Value as JsonValue;
+use serde_json::json;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +26,7 @@ struct Choice {
     finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Message {
     role: String,
     content: String,
@@ -36,6 +37,14 @@ struct Usage {
     prompt_tokens: i32,
     completion_tokens: i32,
     total_tokens: i32,
+}
+
+#[derive(Serialize)]
+struct ApiPayload {
+    model: String,
+    messages: String, // Maybe it'd be better to have Vec<Message> here?
+    temperature: f64,
+    max_tokens: usize,
 }
 
 #[async_trait]
@@ -50,18 +59,19 @@ impl LLMProvider for OpenAI {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-                let body = format!(
-                    r#"{{
-                            "model": "{}",
-                            "messages": [
-                                {}
-                            ],
-                            "temperature": 0,
-                            "max_tokens": 1024
-                        }}"#,
-                    self.model_type,
-                    prompt.generate_openai_messages()?
-                );
+                let messages_json_string = prompt.generate_openai_messages()?;
+
+                let payload = json!({
+                    "model": self.model_type,
+                    "messages": serde_json::from_str::<JsonValue>(&messages_json_string)?,
+                    "temperature": 0,
+                    "max_tokens": 1024
+                });
+
+                let body = serde_json::to_string(&payload)?;
+
+
+                eprintln!("body api chagpt: {}", body);
 
                 let res = client
                     .post(url)
@@ -72,14 +82,16 @@ impl LLMProvider for OpenAI {
                     .await?;
 
                 eprintln!("Status: {}", res.status());
-                let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
-                let response_string: String = data
-                    .choices
-                    .iter()
-                    .map(|choice| choice.message.content.clone())
-                    .collect::<Vec<String>>()
-                    .join(" ");
-                Self::extract_first_json_object(&response_string)
+                eprintln!("Response: {:?}", res.text().await?);
+                // let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
+                // let response_string: String = data
+                //     .choices
+                //     .iter()
+                //     .map(|choice| choice.message.content.clone())
+                //     .collect::<Vec<String>>()
+                //     .join(" ");
+                // Self::extract_first_json_object(&response_string)
+                Self::extract_first_json_object("")
             } else {
                 Err(AgentError::ApiKeyNotSet)
             }

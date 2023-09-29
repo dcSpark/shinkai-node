@@ -119,39 +119,41 @@ fn node_agent_registration() {
                 )
                 .unwrap();
 
-                let _m = server
-                    .mock("POST", "/v1/chat/completions")
-                    .match_header("authorization", "Bearer mockapikey")
-                    .with_status(200)
-                    .with_header("content-type", "application/json")
-                    .with_body(
-                        r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
-                        "total_tokens": 21
-                    }
-                }"#,
-                    )
-                    .create();
+                // let _m = server
+                //     .mock("POST", "/v1/chat/completions")
+                //     .match_header("authorization", "Bearer mockapikey")
+                //     .with_status(200)
+                //     .with_header("content-type", "application/json")
+                //     .with_body(
+                //         r#"{
+                //     "id": "chatcmpl-123",
+                //     "object": "chat.completion",
+                //     "created": 1677652288,
+                //     "choices": [{
+                //         "index": 0,
+                //         "message": {
+                //             "role": "assistant",
+                //             "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                //         },
+                //         "finish_reason": "stop"
+                //     }],
+                //     "usage": {
+                //         "prompt_tokens": 9,
+                //         "completion_tokens": 12,
+                //         "total_tokens": 21
+                //     }
+                // }"#,
+                //     )
+                //     .create();
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
-                    external_url: Some(server.url()),
-                    api_key: Some("mockapikey".to_string()),
+                    external_url: Some("https://api.openai.com".to_string()),
+                    // external_url: Some(server.url()),
+                    api_key: Some("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".to_string()),
+                    // api_key: Some("mockapikey".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
