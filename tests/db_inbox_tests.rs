@@ -4,7 +4,9 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
-use shinkai_message_primitives::shinkai_utils::encryption::{unsafe_deterministic_encryption_keypair, EncryptionMethod};
+use shinkai_message_primitives::shinkai_utils::encryption::{
+    unsafe_deterministic_encryption_keypair, EncryptionMethod,
+};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -158,7 +160,10 @@ fn db_inbox() {
         .unwrap();
     println!("Last unread messages: {:?}", last_unread);
     assert_eq!(last_unread.len(), 1);
-    assert_eq!(last_unread[0].clone().get_message_content().unwrap(), "Hello World".to_string());
+    assert_eq!(
+        last_unread[0].clone().get_message_content().unwrap(),
+        "Hello World".to_string()
+    );
 
     let message2 = generate_message_with_text(
         "Hello World 2".to_string(),
@@ -178,6 +183,24 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:53:34.814Z".to_string(),
     );
+    let message4 = generate_message_with_text(
+        "Hello World 4".to_string(),
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
+        node1_subencryption_pk,
+        node1_subidentity_name.to_string(),
+        node1_identity_name.to_string(),
+        "2023-07-02T20:54:34.814Z".to_string(),
+    );
+    let message5 = generate_message_with_text(
+        "Hello World 5".to_string(),
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
+        node1_subencryption_pk,
+        node1_subidentity_name.to_string(),
+        node1_identity_name.to_string(),
+        "2023-07-02T20:55:34.814Z".to_string(),
+    );
     match shinkai_db.unsafe_insert_inbox_message(&message2.clone()) {
         Ok(_) => println!("message2 inserted successfully"),
         Err(e) => println!("Failed to insert message2: {}", e),
@@ -187,6 +210,21 @@ fn db_inbox() {
         Ok(_) => println!("message3 inserted successfully"),
         Err(e) => println!("Failed to insert message3: {}", e),
     }
+
+    match shinkai_db.unsafe_insert_inbox_message(&message4.clone()) {
+        Ok(_) => println!("message4 inserted successfully"),
+        Err(e) => println!("Failed to insert message4: {}", e),
+    }
+
+    match shinkai_db.unsafe_insert_inbox_message(&message5.clone()) {
+        Ok(_) => println!("message5 inserted successfully"),
+        Err(e) => println!("Failed to insert message5: {}", e),
+    }
+
+    let all_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 6, None)
+        .unwrap();
+    assert_eq!(all_messages_inbox.len(), 5);
 
     let last_messages_inbox = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
@@ -213,9 +251,12 @@ fn db_inbox() {
     let last_unread_messages_inbox_page2 = shinkai_db
         .get_last_unread_messages_from_inbox(inbox_name_value.clone().to_string(), 3, Some(offset.clone()))
         .unwrap();
-    assert_eq!(last_unread_messages_inbox_page2.len(), 1);
+    assert_eq!(last_unread_messages_inbox_page2.len(), 3);
     assert_eq!(
-        last_unread_messages_inbox_page2[0].clone().get_message_content().unwrap(),
+        last_unread_messages_inbox_page2[0]
+            .clone()
+            .get_message_content()
+            .unwrap(),
         "Hello World 3".to_string()
     );
 
@@ -225,13 +266,19 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_unread_messages_inbox_page2.len(), 1);
     assert_eq!(
-        last_unread_messages_inbox_page2[0].clone().get_message_content().unwrap(),
+        last_unread_messages_inbox_page2[0]
+            .clone()
+            .get_message_content()
+            .unwrap(),
         "Hello World".to_string()
     );
 
     // Mark as read up to a certain time
     shinkai_db
-        .mark_as_read_up_to(inbox_name_value.clone().to_string(), "2023-07-03T00:00:00.000Z".to_string())
+        .mark_as_read_up_to(
+            inbox_name_value.clone().to_string(),
+            "2023-07-03T00:00:00.000Z".to_string(),
+        )
         .unwrap();
 
     let last_messages_inbox = shinkai_db
@@ -304,7 +351,8 @@ fn db_inbox() {
 
     // Test get_inboxes_for_profile
     let node1_profile_identity = StandardIdentity::new(
-        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string()).unwrap(),
+        ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
+            .unwrap(),
         None,
         node1_encryption_pk.clone(),
         node1_identity_pk.clone(),
@@ -314,11 +362,8 @@ fn db_inbox() {
         IdentityPermissions::Standard,
     );
     let _ = shinkai_db.insert_profile(node1_profile_identity.clone());
-    let inboxes = shinkai_db
-        .get_inboxes_for_profile(node1_profile_identity)
-        .unwrap();
+    let inboxes = shinkai_db.get_inboxes_for_profile(node1_profile_identity).unwrap();
     assert_eq!(inboxes.len(), 1);
-
 
     let node1_identity = StandardIdentity::new(
         ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
@@ -330,9 +375,7 @@ fn db_inbox() {
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
-    let inboxes = shinkai_db
-        .get_inboxes_for_profile(node1_identity)
-        .unwrap();
+    let inboxes = shinkai_db.get_inboxes_for_profile(node1_identity).unwrap();
     assert_eq!(inboxes.len(), 3);
     assert!(inboxes.contains(&inbox_name_value));
     assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false".to_string()));

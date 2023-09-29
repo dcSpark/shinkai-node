@@ -449,21 +449,26 @@ impl Node {
     }
 
     async fn retry_messages(&self) -> Result<(), NodeError> {
-        let current_time = chrono::Local::now();
-        eprintln!(
-            "\n\n*** Retrying messages at {}",
-            current_time.format("%Y-%m-%d %H:%M:%S")
-        );
+        // let current_time = chrono::Local::now();
+        // eprintln!(
+        //     "\n\n*** Retrying messages at {}",
+        //     current_time.format("%Y-%m-%d %H:%M:%S")
+        // );
         let db_lock = self.db.lock().await;
         let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
-        eprintln!("Messages to retry: {:?}", messages_to_retry);
+        // eprintln!("Messages to retry: {:?}", messages_to_retry);
 
         for retry_message in messages_to_retry {
-            eprintln!("Retrying message: {:?}", retry_message.message);
+            // eprintln!("Retrying message: {:?}", retry_message.message);
             let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
             // let peer = (message.destination_socket, message.receiver.clone()); // Replace with actual peer
-            let save_to_db_flag = true;
-            let retry = Some(3);
+            let save_to_db_flag = retry_message.save_to_db_flag;
+            let retry = Some(retry_message.retry_count);
+
+            // Remove the message from the retry queue
+            db_lock
+                .remove_message_from_retry(&retry_message.message)
+                .unwrap();
 
             // Retry the message
             Node::send(
@@ -563,11 +568,6 @@ impl Node {
                             maybe_identity_manager.clone(),
                         )
                         .await;
-                    }
-                    // If retry is enabled, remove the message from retry list on successful send
-                    if let Some(retry_count) = retry {
-                        let db = db.lock().await;
-                        db.remove_message_from_retry(&message, Utc::now(), retry_count).unwrap();
                     }
                 }
                 Err(e) => {

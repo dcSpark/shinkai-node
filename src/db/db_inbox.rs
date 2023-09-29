@@ -233,7 +233,7 @@ impl ShinkaiDB {
     pub fn get_last_unread_messages_from_inbox(
         &self,
         inbox_name: String,
-        n: usize,
+        mut n: usize,
         from_offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
         // Fetch the column family for the specified unread_list
@@ -273,6 +273,9 @@ impl ShinkaiDB {
 
         let mut messages = Vec::new();
         let mut first_message = true;
+        if from_offset_key.is_some() {
+            n += 1;
+        }
         for item in iter.take(n) {
             // Handle the Result returned by the iterator
             match item {
