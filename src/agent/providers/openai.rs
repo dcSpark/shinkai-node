@@ -1,3 +1,5 @@
+use crate::agent::job_prompts::Prompt;
+
 use super::AgentError;
 use super::LLMProvider;
 use async_trait::async_trait;
@@ -5,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::Value as JsonValue;
+use serde_json::json;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 
 #[derive(Debug, Deserialize)]
@@ -19,14 +22,14 @@ pub struct Response {
 #[derive(Debug, Deserialize)]
 struct Choice {
     index: i32,
-    message: Message,
+    message: OpenAIApiMessage,
     finish_reason: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
+#[derive(Debug, Deserialize, Serialize)]
+pub struct OpenAIApiMessage {
+    pub role: String,
+    pub content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -36,6 +39,14 @@ struct Usage {
     total_tokens: i32,
 }
 
+#[derive(Serialize)]
+struct ApiPayload {
+    model: String,
+    messages: String, // Maybe it'd be better to have Vec<Message> here?
+    temperature: f64,
+    max_tokens: usize,
+}
+
 #[async_trait]
 impl LLMProvider for OpenAI {
     async fn call_api(
@@ -43,23 +54,24 @@ impl LLMProvider for OpenAI {
         client: &Client,
         url: Option<&String>,
         api_key: Option<&String>,
-        content: &str,
+        prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-                let body = format!(
-                    r#"{{
-                            "model": "{}",
-                            "messages": [
-                                {{"role": "system", "content": "You are a helpful assistant."}},
-                                {{"role": "user", "content": "{}"}}
-                            ],
-                            "temperature": 0,
-                            "max_tokens": 1024
-                        }}"#,
-                    self.model_type, content
-                );
+
+                let messages = prompt.generate_openai_messages()?;
+                let messages_json = serde_json::to_value(&messages)?;
+
+                let payload = json!({
+                    "model": self.model_type,
+                    "messages": messages_json,
+                    "temperature": 0,
+                    "max_tokens": 1024
+                });
+
+                let body = serde_json::to_string(&payload)?;
+                // eprintln!("body api chagpt: {}", body);
 
                 let res = client
                     .post(url)
@@ -69,7 +81,7 @@ impl LLMProvider for OpenAI {
                     .send()
                     .await?;
 
-                eprintln!("Status: {}", res.status());
+                // eprintln!("Status: {}", res.status());
                 let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
                 let response_string: String = data
                     .choices

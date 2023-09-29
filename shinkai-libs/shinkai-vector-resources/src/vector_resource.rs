@@ -5,6 +5,7 @@ use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
+use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 
 /// An enum that represents the different traversal approaches
@@ -21,6 +22,10 @@ pub enum TraversalMethod {
     UntilDepth(u64),
     /// Does not skip over any DataChunks, traverses through all levels.
     Exhaustive,
+    /// Performs an exhaustive search by traversing all levels and ranking all data chunks, iteratively
+    /// averaging out the score all the way to each final data chunk. In other words, the final score
+    /// of each DataChunk weighs-in the scores of the Vector Resources that it was inside all the way up.
+    HierarchicalAverage,
 }
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
@@ -29,7 +34,7 @@ pub enum TraversalMethod {
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
-    fn source(&self) -> Option<&str>;
+    fn source(&self) -> VRSource;
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
@@ -45,6 +50,7 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Regenerates and updates the resource's embedding.
+    #[cfg(feature = "native-http")]
     fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -64,14 +70,11 @@ pub trait VectorResource {
             .description()
             .map(|description| format!(", Description: {}", description))
             .unwrap_or_default();
-        let source = self
-            .source()
-            .map(|source| format!(", Source: {}", source))
-            .unwrap_or_default();
+        let source_string = self.source().format_source_string();
 
         // Take keywords until we hit an upper 500 character cap to ensure
         // we do not go past the embedding LLM context window.
-        let pre_keyword_length = name.len() + desc.len() + source.len();
+        let pre_keyword_length = name.len() + desc.len() + source_string.len();
         let mut keyword_string = String::new();
         for phrase in keywords {
             if pre_keyword_length + keyword_string.len() + phrase.len() <= MAX_EMBEDDING_STRING_SIZE {
@@ -79,7 +82,7 @@ pub trait VectorResource {
             }
         }
 
-        format!("{}{}{}, Keywords: [{}]", name, desc, source, keyword_string)
+        format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
     }
 
     /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.
@@ -127,7 +130,7 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._vector_search_with_traversal_depth(query, num_of_results, traversal, 0)
+        self._vector_search_with_traversal_depth(query, num_of_results, traversal, 0, vec![])
     }
 
     /// Internal method which is used to keep track of depth of the traversal
@@ -137,6 +140,7 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
         depth: u64,
+        hierarchical_scores: Vec<f32>,
     ) -> Vec<RetrievedDataChunk> {
         // If exhaustive traversal, then return all
         let num_of_results = if traversal == &TraversalMethod::Exhaustive {
@@ -148,7 +152,15 @@ pub trait VectorResource {
         // Fetch the ordered scores from the abstracted function
         let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
 
-        self._order_vector_search_results(scores, query, num_of_results, &vec![], &traversal, depth)
+        self._order_vector_search_results(
+            scores,
+            query,
+            num_of_results,
+            &vec![],
+            &traversal,
+            depth,
+            hierarchical_scores,
+        )
     }
 
     /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
@@ -172,7 +184,7 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._syntactic_vector_search_with_traversal_depth(query, num_of_results, data_tag_names, traversal, 0)
+        self._syntactic_vector_search_with_traversal_depth(query, num_of_results, data_tag_names, traversal, 0, vec![])
     }
 
     /// Internal method which is used to keep track of depth of the traversal
@@ -183,6 +195,7 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
         depth: u64,
+        hierarchical_scores: Vec<f32>,
     ) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
@@ -202,7 +215,15 @@ pub trait VectorResource {
         // Score the embeddings and return only num_of_results most similar
         let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
 
-        self._order_vector_search_results(scores, query, num_of_results, data_tag_names, &traversal, depth)
+        self._order_vector_search_results(
+            scores,
+            query,
+            num_of_results,
+            data_tag_names,
+            &traversal,
+            depth,
+            hierarchical_scores,
+        )
     }
 
     /// (Not a Vector Search) Fetches all data chunks which contain tags matching the input name list
@@ -257,6 +278,7 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
         depth: u64,
+        hierarchical_scores: Vec<f32>,
     ) -> Vec<RetrievedDataChunk> {
         let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         let mut vector_resource_count = 0;
@@ -291,6 +313,7 @@ pub trait VectorResource {
                     data_tag_names,
                     traversal,
                     depth,
+                    hierarchical_scores.clone(),
                 );
                 current_level_results.extend(results);
             }
@@ -314,8 +337,12 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
         depth: u64,
+        hierarchical_scores: Vec<f32>,
     ) -> Vec<RetrievedDataChunk> {
-        let mut first_level_results: Vec<RetrievedDataChunk> = vec![];
+        let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
+        // Concat the current score into a new hierarchical scores Vec before moving forward
+        let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+
         match chunk.data {
             DataContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
@@ -325,6 +352,7 @@ pub trait VectorResource {
                         num_of_results,
                         traversal,
                         depth + 1,
+                        new_hierarchical_scores,
                     )
                 } else {
                     resource
@@ -335,12 +363,19 @@ pub trait VectorResource {
                             data_tag_names,
                             traversal,
                             depth + 1,
+                            new_hierarchical_scores,
                         )
                 };
-                first_level_results.extend(sub_results);
+                current_level_results.extend(sub_results);
             }
             DataContent::Data(_) => {
-                first_level_results.push(RetrievedDataChunk {
+                let score = match traversal {
+                    TraversalMethod::HierarchicalAverage => {
+                        new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32
+                    }
+                    _ => score,
+                };
+                current_level_results.push(RetrievedDataChunk {
                     chunk: chunk.clone(),
                     score,
                     resource_pointer: self.get_resource_pointer(),
@@ -348,7 +383,7 @@ pub trait VectorResource {
                 });
             }
         }
-        first_level_results
+        current_level_results
     }
 
     /// Performs a vector search using a query embedding and returns

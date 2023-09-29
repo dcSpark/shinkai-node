@@ -28,14 +28,8 @@ use crate::utils::node_test_api::{
 use crate::utils::node_test_local::local_registration_profile_node;
 
 #[test]
-fn setup() {
-    let path = Path::new("db_tests/");
-    let _ = fs::remove_dir_all(&path);
-}
-
-#[test]
 fn node_retrying_test() {
-    setup();
+    utils::db_handlers::setup();
     let rt = Runtime::new().unwrap();
 
     rt.block_on(async {

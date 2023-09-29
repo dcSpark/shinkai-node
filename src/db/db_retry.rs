@@ -46,23 +46,40 @@ impl ShinkaiDB {
     }
 
     /// Removes a message from the MessagesToRetry column family.
-    pub fn remove_message_from_retry(
-        &self,
-        message: &ShinkaiMessage,
-        retry_time: DateTime<Utc>,
-        retry_count: u32,
-    ) -> Result<(), ShinkaiDBError> {
+    pub fn remove_message_from_retry(&self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash();
-
-        // Create a composite key by concatenating the retry_time, retry_count and the hash_key, with a separator
-        let composite_key = format!("{}:::{}:::{}", retry_time.to_rfc3339(), retry_count, hash_key);
 
         // Retrieve the handle to the "MessagesToRetry" column family
         let messages_to_retry_cf = self.get_cf_handle(Topic::MessagesToRetry).unwrap();
 
-        // Delete the message from the "MessagesToRetry" column family using the composite key
-        self.db.delete_cf(messages_to_retry_cf, composite_key)?;
+        // Get an iterator over the column family from the start
+        let iter = self.db.iterator_cf(messages_to_retry_cf, IteratorMode::Start);
+
+        for item in iter {
+            // Unwrap the Result
+            let (key, value) = item.map_err(ShinkaiDBError::from)?;
+
+            // Convert the Vec<u8> key into a string
+            let key_str = std::str::from_utf8(&key).map_err(|_| ShinkaiDBError::InvalidData)?;
+
+            // Split the composite key to get the time component, retry count and hash key
+            let mut parts = key_str.split(":::");
+            let time_key_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
+            let retry_count_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
+            let hash_key_str = parts.next().ok_or(ShinkaiDBError::InvalidData)?;
+
+            // If the hash_key matches, delete the message
+            if hash_key_str == hash_key {
+                // Create a composite key by concatenating the time_key, retry_count_str and the hash_key_str, with a separator
+                let composite_key = format!("{}:::{}:::{}", time_key_str, retry_count_str, hash_key_str);
+
+                // Delete the message from the "MessagesToRetry" column family using the composite key
+                self.db.delete_cf(messages_to_retry_cf, composite_key)?;
+
+                break;
+            }
+        }
 
         Ok(())
     }

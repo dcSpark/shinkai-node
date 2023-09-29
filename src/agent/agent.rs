@@ -1,5 +1,6 @@
 use super::error::AgentError;
 use super::providers::LLMProvider;
+use crate::agent::job_prompts::Prompt;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
@@ -83,29 +84,21 @@ impl Agent {
     /// Note, all `content` is expected to use prompts from the PromptGenerator,
     /// meaning that they tell/force the LLM to always respond in JSON. We automatically
     /// parse the JSON object out of the response into a JsonValue, or error if no object is found.
-    pub async fn inference(&self, content: String) -> Result<JsonValue, AgentError> {
+    pub async fn inference(&self, prompt: Prompt) -> Result<JsonValue, AgentError> {
         match &self.model {
             AgentLLMInterface::OpenAI(openai) => {
                 openai
-                    .call_api(
-                        &self.client,
-                        self.external_url.as_ref(),
-                        self.api_key.as_ref(),
-                        &content,
-                    )
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
                     .await
             }
             AgentLLMInterface::Sleep(sleep_api) => {
                 sleep_api
-                    .call_api(
-                        &self.client,
-                        self.external_url.as_ref(),
-                        self.api_key.as_ref(),
-                        &content,
-                    )
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
                     .await
             }
-            AgentLLMInterface::LocalLLM(local_llm) => self.inference_locally(content.to_string()).await,
+            AgentLLMInterface::LocalLLM(local_llm) => {
+                self.inference_locally(prompt.generate_single_output_string()?).await
+            }
         }
     }
 }

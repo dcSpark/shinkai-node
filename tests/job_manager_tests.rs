@@ -18,15 +18,16 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use mockito::Server;
+
     use shinkai_message_primitives::{
         schemas::{
             agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             inbox_name::InboxName,
             shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
         },
-        shinkai_message::shinkai_message_schemas::JobScope,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair,
+            job_scope::JobScope,
             shinkai_message_builder::ShinkaiMessageBuilder,
             signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
             utils::hash_string,
@@ -34,11 +35,9 @@ mod tests {
     };
     use shinkai_node::agent::job::{Job, JobId, JobLike};
     use shinkai_node::{
+        agent::job_manager::{AgentManager, JobManager},
         db::ShinkaiDB,
-        managers::{
-            identity_manager,
-            job_manager::{AgentManager, JobManager},
-        },
+        managers::identity_manager,
     };
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -67,7 +66,8 @@ mod tests {
                     "index": 0,
                     "message": {
                         "role": "assistant",
-                        "content": "\n\nHello there, how may I assist you today?"
+                        "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+
                     },
                     "finish_reason": "stop"
                 }],
@@ -140,10 +140,7 @@ mod tests {
         .await;
 
         // Create a JobCreationMessage ShinkaiMessage
-        let scope = JobScope {
-            buckets: vec![InboxName::new("inbox::@@node1.shinkai/test_name::false".to_string()).unwrap()],
-            documents: vec!["document1".to_string(), "document2".to_string()],
-        };
+        let scope = JobScope::new_default();
         let shinkai_message_creation_encrypted = ShinkaiMessageBuilder::job_creation(
             scope,
             node1_encryption_sk.clone(),
@@ -181,6 +178,7 @@ mod tests {
         let shinkai_job_message_encrypted = ShinkaiMessageBuilder::job_message(
             job_created_id.clone(),
             "hello?".to_string(),
+            "".to_string(),
             node1_encryption_sk.clone(),
             node1_identity_sk,
             node1_encryption_pk.clone(),

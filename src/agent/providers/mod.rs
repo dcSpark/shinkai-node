@@ -1,4 +1,4 @@
-use super::error::AgentError;
+use super::{error::AgentError, job_prompts::Prompt};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value as JsonValue;
@@ -16,7 +16,7 @@ pub trait LLMProvider {
         client: &Client,
         url: Option<&String>,
         api_key: Option<&String>,
-        content: &str,
+        prompt: Prompt,
     ) -> Result<JsonValue, AgentError>;
 
     /// Given an input string, parses the first JSON object that it finds

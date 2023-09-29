@@ -24,13 +24,13 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use crate::agent::error::AgentError;
+use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::error::JobManagerError;
 use crate::managers::identity_manager::{self};
-use crate::managers::job_manager::JobManager;
-use crate::managers::{job_manager, IdentityManager};
+use crate::managers::IdentityManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
@@ -160,6 +160,17 @@ pub enum NodeCommand {
     CreateJob {
         shinkai_message: ShinkaiMessage,
         res: Sender<(String, String)>,
+    },
+    APICreateFilesInboxWithSymmetricKey {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIAddFileToInboxWithSymmetricKey {
+        filename: String,
+        file: Vec<u8>,
+        public_key: String,
+        encrypted_nonce: String,
+        res: Sender<Result<String, APIError>>,
     },
     APIJobMessage {
         msg: ShinkaiMessage,
@@ -377,6 +388,8 @@ impl Node {
                             Some(NodeCommand::APIAddAgent { msg, res }) => self.api_add_agent(msg, res).await?,
                             Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
+                            Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
+                            Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
                             _ => break,
                         }
                     }
@@ -436,21 +449,26 @@ impl Node {
     }
 
     async fn retry_messages(&self) -> Result<(), NodeError> {
-        let current_time = chrono::Local::now();
-        eprintln!(
-            "\n\n*** Retrying messages at {}",
-            current_time.format("%Y-%m-%d %H:%M:%S")
-        );
+        // let current_time = chrono::Local::now();
+        // eprintln!(
+        //     "\n\n*** Retrying messages at {}",
+        //     current_time.format("%Y-%m-%d %H:%M:%S")
+        // );
         let db_lock = self.db.lock().await;
         let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
-        eprintln!("Messages to retry: {:?}", messages_to_retry);
+        // eprintln!("Messages to retry: {:?}", messages_to_retry);
 
         for retry_message in messages_to_retry {
-            eprintln!("Retrying message: {:?}", retry_message.message);
+            // eprintln!("Retrying message: {:?}", retry_message.message);
             let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
             // let peer = (message.destination_socket, message.receiver.clone()); // Replace with actual peer
-            let save_to_db_flag = true;
-            let retry = Some(3);
+            let save_to_db_flag = retry_message.save_to_db_flag;
+            let retry = Some(retry_message.retry_count);
+
+            // Remove the message from the retry queue
+            db_lock
+                .remove_message_from_retry(&retry_message.message)
+                .unwrap();
 
             // Retry the message
             Node::send(
@@ -550,11 +568,6 @@ impl Node {
                             maybe_identity_manager.clone(),
                         )
                         .await;
-                    }
-                    // If retry is enabled, remove the message from retry list on successful send
-                    if let Some(retry_count) = retry {
-                        let db = db.lock().await;
-                        db.remove_message_from_retry(&message, Utc::now(), retry_count).unwrap();
                     }
                 }
                 Err(e) => {

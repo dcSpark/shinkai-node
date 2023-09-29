@@ -1,7 +1,14 @@
-use shinkai_message_primitives::shinkai_message::{shinkai_message_schemas::{RegistrationCodeRequest, APIAddAgentRequest, APIReadUpToTimeRequest, APIGetMessagesFromInboxRequest, JobRecipient, JobPreMessage, JobToolCall, JobMessage, JobScope}, shinkai_message::ShinkaiMessage};
+use shinkai_message_primitives::shinkai_message::{
+    shinkai_message::ShinkaiMessage,
+    shinkai_message_schemas::{
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, JobMessage, JobPreMessage,
+        JobRecipient, JobToolCall, RegistrationCodeRequest,
+    },
+};
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use wasm_bindgen::JsValue;
 
-use super::{wasm_shinkai_message::SerdeWasmMethods, shinkai_wasm_error::ShinkaiWasmError};
+use super::{shinkai_wasm_error::ShinkaiWasmError, wasm_shinkai_message::SerdeWasmMethods};
 
 impl SerdeWasmMethods for RegistrationCodeRequest {
     fn to_jsvalue(&self) -> Result<JsValue, ShinkaiWasmError> {
@@ -40,7 +47,7 @@ impl SerdeWasmMethods for APIAddAgentRequest {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    } 
+    }
 }
 
 impl SerdeWasmMethods for APIReadUpToTimeRequest {
@@ -60,7 +67,7 @@ impl SerdeWasmMethods for APIReadUpToTimeRequest {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }  
+    }
 }
 
 impl SerdeWasmMethods for APIGetMessagesFromInboxRequest {
@@ -80,7 +87,7 @@ impl SerdeWasmMethods for APIGetMessagesFromInboxRequest {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }  
+    }
 }
 
 impl SerdeWasmMethods for JobRecipient {
@@ -100,7 +107,7 @@ impl SerdeWasmMethods for JobRecipient {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }   
+    }
 }
 
 impl SerdeWasmMethods for JobPreMessage {
@@ -120,7 +127,7 @@ impl SerdeWasmMethods for JobPreMessage {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }  
+    }
 }
 
 impl SerdeWasmMethods for JobToolCall {
@@ -140,7 +147,7 @@ impl SerdeWasmMethods for JobToolCall {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }   
+    }
 }
 
 impl SerdeWasmMethods for JobMessage {
@@ -160,7 +167,7 @@ impl SerdeWasmMethods for JobMessage {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }   
+    }
 }
 
 impl SerdeWasmMethods for JobScope {
@@ -180,5 +187,5 @@ impl SerdeWasmMethods for JobScope {
     fn from_json_str(j: &str) -> Result<Self, ShinkaiWasmError> {
         let internal_metadata = serde_json::from_str(j).map_err(|e| ShinkaiWasmError::from(e))?;
         Ok(internal_metadata)
-    }   
+    }
 }

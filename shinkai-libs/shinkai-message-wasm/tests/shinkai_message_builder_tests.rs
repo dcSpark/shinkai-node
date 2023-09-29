@@ -9,13 +9,12 @@ mod tests {
     use shinkai_message_primitives::shinkai_message::shinkai_message::{
         ExternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiMessage,
     };
-    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-        JobMessage, JobScope, RegistrationCodeRequest,
-    };
+    use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, RegistrationCodeRequest};
     use shinkai_message_primitives::shinkai_utils::encryption::{
         encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
         EncryptionMethod,
     };
+    use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
     use shinkai_message_primitives::shinkai_utils::signatures::{
         signature_secret_key_to_string, unsafe_deterministic_signature_keypair,
     };
@@ -197,12 +196,7 @@ mod tests {
         let my_identity_sk_string = signature_secret_key_to_string(my_identity_sk);
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
-        let scope = JobScope {
-            // get_job_inbox_name_from_params
-            buckets: vec![InboxName::new("job_inbox::job2::false".to_string()).unwrap()],
-            documents: vec!["document1".to_string(), "document2".to_string()],
-        };
-
+        let scope = JobScope::new_default();
         let job_id = "job123".to_string();
         let content = scope.to_json_str().unwrap();
         let node_sender = "@@sender_node.shinkai".to_string();
@@ -213,6 +207,7 @@ mod tests {
         let message_result = ShinkaiMessageBuilderWrapper::job_message(
             job_id.clone(),
             content.clone(),
+            String::new(),
             my_encryption_sk_string.clone(),
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),

@@ -1,10 +1,9 @@
-use std::fmt;
-
+use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use crate::shinkai_utils::job_scope::JobScope;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
-
-use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
+use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
@@ -17,6 +16,9 @@ pub enum MessageSchemaType {
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
     TextContent,
+    FormattedMultiContent, // TODO
+    SymmetricKeyExchange,
+    EncryptedFileContent,
     Empty,
 }
 
@@ -28,10 +30,13 @@ impl MessageSchemaType {
             "PreMessageSchema" => Some(Self::PreMessageSchema),
             "CreateRegistrationCode" => Some(Self::CreateRegistrationCode),
             "UseRegistrationCode" => Some(Self::UseRegistrationCode),
-            "TextContent" => Some(Self::TextContent),
             "APIGetMessagesFromInboxRequest" => Some(Self::APIGetMessagesFromInboxRequest),
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
+            "TextContent" => Some(Self::TextContent),
+            "FormattedMultiContent" => Some(Self::FormattedMultiContent),
+            "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
+            "EncryptedFileContent" => Some(Self::EncryptedFileContent),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -44,10 +49,13 @@ impl MessageSchemaType {
             Self::PreMessageSchema => "PreMessageSchema",
             Self::CreateRegistrationCode => "CreateRegistrationCode",
             Self::UseRegistrationCode => "UseRegistrationCode",
-            Self::TextContent => "TextContent",
             Self::APIGetMessagesFromInboxRequest => "APIGetMessagesFromInboxRequest",
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
+            Self::TextContent => "TextContent",
+            Self::FormattedMultiContent => "FormattedMultiContent",
+            Self::SymmetricKeyExchange => "SymmetricKeyExchange",
+            Self::EncryptedFileContent => "FileContent",
             Self::Empty => "",
         }
     }
@@ -61,37 +69,8 @@ impl MessageSchemaType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct JobScope {
-    pub buckets: Vec<InboxName>,
-    pub documents: Vec<String>, // TODO: link to embedding of documents uploaded
-}
-
-impl JobScope {
-    pub fn new(buckets: Option<Vec<InboxName>>, documents: Option<Vec<String>>) -> Self {
-        Self {
-            buckets: buckets.unwrap_or_else(Vec::<InboxName>::new),
-            documents: documents.unwrap_or_else(Vec::new),
-        }
-    }
-
-    pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        let j = serde_json::to_string(self)?;
-        Ok(j.into_bytes())
-    }
-
-    pub fn from_bytes(bytes: &[u8]) -> serde_json::Result<Self> {
-        serde_json::from_slice(bytes)
-    }
-
-    pub fn from_json_str(s: &str) -> Result<Self> {
-        let deserialized: Self = serde_json::from_str(s)?;
-        Ok(deserialized)
-    }
-
-    pub fn to_json_str(&self) -> Result<String> {
-        let json_str = serde_json::to_string(self)?;
-        Ok(json_str)
-    }
+pub struct SymmetricKeyExchange {
+    pub shared_secret_key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -104,6 +83,7 @@ pub struct JobMessage {
     // TODO: scope div modifications?
     pub job_id: String,
     pub content: String,
+    pub files_inbox: String,
 }
 
 impl JobMessage {

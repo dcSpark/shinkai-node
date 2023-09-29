@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen;
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
     schemas::inbox_name::InboxName,
-    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage, JobScope},
+    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
 };
 use wasm_bindgen::prelude::*;
 
@@ -18,9 +19,7 @@ pub struct JobScopeWrapper {
 impl JobScopeWrapper {
     #[wasm_bindgen(constructor)]
     pub fn new(buckets_js: &JsValue, documents_js: &JsValue) -> Result<JobScopeWrapper, JsValue> {
-        let buckets: Vec<InboxName> = serde_wasm_bindgen::from_value(buckets_js.clone())?;
-        let documents: Vec<String> = serde_wasm_bindgen::from_value(documents_js.clone())?;
-        let job_scope = JobScope::new(Some(buckets), Some(documents));
+        let job_scope = JobScope::new_default();
         Ok(JobScopeWrapper { inner: job_scope })
     }
 
@@ -81,9 +80,7 @@ impl JobCreationWrapper {
 
     #[wasm_bindgen(js_name = empty)]
     pub fn empty() -> Result<JobCreationWrapper, JsValue> {
-        let buckets: Vec<InboxName> = Vec::new();
-        let documents: Vec<String> = Vec::new();
-        let job_scope = JobScope::new(Some(buckets), Some(documents));
+        let job_scope = JobScope::new_default();
         Ok(JobCreationWrapper {
             inner: JobCreationInfo { scope: job_scope },
         })
@@ -99,10 +96,11 @@ pub struct JobMessageWrapper {
 #[wasm_bindgen]
 impl JobMessageWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(job_id_js: &JsValue, content_js: &JsValue) -> Result<JobMessageWrapper, JsValue> {
+    pub fn new(job_id_js: &JsValue, content_js: &JsValue, files_inbox: &JsValue) -> Result<JobMessageWrapper, JsValue> {
         let job_id: String = serde_wasm_bindgen::from_value(job_id_js.clone())?;
         let content: String = serde_wasm_bindgen::from_value(content_js.clone())?;
-        let job_message = JobMessage { job_id, content };
+        let files_inbox: String = serde_wasm_bindgen::from_value(files_inbox.clone())?;
+        let job_message = JobMessage { job_id, content, files_inbox };
         Ok(JobMessageWrapper { inner: job_message })
     }
 
@@ -130,10 +128,11 @@ impl JobMessageWrapper {
     }
 
     #[wasm_bindgen(js_name = fromStrings)]
-    pub fn from_strings(job_id: &str, content: &str) -> JobMessageWrapper {
+    pub fn from_strings(job_id: &str, content: &str, files_inbox: &str) -> JobMessageWrapper {
         let job_message = JobMessage {
             job_id: job_id.to_string(),
             content: content.to_string(),
+            files_inbox: files_inbox.to_string(),
         };
         JobMessageWrapper { inner: job_message }
     }

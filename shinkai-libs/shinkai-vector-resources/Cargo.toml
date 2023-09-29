@@ -3,30 +3,34 @@ name = "shinkai_vector_resources"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 lazy_static = "1.4.0"
 env_logger = "0.9"
 anyhow = "1.0"
 regex = "1"
 csv = "1.1.6"
-reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking"] }
 serde_json = "1.0.105"
 byteorder = "1.4.3"
 ordered-float = "3.7.0"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
+[dependencies.reqwest]
+version = "0.11"
+default-features = false
+features = ["json", "tokio-native-tls"]
+
 [build-dependencies]
 reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking"] }
 
+[features]
+default = ["native-http"]
+native-http = ["reqwest/blocking"]
+wasm-http = []
 
 [dependencies.serde]
 version = "1.0.188"
 features = ["derive"]
 
-
 [[test]]
 name = "vector_resource_tests"
 path = "tests/vector_resource_tests.rs"
-

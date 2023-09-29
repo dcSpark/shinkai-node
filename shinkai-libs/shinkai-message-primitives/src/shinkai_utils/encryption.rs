@@ -114,6 +114,32 @@ pub fn hash_encryption_public_key(public_key: PublicKey) -> String {
     format!("{:x}", result)
 }
 
+pub fn encrypt_with_chacha20poly1305(key: &StaticSecret, data: &[u8]) -> Result<(Vec<u8>, String), Box<dyn Error>> {
+    let cipher = ChaCha20Poly1305::new(&GenericArray::clone_from_slice(&key.to_bytes()));
+    let mut nonce = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce);
+    let ciphertext = cipher.encrypt(GenericArray::from_slice(&nonce), data)
+        .map_err(|e| format!("Encryption error: {}", e))?;
+    Ok((ciphertext, hex::encode(nonce)))
+}
+
+pub fn decrypt_with_chacha20poly1305(key: &StaticSecret, hex_nonce: &str, data: &[u8]) -> Result<Vec<u8>, Box<dyn Error + Send>> {
+    let cipher = ChaCha20Poly1305::new(&GenericArray::clone_from_slice(&key.to_bytes()));
+    let nonce_vec = hex::decode(hex_nonce).map_err(|e| -> Box<dyn Error + Send> { 
+        Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Nonce decoding error: {}", e))) 
+    })?;
+    if nonce_vec.len() != 12 {
+        return Err(Box::new(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid nonce length")));
+    }
+    let mut nonce = [0u8; 12];
+    nonce.copy_from_slice(&nonce_vec);
+    let plaintext = cipher.decrypt(GenericArray::from_slice(&nonce), data)
+        .map_err(|e| -> Box<dyn Error + Send> { 
+            Box::new(std::io::Error::new(std::io::ErrorKind::Other, format!("Decryption error: {}", e))) 
+        })?;
+    Ok(plaintext)
+}
+
 #[derive(Debug)]
 pub struct DecryptionError {
     pub details: String,

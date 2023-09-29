@@ -1,5 +1,6 @@
 use super::AgentError;
 use super::LLMProvider;
+use crate::agent::job_prompts::Prompt;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value as JsonValue;
@@ -13,7 +14,7 @@ impl LLMProvider for SleepAPI {
         _: &Client,
         _: Option<&String>,
         _: Option<&String>,
-        _: &str,
+        _: Prompt,
     ) -> Result<JsonValue, AgentError> {
         tokio::time::sleep(Duration::from_millis(500)).await;
         Ok(JsonValue::Bool(true))

@@ -7,11 +7,12 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
+use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
         APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-        JobCreationInfo, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+        JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
     },
     shinkai_utils::{
         encryption::{
@@ -503,8 +504,11 @@ impl ShinkaiMessageBuilderWrapper {
         let schema_jsvalue = JsValue::from_str(MessageSchemaType::TextContent.to_str());
         let internal_encryption = JsValue::from_str(EncryptionMethod::None.as_str());
 
-        let mut builder =
-            ShinkaiMessageBuilderWrapper::new(my_device_encryption_sk, my_device_signature_sk, encryption_public_key_to_string(my_device_encryption_pk))?;
+        let mut builder = ShinkaiMessageBuilderWrapper::new(
+            my_device_encryption_sk,
+            my_device_signature_sk,
+            encryption_public_key_to_string(my_device_encryption_pk),
+        )?;
 
         let _ = builder.message_raw_content(body);
         let _ = builder.no_body_encryption();
@@ -751,6 +755,7 @@ impl ShinkaiMessageBuilderWrapper {
     pub fn job_message(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
@@ -759,7 +764,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
 

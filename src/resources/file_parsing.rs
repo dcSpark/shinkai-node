@@ -3,11 +3,11 @@ use keyphrases::KeyPhraseExtractor;
 use mupdf::pdf::PdfDocument;
 use regex::Regex;
 use sha2::{Digest, Sha256};
-use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
 use std::{io::Cursor, vec};
 
 pub struct FileParser {}
@@ -293,7 +293,7 @@ impl FileParser {
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<&str>,
-        source: Option<&str>,
+        source: VRSource,
         resource_id: &str,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentVectorResource, VectorResourceError> {
@@ -337,7 +337,7 @@ impl FileParser {
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<&str>,
-        source: Option<&str>,
+        source: VRSource,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data

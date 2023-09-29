@@ -288,7 +288,7 @@ impl IdentityManager {
         // Validate that the message actually came from the subidentity
         let signature_public_key = match &subidentity {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
-            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()), //
+            Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()),
             Identity::Agent(_) => {
                 eprintln!("signature check > Agent identities cannot send onionized messages");
                 return Ok(());

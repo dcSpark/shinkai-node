@@ -3,6 +3,7 @@ use crate::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
 use crate::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
+#[cfg(feature = "native-http")]
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::io::prelude::*;
@@ -71,12 +72,14 @@ struct EmbeddingResponse {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[cfg(feature = "native-http")]
 pub struct RemoteEmbeddingGenerator {
     model_type: EmbeddingModelType,
     api_url: String,
     api_key: Option<String>,
 }
 
+#[cfg(feature = "native-http")]
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
@@ -101,6 +104,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     }
 }
 
+#[cfg(feature = "native-http")]
 impl RemoteEmbeddingGenerator {
     /// Create a RemoteEmbeddingGenerator
     pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
@@ -118,7 +122,7 @@ impl RemoteEmbeddingGenerator {
     /// Expected to have downloaded & be using the AllMiniLML12v2 model.
     pub fn new_default() -> RemoteEmbeddingGenerator {
         let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
-        let url = format!("0.0.0.0:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
+        let url = format!("localhost:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
             api_url: url,
@@ -173,6 +177,7 @@ impl RemoteEmbeddingGenerator {
 
     // TODO: Add authorization logic/flesh out to fully working
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
+    #[cfg(feature = "native-http")]
     fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // Prepare the request body
         let request_body = EmbeddingRequestBody {

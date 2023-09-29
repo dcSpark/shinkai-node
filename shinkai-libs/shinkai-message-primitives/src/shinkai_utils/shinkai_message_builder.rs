@@ -1,6 +1,6 @@
-use serde::Serialize;
-
+use crate::shinkai_utils::job_scope::JobScope;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
         },
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
-            JobCreationInfo, JobMessage, JobScope, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
+            JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
         },
     },
     shinkai_utils::{
@@ -414,6 +414,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
@@ -422,7 +423,7 @@ impl ShinkaiMessageBuilder {
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
@@ -451,7 +452,7 @@ impl ShinkaiMessageBuilder {
         node_receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content };
+        let job_message = JobMessage { job_id, content, files_inbox: "".to_string() };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
         let inbox = InboxName::get_job_inbox_name_from_params(job_id_clone)
@@ -644,6 +645,32 @@ impl ShinkaiMessageBuilder {
             )
             .external_metadata_with_other(receiver.clone(), sender, other)
             .build()
+    }
+
+
+    pub fn create_files_inbox_with_sym_key(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        inbox: String,
+        symmetric_key_sk: String,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        ShinkaiMessageBuilder::new(my_subidentity_encryption_sk, my_subidentity_signature_sk, receiver_public_key)
+        .message_raw_content(symmetric_key_sk)
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .internal_metadata_with_schema(
+            sender_subidentity,
+            "".to_string(),
+            inbox.to_string(),
+            MessageSchemaType::SymmetricKeyExchange,
+            EncryptionMethod::None,
+        )
+        .external_metadata(receiver.clone(), sender)
+        .build()
+      
     }
 
     pub fn get_all_inboxes_for_profile(
