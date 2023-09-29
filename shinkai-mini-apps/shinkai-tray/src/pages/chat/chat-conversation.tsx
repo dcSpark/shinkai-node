@@ -254,10 +254,9 @@ const ChatConversation = () => {
                   <FormControl>
                     <MessageEditor
                       disabled={isLoading}
-                      // onChange={field.onChange}
-                      content={field.value}
+                      onChange={field.onChange}
+                      value={field.value}
                       onSubmit={chatForm.handleSubmit(onSubmit)}
-                      {...field}
                     />
                   </FormControl>
                   <FormDescription className="text-xs pt-1">
@@ -286,18 +285,23 @@ const ChatConversation = () => {
 export default ChatConversation;
 
 const MessageEditor = ({
-  content,
+  value,
   onChange,
   onSubmit,
+  setInitialValue,
+  disabled,
 }: {
-  content: string;
-  onChange: (content: string) => void;
+  value: string;
+  onChange: (value: string) => void;
   onSubmit: () => void;
+  setInitialValue?: string;
+  disabled?: boolean;
 }) => {
   const editor = useEditor({
+    editable: !disabled,
     editorProps: {
       attributes: {
-        class: "prose prose-invert prose-xs mx-auto focus:outline-none",
+        class: "prose prose-invert prose-sm mx-auto focus:outline-none",
       },
       handleDOMEvents: {
         keydown: (_, event) => {
@@ -314,13 +318,23 @@ const MessageEditor = ({
         placeholder: "Enter message",
       }),
     ],
-    content,
+    content: value,
 
     onUpdate({ editor }) {
-      // onChange(editor.getHTML());
-      onChange(editor.getText());
+      onChange(editor.getHTML());
     },
   });
+
+  useEffect(() => {
+    setInitialValue === undefined
+      ? editor?.commands.setContent("")
+      : editor?.commands.setContent(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setInitialValue]);
+
+  useEffect(() => {
+    if (value === "") editor?.commands.setContent("");
+  }, [value, editor]);
 
   return <EditorContent className="prose-" editor={editor} />;
 };
