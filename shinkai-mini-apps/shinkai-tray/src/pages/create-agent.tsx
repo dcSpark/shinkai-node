@@ -32,6 +32,7 @@ const addAgentSchema = z.object({
   performLocally: z.boolean(),
   apikey: z.string(),
   model: z.string(),
+  modelType: z.string(),
 });
 
 const CreateAgentPage = () => {
@@ -39,6 +40,10 @@ const CreateAgentPage = () => {
   const navigate = useNavigate();
   const addAgentForm = useForm<z.infer<typeof addAgentSchema>>({
     resolver: zodResolver(addAgentSchema),
+    defaultValues: {
+      performLocally: false,
+      modelType: "gpt-3.5-turbo",
+    },
   });
   const {
     mutateAsync: createAgent,
@@ -51,7 +56,19 @@ const CreateAgentPage = () => {
     },
   });
 
+  const { model, modelType } = addAgentForm.watch();
+
   const onSubmit = async (data: z.infer<typeof addAgentSchema>) => {
+    const modelMapping: Record<
+      string,
+      {
+        modelType: string;
+      }
+    > = {
+      OpenAI: { modelType },
+      SleepAPI: { modelType },
+    };
+
     if (!setupData) return;
     createAgent({
       sender_subidentity: setupData.profile,
@@ -66,9 +83,7 @@ const CreateAgentPage = () => {
         storage_bucket_permissions: [],
         toolkit_permissions: [],
         model: {
-          OpenAI: {
-            model_type: data.model,
-          },
+          [model]: modelMapping[model],
         },
       },
       setupDetailsState: {
@@ -151,13 +166,28 @@ const CreateAgentPage = () => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="gpt-3.5-turbo">OpenAI</SelectItem>
-                      <SelectItem value="sleep">SleepAPI</SelectItem>
+                      <SelectItem value="OpenAI">OpenAI</SelectItem>
+                      <SelectItem value="SleepAPI">SleepAPI</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormItem>
               )}
             />
+
+            {model && (
+              <FormField
+                control={addAgentForm.control}
+                name="modelType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{model} Model Type</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Eg: gpt-3.5-turbo" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
           </div>
 
           {isError && <ErrorMessage message={error.message} />}
