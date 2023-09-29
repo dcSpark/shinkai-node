@@ -59,14 +59,9 @@ const CreateAgentPage = () => {
   const { model, modelType } = addAgentForm.watch();
 
   const onSubmit = async (data: z.infer<typeof addAgentSchema>) => {
-    const modelMapping: Record<
-      string,
-      {
-        modelType: string;
-      }
-    > = {
-      OpenAI: { modelType },
-      SleepAPI: { modelType },
+    const modelMapping: Record<string, { model_type: string }> = {
+      OpenAI: { model_type: modelType },
+      SleepAPI: { model_type: modelType },
     };
 
     if (!setupData) return;
