@@ -1,0 +1,37 @@
+{
+  "extends": [
+    "plugin:@tanstack/eslint-plugin-query/recommended",
+    "eslint:recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "plugin:import/recommended",
+    "plugin:jsx-a11y/recommended",
+    "eslint-config-prettier",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "plugins": [
+    "@tanstack/eslint-plugin-query",
+    "react",
+    "react-hooks",
+    "import",
+    "jsx-a11y",
+    "@typescript-eslint"
+  ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    },
+    "import/resolver": {
+      "node": {
+        "paths": ["src"],
+        "extensions": [".js", ".jsx", ".ts", ".tsx"]
+      }
+    }
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["error"],
+    "react/prop-types": "off",
+    "react/react-in-jsx-scope": "off"
+  }
+}

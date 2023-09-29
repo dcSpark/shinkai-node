@@ -1,16 +1,9 @@
-import React from 'react';
-
-interface SettingsProps {
-  setView: (view: string) => void;
-}
-
-const Settings: React.FC<SettingsProps> = ({ setView }) => {
+const SettingsPage = () => {
   return (
     <div>
-      <button onClick={() => setView("home")}>Back</button>
       <h1>Settings</h1>
     </div>
   );
 };
 
-export default Settings;
+export default SettingsPage;

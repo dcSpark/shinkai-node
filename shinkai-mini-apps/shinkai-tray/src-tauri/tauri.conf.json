@@ -22,6 +22,10 @@
       "shell": {
         "all": false,
         "open": true
+      },
+      "window": {
+        "startDragging": true,
+        "close": true
       }
     },
     "bundle": {
@@ -41,14 +45,17 @@
     },
     "windows": [
       {
-        "title": "Main",
+        "transparent": true,
+        "title": "Shinkai",
+        "minWidth": 1000,
+        "minHeight": 200,
         "fullscreen": false,
-        "resizable": true,
-        "width": 400,
-        "height": 300
+        "decorations": false,
+        "resizable": false
       }
     ],
-     "systemTray": {
+    "macOSPrivateApi": true,
+    "systemTray": {
       "iconPath": "icons/icon.png",
       "iconAsTemplate": true
     }
