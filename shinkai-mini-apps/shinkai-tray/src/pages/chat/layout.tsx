@@ -46,7 +46,7 @@ const ChatLayout = () => {
     <div className="flex h-full">
       {inboxIds.length > 0 ? (
         <>
-          <div className="flex-[380px] max-w-[380px] py-4 px-2 flex flex-col">
+          <div className="shrink-0 flex-[280px] max-w-[280px] py-4 px-2 flex flex-col">
             <h2 className="mb-4 px-2">Recent Conversations</h2>
             <ScrollArea>
               <div className="space-y-2">
@@ -60,7 +60,7 @@ const ChatLayout = () => {
               </div>
             </ScrollArea>
           </div>
-          <Separator orientation="vertical" />{" "}
+          <Separator orientation="vertical" />
         </>
       ) : null}
       <Outlet />

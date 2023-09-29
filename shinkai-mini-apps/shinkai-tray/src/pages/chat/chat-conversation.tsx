@@ -32,6 +32,8 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { EditorContent, useEditor } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import StarterKit from "@tiptap/starter-kit";
+import { Markdown } from "tiptap-markdown";
+import MarkdownPreview from "@uiw/react-markdown-preview";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -167,7 +169,7 @@ const ChatConversation = () => {
   }, [data?.pages]);
 
   return (
-    <div className="w-full flex flex-col justify-between pt-2">
+    <div className="flex-1 flex flex-col pt-2">
       <div className="px-4 mb-3 shrink-0 flex items-center gap-2">
         <Avatar className="w-7 h-7">
           <AvatarImage
@@ -187,7 +189,7 @@ const ChatConversation = () => {
         {isChatConversationSuccess && (
           <div className="text-center py-2 text-xs">
             {isFetchingPreviousPage || hasPreviousPage ? (
-              <Loader className="flex w-full justify-center text-white animate-spin" />
+              <Loader className="flex justify-center text-white animate-spin" />
             ) : (
               "All messages has been loaded 🎈 "
             )}
@@ -212,9 +214,9 @@ const ChatConversation = () => {
                   return (
                     <div
                       key={message.external_metadata?.scheduled_time}
-                      className="flex items-center justify-between gap-2 rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
+                      className="rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
                     >
-                      <p
+                      {/* <p
                         className={cn(
                           "text-sm",
                           isLocalMessage ? "text-muted-foreground" : "text-foreground"
@@ -223,15 +225,23 @@ const ChatConversation = () => {
                         {isJobInbox(inboxId)
                           ? getMessageFromJob(message)
                           : getMessageFromChat(message)}
-                      </p>
-                      <p className="text-xs">
+                      </p> */}
+                      <MarkdownPreview
+                        className="bg-transparent"
+                        source={
+                          isJobInbox(inboxId)
+                            ? getMessageFromJob(message)
+                            : getMessageFromChat(message)
+                        }
+                      />
+                      {/* <p className="text-xs">
                         <span className="text-muted-foreground">Sent at </span>
                         <span className=" text-gray-600">
                           {new Date(
                             message?.external_metadata?.scheduled_time ?? ""
                           ).toLocaleString()}
                         </span>
-                      </p>
+                      </p> */}
                     </div>
                   );
                 })}
@@ -317,11 +327,13 @@ const MessageEditor = ({
       Placeholder.configure({
         placeholder: "Enter message",
       }),
+      Markdown,
     ],
     content: value,
 
     onUpdate({ editor }) {
-      onChange(editor.getHTML());
+      // onChange(editor.getHTML());
+      onChange(editor.storage.markdown.getMarkdown());
     },
   });
 

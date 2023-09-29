@@ -43,3 +43,6 @@ body,
 .tiptap[contenteditable="false"] {
   @apply opacity-40;
 }
+.wmde-markdown pre {
+  @apply grid;
+}
