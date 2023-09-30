@@ -16,13 +16,16 @@ import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
   CREATE_JOB_PATH,
+  ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "../../routes/name";
 import { ShinkaiLogo } from "../../components/icons";
+import { useAuth } from "../../store/auth-context";
 
 export function Footer() {
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
+  const { setSetupData } = useAuth();
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -57,6 +60,10 @@ export function Footer() {
     navigate(SETTINGS_PATH);
     setOpen(false);
   };
+  const handleLogout = () => {
+    setSetupData(null);
+    navigate(ONBOARDING_PATH);
+  };
 
   const handleCommandCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.metaKey || e.ctrlKey) {
@@ -75,6 +82,9 @@ export function Footer() {
           break;
         case "5":
           goToSettings();
+          break;
+        case "6":
+          handleLogout();
           break;
         default:
           break;
@@ -139,6 +149,11 @@ export function Footer() {
                   <GearIcon className="mr-2 h-4 w-4" />
                   <span>Settings</span>
                   <CommandShortcut>⌘5</CommandShortcut>
+                </CommandItem>
+                <CommandItem onSelect={handleLogout}>
+                  <GearIcon className="mr-2 h-4 w-4" />
+                  <span>Logout</span>
+                  <CommandShortcut>⌘6</CommandShortcut>
                 </CommandItem>
               </CommandGroup>
             </CommandList>

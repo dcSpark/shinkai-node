@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import {
   generateEncryptionKeys,
   generateSignatureKeys,
-} from "../shinkai-message-ts/src/utils/wasm_helpers";
+} from "@shinkai_network/shinkai-message-ts/utils";
 import {
   Form,
   FormControl,

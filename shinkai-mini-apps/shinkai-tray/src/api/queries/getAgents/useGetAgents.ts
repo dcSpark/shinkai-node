@@ -8,5 +8,5 @@ export const useAgents = (input: GetAgentsInput) => {
     queryKey: [FunctionKey.GET_AGENTS, input],
     queryFn: () => getAgents(input),
   });
-  return { ...response, agents: response.data };
+  return { ...response, agents: response.data ?? [] };
 };

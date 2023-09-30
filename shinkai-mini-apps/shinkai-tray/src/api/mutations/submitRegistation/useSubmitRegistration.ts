@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import type { UseMutationOptions } from "@tanstack/react-query";
 import { SetupDataArgs, submitRegistration } from ".";
-import { APIUseRegistrationCodeSuccessResponse } from "../../../shinkai-message-ts/src/models";
+import type { APIUseRegistrationCodeSuccessResponse } from "@shinkai_network/shinkai-message-ts/models";
 
 type Data = {
   success: boolean;
