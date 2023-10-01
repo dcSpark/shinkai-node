@@ -256,6 +256,11 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn build(&mut self) -> Result<ShinkaiMessageWrapper, JsValue> {
         if let Some(ref builder) = self.inner {
+            // Print the hash to console if the target architecture is wasm
+            if cfg!(target_arch = "wasm32") {
+                let body = format!("{:?}", builder);
+                web_sys::console::log_1(&JsValue::from_str(&body));
+            }
             match builder.build() {
                 Ok(shinkai_message) => {
                     let js_value = shinkai_message.to_jsvalue().map_err(WasmErrorWrapper)?;
@@ -274,6 +279,11 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn build_to_jsvalue(&mut self) -> Result<JsValue, JsValue> {
         if let Some(ref builder) = self.inner {
+            // Print the hash to console if the target architecture is wasm
+            if cfg!(target_arch = "wasm32") {
+                let body = format!("{:?}", builder);
+                web_sys::console::log_1(&JsValue::from_str(&body));
+            }
             match builder.build() {
                 Ok(shinkai_message) => shinkai_message
                     .to_jsvalue()
@@ -290,6 +300,11 @@ impl ShinkaiMessageBuilderWrapper {
     #[wasm_bindgen]
     pub fn build_to_string(&mut self) -> Result<String, JsValue> {
         if let Some(ref builder) = self.inner {
+            // Print the hash to console if the target architecture is wasm
+            if cfg!(target_arch = "wasm32") {
+                let body = format!("{:?}", builder);
+                web_sys::console::log_1(&JsValue::from_str(&body));
+            }
             match builder.build() {
                 Ok(shinkai_message) => {
                     let json =
@@ -630,6 +645,30 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
+    pub fn get_all_availability_agent(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        sender: ProfileName,
+        sender_subidentity: String,
+        recipient: ProfileName,
+        recipient_subidentity: String,
+    ) -> Result<String, JsValue> {
+        ShinkaiMessageBuilderWrapper::create_custom_shinkai_message_to_node(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+            "".to_string(),
+            sender,
+            sender_subidentity,
+            recipient,
+            recipient_subidentity,
+            "",
+            MessageSchemaType::Empty.to_str().to_string(),
+        )
+    }
+
+    #[wasm_bindgen]
     pub fn read_up_to_time(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
@@ -764,7 +803,11 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
         let job_id_clone = job_id.clone();
-        let job_message = JobMessage { job_id, content, files_inbox };
+        let job_message = JobMessage {
+            job_id,
+            content,
+            files_inbox,
+        };
 
         let body = serde_json::to_string(&job_message).map_err(|e| JsValue::from_str(&e.to_string()))?;
 

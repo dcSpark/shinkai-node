@@ -15,7 +15,6 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 // import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
-import { cn } from "../../lib/utils";
 import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
 import {
   calculateMessageHash,
@@ -101,6 +100,7 @@ const ChatConversation = () => {
         jobId,
         message: data.message,
         sender,
+        files_inbox: "",
         shinkaiIdentity: setupData.shinkai_identity,
         my_device_encryption_sk: setupData.my_device_encryption_sk,
         my_device_identity_sk: setupData.my_device_identity_sk,
@@ -116,8 +116,8 @@ const ChatConversation = () => {
         receiver,
         message: data.message,
         inboxId: inboxId as string,
-        my_device_encryption_sk: setupData.my_device_encryption_sk,
-        my_device_identity_sk: setupData.my_device_identity_sk,
+        profile_encryption_sk: setupData.profile_encryption_sk,
+        profile_identity_sk: setupData.profile_identity_sk,
         node_encryption_pk: setupData.node_encryption_pk,
       });
     }
@@ -204,13 +204,13 @@ const ChatConversation = () => {
             data?.pages.map((group, i) => (
               <Fragment key={i}>
                 {group.map((message) => {
-                  const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
-                  let isLocalMessage = false;
-                  if (message.body && "unencrypted" in message.body) {
-                    isLocalMessage =
-                      message.body.unencrypted.internal_metadata.sender_subidentity ===
-                      localIdentity;
-                  }
+                  // const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
+                  // let isLocalMessage = false;
+                  // if (message.body && "unencrypted" in message.body) {
+                  //   isLocalMessage =
+                  //     message.body.unencrypted.internal_metadata.sender_subidentity ===
+                  //     localIdentity;
+                  // }
                   return (
                     <div
                       key={message.external_metadata?.scheduled_time}
