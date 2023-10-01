@@ -4,6 +4,7 @@ import { SendMessageToJobInput } from "./types";
 export const sendMessageToJob = async ({
   jobId,
   message,
+  files_inbox,
   sender,
   shinkaiIdentity,
   my_device_encryption_sk,
@@ -12,7 +13,7 @@ export const sendMessageToJob = async ({
   profile_encryption_sk,
   profile_identity_sk,
 }: SendMessageToJobInput) => {
-  return await sendMessageToJobApi(jobId, message, sender, shinkaiIdentity, "", {
+  return await sendMessageToJobApi(jobId, message, files_inbox, sender, shinkaiIdentity, "", {
     my_device_encryption_sk,
     my_device_identity_sk,
     node_encryption_pk,

@@ -13,6 +13,7 @@ export const createJob = async ({
   profile,
   agentId,
   content,
+  files_inbox,
   my_device_encryption_sk,
   my_device_identity_sk,
   node_encryption_pk,
@@ -43,6 +44,7 @@ export const createJob = async ({
   const response = await sendMessageToJob(
     jobId,
     content,
+    files_inbox,
     sender,
     receiver,
     receiver_subidentity,

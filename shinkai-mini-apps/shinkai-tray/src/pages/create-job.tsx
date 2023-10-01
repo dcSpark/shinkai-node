@@ -35,10 +35,10 @@ const CreateJobPage = () => {
 
   const { agents } = useAgents({
     sender: setupData?.shinkai_identity ?? "",
-    senderSubidentity: `${setupData?.profile}/device/${setupData?.registration_name}`,
+    senderSubidentity: `${setupData?.profile}`,
     shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
+    my_device_encryption_sk: setupData?.profile_encryption_sk ?? "",
+    my_device_identity_sk: setupData?.profile_identity_sk ?? "",
     node_encryption_pk: setupData?.node_encryption_pk ?? "",
   });
 
@@ -60,6 +60,7 @@ const CreateJobPage = () => {
       profile: setupData.profile,
       agentId: data.model,
       content: data.description,
+      files_inbox: "",
       my_device_encryption_sk: setupData.my_device_encryption_sk,
       my_device_identity_sk: setupData.my_device_identity_sk,
       node_encryption_pk: setupData.node_encryption_pk,

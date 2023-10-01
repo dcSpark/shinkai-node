@@ -67,7 +67,7 @@ impl LLMProvider for OpenAI {
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
-                    "max_tokens": 4097,
+                    "max_tokens": 3500,
                 });
 
                 let body = serde_json::to_string(&payload)?;
