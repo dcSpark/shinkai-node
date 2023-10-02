@@ -14,10 +14,11 @@ use crate::{
         inbox_permission::InboxPermission,
     },
 };
+use aes_gcm::Aes256Gcm;
+use aes_gcm::aead::{Aead, generic_array::GenericArray};
+use aes_gcm::KeyInit;
 use async_channel::Sender;
-use chacha20poly1305::aead::Aead;
-use chacha20poly1305::aead::NewAead;
-use chacha20poly1305::{aead::generic_array::GenericArray, ChaCha20Poly1305};
+use blake3::Hasher;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::task::{Context, Poll};
 use futures::Stream;
@@ -1287,24 +1288,18 @@ impl Node {
             }
         };
 
-        // Create a StaticSecret from the bytes
-        let private_key = EncryptionStaticKey::from(private_key_array);
-
-        // Generate the public key
-        let public_key = EncryptionPublicKey::from(&private_key);
-
-        // Convert the public key to bytes
-        let public_key_bytes = public_key.as_bytes();
-
-        // Convert the bytes to a hex string
-        let public_key_hex = hex::encode(public_key_bytes);
+        // Calculate the hash of it using blake3 which will act as a sort of public identifier
+        let mut hasher = Hasher::new();
+        hasher.update(content.as_bytes());
+        let result = hasher.finalize();
+        let hash_hex = hex::encode(result.as_bytes());
 
         // Write the symmetric key to the database
         let mut db = self.db.lock().await;
-        match db.write_symmetric_key(&public_key_hex, content.as_bytes()) {
+        match db.write_symmetric_key(&hash_hex, &private_key_array) {
             Ok(_) => {
                 // Create the files message inbox
-                match db.create_files_message_inbox(public_key_hex.clone()) {
+                match db.create_files_message_inbox(hash_hex.clone()) {
                     Ok(_) => {
                         let _ = res
                             .send(Ok(
@@ -1340,13 +1335,13 @@ impl Node {
         &self,
         filename: String,
         file_data: Vec<u8>,
-        public_key: String,
+        hex_blake3_hash: String,
         encrypted_nonce: String,
         res: Sender<Result<String, APIError>>,
     ) -> Result<(), NodeError> {
-        let symmetric_key_hex = {
+        let private_key_array = {
             let db = self.db.lock().await;
-            match db.read_symmetric_key(&public_key) {
+            match db.read_symmetric_key(&hex_blake3_hash) {
                 Ok(key) => key,
                 Err(_) => {
                     let _ = res
@@ -1361,37 +1356,16 @@ impl Node {
             }
         };
 
-        let symmetric_key = match hex::decode(&symmetric_key_hex) {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: "Invalid symmetric key".to_string(),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        let symmetric_key_array: [u8; 32] = match symmetric_key.try_into() {
-            Ok(arr) => arr,
-            Err(_) => {
-                let _ = res
-                    .send(Err(APIError {
-                        code: StatusCode::BAD_REQUEST.as_u16(),
-                        error: "Bad Request".to_string(),
-                        message: "Invalid symmetric key".to_string(),
-                    }))
-                    .await;
-                return Ok(());
-            }
-        };
-
-        let symmetric_key = EncryptionStaticKey::from(symmetric_key_array);
-        let decrypted_file_result = decrypt_with_chacha20poly1305(&symmetric_key, &encrypted_nonce, &file_data);
-
+        let private_key_slice = &private_key_array[..];
+        let private_key_generic_array = GenericArray::from_slice(private_key_slice);
+        let cipher = Aes256Gcm::new(private_key_generic_array);
+        
+        // Assuming `encrypted_nonce` is a hex string of the nonce used in encryption
+        let nonce_bytes = hex::decode(&encrypted_nonce).unwrap();
+        let nonce = GenericArray::from_slice(&nonce_bytes);
+        
+        // Decrypt file
+        let decrypted_file_result = cipher.decrypt(nonce, file_data.as_ref());
         let decrypted_file = match decrypted_file_result {
             Ok(file) => file,
             Err(_) => {
@@ -1410,7 +1384,7 @@ impl Node {
             .db
             .lock()
             .await
-            .add_file_to_files_message_inbox(public_key, filename, decrypted_file)
+            .add_file_to_files_message_inbox(hex_blake3_hash, filename, decrypted_file)
         {
             Ok(_) => {
                 let _ = res.send(Ok("File added successfully".to_string())).await;
