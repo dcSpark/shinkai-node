@@ -9,18 +9,41 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use shinkai_message_primitives::shinkai_utils::encryption::{string_to_encryption_static_key, encryption_public_key_to_string};
+use shinkai_message_primitives::shinkai_utils::encryption::{string_to_encryption_static_key, encryption_public_key_to_string, EncryptionMethod};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;
 use x25519_dalek::{PublicKey, StaticSecret};
 
 #[cfg(target_arch = "wasm32")]
-
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
-pub enum EncryptionMethod {
-    DiffieHellmanChaChaPoly1305,
-    None,
+pub struct WasmEncryptionMethod {
+    method: EncryptionMethod,
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WasmEncryptionMethod {
+    #[wasm_bindgen(constructor)]
+    pub fn new(method: &str) -> WasmEncryptionMethod {
+        WasmEncryptionMethod {
+            method: EncryptionMethod::from_str(method),
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn as_str(&self) -> String {
+        self.method.as_str().to_string()
+    }
+
+    #[wasm_bindgen(js_name = "DiffieHellmanChaChaPoly1305")]
+    pub fn diffie_hellman_cha_cha_poly1305() -> String {
+        EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str().to_string()
+    }
+
+    #[wasm_bindgen(js_name = "None")]
+    pub fn none() -> String {
+        EncryptionMethod::None.as_str().to_string()
+    }
 }
 
 #[wasm_bindgen]
