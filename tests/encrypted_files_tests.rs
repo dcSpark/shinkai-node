@@ -1,3 +1,6 @@
+use aes_gcm::aead::{generic_array::GenericArray, Aead};
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -7,6 +10,10 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encrypt_with_chacha20poly1305, encryption_public_key_to_string,
     encryption_secret_key_to_string, ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
+};
+use shinkai_message_primitives::shinkai_utils::file_encryption::{
+    aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
+    unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
@@ -25,12 +32,12 @@ use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
 
 mod utils;
-use mockito::Server;
 use crate::utils::node_test_api::{
     api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
     api_registration_device_node_profile_main,
 };
 use crate::utils::node_test_local::local_registration_profile_node;
+use mockito::Server;
 
 #[test]
 fn sandwich_messages_with_files_test() {
@@ -48,7 +55,7 @@ fn sandwich_messages_with_files_test() {
             let node1_profile_identity_sk = clone_signature_secret_key(&env.node1_profile_identity_sk);
 
             // For this test
-            let (symmetrical_sk, symmetrical_pk) = ephemeral_encryption_keys();
+            let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -72,7 +79,7 @@ fn sandwich_messages_with_files_test() {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
                 let sender = format!("{}/{}", node1_identity_name, node1_profile_name);
-                let message_content = encryption_secret_key_to_string(symmetrical_sk.clone());
+                let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
                 let msg = ShinkaiMessageBuilder::create_files_inbox_with_sym_key(
                     node1_profile_encryption_sk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -108,9 +115,12 @@ fn sandwich_messages_with_files_test() {
                 // Read the entire file into a Vec<u8>
                 let file_data = tokio::fs::read(&file_path).await.expect("Failed to read file");
 
-                // Encrypt the file using ChaCha20Poly1305
-                let (ciphertext, nonce) =
-                    encrypt_with_chacha20poly1305(&symmetrical_sk, &file_data).expect("encryption failure!");
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
 
                 // Prepare the other parameters
                 let filename = "test_file.txt";
@@ -123,8 +133,8 @@ fn sandwich_messages_with_files_test() {
                     .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
                         filename: filename.to_string(),
                         file: ciphertext,
-                        public_key: encryption_public_key_to_string(symmetrical_pk),
-                        encrypted_nonce: nonce.to_string(),
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
                         res: res_sender,
                     })
                     .await
@@ -203,8 +213,7 @@ fn sandwich_messages_with_files_test() {
             }
 
             let mut job_id = "".to_string();
-            let agent_subidentity =
-                format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
+            let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
             {
                 // Create a Job
                 eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
@@ -233,7 +242,7 @@ fn sandwich_messages_with_files_test() {
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &message,
-                    &encryption_public_key_to_string(symmetrical_pk),
+                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
                 )
                 .await;
             }

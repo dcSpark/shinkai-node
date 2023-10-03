@@ -670,7 +670,6 @@ impl ShinkaiMessageBuilder {
         )
         .external_metadata(receiver.clone(), sender)
         .build()
-      
     }
 
     pub fn get_all_inboxes_for_profile(
