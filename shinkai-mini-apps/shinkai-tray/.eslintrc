@@ -8,7 +8,8 @@
     "plugin:import/recommended",
     "plugin:jsx-a11y/recommended",
     "plugin:unicorn/recommended",
-    "eslint-config-prettier"
+    "eslint-config-prettier",
+    "plugin:tailwindcss/recommended"
   ],
   "plugins": [
     "@tanstack/eslint-plugin-query",
@@ -122,6 +123,7 @@
         },
         "ignore": ["semVer", "SemVer"]
       }
-    ]
+    ],
+    "tailwindcss/no-custom-classname": "off"
   }
 }

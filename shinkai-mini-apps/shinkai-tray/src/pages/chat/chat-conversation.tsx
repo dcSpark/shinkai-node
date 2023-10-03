@@ -171,27 +171,27 @@ const ChatConversation = () => {
   }, [data?.pages]);
 
   return (
-    <div className="flex-1 flex flex-col pt-2">
-      <div className="px-4 mb-3 shrink-0 flex items-center gap-2">
-        <Avatar className="w-7 h-7">
+    <div className="flex flex-1 flex-col pt-2">
+      <div className="mb-3 flex shrink-0 items-center gap-2 px-4">
+        <Avatar className="h-7 w-7">
           <AvatarImage
             alt="Shinkai AI"
-            className="w-7 h-7"
+            className="h-7 w-7"
             src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
           />
-          <AvatarFallback className="w-7 h-7" />
+          <AvatarFallback className="h-7 w-7" />
         </Avatar>
-        <span className="text-sm flex-1 text-left">{inboxId}</span>
+        <span className="flex-1 text-left text-sm">{inboxId}</span>
         <Button size="icon" variant="ghost">
           <span className="sr-only">Settings</span>
-          <DotsVerticalIcon className="w-4 h-4" />
+          <DotsVerticalIcon className="h-4 w-4" />
         </Button>
       </div>
       <ScrollArea className="h-full px-4" ref={chatContainerRef}>
         {isChatConversationSuccess && (
-          <div className="text-center py-2 text-xs">
+          <div className="py-2 text-center text-xs">
             {isFetchingPreviousPage || hasPreviousPage ? (
-              <Loader className="flex justify-center text-white animate-spin" />
+              <Loader className="flex animate-spin justify-center text-white" />
             ) : (
               "All messages has been loaded 🎈 "
             )}
@@ -200,7 +200,7 @@ const ChatConversation = () => {
         <div className="space-y-5">
           {isChatConversationLoading &&
             [1, 2, 3, 4].map((index) => (
-              <Skeleton className="w-full h-10 rounded-lg" key={index} />
+              <Skeleton className="h-10 w-full rounded-lg" key={index} />
             ))}
           {isChatConversationSuccess &&
             data?.pages.map((group, index) => (
@@ -215,7 +215,7 @@ const ChatConversation = () => {
                   // }
                   return (
                     <div
-                      className="rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
+                      className="rounded-lg bg-[rgba(217,217,217,0.04)] px-4 py-6"
                       key={message.external_metadata?.scheduled_time}
                     >
                       {/* <p
@@ -234,7 +234,7 @@ const ChatConversation = () => {
                             ? getMessageFromJob(message)
                             : getMessageFromChat(message)
                         }
-                        className="bg-transparent text-foreground text-sm"
+                        className="bg-transparent text-sm text-foreground"
                       />
                       {/* <p className="text-xs">
                         <span className="text-muted-foreground">Sent at </span>
@@ -253,13 +253,13 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="bg-app-gradient p-2 pt-3 flex items-start gap-2">
+        <div className="flex items-start gap-2 bg-app-gradient p-2 pt-3">
           {/* <EditorContent editor={editor} /> */}
 
           <Form {...chatForm}>
             <FormField
               render={({ field }) => (
-                <FormItem className="space-y-0 flex-1">
+                <FormItem className="flex-1 space-y-0">
                   <FormLabel className="sr-only">Enter message</FormLabel>
                   <FormControl>
                     <MessageEditor
@@ -269,7 +269,7 @@ const ChatConversation = () => {
                       value={field.value}
                     />
                   </FormControl>
-                  <FormDescription className="text-xs pt-1">
+                  <FormDescription className="pt-1 text-xs">
                     Press <kbd>⌘</kbd> <kbd>↵</kbd> to send message
                   </FormDescription>
                 </FormItem>

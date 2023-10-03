@@ -21,8 +21,8 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
       key={inboxId}
       to={to}
     >
-      <MessageCircleIcon className="shrink-0 w-4 h-4" />
-      <span className="text-left text-xs line-clamp-1">
+      <MessageCircleIcon className="h-4 w-4 shrink-0" />
+      <span className="line-clamp-1 text-left text-xs">
         {decodeURIComponent(inboxId)}
       </span>
     </Link>
@@ -48,7 +48,7 @@ const ChatLayout = () => {
     <div className="flex h-full">
       {inboxIds.length > 0 ? (
         <>
-          <div className="shrink-0 flex-[280px] max-w-[280px] py-4 px-2 flex flex-col">
+          <div className="flex max-w-[280px] flex-[280px] shrink-0 flex-col px-2 py-4">
             <h2 className="mb-4 px-2">Recent Conversations</h2>
             <ScrollArea>
               <div className="space-y-2">

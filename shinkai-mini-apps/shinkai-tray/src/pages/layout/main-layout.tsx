@@ -101,8 +101,8 @@ export function Footer() {
   };
 
   return (
-    <div className="flex items-center justify-start text-sm text-muted-foreground bg-app-gradient py-2 px-2 pl-4">
-      <ShinkaiLogo className="w-4 h-4 mr-2 text-primary-600" />
+    <div className="flex items-center justify-start bg-app-gradient p-2 pl-4 text-sm text-muted-foreground">
+      <ShinkaiLogo className="mr-2 h-4 w-4 text-primary-600" />
       <Popover onOpenChange={setOpen} open={open} modal>
         <PopoverTrigger
           aria-expanded={open}
@@ -111,7 +111,7 @@ export function Footer() {
         >
           <span className="text-xs">
             Actions
-            <kbd className="ml-2 pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+            <kbd className="bg-muted pointer-events-none ml-2 inline-flex h-5 select-none items-center gap-1 rounded border px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
               <span className="text-xs">⌘</span>K
             </kbd>
           </span>
@@ -119,13 +119,13 @@ export function Footer() {
         <PopoverContent
           align="start"
           alignOffset={-25}
-          className="bg-black border-0 bg-gradient-to-r from-[#19242D] to-[#19242D]/90 rounded-md shadow-xl p-4"
+          className="rounded-md border-0 bg-black bg-gradient-to-r from-[#19242D] to-[#19242D]/90 p-4 shadow-xl"
           side="top"
           sideOffset={2}
           asChild
         >
           <Command
-            className="p-0 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-3 [&_[cmdk-item]_svg]:w-3 dark:[&_[cmdk-group-heading]]:text-gray-400"
+            className="p-0 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-gray-500 dark:[&_[cmdk-group-heading]]:text-gray-400 [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-3 [&_[cmdk-item]_svg]:w-3"
             onKeyDown={handleCommandCardKeyDown}
           >
             <CommandList className="p-0 pt-2">
@@ -174,9 +174,9 @@ export function Footer() {
 
 const MainLayout = () => {
   return (
-    <div className="relative flex flex-col h-full bg-cover bg-app-gradient text-white">
+    <div className="relative flex h-full flex-col bg-app-gradient bg-cover text-white">
       <div
-        className="flex shrink-0 select-none cursor-default justify-center items-center h-8 text-xs"
+        className="flex h-8 shrink-0 cursor-default select-none items-center justify-center text-xs"
         data-tauri-drag-region
       >
         Custom Topbar (draggable)

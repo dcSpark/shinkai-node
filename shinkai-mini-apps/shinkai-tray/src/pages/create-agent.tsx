@@ -141,7 +141,7 @@ const CreateAgentPage = () => {
                   <FormControl>
                     <Input {...field} placeholder="Eg: xYz1DFa..." />
                   </FormControl>
-                  <FormDescription className="text-xs text-left pt-1">
+                  <FormDescription className="pt-1 text-left text-xs">
                     Enter the API key for your agent
                   </FormDescription>
                 </FormItem>

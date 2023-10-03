@@ -148,8 +148,8 @@ const OnboardingPage = () => {
   }
 
   return (
-    <div className="p-10 max-w-lg mx-auto">
-      <h1 className="text-center text-3xl font-semibold mb-4">Register</h1>
+    <div className="mx-auto max-w-lg p-10">
+      <h1 className="mb-4 text-center text-3xl font-semibold">Register</h1>
       <Form {...setupDataForm}>
         <form className="space-y-8" onSubmit={setupDataForm.handleSubmit(onSubmit)}>
           <FormField

@@ -18,8 +18,8 @@ const EmptyMessage = () => {
     node_encryption_pk: setupData?.node_encryption_pk ?? "",
   });
   return (
-    <div className="w-full flex items-center justify-center p-6">
-      <div className="flex flex-col gap-4 items-center text-center max-w-lg">
+    <div className="flex w-full items-center justify-center p-6">
+      <div className="flex max-w-lg flex-col items-center gap-4 text-center">
         <svg
           className="shrink-0"
           fill="none"
@@ -37,7 +37,7 @@ const EmptyMessage = () => {
         </svg>
 
         <h1 className="text-2xl font-bold text-foreground">Ask Shinkai AI</h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-sm text-muted-foreground">
           Try “How to make a HTTP request in JavaScript” , “Give me the top 10 rock music
           in the 80s”, “Explain me how internet works”
         </p>
@@ -45,7 +45,7 @@ const EmptyMessage = () => {
         <div className="mt-4">
           {agents.length === 0 ? (
             <Link
-              className="font-medium rounded-md flex items-center h-9 px-6 py-2 transition-colors duration-150 bg-primary-600 hover:bg-primary-700 text-white shadow "
+              className="flex h-9 items-center rounded-md bg-primary-600 px-6 py-2 font-medium text-white shadow transition-colors duration-150 hover:bg-primary-700 "
               to={ADD_AGENT_PATH}
             >
               <LightningBoltIcon className="mr-2" />
@@ -53,7 +53,7 @@ const EmptyMessage = () => {
             </Link>
           ) : (
             <Link
-              className="font-medium rounded-md flex items-center h-9 px-6 py-2 transition-colors duration-150 bg-primary-600 hover:bg-primary-700 text-white shadow "
+              className="flex h-9 items-center rounded-md bg-primary-600 px-6 py-2 font-medium text-white shadow transition-colors duration-150 hover:bg-primary-700 "
               to={CREATE_JOB_PATH}
             >
               <LightningBoltIcon className="mr-2" />
