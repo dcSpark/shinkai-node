@@ -1,4 +1,11 @@
+import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
+
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+
+import { useCreateChat } from "../api/mutations/createChat/useCreateChat";
+import { Button } from "../components/ui/button";
 import {
   Form,
   FormControl,
@@ -7,15 +14,10 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
-import SimpleLayout from "./layout/simple-layout";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { useAuth } from "../store/auth-context";
-import { useNavigate } from "react-router-dom";
-import { Input } from "../components/ui/input";
-import { useCreateChat } from "../api/mutations/createChat/useCreateChat";
+import SimpleLayout from "./layout/simple-layout";
 
 const createChatSchema = z.object({
   receiver: z.string(),
@@ -59,8 +61,6 @@ const CreateChatPage = () => {
         <form className="space-y-10" onSubmit={createChatForm.handleSubmit(onSubmit)}>
           <div className="space-y-6">
             <FormField
-              control={createChatForm.control}
-              name="receiver"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Shinkai Identity</FormLabel>
@@ -72,31 +72,33 @@ const CreateChatPage = () => {
                   </FormControl>
                 </FormItem>
               )}
+              control={createChatForm.control}
+              name="receiver"
             />
             <FormField
-              control={createChatForm.control}
-              name="message"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Message</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Enter your message"
                       className="resize-none border-white"
+                      placeholder="Enter your message"
                       {...field}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
+              control={createChatForm.control}
+              name="message"
             />
           </div>
 
           <Button
             className="w-full"
-            type="submit"
-            isLoading={isLoading}
             disabled={isLoading}
+            isLoading={isLoading}
+            type="submit"
           >
             Create Chat
           </Button>

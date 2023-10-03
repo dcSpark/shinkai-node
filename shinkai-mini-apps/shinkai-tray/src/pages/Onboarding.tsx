@@ -1,8 +1,18 @@
 import { useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
+
+import { zodResolver } from "@hookform/resolvers/zod";
 import {
   generateEncryptionKeys,
   generateSignatureKeys,
 } from "@shinkai_network/shinkai-message-ts/utils";
+import { z } from "zod";
+
+import { queryClient } from "../api/constants";
+import { useSubmitRegistration } from "../api/mutations/submitRegistation/useSubmitRegistration";
+import { Button } from "../components/ui/button";
+import ErrorMessage from "../components/ui/error-message";
 import {
   Form,
   FormControl,
@@ -11,17 +21,9 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
-import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { useNavigate } from "react-router-dom";
 import { HOME_PATH } from "../routes/name";
 import { useAuth } from "../store/auth-context";
-import { useSubmitRegistration } from "../api/mutations/submitRegistation/useSubmitRegistration";
-import ErrorMessage from "../components/ui/error-message";
-import { queryClient } from "../api/constants";
 
 const formSchema = z.object({
   registration_code: z.string(),
@@ -146,13 +148,11 @@ const OnboardingPage = () => {
   }
 
   return (
-    <div className="p-10 max-w-lg mx-auto">
-      <h1 className="text-center text-3xl font-semibold mb-4">Register</h1>
+    <div className="mx-auto max-w-lg p-10">
+      <h1 className="mb-4 text-center text-3xl font-semibold">Register</h1>
       <Form {...setupDataForm}>
-        <form onSubmit={setupDataForm.handleSubmit(onSubmit)} className="space-y-8">
+        <form className="space-y-8" onSubmit={setupDataForm.handleSubmit(onSubmit)}>
           <FormField
-            control={setupDataForm.control}
-            name="node_address"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Node Address</FormLabel>
@@ -162,14 +162,16 @@ const OnboardingPage = () => {
                 <FormMessage />
               </FormItem>
             )}
+            control={setupDataForm.control}
+            name="node_address"
           />
           {isError && <ErrorMessage message={error.message} />}
           <Button
             className="w-full"
-            variant="default"
-            type="submit"
-            isLoading={isLoading}
             disabled={isLoading}
+            isLoading={isLoading}
+            type="submit"
+            variant="default"
           >
             Submit
           </Button>

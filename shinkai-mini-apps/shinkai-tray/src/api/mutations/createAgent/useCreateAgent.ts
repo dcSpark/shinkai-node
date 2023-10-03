@@ -1,5 +1,7 @@
-import { useMutation } from "@tanstack/react-query";
 import type { UseMutationOptions } from "@tanstack/react-query";
+
+import { useMutation } from "@tanstack/react-query";
+
 import { createAgent } from ".";
 import { CreateAgentInput } from "./types";
 

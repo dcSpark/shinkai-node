@@ -1,4 +1,5 @@
 import { sendTextMessageWithInbox } from "@shinkai_network/shinkai-message-ts/api";
+
 import { SendMessageToInboxInput } from "./types";
 
 export const sendMessageToInbox = async ({

@@ -1,4 +1,12 @@
+import { useForm } from "react-hook-form";
+import { useNavigate } from "react-router-dom";
+
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+
+import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
+import { useAgents } from "../api/queries/getAgents/useGetAgents";
+import { Button } from "../components/ui/button";
 import {
   Form,
   FormControl,
@@ -7,10 +15,6 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form";
-import SimpleLayout from "./layout/simple-layout";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Button } from "../components/ui/button";
 import {
   Select,
   SelectContent,
@@ -19,10 +23,8 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { useAgents } from "../api/queries/getAgents/useGetAgents";
 import { useAuth } from "../store/auth-context";
-import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
-import { useNavigate } from "react-router-dom";
+import SimpleLayout from "./layout/simple-layout";
 
 const createJobSchema = z.object({
   model: z.string(),
@@ -74,12 +76,10 @@ const CreateJobPage = () => {
         <form className="space-y-10" onSubmit={createJobForm.handleSubmit(onSubmit)}>
           <div className="space-y-6">
             <FormField
-              control={createJobForm.control}
-              name="model"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Select your AI Agent</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select defaultValue={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select your AI Agent" />
@@ -95,31 +95,33 @@ const CreateJobPage = () => {
                   </Select>
                 </FormItem>
               )}
+              control={createJobForm.control}
+              name="model"
             />
             <FormField
-              control={createJobForm.control}
-              name="description"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Tell us the job you want to do</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Eg: Explain me how internet works..."
                       className="resize-none border-white"
+                      placeholder="Eg: Explain me how internet works..."
                       {...field}
                     />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
+              control={createJobForm.control}
+              name="description"
             />
           </div>
 
           <Button
             className="w-full"
-            type="submit"
-            isLoading={isLoading}
             disabled={isLoading}
+            isLoading={isLoading}
+            type="submit"
           >
             Create Job
           </Button>

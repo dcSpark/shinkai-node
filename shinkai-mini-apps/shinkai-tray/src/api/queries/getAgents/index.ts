@@ -1,4 +1,5 @@
 import { getProfileAgents } from "@shinkai_network/shinkai-message-ts/api";
+
 import type { GetAgentsInput } from "./types";
 
 export const getAgents = async ({
