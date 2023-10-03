@@ -24,6 +24,7 @@ use shinkai_node::agent::agent;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -103,17 +104,27 @@ fn sandwich_messages_with_files_test() {
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
-                // Prepare the file to be sent
-                let file_path = Path::new("tmp_tests/test_file.txt");
-                // Create the directory if it does not exist
-                if let Some(parent) = file_path.parent() {
-                    fs::create_dir_all(parent).expect("Failed to create directory");
-                }
-                let file_content = "This is a test file";
-                fs::write(&file_path, file_content).expect("Unable to write file");
+                // New File A
+                // // Prepare the file to be sent
+                // let file_path = Path::new("tmp_tests/test_file.txt");
+                // // Create the directory if it does not exist
+                // if let Some(parent) = file_path.parent() {
+                //     fs::create_dir_all(parent).expect("Failed to create directory");
+                // }
+                // let file_content = "This is a test file";
+                // fs::write(&file_path, file_content).expect("Unable to write file");
 
-                // Read the entire file into a Vec<u8>
-                let file_data = tokio::fs::read(&file_path).await.expect("Failed to read file");
+                // // Read the entire file into a Vec<u8>
+                // let file_data = tokio::fs::read(&file_path).await.expect("Failed to read file");
+
+                // New File B
+                // Prepare the file to be read
+                let file_path = Path::new("files/shinkai_intro.pdf");
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(&file_path)
+                    .map_err(|_| VectorResourceError::FailedPDFParsing)
+                    .unwrap();
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
@@ -123,7 +134,7 @@ fn sandwich_messages_with_files_test() {
                 let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
 
                 // Prepare the other parameters
-                let filename = "test_file.txt";
+                let filename = "shinkai_intro.pdf";
 
                 // Prepare the response channel
                 let (res_sender, res_receiver) = async_channel::bounded(1);

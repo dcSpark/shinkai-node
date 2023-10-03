@@ -1,5 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
+use shinkai_vector_resources::resource_errors::VectorResourceError;
 use std::fmt;
 
 #[derive(Debug)]
@@ -24,6 +25,9 @@ pub enum AgentError {
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
     JSONSerializationError(String),
+    VectorResource(VectorResourceError),
+    InvalidSubidentity(ShinkaiNameError),
+    InvalidProfileSubidentity(String),
 }
 
 impl fmt::Display for AgentError {
@@ -62,6 +66,9 @@ impl fmt::Display for AgentError {
                 write!(f, "JSON Response from LLM does not include needed field: {}", s)
             }
             AgentError::JSONSerializationError(s) => write!(f, "JSON Serialization error: {}", s),
+            AgentError::VectorResource(err) => write!(f, "VectorResource error: {}", err),
+            AgentError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
+            AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
         }
     }
 }
@@ -104,5 +111,11 @@ impl From<Box<dyn std::error::Error>> for AgentError {
 impl From<serde_json::Error> for AgentError {
     fn from(err: serde_json::Error) -> AgentError {
         AgentError::JSONSerializationError(err.to_string())
+    }
+}
+
+impl From<VectorResourceError> for AgentError {
+    fn from(error: VectorResourceError) -> Self {
+        AgentError::VectorResource(error)
     }
 }

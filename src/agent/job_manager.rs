@@ -72,6 +72,7 @@ impl JobManager {
         tokio::spawn(async move {
             while let Some((messages, job_id)) = receiver.lock().await.recv().await {
                 for message in messages {
+                    eprintln!("Nico debug> process_received_messages");
                     let mut agent_manager = agent_manager.lock().await;
 
                     let shinkai_message_result = ShinkaiMessageBuilder::job_message_from_agent(
@@ -227,25 +228,6 @@ impl AgentManager {
         Ok(String::new())
     }
 
-    pub async fn get_message_multifiles(
-        &mut self,
-        files_inbox: String,
-    ) -> Result<HashMap<String, Vec<u8>>, AgentError> {
-        let shinkai_db = self.db.lock().await;
-        let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
-
-        // Check if there was an error getting the files
-        let files = match files_result {
-            Ok(files) => files,
-            Err(e) => return Err(AgentError::ShinkaiDB(e)),
-        };
-
-        // Convert the Vec<(String, Vec<u8>)> to a HashMap<String, Vec<u8>>
-        let files_map: HashMap<String, Vec<u8>> = files.into_iter().collect();
-
-        Ok(files_map)
-    }
-
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
         match message.clone().body {
             MessageBody::Unencrypted(body) => {
@@ -266,11 +248,11 @@ impl AgentManager {
                                     .map_err(|_| AgentError::ContentParseFailed)?;
 
                                 // TODO: this needs to be improved depending on job_step
-                                if !job_message.files_inbox.is_empty() {
-                                    let files_map =
-                                        self.get_message_multifiles(job_message.files_inbox.clone()).await?;
-                                    println!("process_job_message> files_map: {:?}", files_map);
-                                }
+                                // if !job_message.files_inbox.is_empty() {
+                                //     let files_map =
+                                //         self.get_message_multifiles(job_message.files_inbox.clone()).await?;
+                                //     println!("process_job_message> files_map: ...");
+                                // }
 
                                 self.process_job_step(message, job_message).await
                             }

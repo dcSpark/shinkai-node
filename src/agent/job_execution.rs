@@ -5,6 +5,8 @@ use crate::agent::job_manager::{AgentManager, JobManager};
 use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::resources::bert_cpp::BertCPPProcess;
+use crate::resources::file_parsing::FileParser;
 use crate::schemas::identity::Identity;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -18,6 +20,12 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
+use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
+use shinkai_vector_resources::data_tags::DataTag;
+use shinkai_vector_resources::document_resource::DocumentVectorResource;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::source::VRSource;
 use std::fmt;
 use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};
@@ -56,6 +64,40 @@ impl AgentManager {
 
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
+            // TODO(Nico): adding embeddings here to test. needs to be moved out
+            // - Go over the files
+            // - Check if they are parseable (for now just pdfs)
+            // - if they are parseable, then parse them and add them to the db
+
+            if !job_message.files_inbox.is_empty() {
+                let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
+                let sender_subidentity = match sender_subidentity_result {
+                    Ok(subidentity) => subidentity,
+                    Err(e) => return Err(AgentError::InvalidSubidentity(e)),
+                };
+                let profile_result = sender_subidentity.extract_profile();
+                let profile = match profile_result {
+                    Ok(profile) => profile,
+                    Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
+                };
+                let files_map = AgentManager::process_message_multifiles(
+                    self.db.clone(),
+                    job_message.files_inbox.clone(),
+                    profile,
+                )
+                .await?;
+                println!("process_job_message> files_map: ...");
+            }
+
+            // TODO(Nico): Notes from conversation with Rob
+            // create a job
+            // check box whether to save added documents to db permanantly
+            // user sends messages with files, files get vector resources generated automatically (if can be ingested)
+            // If not saving to db permanantly, then the vec resource is serialized and saved into the local job scope
+            // If are saving to db permanantly, then the vec resource is saved to db directly, and pointer is added to remote job scope
+            // User closes job after finishing, if not saving by default, ask user whether they want to save the document to the DB
+
+            // TODO(Nico): move this to a parallel thread that runs in the background
             let _ = self.analysis_phase(&**job, job_message.clone()).await?;
 
             // After analysis phase, we execute the resulting execution plan
@@ -132,7 +174,8 @@ impl AgentManager {
         .unwrap();
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
-        std::mem::drop(shinkai_db); // require to avoid deadlock
+        // there is no deadlock here because it goes out of scope right after
+        // std::mem::drop(shinkai_db); // require to avoid deadlock
 
         Ok(())
     }
@@ -180,5 +223,54 @@ impl AgentManager {
 
     pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
         unimplemented!()
+    }
+
+    // TODO(Nico): refactor so it's decomposed
+    pub async fn process_message_multifiles(
+        db: Arc<Mutex<ShinkaiDB>>,
+        files_inbox: String,
+        profile: ShinkaiName,
+    ) -> Result<HashMap<String, Vec<u8>>, AgentError> {
+        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        let mut shinkai_db = db.lock().await;
+        let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
+
+        // Check if there was an error getting the files
+        let files = match files_result {
+            Ok(files) => files,
+            Err(e) => return Err(AgentError::ShinkaiDB(e)),
+        };
+
+        // Convert the Vec<(String, Vec<u8>)> to a HashMap<String, Vec<u8>>
+        let mut files_map: HashMap<String, Vec<u8>> = HashMap::new();
+
+        // Create the RemoteEmbeddingGenerator instance
+        let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
+
+        for (filename, content) in files.into_iter() {
+            if filename.ends_with(".pdf") {
+                eprintln!("Processing PDF file: {}", filename);
+                // Generate embeddings for PDF files
+                let desc = "An initial introduction to the Shinkai Network.";
+                let doc = FileParser::parse_pdf(
+                    &content,
+                    100,
+                    &*generator,
+                    &filename,
+                    Some(desc),
+                    VRSource::None, // TODO: how can we get the source?
+                    &vec![], // TODO: should this be computed using RAKE?
+                )?;
+
+                let resource = BaseVectorResource::from(doc.clone());
+                eprintln!("resource: {:?}", resource);
+                eprintln!("profile: {:?}", profile);
+                shinkai_db.init_profile_resource_router(&profile)?;
+                shinkai_db.save_resource(resource, &profile).unwrap();
+            }
+            files_map.insert(filename, content);
+        }
+
+        Ok(files_map)
     }
 }
