@@ -10,9 +10,9 @@ import {
   extractReceiverShinkaiName,
   isJobInbox,
 } from "@shinkai_network/shinkai-message-ts/utils";
-import Placeholder from "@tiptap/extension-placeholder";
+import { Placeholder } from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { StarterKit } from "@tiptap/starter-kit";
 import MarkdownPreview from "@uiw/react-markdown-preview";
 import { Loader } from "lucide-react";
 import { Markdown } from "tiptap-markdown";
