@@ -34,7 +34,7 @@ function useLocalStorage<T>(
       return defaultValue;
     }
 
-    return typeof saved === "undefined" ? defaultValue : JSON.parse(saved);
+    return saved === undefined ? defaultValue : JSON.parse(saved);
   });
 
   React.useEffect(() => {

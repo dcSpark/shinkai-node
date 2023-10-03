@@ -1,4 +1,5 @@
 import { getAllInboxesForProfile } from "@shinkai_network/shinkai-message-ts/api";
+
 import type { GetInboxesInput } from "./types";
 
 export const getInboxes = async ({

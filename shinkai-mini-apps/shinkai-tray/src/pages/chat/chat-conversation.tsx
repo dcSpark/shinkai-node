@@ -1,7 +1,28 @@
+import { Fragment, useCallback, useEffect, useRef } from "react";
+import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
-import { useAuth } from "../../store/auth-context";
-import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
+
+import { zodResolver } from "@hookform/resolvers/zod";
 import { DotsVerticalIcon, PaperPlaneIcon } from "@radix-ui/react-icons";
+import {
+  calculateMessageHash,
+  extractJobIdFromInbox,
+  extractReceiverShinkaiName,
+  isJobInbox,
+} from "@shinkai_network/shinkai-message-ts/utils";
+import Placeholder from "@tiptap/extension-placeholder";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Loader } from "lucide-react";
+import { Markdown } from "tiptap-markdown";
+import { z } from "zod";
+
+import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
+// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
+import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
+import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
 import {
   Form,
@@ -11,28 +32,9 @@ import {
   FormItem,
   FormLabel,
 } from "../../components/ui/form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
-import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
-import {
-  calculateMessageHash,
-  extractJobIdFromInbox,
-  extractReceiverShinkaiName,
-  isJobInbox,
-} from "@shinkai_network/shinkai-message-ts/utils";
-import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-import { Fragment, useCallback, useEffect, useRef } from "react";
 import { ScrollArea } from "../../components/ui/scroll-area";
-import { Loader } from "lucide-react";
-import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
 import { Skeleton } from "../../components/ui/skeleton";
-import { EditorContent, useEditor } from "@tiptap/react";
-import Placeholder from "@tiptap/extension-placeholder";
-import StarterKit from "@tiptap/starter-kit";
-import { Markdown } from "tiptap-markdown";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { useAuth } from "../../store/auth-context";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -56,7 +58,7 @@ const ChatConversation = () => {
   const { inboxId: encodedInboxId = "" } = useParams();
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const prevChatHeightRef = useRef<number>(0);
+  const previousChatHeightRef = useRef<number>(0);
   const fromPreviousMessagesRef = useRef<boolean>(false);
 
   const inboxId = decodeURIComponent(encodedInboxId);
@@ -140,12 +142,12 @@ const ChatConversation = () => {
     const chatContainerElement = chatContainerRef.current;
     if (!chatContainerElement) return;
     const currentHeight = chatContainerElement.scrollHeight;
-    const prevHeight = prevChatHeightRef.current;
+    const previousHeight = previousChatHeightRef.current;
 
     if (chatContainerElement.scrollTop < 100 && hasPreviousPage) {
       await fetchPreviousMessages();
-      prevChatHeightRef.current = currentHeight;
-      chatContainerElement.scrollTop = currentHeight - prevHeight;
+      previousChatHeightRef.current = currentHeight;
+      chatContainerElement.scrollTop = currentHeight - previousHeight;
     }
   }, [fetchPreviousMessages, hasPreviousPage]);
 
@@ -173,14 +175,14 @@ const ChatConversation = () => {
       <div className="px-4 mb-3 shrink-0 flex items-center gap-2">
         <Avatar className="w-7 h-7">
           <AvatarImage
-            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
             alt="Shinkai AI"
             className="w-7 h-7"
+            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
           />
           <AvatarFallback className="w-7 h-7" />
         </Avatar>
         <span className="text-sm flex-1 text-left">{inboxId}</span>
-        <Button variant="ghost" size="icon">
+        <Button size="icon" variant="ghost">
           <span className="sr-only">Settings</span>
           <DotsVerticalIcon className="w-4 h-4" />
         </Button>
@@ -197,12 +199,12 @@ const ChatConversation = () => {
         )}
         <div className="space-y-5">
           {isChatConversationLoading &&
-            [1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="w-full h-10 rounded-lg" />
+            [1, 2, 3, 4].map((index) => (
+              <Skeleton className="w-full h-10 rounded-lg" key={index} />
             ))}
           {isChatConversationSuccess &&
-            data?.pages.map((group, i) => (
-              <Fragment key={i}>
+            data?.pages.map((group, index) => (
+              <Fragment key={index}>
                 {group.map((message) => {
                   // const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
                   // let isLocalMessage = false;
@@ -213,8 +215,8 @@ const ChatConversation = () => {
                   // }
                   return (
                     <div
-                      key={message.external_metadata?.scheduled_time}
                       className="rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
+                      key={message.external_metadata?.scheduled_time}
                     >
                       {/* <p
                         className={cn(
@@ -227,12 +229,12 @@ const ChatConversation = () => {
                           : getMessageFromChat(message)}
                       </p> */}
                       <MarkdownPreview
-                        className="bg-transparent text-foreground text-sm"
                         source={
                           isJobInbox(inboxId)
                             ? getMessageFromJob(message)
                             : getMessageFromChat(message)
                         }
+                        className="bg-transparent text-foreground text-sm"
                       />
                       {/* <p className="text-xs">
                         <span className="text-muted-foreground">Sent at </span>
@@ -256,8 +258,6 @@ const ChatConversation = () => {
 
           <Form {...chatForm}>
             <FormField
-              control={chatForm.control}
-              name="message"
               render={({ field }) => (
                 <FormItem className="space-y-0 flex-1">
                   <FormLabel className="sr-only">Enter message</FormLabel>
@@ -265,8 +265,8 @@ const ChatConversation = () => {
                     <MessageEditor
                       disabled={isLoading}
                       onChange={field.onChange}
-                      value={field.value}
                       onSubmit={chatForm.handleSubmit(onSubmit)}
+                      value={field.value}
                     />
                   </FormControl>
                   <FormDescription className="text-xs pt-1">
@@ -274,12 +274,14 @@ const ChatConversation = () => {
                   </FormDescription>
                 </FormItem>
               )}
+              control={chatForm.control}
+              name="message"
             />
 
             <Button
-              onClick={chatForm.handleSubmit(onSubmit)}
-              isLoading={isLoading}
               disabled={isLoading}
+              isLoading={isLoading}
+              onClick={chatForm.handleSubmit(onSubmit)}
               size="icon"
             >
               <PaperPlaneIcon />

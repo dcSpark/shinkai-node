@@ -1,10 +1,12 @@
 import { Link, Outlet, useMatch, useResolvedPath } from "react-router-dom";
-import { Separator } from "../../components/ui/separator";
+
 import { MessageCircleIcon } from "lucide-react";
-import { useAuth } from "../../store/auth-context";
+
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
-import { cn } from "../../lib/utils";
 import { ScrollArea } from "../../components/ui/scroll-area";
+import { Separator } from "../../components/ui/separator";
+import { cn } from "../../lib/utils";
+import { useAuth } from "../../store/auth-context";
 
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   const resolved = useResolvedPath(to);
@@ -12,12 +14,12 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
 
   return (
     <Link
-      key={inboxId}
-      to={to}
       className={cn(
         "text-muted-foreground flex w-full items-center gap-2 px-2 py-2 hover:bg-slate-800 rounded-lg",
         match && "bg-slate-800 text-foreground"
       )}
+      key={inboxId}
+      to={to}
     >
       <MessageCircleIcon className="shrink-0 w-4 h-4" />
       <span className="text-left text-xs line-clamp-1">
@@ -52,8 +54,8 @@ const ChatLayout = () => {
               <div className="space-y-2">
                 {inboxIds.map((inboxId) => (
                   <MessageButton
-                    key={inboxId}
                     inboxId={inboxId}
+                    key={inboxId}
                     to={`/inboxes/${inboxId}`}
                   />
                 ))}

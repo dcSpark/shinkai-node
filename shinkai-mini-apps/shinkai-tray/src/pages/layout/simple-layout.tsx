@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
-import { HOME_PATH } from "../../routes/name";
+
 import { LucideArrowLeft } from "lucide-react";
+
+import { HOME_PATH } from "../../routes/name";
 
 const SimpleLayout = ({
   title,

@@ -1,6 +1,4 @@
 import * as React from "react";
-import * as LabelPrimitive from "@radix-ui/react-label";
-import { Slot } from "@radix-ui/react-slot";
 import {
   Controller,
   ControllerProps,
@@ -9,6 +7,9 @@ import {
   FormProvider,
   useFormContext,
 } from "react-hook-form";
+
+import * as LabelPrimitive from "@radix-ui/react-label";
+import { Slot } from "@radix-ui/react-slot";
 
 import { cn } from "../../lib/utils";
 import { Label } from "./label";
@@ -76,7 +77,7 @@ const FormItem = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
 
     return (
       <FormItemContext.Provider value={{ id }}>
-        <div ref={ref} className={cn("space-y-2", className)} {...props} />
+        <div className={cn("space-y-2", className)} ref={ref} {...props} />
       </FormItemContext.Provider>
     );
   }
@@ -91,9 +92,9 @@ const FormLabel = React.forwardRef<
 
   return (
     <Label
-      ref={ref}
       className={cn(error && "text-red-500 dark:text-red-900", className)}
       htmlFor={formItemId}
+      ref={ref}
       {...props}
     />
   );
@@ -108,12 +109,12 @@ const FormControl = React.forwardRef<
 
   return (
     <Slot
-      ref={ref}
-      id={formItemId}
       aria-describedby={
-        !error ? `${formDescriptionId}` : `${formDescriptionId} ${formMessageId}`
+        error ? `${formDescriptionId} ${formMessageId}` : `${formDescriptionId}`
       }
       aria-invalid={!!error}
+      id={formItemId}
+      ref={ref}
       {...props}
     />
   );
@@ -128,9 +129,9 @@ const FormDescription = React.forwardRef<
 
   return (
     <p
-      ref={ref}
-      id={formDescriptionId}
       className={cn("text-[0.8rem] text-gray-500 dark:text-gray-400", className)}
+      id={formDescriptionId}
+      ref={ref}
       {...props}
     />
   );
@@ -150,12 +151,12 @@ const FormMessage = React.forwardRef<
 
   return (
     <p
-      ref={ref}
-      id={formMessageId}
       className={cn(
         "text-[0.8rem] font-medium text-red-500 dark:text-red-900",
         className
       )}
+      id={formMessageId}
+      ref={ref}
       {...props}
     >
       {body}
