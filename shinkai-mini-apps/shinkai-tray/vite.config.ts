@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import wasm from 'vite-plugin-wasm';
+import wasm from "vite-plugin-wasm";
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
@@ -9,9 +9,9 @@ export default defineConfig(() => ({
   esbuild: {
     // Important for wasm plugin
     supported: {
-      'top-level-await': true,
-      'bigint': true,
-    }
+      "top-level-await": true,
+      bigint: true,
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
@@ -24,7 +24,7 @@ export default defineConfig(() => ({
     strictPort: true,
     watch: {
       // Exclude output.wav from being watched
-      ignored: ['**/output.wav']
+      ignored: ["**/output.wav"],
     },
   },
   // 3. to make use of `TAURI_DEBUG` and other env variables

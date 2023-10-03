@@ -15,7 +15,7 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   return (
     <Link
       className={cn(
-        "text-muted-foreground flex w-full items-center gap-2 px-2 py-2 hover:bg-slate-800 rounded-lg",
+        "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-muted-foreground hover:bg-slate-800",
         match && "bg-slate-800 text-foreground"
       )}
       key={inboxId}

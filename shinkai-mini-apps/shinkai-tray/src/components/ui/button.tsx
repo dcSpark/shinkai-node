@@ -12,7 +12,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary-600 hover:bg-primary-700 text-white shadow dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-50/90",
+          "bg-primary-600 text-white shadow hover:bg-primary-700 dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-50/90",
         destructive:
           "bg-red-500 text-gray-50 shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-gray-50 dark:hover:bg-red-900/90",
         outline:
@@ -54,7 +54,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading ? (
-          <Loader className={cn("w-4 h-4 animate-spin", size !== "icon" && "mr-2")} />
+          <Loader className={cn("h-4 w-4 animate-spin", size !== "icon" && "mr-2")} />
         ) : null}
         {isLoading && size === "icon" ? null : props.children}
       </Comp>

@@ -239,11 +239,11 @@ const ChatConversation = () => {
                       {/* <p className="text-xs">
                         <span className="text-muted-foreground">Sent at </span>
                         <span className=" text-gray-600">
-                          {new Date(
-                            message?.external_metadata?.scheduled_time ?? ""
+                        {new Date(
+                          message?.external_metadata?.scheduled_time ?? ""
                           ).toLocaleString()}
-                        </span>
-                      </p> */}
+                          </span>
+                        </p> */}
                     </div>
                   );
                 })}
