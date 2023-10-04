@@ -69,6 +69,7 @@ impl VectorResourceRouter {
                 score: 0.0,
                 resource_pointer: map_resource_pointer.clone(),
                 retrieval_depth: 0,
+                retrieval_path: "/".to_string(),
             };
 
             let pointers = self.ret_data_chunks_to_pointers(&vec![retrieved_data_chunk]);

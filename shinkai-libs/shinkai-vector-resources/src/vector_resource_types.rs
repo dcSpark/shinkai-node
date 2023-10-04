@@ -25,9 +25,27 @@ pub struct RetrievedDataChunk {
     pub score: f32,
     pub resource_pointer: VectorResourcePointer,
     pub retrieval_depth: u64,
+    pub retrieval_path: String,
 }
 
 impl RetrievedDataChunk {
+    /// Create a new RetrievedDataChunk
+    pub fn new(
+        chunk: DataChunk,
+        score: f32,
+        resource_pointer: VectorResourcePointer,
+        retrieval_depth: u64,
+        retrieval_path: String,
+    ) -> Self {
+        Self {
+            chunk,
+            score,
+            resource_pointer,
+            retrieval_depth,
+            retrieval_path,
+        }
+    }
+
     /// Sorts the list of RetrievedDataChunks based on their scores.
     /// Uses a binary heap for efficiency, returns num_results of highest scored.
     pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {

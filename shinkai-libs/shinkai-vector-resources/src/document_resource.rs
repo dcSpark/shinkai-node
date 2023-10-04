@@ -186,6 +186,7 @@ impl DocumentVectorResource {
                     score: 0.00,
                     resource_pointer: self.get_resource_pointer(),
                     retrieval_depth: 0,
+                    retrieval_path: "/".to_string(),
                 });
             }
         }
@@ -210,6 +211,7 @@ impl DocumentVectorResource {
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
                         retrieval_depth: 0,
+                        retrieval_path: "/".to_string(),
                     }),
                 _ => (),
             }
