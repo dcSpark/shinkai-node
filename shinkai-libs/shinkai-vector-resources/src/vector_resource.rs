@@ -145,22 +145,41 @@ pub trait VectorResource {
 
     /// Performs a vector search that returns the most similar data chunks based on the query.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
-        self.vector_search_with_traversal(query, num_of_results, &TraversalMethod::Exhaustive)
+        self.vector_search_with_options(query, num_of_results, &TraversalMethod::HierarchicalAverage, None)
     }
 
     /// Performs a vector search that returns the most similar data chunks based on the query.
     /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
-    fn vector_search_with_traversal(
+    /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
+    /// held internally at a specific path.
+    fn vector_search_with_options(
         &self,
         query: Embedding,
         num_of_results: u64,
         traversal: &TraversalMethod,
+        starting_path: Option<VRPath>,
     ) -> Vec<RetrievedDataChunk> {
-        self._vector_search_with_traversal_core(query, num_of_results, traversal, vec![], VRPath::new())
+        if let Some(path) = starting_path {
+            match self.get_data_chunk_with_path(path.clone()) {
+                Ok(chunk) => {
+                    if let DataContent::Resource(resource) = chunk.data {
+                        return resource.as_trait_object()._vector_search_with_options_core(
+                            query,
+                            num_of_results,
+                            traversal,
+                            vec![],
+                            path,
+                        );
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+        self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new())
     }
 
     /// Internal method which is used to keep track of traversal info
-    fn _vector_search_with_traversal_core(
+    fn _vector_search_with_options_core(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -168,15 +187,13 @@ pub trait VectorResource {
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
-        // If exhaustive traversal, then return all
-        let num_of_results = if traversal == &TraversalMethod::Exhaustive {
-            (&self.chunk_embeddings()).len() as u64
-        } else {
-            num_of_results
-        };
-
-        // Fetch the ordered scores from the abstracted function
-        let scores = query.score_similarities(&self.chunk_embeddings(), num_of_results);
+        // If exhaustive traversal, then score/return all
+        let mut score_num_of_results = num_of_results;
+        if traversal == &TraversalMethod::Exhaustive || traversal == &TraversalMethod::HierarchicalAverage {
+            score_num_of_results = (&self.chunk_embeddings()).len() as u64;
+        }
+        // Score the embeddings and return only score_num_of_results most similar
+        let scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
 
         self._order_vector_search_results(
             scores,
@@ -196,19 +213,45 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedDataChunk> {
-        self.syntactic_vector_search_with_traversal(query, num_of_results, data_tag_names, &TraversalMethod::Exhaustive)
+        self.syntactic_vector_search_with_options(
+            query,
+            num_of_results,
+            data_tag_names,
+            &TraversalMethod::HierarchicalAverage,
+            None,
+        )
     }
 
     /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
     /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
-    fn syntactic_vector_search_with_traversal(
+    /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
+    /// held internally at a specific path.
+    fn syntactic_vector_search_with_options(
         &self,
         query: Embedding,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
+        starting_path: Option<VRPath>,
     ) -> Vec<RetrievedDataChunk> {
-        self._syntactic_vector_search_with_traversal_core(
+        if let Some(path) = starting_path {
+            match self.get_data_chunk_with_path(path.clone()) {
+                Ok(chunk) => {
+                    if let DataContent::Resource(resource) = chunk.data {
+                        return resource.as_trait_object()._syntactic_vector_search_with_options_core(
+                            query,
+                            num_of_results,
+                            data_tag_names,
+                            traversal,
+                            vec![],
+                            path,
+                        );
+                    }
+                }
+                Err(_) => {}
+            }
+        }
+        self._syntactic_vector_search_with_options_core(
             query,
             num_of_results,
             data_tag_names,
@@ -219,7 +262,7 @@ pub trait VectorResource {
     }
 
     /// Internal method which is used to keep track of traversal info
-    fn _syntactic_vector_search_with_traversal_core(
+    fn _syntactic_vector_search_with_options_core(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -237,14 +280,13 @@ pub trait VectorResource {
             }
         }
 
-        // If exhaustive traversal, then return all
-        let num_of_results = if traversal == &TraversalMethod::Exhaustive {
-            matching_data_tag_embeddings.len() as u64
-        } else {
-            num_of_results
-        };
-        // Score the embeddings and return only num_of_results most similar
-        let scores = query.score_similarities(&matching_data_tag_embeddings, num_of_results);
+        // If exhaustive traversal, then score/return all
+        let mut score_num_of_results = num_of_results;
+        if traversal == &TraversalMethod::Exhaustive || traversal == &TraversalMethod::HierarchicalAverage {
+            score_num_of_results = matching_data_tag_embeddings.len() as u64;
+        }
+        // Score the embeddings and return only score_num_of_results most similar
+        let scores = query.score_similarities(&matching_data_tag_embeddings, score_num_of_results);
 
         self._order_vector_search_results(
             scores,
@@ -340,7 +382,7 @@ pub trait VectorResource {
             DataContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
-                    resource.as_trait_object()._vector_search_with_traversal_core(
+                    resource.as_trait_object()._vector_search_with_options_core(
                         query.clone(),
                         num_of_results,
                         traversal,
@@ -348,7 +390,7 @@ pub trait VectorResource {
                         new_traversal_path,
                     )
                 } else {
-                    resource.as_trait_object()._syntactic_vector_search_with_traversal_core(
+                    resource.as_trait_object()._syntactic_vector_search_with_options_core(
                         query.clone(),
                         num_of_results,
                         data_tag_names,
