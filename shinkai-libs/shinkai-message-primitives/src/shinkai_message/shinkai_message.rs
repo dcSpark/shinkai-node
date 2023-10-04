@@ -31,6 +31,7 @@ pub struct ExternalMetadata {
     pub recipient: String,
     pub scheduled_time: String,
     pub signature: String,
+    pub intra_sender: String,
     pub other: String,
 }
 

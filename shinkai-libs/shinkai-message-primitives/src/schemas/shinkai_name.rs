@@ -221,6 +221,11 @@ impl ShinkaiName {
         Self::new(full_identity_name)
     }
 
+    pub fn from_shinkai_message_using_sender_and_intra_sender(message: &ShinkaiMessage) -> Result<Self, &'static str> {
+        let name = format!("{}/{}", message.external_metadata.sender.clone(), message.external_metadata.intra_sender.clone());
+        Self::new(name)
+    }
+
     pub fn from_shinkai_message_only_using_sender_node_name(message: &ShinkaiMessage) -> Result<Self, &'static str> {
         Self::new(message.external_metadata.sender.clone())
     }

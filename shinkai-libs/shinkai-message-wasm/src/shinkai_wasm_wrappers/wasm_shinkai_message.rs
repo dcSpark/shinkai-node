@@ -76,6 +76,7 @@ pub trait ExternalMetadataMethods {
         scheduled_time: String,
         signature: String,
         other: String,
+        intra_sender: String,
     ) -> Self
     where
         Self: Sized;
@@ -83,13 +84,14 @@ pub trait ExternalMetadataMethods {
 
 
 impl ExternalMetadataMethods for ExternalMetadata {
-    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String) -> Self {
+    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String, intra_sender: String) -> Self {
         ExternalMetadata {
             sender,
             recipient,
             scheduled_time,
             signature,
             other,
+            intra_sender
         }
     }
 }

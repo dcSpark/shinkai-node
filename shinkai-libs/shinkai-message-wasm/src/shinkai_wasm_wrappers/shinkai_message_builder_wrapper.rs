@@ -214,6 +214,19 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
+    pub fn external_metadata_with_intra(&mut self, recipient: String, sender: String, intra_sender: String) -> Result<(), JsValue> {
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner.external_metadata_with_intra_sender(recipient, sender, intra_sender);
+            self.inner = Some(inner);
+            Ok(())
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
     pub fn external_metadata_with_other(
         &mut self,
         recipient: String,
@@ -222,6 +235,25 @@ impl ShinkaiMessageBuilderWrapper {
     ) -> Result<(), JsValue> {
         if let Some(mut inner) = self.inner.take() {
             inner = inner.external_metadata_with_other(recipient, sender, other);
+            self.inner = Some(inner);
+            Ok(())
+        } else {
+            Err(JsValue::from_str(
+                "Inner ShinkaiMessageBuilder is None. This should never happen.",
+            ))
+        }
+    }
+
+    #[wasm_bindgen]
+    pub fn external_metadata_with_other_and_intra_sender(
+        &mut self,
+        recipient: String,
+        sender: String,
+        other: String,
+        intra_sender: String
+    ) -> Result<(), JsValue> {
+        if let Some(mut inner) = self.inner.take() {
+            inner = inner.external_metadata_with_other_and_intra_sender(recipient, sender, other, intra_sender);
             self.inner = Some(inner);
             Ok(())
         } else {
@@ -326,6 +358,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
         let mut builder =
@@ -334,7 +367,7 @@ impl ShinkaiMessageBuilderWrapper {
         let _ = builder.message_raw_content("ACK".to_string());
         let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+        let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
         builder.build_to_string()
     }
 
@@ -723,7 +756,7 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(data);
         let _ = builder.body_encryption(body_encryption);
-        let _ = builder.external_metadata_with_other(recipient, sender, other.to_string());
+        let _ = builder.external_metadata_with_other_and_intra_sender(recipient, sender, other.to_string(), sender_subidentity.clone());
         let _ = builder.internal_metadata_with_schema(
             sender_subidentity,
             recipient_subidentity,
@@ -765,6 +798,7 @@ impl ShinkaiMessageBuilderWrapper {
         receiver_public_key: String,
         scope: JsValue,
         sender: ProfileName,
+        sender_subidentity: String,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -778,14 +812,14 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(body);
         let _ = builder.internal_metadata_with_schema(
-            "".to_string(),
+            sender_subidentity.clone().to_string(),
             receiver_subidentity.clone(),
             "".to_string(),
             JsValue::from_str("JobCreationSchema"),
             JsValue::from_str("None"),
         );
         let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+        let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
 
         builder.build_to_string()
     }
@@ -799,6 +833,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
+        sender_subidentity: String,
         receiver: ProfileName,
         receiver_subidentity: String,
     ) -> Result<String, JsValue> {
@@ -820,14 +855,14 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(body);
         let _ = builder.internal_metadata_with_schema(
-            "".to_string(),
+            sender_subidentity.clone().to_string(),
             receiver_subidentity.clone(),
             inbox,
             JsValue::from_str("JobMessageSchema"),
             JsValue::from_str("None"),
         );
         let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+        let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
 
         builder.build_to_string()
     }
@@ -838,6 +873,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
+        sender_subidentity: String,
         receiver: ProfileName,
     ) -> Result<String, JsValue> {
         let mut builder =
@@ -846,7 +882,7 @@ impl ShinkaiMessageBuilderWrapper {
         let _ = builder.message_raw_content("terminate".to_string());
         let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+        let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
 
         builder.build_to_string()
     }
@@ -857,6 +893,7 @@ impl ShinkaiMessageBuilderWrapper {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: ProfileName,
+        sender_subidentity: String,
         receiver: ProfileName,
         error_msg: String,
     ) -> Result<String, JsValue> {
@@ -865,8 +902,8 @@ impl ShinkaiMessageBuilderWrapper {
 
         let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg))?;
         let _ = builder.empty_encrypted_internal_metadata();
-        let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+        let _ = builder.body_encryption(JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str()));
+        let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
         builder.build_to_string()
     }
 }
