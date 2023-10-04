@@ -21,12 +21,12 @@ import {
   ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "../../routes/name";
-import { useAuth } from "../../store/auth-context";
+import { useAuth } from "../../store/auth";
 
 export function Footer() {
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
-  const { setSetupData } = useAuth();
+  const logout = useAuth((state) => state.setLogout);
 
   React.useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -62,7 +62,7 @@ export function Footer() {
     setOpen(false);
   };
   const handleLogout = () => {
-    setSetupData(null);
+    logout();
     navigate(ONBOARDING_PATH);
   };
 

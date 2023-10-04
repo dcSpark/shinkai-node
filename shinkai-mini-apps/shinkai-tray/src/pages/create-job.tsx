@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { useAuth } from "../store/auth-context";
+import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
 
 const createJobSchema = z.object({
@@ -32,18 +32,18 @@ const createJobSchema = z.object({
 });
 
 const CreateJobPage = () => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
 
   const { agents } = useAgents({
-    sender: setupData?.shinkai_identity ?? "",
-    senderSubidentity: `${setupData?.profile}`,
-    shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    my_device_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.profile_identity_sk ?? "",
-    node_encryption_pk: setupData?.node_encryption_pk ?? "",
-    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    profile_identity_sk: setupData?.profile_identity_sk ?? "",
+    sender: auth?.shinkai_identity ?? "",
+    senderSubidentity: `${auth?.profile}`,
+    shinkaiIdentity: auth?.shinkai_identity ?? "",
+    my_device_encryption_sk: auth?.profile_encryption_sk ?? "",
+    my_device_identity_sk: auth?.profile_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
+    profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+    profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
   const { isLoading, mutateAsync: createJob } = useCreateJob({
@@ -58,18 +58,18 @@ const CreateJobPage = () => {
   });
 
   const onSubmit = async (data: z.infer<typeof createJobSchema>) => {
-    if (!setupData) return;
+    if (!auth) return;
     createJob({
-      shinkaiIdentity: setupData.shinkai_identity,
-      profile: setupData.profile,
+      shinkaiIdentity: auth.shinkai_identity,
+      profile: auth.profile,
       agentId: data.model,
       content: data.description,
       files_inbox: "",
-      my_device_encryption_sk: setupData.my_device_encryption_sk,
-      my_device_identity_sk: setupData.my_device_identity_sk,
-      node_encryption_pk: setupData.node_encryption_pk,
-      profile_encryption_sk: setupData.profile_encryption_sk,
-      profile_identity_sk: setupData.profile_identity_sk,
+      my_device_encryption_sk: auth.my_device_encryption_sk,
+      my_device_identity_sk: auth.my_device_identity_sk,
+      node_encryption_pk: auth.node_encryption_pk,
+      profile_encryption_sk: auth.profile_encryption_sk,
+      profile_identity_sk: auth.profile_identity_sk,
     });
   };
   return (

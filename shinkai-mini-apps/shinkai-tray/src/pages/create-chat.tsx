@@ -16,7 +16,7 @@ import {
 } from "../components/ui/form";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
-import { useAuth } from "../store/auth-context";
+import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
 
 const createChatSchema = z.object({
@@ -25,7 +25,7 @@ const createChatSchema = z.object({
 });
 
 const CreateChatPage = () => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
 
   const { isLoading, mutateAsync: createChat } = useCreateChat({
@@ -41,18 +41,18 @@ const CreateChatPage = () => {
   });
 
   const onSubmit = async (data: z.infer<typeof createChatSchema>) => {
-    if (!setupData) return;
+    if (!auth) return;
     const [receiver, ...rest] = data.receiver.split("/");
 
     createChat({
-      sender: setupData.shinkai_identity,
-      senderSubidentity: `${setupData.profile}/device/${setupData.registration_name}`,
+      sender: auth.shinkai_identity,
+      senderSubidentity: `${auth.profile}/device/${auth.registration_name}`,
       receiver,
       receiverSubidentity: rest.join("/"),
       message: data.message,
-      my_device_encryption_sk: setupData.my_device_encryption_sk,
-      my_device_identity_sk: setupData.my_device_identity_sk,
-      node_encryption_pk: setupData.node_encryption_pk,
+      my_device_encryption_sk: auth.my_device_encryption_sk,
+      my_device_identity_sk: auth.my_device_identity_sk,
+      node_encryption_pk: auth.node_encryption_pk,
     });
   };
   return (

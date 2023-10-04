@@ -50,7 +50,8 @@
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
     "tiptap-markdown": "^0.8.2",
-    "zod": "^3.22.2"
+    "zod": "^3.22.2",
+    "zustand": "^4.4.2"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.10",

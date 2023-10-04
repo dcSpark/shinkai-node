@@ -34,7 +34,7 @@ import {
 } from "../../components/ui/form";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
-import { useAuth } from "../../store/auth-context";
+import { useAuth } from "../../store/auth";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -56,7 +56,7 @@ const getMessageFromChat = (message: any) => {
 
 const ChatConversation = () => {
   const { inboxId: encodedInboxId = "" } = useParams();
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const previousChatHeightRef = useRef<number>(0);
   const fromPreviousMessagesRef = useRef<boolean>(false);
@@ -78,13 +78,13 @@ const ChatConversation = () => {
     isSuccess: isChatConversationSuccess,
   } = useGetChatConversationWithPagination({
     inboxId: inboxId as string,
-    shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    profile: setupData?.profile ?? "",
-    my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-    node_encryption_pk: setupData?.node_encryption_pk ?? "",
-    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    profile_identity_sk: setupData?.profile_identity_sk ?? "",
+    shinkaiIdentity: auth?.shinkai_identity ?? "",
+    profile: auth?.profile ?? "",
+    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
+    profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+    profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
   const { mutateAsync: sendMessageToInbox, isLoading: isSendingMessageToInbox } =
@@ -93,36 +93,36 @@ const ChatConversation = () => {
     useSendMessageToJob();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
-    if (!setupData) return;
+    if (!auth) return;
     fromPreviousMessagesRef.current = false;
     if (isJobInbox(inboxId)) {
-      const sender = `${setupData.shinkai_identity}/${setupData.profile}`;
+      const sender = `${auth.shinkai_identity}/${auth.profile}`;
       const jobId = extractJobIdFromInbox(inboxId);
       await sendMessageToJob({
         jobId,
         message: data.message,
         sender,
         files_inbox: "",
-        shinkaiIdentity: setupData.shinkai_identity,
-        my_device_encryption_sk: setupData.my_device_encryption_sk,
-        my_device_identity_sk: setupData.my_device_identity_sk,
-        node_encryption_pk: setupData.node_encryption_pk,
-        profile_encryption_sk: setupData.profile_encryption_sk,
-        profile_identity_sk: setupData.profile_identity_sk,
+        shinkaiIdentity: auth.shinkai_identity,
+        my_device_encryption_sk: auth.my_device_encryption_sk,
+        my_device_identity_sk: auth.my_device_identity_sk,
+        node_encryption_pk: auth.node_encryption_pk,
+        profile_encryption_sk: auth.profile_encryption_sk,
+        profile_identity_sk: auth.profile_identity_sk,
       });
     } else {
-      const sender = `${setupData.shinkai_identity}/${setupData.profile}/device/${setupData.registration_name}`;
+      const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
       await sendMessageToInbox({
         sender,
         receiver,
         message: data.message,
         inboxId: inboxId as string,
-        my_device_encryption_sk: setupData.profile_encryption_sk,
-        my_device_identity_sk: setupData.profile_identity_sk,
-        node_encryption_pk: setupData.node_encryption_pk,
-        profile_encryption_sk: setupData.profile_encryption_sk,
-        profile_identity_sk: setupData.profile_identity_sk,
+        my_device_encryption_sk: auth.profile_encryption_sk,
+        my_device_identity_sk: auth.profile_identity_sk,
+        node_encryption_pk: auth.node_encryption_pk,
+        profile_encryption_sk: auth.profile_encryption_sk,
+        profile_identity_sk: auth.profile_identity_sk,
       });
     }
     chatForm.reset();
@@ -208,7 +208,7 @@ const ChatConversation = () => {
             data?.pages.map((group, index) => (
               <Fragment key={index}>
                 {group.map((message) => {
-                  // const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
+                  // const localIdentity = `${auth?.profile}/device/${auth?.registration_name}`;
                   // let isLocalMessage = false;
                   // if (message.body && "unencrypted" in message.body) {
                   //   isLocalMessage =
