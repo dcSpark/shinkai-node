@@ -145,6 +145,7 @@ pub struct VectorResourcePointer {
     pub resource_base_type: VectorResourceBaseType,
     pub data_tag_names: Vec<String>,
     pub resource_embedding: Option<Embedding>,
+    // pub metadata: HashMap<String, String>,
 }
 
 impl VectorResourcePointer {

@@ -36,7 +36,7 @@ impl VectorResourceRouter {
         "profile_resource_router".to_string()
     }
 
-    /// Returns a list of VectorResourcePointers of the most similar that
+    /// Returns a list of VectorResourcePointers of the most similar resources that
     /// have matching data tag names.
     pub fn syntactic_vector_search(
         &self,
@@ -50,10 +50,31 @@ impl VectorResourceRouter {
         self.ret_data_chunks_to_pointers(&chunks)
     }
 
-    /// Returns a list of VectorResourcePointers of the most similar.
+    /// Returns a list of VectorResourcePointers of the most similar resources.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<VectorResourcePointer> {
         let chunks = self.routing_resource.vector_search(query, num_of_results);
         self.ret_data_chunks_to_pointers(&chunks)
+    }
+
+    /// Returns all VectorResourcePointers in the Resource Router
+    pub fn get_all_resource_pointers(&self) -> Vec<VectorResourcePointer> {
+        let data_chunks = self.routing_resource.get_all_data_chunks();
+        let map_resource_pointer = self.routing_resource.get_resource_pointer();
+        let mut resource_pointers = vec![];
+
+        for chunk in data_chunks {
+            let retrieved_data_chunk = RetrievedDataChunk {
+                chunk: chunk.clone(),
+                score: 0.0,
+                resource_pointer: map_resource_pointer.clone(),
+                retrieval_depth: 0,
+            };
+
+            let pointers = self.ret_data_chunks_to_pointers(&vec![retrieved_data_chunk]);
+            resource_pointers.extend(pointers);
+        }
+
+        resource_pointers
     }
 
     /// Takes a list of RetrievedDataChunks and outputs a list of VectorResourcePointers

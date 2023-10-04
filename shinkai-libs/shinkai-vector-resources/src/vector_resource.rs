@@ -46,6 +46,7 @@ pub trait VectorResource {
     fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
     /// Retrieves a data chunk given its id.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
+    fn get_all_data_chunks(&self) -> Vec<DataChunk>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
