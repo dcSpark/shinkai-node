@@ -49,7 +49,6 @@ const formSchema = z.object({
 
 const OnboardingPage = () => {
   const navigate = useNavigate();
-  // const { setSetupData } = useAuth();
   const setAuth = useAuth((state) => state.setAuth);
   const setLogout = useAuth((state) => state.setLogout);
 
