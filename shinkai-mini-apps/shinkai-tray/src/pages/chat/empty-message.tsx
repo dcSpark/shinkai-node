@@ -16,6 +16,8 @@ const EmptyMessage = () => {
     my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
     my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
     node_encryption_pk: setupData?.node_encryption_pk ?? "",
+    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
+    profile_identity_sk: setupData?.profile_identity_sk ?? "",
   });
   return (
     <div className="flex w-full items-center justify-center p-6">

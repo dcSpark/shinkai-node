@@ -42,6 +42,8 @@ const ChatLayout = () => {
     // Assuming receiver and target_shinkai_name_profile are the same as sender
     receiver: setupData?.shinkai_identity ?? "",
     targetShinkaiNameProfile: `${setupData?.shinkai_identity}/${setupData?.profile}`,
+    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
+    profile_identity_sk: setupData?.profile_identity_sk ?? "",
   });
 
   return (

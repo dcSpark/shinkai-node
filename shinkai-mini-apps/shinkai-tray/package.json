@@ -27,7 +27,7 @@
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-switch": "^1.0.3",
     "@radix-ui/react-tooltip": "^1.0.6",
-    "@shinkai_network/shinkai-message-ts": "^0.0.5",
+    "@shinkai_network/shinkai-message-ts": "^0.0.6",
     "@tanstack/react-query": "^4.35.3",
     "@tauri-apps/api": "^1.4.0",
     "@tiptap/extension-placeholder": "^2.1.11",
