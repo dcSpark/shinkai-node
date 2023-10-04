@@ -261,14 +261,14 @@ impl VRPath {
     }
 
     /// Create a VRPath from a path string
-    pub fn from_path_ids_string(path_ids_string: &str) -> Self {
+    pub fn from_path_string(path_ids_string: &str) -> Self {
         let path_ids_string = path_ids_string.trim_start_matches('/').trim_end_matches('/');
         let elements: Vec<&str> = path_ids_string.split('/').collect();
-        let mut path_ids = Self::new();
+        let mut path = Self::new();
         for element in elements {
-            path_ids.push(element.to_string());
+            path.push(element.to_string());
         }
-        path_ids
+        path
     }
 
     /// Formats the VRPath to a string

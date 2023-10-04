@@ -153,7 +153,7 @@ impl DocumentVectorResource {
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
-        let search_results = self.vector_search_with_traversal(query, 1, &TraversalMethod::UntilDepth(0));
+        let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
         let most_similar_chunk = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk
