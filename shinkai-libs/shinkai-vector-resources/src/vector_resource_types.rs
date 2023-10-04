@@ -6,6 +6,7 @@ use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
 use std::collections::HashMap;
+use std::fmt;
 
 /// Contents of a DataChunk. Either the String data itself, or
 /// another VectorResource
@@ -67,6 +68,17 @@ impl RetrievedDataChunk {
             .collect();
 
         sorted_data
+    }
+
+    /// Formats the retrieval path to a string, adding a trailing `/`
+    /// to denote that the retrieval path are the Vector Resources
+    /// leading to this RetrievedDataChunk
+    pub fn format_path_to_string(&self) -> String {
+        let mut path_string = self.retrieval_path.format_to_string();
+        if let DataContent::Resource(_) = self.chunk.data {
+            path_string.push('/');
+        }
+        path_string
     }
 }
 
@@ -194,31 +206,44 @@ impl From<Box<dyn VectorResource>> for VectorResourcePointer {
     }
 }
 
-/// A path inside of a Vector Resource
+/// A path inside of a Vector Resource to an internal DataChunk.
+/// Internally it is made up of an ordered list of data chunk ids.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
-    path: Vec<String>,
+    pub path_ids: Vec<String>,
 }
 
 impl VRPath {
     /// Create a new VRPath
     pub fn new() -> Self {
-        Self { path: vec![] }
+        Self { path_ids: vec![] }
     }
 
-    /// Get the depth of the VRPath
+    /// Get the depth of the VRPath. Of note, this will return 0 in both cases if
+    /// the path is empty, or if it is in the root path (because depth starts at 0
+    /// for Vector Resources). This matches the TraversalMethod::UntilDepth interface.
     pub fn depth(&self) -> u64 {
-        self.path.len() as u64
+        if self.path_ids.is_empty() {
+            0
+        } else {
+            (self.path_ids.len() - 1) as u64
+        }
     }
 
-    /// Adds an element to the end of the path
+    /// Get the inclusive depth of the VRPath, meaning we include all parts of the path, including
+    /// the final id. (In practice, generally +1 compared to .depth())
+    pub fn depth_inclusive(&self) -> u64 {
+        self.path_ids.len() as u64
+    }
+
+    /// Adds an element to the end of the path_ids
     pub fn push(&mut self, element: String) {
-        self.path.push(element);
+        self.path_ids.push(element);
     }
 
-    /// Removes an element from the end of the path
+    /// Removes an element from the end of the path_ids
     pub fn pop(&mut self) -> Option<String> {
-        self.path.pop()
+        self.path_ids.pop()
     }
 
     /// Creates a cloned VRPath and adds an element to the end
@@ -236,18 +261,24 @@ impl VRPath {
     }
 
     /// Create a VRPath from a path string
-    pub fn from_path_string(path_string: &str) -> Self {
-        let path_string = path_string.trim_start_matches('/').trim_end_matches('/');
-        let elements: Vec<&str> = path_string.split('/').collect();
-        let mut path = Self::new();
+    pub fn from_path_ids_string(path_ids_string: &str) -> Self {
+        let path_ids_string = path_ids_string.trim_start_matches('/').trim_end_matches('/');
+        let elements: Vec<&str> = path_ids_string.split('/').collect();
+        let mut path_ids = Self::new();
         for element in elements {
-            path.push(element.to_string());
+            path_ids.push(element.to_string());
         }
-        path
+        path_ids
     }
 
     /// Formats the VRPath to a string
     pub fn format_to_string(&self) -> String {
-        format!("/{}", self.path.join("/"))
+        format!("/{}", self.path_ids.join("/"))
+    }
+}
+
+impl fmt::Display for VRPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.format_to_string())
     }
 }

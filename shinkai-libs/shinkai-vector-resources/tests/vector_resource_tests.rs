@@ -187,20 +187,28 @@ fn test_manual_resource_vector_search() {
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
     assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
+    // Perform a VRPath test to validate depth & path formatting
+    assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
+    assert_eq!(2, res[0].retrieval_path.depth());
 
     // Perform a vector search for data 1 level lower in the tech map resource
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
     assert_eq!(fact4, res[0].chunk.get_data_string().unwrap());
+    // Perform a VRPath test to validate depth & path formatting
+    assert_eq!("/3/some_key", res[0].format_path_to_string());
+    assert_eq!(1, res[0].retrieval_path.depth());
 
     // Perform a vector search on the fruit doc
     // for data on the base level
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding.clone(), 10);
-
     assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
+    // Perform a VRPath test to validate depth & path formatting
+    assert_eq!("/2", res[0].format_path_to_string());
+    assert_eq!(0, res[0].retrieval_path.depth());
 
     //
     // Traversal Tests
@@ -208,6 +216,7 @@ fn test_manual_resource_vector_search() {
     // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
     let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(0));
     assert_ne!(fact1, res[0].chunk.get_data_string().unwrap());
+    assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
     let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(1));
     assert_eq!(
@@ -222,6 +231,9 @@ fn test_manual_resource_vector_search() {
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     let res = fruit_doc.vector_search_with_traversal(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2));
     assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    // Perform a VRPath test to validate depth & path formatting
+    assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
+    assert_eq!(2, res[0].retrieval_path.depth());
 
     // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom

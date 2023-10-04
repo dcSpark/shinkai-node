@@ -44,7 +44,7 @@ pub trait VectorResource {
     fn chunk_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
     fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
-    /// Retrieves a data chunk given its id.
+    /// Retrieves a data chunk given its id, at the root level depth.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
     fn get_all_data_chunks(&self) -> Vec<DataChunk>;
     // Note we cannot add from_json in the trait due to trait object limitations
@@ -115,6 +115,32 @@ pub trait VectorResource {
     /// Validates whether the VectorResource has a valid BaseVectorResourceType by checking its .resource_base_type()
     fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
         VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
+    }
+
+    /// Retrieves a data chunk, no matter its depth, given its path.
+    /// If the path is invalid at any part, then method will error.
+    fn get_data_chunk_with_path(&self, path: VRPath) -> Result<DataChunk, VectorResourceError> {
+        if path.path_ids.is_empty() {
+            return Err(VectorResourceError::InvalidVRPath(path.clone()));
+        }
+
+        // Fetch the first data chunk directly, then iterate through the rest
+        let mut data_chunk = self.get_data_chunk(path.path_ids[0].clone())?;
+        for id in path.path_ids.iter().skip(1) {
+            match data_chunk.data {
+                DataContent::Resource(ref resource) => {
+                    data_chunk = resource.as_trait_object().get_data_chunk(id.clone())?;
+                }
+                DataContent::Data(_) => {
+                    if let Some(last) = path.path_ids.last() {
+                        if id != last {
+                            return Err(VectorResourceError::InvalidVRPath(path.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(data_chunk)
     }
 
     /// Performs a vector search that returns the most similar data chunks based on the query.
@@ -256,7 +282,7 @@ pub trait VectorResource {
                     // If traversal method is UntilDepth and we've reached the right level
                     // Don't recurse any deeper, just return current DataChunk with BaseVectorResource
                     if let TraversalMethod::UntilDepth(d) = traversal {
-                        if d == &traversal_path.depth() {
+                        if d == &traversal_path.depth_inclusive() {
                             let ret_chunk = RetrievedDataChunk {
                                 chunk: chunk.clone(),
                                 score,
@@ -307,11 +333,11 @@ pub trait VectorResource {
         let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
         let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+        // Create a new traversal path with the chunk id
+        let new_traversal_path = traversal_path.push_cloned(chunk.id.clone());
 
         match chunk.data {
             DataContent::Resource(resource) => {
-                // Create a new traversal path for when recursing deeper
-                let new_traversal_path = traversal_path.push_cloned(chunk.id);
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
                     resource.as_trait_object()._vector_search_with_traversal_core(
@@ -344,7 +370,7 @@ pub trait VectorResource {
                     chunk: chunk.clone(),
                     score,
                     resource_pointer: self.get_resource_pointer(),
-                    retrieval_path: traversal_path,
+                    retrieval_path: new_traversal_path,
                 });
             }
         }

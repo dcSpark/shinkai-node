@@ -2,6 +2,8 @@ use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
+use crate::vector_resource::VRPath;
+
 #[derive(Debug, PartialEq)]
 pub enum VectorResourceError {
     InvalidChunkId,
@@ -17,6 +19,7 @@ pub enum VectorResourceError {
     RequestFailed(String),
     NoEmbeddingProvided,
     DataIsNonMatchingType,
+    InvalidVRPath(VRPath),
 }
 
 impl fmt::Display for VectorResourceError {
@@ -42,6 +45,7 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::DataIsNonMatchingType => {
                 write!(f, "Data inside of the DataChunk is of a different type than requested.")
             }
+            VectorResourceError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
         }
     }
 }
