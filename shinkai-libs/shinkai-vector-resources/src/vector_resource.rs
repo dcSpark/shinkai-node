@@ -311,7 +311,7 @@ pub trait VectorResource {
         match chunk.data {
             DataContent::Resource(resource) => {
                 // Create a new traversal path for when recursing deeper
-                let new_traversal_path = traversal_path.push_cloned(resource.as_trait_object().reference_string());
+                let new_traversal_path = traversal_path.push_cloned(chunk.id);
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
                     resource.as_trait_object()._vector_search_with_traversal_core(
