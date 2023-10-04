@@ -355,7 +355,7 @@ impl ShinkaiMessageBuilder {
             };
 
             // if self.internal_metadata.encryption is not None
-            let mut new_message_data = if internal_metadata.encryption != encryption_method_none {
+            let new_message_data = if internal_metadata.encryption != encryption_method_none {
                 let encrypted_content = MessageData::encrypt_message_data(
                     &data,
                     &new_self.my_encryption_secret_key,
