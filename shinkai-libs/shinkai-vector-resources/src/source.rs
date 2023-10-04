@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+use crate::resource_errors::VectorResourceError;
+
 /// The source of a Vector Resource as either the file contents of the source file itself,
 /// or a pointer to the source file (either external such as URL, or a FileRef)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -40,6 +42,16 @@ impl VRSource {
     /// Creates a VRSource which represents no/unknown source.
     pub fn none() -> Self {
         VRSource::None
+    }
+
+    /// Serializes the VRSource to a JSON string
+    pub fn to_json(&self) -> Result<String, VectorResourceError> {
+        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    }
+
+    /// Deserializes a VRSource from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
     }
 }
 

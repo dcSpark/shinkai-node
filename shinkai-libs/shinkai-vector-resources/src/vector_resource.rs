@@ -108,6 +108,7 @@ pub trait VectorResource {
             self.resource_base_type(),
             Some(embedding),
             tag_names,
+            self.source(),
         )
     }
 
