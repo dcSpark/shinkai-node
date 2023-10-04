@@ -94,6 +94,11 @@ impl VectorResource for DocumentVectorResource {
         let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
         Ok(self.data_chunks[index].clone())
     }
+
+    /// Returns all data chunks in the MapVectorResource
+    fn get_all_data_chunks(&self) -> Vec<DataChunk> {
+        self.data_chunks.clone()
+    }
 }
 
 impl DocumentVectorResource {

@@ -1,12 +1,14 @@
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::{
-    base_vector_resources::BaseVectorResource, vector_resource_types::VectorResourcePointer, source::VRSource,
+    base_vector_resources::BaseVectorResource,
+    source::{SourceFile, VRSource},
+    vector_resource_types::VectorResourcePointer,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LocalScopeEntry {
     pub resource: BaseVectorResource,
-    pub source: VRSource,
+    pub source: SourceFile,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

@@ -133,7 +133,7 @@ impl ShinkaiTool {
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
         // We include `tool_type` to prevent attackers trying to overwrite
         // the internal Rust tools with JS tools that have the same name
-        format!("{}:{}", toolkit_name, name)
+        format!("{}:::{}", toolkit_name, name)
     }
 
     /// Convert to json

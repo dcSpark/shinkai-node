@@ -2,6 +2,7 @@ use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VectorResourceBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
+use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
 use std::collections::HashMap;
@@ -143,8 +144,10 @@ impl DataChunk {
 pub struct VectorResourcePointer {
     pub reference: String,
     pub resource_base_type: VectorResourceBaseType,
+    pub resource_source: VRSource,
     pub data_tag_names: Vec<String>,
     pub resource_embedding: Option<Embedding>,
+    // pub metadata: HashMap<String, String>,
 }
 
 impl VectorResourcePointer {
@@ -154,12 +157,23 @@ impl VectorResourcePointer {
         resource_base_type: VectorResourceBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
+        resource_source: VRSource,
     ) -> Self {
         Self {
             reference: reference.to_string(),
             resource_base_type,
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
+            resource_source,
+        }
+    }
+
+    /// Returns the name of the referenced resource, which is the part of the reference before the first ':'.
+    /// If no ':' is found, the whole reference is returned.
+    pub fn name(&self) -> String {
+        match self.reference.find(':') {
+            Some(index) => self.reference[..index].to_string(),
+            None => self.reference.clone(),
         }
     }
 }
