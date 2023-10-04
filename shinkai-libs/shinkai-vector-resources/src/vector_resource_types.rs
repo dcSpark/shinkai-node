@@ -24,24 +24,16 @@ pub struct RetrievedDataChunk {
     pub chunk: DataChunk,
     pub score: f32,
     pub resource_pointer: VectorResourcePointer,
-    pub retrieval_depth: u64,
     pub retrieval_path: VRPath,
 }
 
 impl RetrievedDataChunk {
     /// Create a new RetrievedDataChunk
-    pub fn new(
-        chunk: DataChunk,
-        score: f32,
-        resource_pointer: VectorResourcePointer,
-        retrieval_depth: u64,
-        retrieval_path: VRPath,
-    ) -> Self {
+    pub fn new(chunk: DataChunk, score: f32, resource_pointer: VectorResourcePointer, retrieval_path: VRPath) -> Self {
         Self {
             chunk,
             score,
             resource_pointer,
-            retrieval_depth,
             retrieval_path,
         }
     }
@@ -215,8 +207,8 @@ impl VRPath {
     }
 
     /// Get the depth of the VRPath
-    pub fn depth(&self) -> usize {
-        self.path.len()
+    pub fn depth(&self) -> u64 {
+        self.path.len() as u64
     }
 
     /// Adds an element to the end of the path

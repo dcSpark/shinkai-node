@@ -130,7 +130,7 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._vector_search_with_traversal_core(query, num_of_results, traversal, 0, vec![], VRPath::new())
+        self._vector_search_with_traversal_core(query, num_of_results, traversal, vec![], VRPath::new())
     }
 
     /// Internal method which is used to keep track of traversal info
@@ -139,7 +139,6 @@ pub trait VectorResource {
         query: Embedding,
         num_of_results: u64,
         traversal: &TraversalMethod,
-        depth: u64,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
@@ -159,7 +158,6 @@ pub trait VectorResource {
             num_of_results,
             &vec![],
             &traversal,
-            depth,
             hierarchical_scores,
             traversal_path,
         )
@@ -189,7 +187,6 @@ pub trait VectorResource {
             num_of_results,
             data_tag_names,
             traversal,
-            0,
             vec![],
             VRPath::new(),
         )
@@ -202,7 +199,6 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
-        depth: u64,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
@@ -230,7 +226,6 @@ pub trait VectorResource {
             num_of_results,
             data_tag_names,
             &traversal,
-            depth,
             hierarchical_scores,
             traversal_path,
         )
@@ -246,7 +241,6 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
-        depth: u64,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
@@ -262,12 +256,11 @@ pub trait VectorResource {
                     // If traversal method is UntilDepth and we've reached the right level
                     // Don't recurse any deeper, just return current DataChunk with BaseVectorResource
                     if let TraversalMethod::UntilDepth(d) = traversal {
-                        if d == &depth {
+                        if d == &traversal_path.depth() {
                             let ret_chunk = RetrievedDataChunk {
                                 chunk: chunk.clone(),
                                 score,
                                 resource_pointer: self.get_resource_pointer(),
-                                retrieval_depth: depth,
                                 retrieval_path: traversal_path.clone(),
                             };
                             current_level_results.push(ret_chunk);
@@ -283,7 +276,6 @@ pub trait VectorResource {
                     num_of_results,
                     data_tag_names,
                     traversal,
-                    depth,
                     hierarchical_scores.clone(),
                     traversal_path.clone(),
                 );
@@ -309,25 +301,23 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
-        depth: u64,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
         let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
         let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
-        // Create a new traversal path for when recursing deeper
-        let new_traversal_path = traversal_path.push_cloned(self.reference_string());
 
         match chunk.data {
             DataContent::Resource(resource) => {
+                // Create a new traversal path for when recursing deeper
+                let new_traversal_path = traversal_path.push_cloned(resource.as_trait_object().reference_string());
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
                     resource.as_trait_object()._vector_search_with_traversal_core(
                         query.clone(),
                         num_of_results,
                         traversal,
-                        depth + 1,
                         new_hierarchical_scores,
                         new_traversal_path,
                     )
@@ -337,7 +327,6 @@ pub trait VectorResource {
                         num_of_results,
                         data_tag_names,
                         traversal,
-                        depth + 1,
                         new_hierarchical_scores,
                         new_traversal_path,
                     )
@@ -355,7 +344,6 @@ pub trait VectorResource {
                     chunk: chunk.clone(),
                     score,
                     resource_pointer: self.get_resource_pointer(),
-                    retrieval_depth: depth,
                     retrieval_path: traversal_path,
                 });
             }
@@ -425,7 +413,6 @@ pub trait VectorResource {
                             chunk: data_chunk,
                             score: 0.0,
                             resource_pointer,
-                            retrieval_depth: 0,
                             retrieval_path: VRPath::new(),
                         };
                         matching_data_chunks.push(retrieved_data_chunk);

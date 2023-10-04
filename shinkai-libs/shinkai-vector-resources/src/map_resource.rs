@@ -156,7 +156,6 @@ impl MapVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
-                        retrieval_depth: 0,
                         retrieval_path: VRPath::new(),
                     }),
                 _ => (),

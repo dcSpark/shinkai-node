@@ -69,7 +69,6 @@ impl VectorResourceRouter {
                 chunk: chunk.clone(),
                 score: 0.0,
                 resource_pointer: map_resource_pointer.clone(),
-                retrieval_depth: 0,
                 retrieval_path: VRPath::new(),
             };
 
@@ -150,7 +149,7 @@ impl VectorResourceRouter {
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the shinkai_db_key as the id of the data chunk.
+    /// of the chunk and the shinkai db key (pointer reference) as the id of the data chunk.
     pub fn add_resource_pointer(
         &mut self,
         resource_pointer: &VectorResourcePointer,
