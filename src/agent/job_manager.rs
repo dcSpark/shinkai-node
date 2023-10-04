@@ -246,14 +246,6 @@ impl AgentManager {
                             MessageSchemaType::JobMessageSchema => {
                                 let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
                                     .map_err(|_| AgentError::ContentParseFailed)?;
-
-                                // TODO: this needs to be improved depending on job_step
-                                // if !job_message.files_inbox.is_empty() {
-                                //     let files_map =
-                                //         self.get_message_multifiles(job_message.files_inbox.clone()).await?;
-                                //     println!("process_job_message> files_map: ...");
-                                // }
-
                                 self.process_job_step(message, job_message).await
                             }
                             _ => {

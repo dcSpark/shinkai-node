@@ -291,6 +291,14 @@ impl Prompt {
         self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
     }
 
+    /// Adds a vector chunk response for extra information
+    pub fn add_vector_chunk_response(&mut self, chunks: Vec<String>) {
+        self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, "Use the following information to help you:".to_string())); 
+        for chunk in chunks {
+            self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, chunk));
+        }
+    }
+
     /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
     /// string that specifies the output must match this EBNF string.
     pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
@@ -339,27 +347,31 @@ impl Prompt {
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
     pub fn generate_openai_messages(&self) -> Result<Vec<OpenAIApiMessage>, AgentError> {
         self.check_ebnf_included()?;
-    
+
         let messages_result: Result<Vec<OpenAIApiMessage>, AgentError> = self
-        .sub_prompts
-        .iter()
-        .map(|sub_prompt| {
-            match sub_prompt {
+            .sub_prompts
+            .iter()
+            .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(prompt_type, content) => {
                     let role = match prompt_type {
                         SubPromptType::User => "user".to_string(),
                         SubPromptType::System => "system".to_string(),
                     };
-                    Ok(OpenAIApiMessage { role, content: content.clone() })
-                },
+                    Ok(OpenAIApiMessage {
+                        role,
+                        content: content.clone(),
+                    })
+                }
                 SubPrompt::EBNF(_, ebnf) => {
                     let enbf_text = self.generate_ebnf_response_string(ebnf);
-                    Ok(OpenAIApiMessage { role: "system".to_string(), content: enbf_text })
-                },
-            }
-        })
-        .collect();
-    
+                    Ok(OpenAIApiMessage {
+                        role: "system".to_string(),
+                        content: enbf_text,
+                    })
+                }
+            })
+            .collect();
+
         messages_result
     }
 }
