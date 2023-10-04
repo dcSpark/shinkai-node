@@ -93,7 +93,7 @@ pub trait VectorResource {
     fn reference_string(&self) -> String {
         let name = self.name().replace(" ", "_").replace(":", "_");
         let resource_id = self.resource_id().replace(" ", "_").replace(":", "_");
-        format!("{}:{}", name, resource_id)
+        format!("{}:::{}", name, resource_id)
     }
 
     /// Generates a VectorResourcePointer out of the VectorResource
