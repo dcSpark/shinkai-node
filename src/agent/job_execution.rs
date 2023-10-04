@@ -309,19 +309,19 @@ impl AgentManager {
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
                 // Generate embeddings for PDF files
-                let desc = "An initial introduction to the Shinkai Network.";
+                let desc = "An initial introduction to the Shinkai Network."; // TODO: get the description from the LLM
                 let doc = FileParser::parse_pdf(
                     &content,
                     100,
                     &*generator,
                     &filename,
                     Some(desc),
-                    VRSource::None, // TODO: how can we get the source?
-                    &vec![], // TODO: should this be computed using RAKE?
+                    VRSource::None, // TODO: how can we get the source? if name starts with http then it's an URL if starts with file then it's local
+                    &vec![],        // TODO: should this be computed using RAKE?
                 )?;
 
                 let resource = BaseVectorResource::from(doc.clone());
-                eprintln!("resource: {:?}", resource);
+                // eprintln!("resource: {:?}", resource);
                 eprintln!("profile: {:?}", profile);
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
