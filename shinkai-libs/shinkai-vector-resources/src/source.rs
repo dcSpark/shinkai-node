@@ -5,7 +5,6 @@ use std::fmt;
 /// or a pointer to the source file (either external such as URL, or a FileRef)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum VRSource {
-    File(SourceFile),
     Reference(SourceReference),
     None,
 }
@@ -14,7 +13,6 @@ impl VRSource {
     /// Formats a printable string based on the source
     pub fn format_source_string(&self) -> String {
         match self {
-            VRSource::File(file) => file.format_source_string(),
             VRSource::Reference(pointer) => pointer.format_source_string(),
             VRSource::None => String::from("None"),
         }
@@ -39,10 +37,9 @@ impl VRSource {
         VRSource::Reference(SourceReference::Other(other))
     }
 
-    /// Creates a VRSource reference using a SourceFile itself
-    /// Do note, this will store the SourceFile
-    pub fn new_file(file: SourceFile) -> Self {
-        VRSource::File(file)
+    /// Creates a VRSource which represents no/unknown source.
+    pub fn none() -> Self {
+        VRSource::None
     }
 }
 
@@ -101,7 +98,7 @@ pub struct SourceFileReference {
 impl SourceFileReference {
     /// The default key for this file in the Shinkai DB
     pub fn shinkai_db_key(&self) -> String {
-        format!("{}:{}", self.file_name, self.content_hash)
+        format!("{}:::{}", self.file_name, self.content_hash)
     }
 
     pub fn format_source_string(&self) -> String {
@@ -111,42 +108,86 @@ impl SourceFileReference {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SourceFileType {
+    Document(SourceDocumentType),
+    Image(SourceImageType),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum SourceImageType {
+    Png,
+    Jpeg,
+    Gif,
+    Bmp,
+    Tiff,
+    Svg,
+    Webp,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum SourceDocumentType {
     Pdf,
     Md,
     Txt,
     Epub,
     Doc,
     Docx,
-    Rtf,  // Rich Text Format
-    Odt,  // OpenDocument Text Document
-    Html, // HTML Document
-    Csv,  // Comma-Separated Values
-    Xls,  // Excel Spreadsheet
-    Xlsx, // Excel Open XML Spreadsheet
-    Ppt,  // PowerPoint Presentation
-    Pptx, // PowerPoint Open XML Presentation
+    Rtf,
+    Odt,
+    Html,
+    Csv,
+    Xls,
+    Xlsx,
+    Ppt,
+    Pptx,
 }
 
 impl fmt::Display for SourceFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceFileType::Document(doc_type) => write!(f, "{}", doc_type),
+            SourceFileType::Image(img_type) => write!(f, "{}", img_type),
+        }
+    }
+}
+
+impl fmt::Display for SourceImageType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                SourceFileType::Pdf => "pdf",
-                SourceFileType::Md => "md",
-                SourceFileType::Txt => "txt",
-                SourceFileType::Epub => "epub",
-                SourceFileType::Doc => "doc",
-                SourceFileType::Docx => "docx",
-                SourceFileType::Rtf => "rtf",
-                SourceFileType::Odt => "odt",
-                SourceFileType::Html => "html",
-                SourceFileType::Csv => "csv",
-                SourceFileType::Xls => "xls",
-                SourceFileType::Xlsx => "xlsx",
-                SourceFileType::Ppt => "ppt",
-                SourceFileType::Pptx => "pptx",
+                SourceImageType::Png => "png",
+                SourceImageType::Jpeg => "jpeg",
+                SourceImageType::Gif => "gif",
+                SourceImageType::Bmp => "bmp",
+                SourceImageType::Tiff => "tiff",
+                SourceImageType::Svg => "svg",
+                SourceImageType::Webp => "webp",
+            }
+        )
+    }
+}
+
+impl fmt::Display for SourceDocumentType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                SourceDocumentType::Pdf => "pdf",
+                SourceDocumentType::Md => "md",
+                SourceDocumentType::Txt => "txt",
+                SourceDocumentType::Epub => "epub",
+                SourceDocumentType::Doc => "doc",
+                SourceDocumentType::Docx => "docx",
+                SourceDocumentType::Rtf => "rtf",
+                SourceDocumentType::Odt => "odt",
+                SourceDocumentType::Html => "html",
+                SourceDocumentType::Csv => "csv",
+                SourceDocumentType::Xls => "xls",
+                SourceDocumentType::Xlsx => "xlsx",
+                SourceDocumentType::Ppt => "ppt",
+                SourceDocumentType::Pptx => "pptx",
             }
         )
     }
