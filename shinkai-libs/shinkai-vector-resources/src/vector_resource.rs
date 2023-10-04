@@ -130,7 +130,7 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
     ) -> Vec<RetrievedDataChunk> {
-        self._vector_search_with_traversal_core(query, num_of_results, traversal, 0, vec![], "/".to_string())
+        self._vector_search_with_traversal_core(query, num_of_results, traversal, 0, vec![], VRPath::new())
     }
 
     /// Internal method which is used to keep track of traversal info
@@ -141,7 +141,7 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
         hierarchical_scores: Vec<f32>,
-        traversal_path: String,
+        traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
         // If exhaustive traversal, then return all
         let num_of_results = if traversal == &TraversalMethod::Exhaustive {
@@ -191,7 +191,7 @@ pub trait VectorResource {
             traversal,
             0,
             vec![],
-            "/".to_string(),
+            VRPath::new(),
         )
     }
 
@@ -204,7 +204,7 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
         hierarchical_scores: Vec<f32>,
-        traversal_path: String,
+        traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_tag_embeddings = vec![];
@@ -248,7 +248,7 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
         hierarchical_scores: Vec<f32>,
-        traversal_path: String,
+        traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
         let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         let mut vector_resource_count = 0;
@@ -311,13 +311,13 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         depth: u64,
         hierarchical_scores: Vec<f32>,
-        traversal_path: String,
+        traversal_path: VRPath,
     ) -> Vec<RetrievedDataChunk> {
         let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
         let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
         // Create a new traversal path for when recursing deeper
-        let new_traversal_path = traversal_path.clone() + "/" + &self.reference_string();
+        let new_traversal_path = traversal_path.push_cloned(self.reference_string());
 
         match chunk.data {
             DataContent::Resource(resource) => {
@@ -426,7 +426,7 @@ pub trait VectorResource {
                             score: 0.0,
                             resource_pointer,
                             retrieval_depth: 0,
-                            retrieval_path: "/".to_string(),
+                            retrieval_path: VRPath::new(),
                         };
                         matching_data_chunks.push(retrieved_data_chunk);
                     }

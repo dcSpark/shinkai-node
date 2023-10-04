@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, RemoteModel};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -157,7 +157,7 @@ impl MapVectorResource {
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
                         retrieval_depth: 0,
-                        retrieval_path: "/".to_string(),
+                        retrieval_path: VRPath::new(),
                     }),
                 _ => (),
             }

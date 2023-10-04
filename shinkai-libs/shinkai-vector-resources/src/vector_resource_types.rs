@@ -25,7 +25,7 @@ pub struct RetrievedDataChunk {
     pub score: f32,
     pub resource_pointer: VectorResourcePointer,
     pub retrieval_depth: u64,
-    pub retrieval_path: String,
+    pub retrieval_path: VRPath,
 }
 
 impl RetrievedDataChunk {
@@ -35,7 +35,7 @@ impl RetrievedDataChunk {
         score: f32,
         resource_pointer: VectorResourcePointer,
         retrieval_depth: u64,
-        retrieval_path: String,
+        retrieval_path: VRPath,
     ) -> Self {
         Self {
             chunk,
@@ -199,5 +199,63 @@ impl VectorResourcePointer {
 impl From<Box<dyn VectorResource>> for VectorResourcePointer {
     fn from(resource: Box<dyn VectorResource>) -> Self {
         resource.get_resource_pointer()
+    }
+}
+
+/// A path inside of a Vector Resource
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VRPath {
+    path: Vec<String>,
+}
+
+impl VRPath {
+    /// Create a new VRPath
+    pub fn new() -> Self {
+        Self { path: vec![] }
+    }
+
+    /// Get the depth of the VRPath
+    pub fn depth(&self) -> usize {
+        self.path.len()
+    }
+
+    /// Adds an element to the end of the path
+    pub fn push(&mut self, element: String) {
+        self.path.push(element);
+    }
+
+    /// Removes an element from the end of the path
+    pub fn pop(&mut self) -> Option<String> {
+        self.path.pop()
+    }
+
+    /// Creates a cloned VRPath and adds an element to the end
+    pub fn push_cloned(&self, element: String) -> Self {
+        let mut new_path = self.clone();
+        new_path.push(element);
+        new_path
+    }
+
+    /// Creates a cloned VRPath and removes an element from the end
+    pub fn pop_cloned(&self) -> Self {
+        let mut new_path = self.clone();
+        new_path.pop();
+        new_path
+    }
+
+    /// Create a VRPath from a path string
+    pub fn from_path_string(path_string: &str) -> Self {
+        let path_string = path_string.trim_start_matches('/').trim_end_matches('/');
+        let elements: Vec<&str> = path_string.split('/').collect();
+        let mut path = Self::new();
+        for element in elements {
+            path.push(element.to_string());
+        }
+        path
+    }
+
+    /// Formats the VRPath to a string
+    pub fn format_to_string(&self) -> String {
+        format!("/{}", self.path.join("/"))
     }
 }
