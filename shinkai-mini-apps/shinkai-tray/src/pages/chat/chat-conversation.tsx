@@ -1,4 +1,6 @@
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
+
+import React, { Fragment, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
@@ -9,6 +11,7 @@ import {
   extractJobIdFromInbox,
   extractReceiverShinkaiName,
   isJobInbox,
+  isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -22,8 +25,10 @@ import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSen
 // import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
 import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
+import { ShinkaiLogo } from "../../components/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
+import DotsLoader from "../../components/ui/dots-loader";
 import {
   Form,
   FormControl,
@@ -34,6 +39,7 @@ import {
 } from "../../components/ui/form";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
+import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
 const chatSchema = z.object({
@@ -52,6 +58,21 @@ const getMessageFromJob = (message: any) => {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getMessageFromChat = (message: any) => {
   return message.body.unencrypted.message_data.unencrypted.message_raw_content;
+};
+
+const groupMessagesByDate = (messages: ShinkaiMessage[]) => {
+  const groupedMessages: Record<string, ShinkaiMessage[]> = {};
+  for (const message of messages) {
+    const date = new Date(message.external_metadata?.scheduled_time ?? "").toDateString();
+
+    if (!groupedMessages[date]) {
+      groupedMessages[date] = [];
+    }
+
+    groupedMessages[date].push(message);
+  }
+
+  return groupedMessages;
 };
 
 const ChatConversation = () => {
@@ -98,7 +119,7 @@ const ChatConversation = () => {
     if (isJobInbox(inboxId)) {
       const sender = `${auth.shinkai_identity}/${auth.profile}`;
       const jobId = extractJobIdFromInbox(inboxId);
-      await sendMessageToJob({
+      sendMessageToJob({
         jobId,
         message: data.message,
         sender,
@@ -113,7 +134,7 @@ const ChatConversation = () => {
     } else {
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
-      await sendMessageToInbox({
+      sendMessageToInbox({
         sender,
         receiver,
         message: data.message,
@@ -171,25 +192,11 @@ const ChatConversation = () => {
       scrollToBottom();
     }
   }, [data?.pages]);
+  console.log(data?.pages, "pages");
 
   return (
     <div className="flex flex-1 flex-col pt-2">
-      <div className="mb-3 flex shrink-0 items-center gap-2 px-4">
-        <Avatar className="h-7 w-7">
-          <AvatarImage
-            alt="Shinkai AI"
-            className="h-7 w-7"
-            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
-          />
-          <AvatarFallback className="h-7 w-7" />
-        </Avatar>
-        <span className="flex-1 text-left text-sm">{inboxId}</span>
-        <Button size="icon" variant="ghost">
-          <span className="sr-only">Settings</span>
-          <DotsVerticalIcon className="h-4 w-4" />
-        </Button>
-      </div>
-      <ScrollArea className="h-full px-4" ref={chatContainerRef}>
+      <ScrollArea className="h-full px-5" ref={chatContainerRef}>
         {isChatConversationSuccess && (
           <div className="py-2 text-center text-xs">
             {isFetchingPreviousPage || hasPreviousPage ? (
@@ -199,7 +206,7 @@ const ChatConversation = () => {
             )}
           </div>
         )}
-        <div className="space-y-5">
+        <div className="space-y-4 pb-4">
           {isChatConversationLoading &&
             [1, 2, 3, 4].map((index) => (
               <Skeleton className="h-10 w-full rounded-lg" key={index} />
@@ -208,44 +215,45 @@ const ChatConversation = () => {
             data?.pages.map((group, index) => (
               <Fragment key={index}>
                 {group.map((message) => {
-                  // const localIdentity = `${auth?.profile}/device/${auth?.registration_name}`;
-                  // let isLocalMessage = false;
-                  // if (message.body && "unencrypted" in message.body) {
-                  //   isLocalMessage =
-                  //     message.body.unencrypted.internal_metadata.sender_subidentity ===
-                  //     localIdentity;
-                  // }
+                  // TODO: Fix this
+                  const isLocal =
+                    message.external_metadata?.sender ===
+                    auth?.shinkai_identity + "/" + auth?.profile;
+
                   return (
                     <div
-                      className="rounded-lg bg-[rgba(217,217,217,0.04)] px-4 py-6"
+                      className={cn(
+                        "flex w-[95%] items-start gap-3",
+                        isLocal
+                          ? "ml-0 mr-auto flex-row"
+                          : "ml-auto mr-0 flex-row-reverse"
+                      )}
                       key={message.external_metadata?.scheduled_time}
                     >
-                      {/* <p
-                        className={cn(
-                          "text-sm",
-                          isLocalMessage ? "text-muted-foreground" : "text-foreground"
-                        )}
-                      >
-                        {isJobInbox(inboxId)
-                          ? getMessageFromJob(message)
-                          : getMessageFromChat(message)}
-                      </p> */}
+                      <Avatar className="mt-1 h-8 w-8">
+                        <AvatarImage
+                          src={
+                            isLocal
+                              ? `https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`
+                              : `https://ui-avatars.com/api/?name=S&background=FF5E5F&color=fff`
+                          }
+                          alt={isLocal ? inboxId : "Shinkai AI"}
+                        />
+                        <AvatarFallback className="h-8 w-8" />
+                      </Avatar>
                       <MarkdownPreview
+                        className={cn(
+                          "mt-1 rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
+                          isLocal
+                            ? "rounded-tl-none border border-slate-800"
+                            : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+                        )}
                         source={
                           isJobInbox(inboxId)
                             ? getMessageFromJob(message)
                             : getMessageFromChat(message)
                         }
-                        className="bg-transparent text-sm text-foreground"
                       />
-                      {/* <p className="text-xs">
-                        <span className="text-muted-foreground">Sent at </span>
-                        <span className=" text-gray-600">
-                        {new Date(
-                          message?.external_metadata?.scheduled_time ?? ""
-                          ).toLocaleString()}
-                          </span>
-                        </p> */}
                     </div>
                   );
                 })}
@@ -255,8 +263,10 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="flex items-start gap-2 bg-app-gradient p-2 pt-3">
-          {/* <EditorContent editor={editor} /> */}
+        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pt-3">
+          {isLoading ? (
+            <DotsLoader className="absolute left-10 top-10 flex items-center justify-center" />
+          ) : null}
 
           <Form {...chatForm}>
             <FormField
@@ -312,7 +322,6 @@ const MessageEditor = ({
   disabled?: boolean;
 }) => {
   const editor = useEditor({
-    editable: !disabled,
     editorProps: {
       attributes: {
         class: "prose prose-invert prose-sm mx-auto focus:outline-none",
@@ -334,12 +343,16 @@ const MessageEditor = ({
       Markdown,
     ],
     content: value,
-
+    autofocus: true,
     onUpdate({ editor }) {
       // onChange(editor.getHTML());
       onChange(editor.storage.markdown.getMarkdown());
     },
   });
+
+  useEffect(() => {
+    editor?.setEditable(!disabled);
+  }, [disabled, editor]);
 
   useEffect(() => {
     setInitialValue === undefined
@@ -352,5 +365,5 @@ const MessageEditor = ({
     if (value === "") editor?.commands.setContent("");
   }, [value, editor]);
 
-  return <EditorContent className="prose-" editor={editor} />;
+  return <EditorContent editor={editor} />;
 };

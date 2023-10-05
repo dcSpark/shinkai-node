@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 
 import { GearIcon, LightningBoltIcon, PersonIcon } from "@radix-ui/react-icons";
 
-import { ShinkaiLogo } from "../../components/icons";
+// import { ShinkaiLogo } from "../../components/icons";
 import {
   Command,
   CommandGroup,
@@ -101,8 +101,7 @@ export function Footer() {
   };
 
   return (
-    <div className="flex items-center justify-start bg-app-gradient p-2 pl-4 text-sm text-muted-foreground">
-      <ShinkaiLogo className="mr-2 h-4 w-4 text-primary-600" />
+    <div className="absolute right-4 top-1 flex items-center gap-2 text-sm text-muted-foreground">
       <Popover onOpenChange={setOpen} open={open} modal>
         <PopoverTrigger
           aria-expanded={open}
@@ -176,16 +175,16 @@ const MainLayout = () => {
   return (
     <div className="relative flex h-full flex-col bg-app-gradient bg-cover text-white">
       <div
-        className="flex h-8 shrink-0 cursor-default select-none items-center justify-center text-xs"
+        className="relative flex h-9 shrink-0 cursor-default select-none items-center justify-center text-xs"
         data-tauri-drag-region
       >
-        Custom Topbar (draggable)
+        Shinkai AI
+        <Footer />
       </div>
       <Separator />
       <div className="flex-auto overflow-auto">
         <Outlet />
       </div>
-      <Footer />
     </div>
   );
 };
