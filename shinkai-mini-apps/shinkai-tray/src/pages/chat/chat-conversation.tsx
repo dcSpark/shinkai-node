@@ -1,5 +1,3 @@
-import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
-
 import { Fragment, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
@@ -36,38 +34,17 @@ import {
 } from "../../components/ui/form";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
+import {
+  getMessageFromChat,
+  getMessageFromJob,
+  groupMessagesByDate,
+} from "../../lib/chat-conversation";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
 const chatSchema = z.object({
   message: z.string(),
 });
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getMessageFromJob = (message: any) => {
-  if ("unencrypted" in message.body) {
-    return JSON.parse(
-      message.body.unencrypted.message_data.unencrypted.message_raw_content
-    ).content;
-  }
-  return message.body.unencrypted.message_data.encrypted.content;
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getMessageFromChat = (message: any) => {
-  return message.body.unencrypted.message_data.unencrypted.message_raw_content;
-};
-
-const groupMessagesByDate = (messages: ShinkaiMessage[]) => {
-  const groupedMessages: Record<string, ShinkaiMessage[]> = {};
-  for (const message of messages) {
-    const date = new Date(message.external_metadata?.scheduled_time ?? "").toDateString();
-    if (!groupedMessages[date]) {
-      groupedMessages[date] = [];
-    }
-    groupedMessages[date].push(message);
-  }
-  return groupedMessages;
-};
 
 const ChatConversation = () => {
   const { inboxId: encodedInboxId = "" } = useParams();
