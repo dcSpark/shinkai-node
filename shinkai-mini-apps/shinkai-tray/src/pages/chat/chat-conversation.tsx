@@ -1,17 +1,16 @@
 import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
 
-import React, { Fragment, useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DotsVerticalIcon, PaperPlaneIcon } from "@radix-ui/react-icons";
+import { PaperPlaneIcon } from "@radix-ui/react-icons";
 import {
   calculateMessageHash,
   extractJobIdFromInbox,
   extractReceiverShinkaiName,
   isJobInbox,
-  isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -22,10 +21,8 @@ import { Markdown } from "tiptap-markdown";
 import { z } from "zod";
 
 import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
 import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
-import { ShinkaiLogo } from "../../components/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
 import DotsLoader from "../../components/ui/dots-loader";
@@ -64,14 +61,11 @@ const groupMessagesByDate = (messages: ShinkaiMessage[]) => {
   const groupedMessages: Record<string, ShinkaiMessage[]> = {};
   for (const message of messages) {
     const date = new Date(message.external_metadata?.scheduled_time ?? "").toDateString();
-
     if (!groupedMessages[date]) {
       groupedMessages[date] = [];
     }
-
     groupedMessages[date].push(message);
   }
-
   return groupedMessages;
 };
 
@@ -206,7 +200,7 @@ const ChatConversation = () => {
             )}
           </div>
         )}
-        <div className="space-y-4 pb-4">
+        <div className="pb-4">
           {isChatConversationLoading &&
             [1, 2, 3, 4].map((index) => (
               <Skeleton className="h-10 w-full rounded-lg" key={index} />
@@ -214,46 +208,64 @@ const ChatConversation = () => {
           {isChatConversationSuccess &&
             data?.pages.map((group, index) => (
               <Fragment key={index}>
-                {group.map((message) => {
-                  // TODO: Fix this
-                  const isLocal =
-                    message.external_metadata?.sender ===
-                    auth?.shinkai_identity + "/" + auth?.profile;
-
+                {Object.entries(groupMessagesByDate(group)).map(([date, messages]) => {
                   return (
-                    <div
-                      className={cn(
-                        "flex w-[95%] items-start gap-3",
-                        isLocal
-                          ? "ml-0 mr-auto flex-row"
-                          : "ml-auto mr-0 flex-row-reverse"
-                      )}
-                      key={message.external_metadata?.scheduled_time}
-                    >
-                      <Avatar className="mt-1 h-8 w-8">
-                        <AvatarImage
-                          src={
-                            isLocal
-                              ? `https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`
-                              : `https://ui-avatars.com/api/?name=S&background=FF5E5F&color=fff`
-                          }
-                          alt={isLocal ? inboxId : "Shinkai AI"}
-                        />
-                        <AvatarFallback className="h-8 w-8" />
-                      </Avatar>
-                      <MarkdownPreview
+                    <div key={date}>
+                      <div
                         className={cn(
-                          "mt-1 rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
-                          isLocal
-                            ? "rounded-tl-none border border-slate-800"
-                            : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+                          "relative z-10 m-auto flex w-[140px] items-center justify-center rounded-xl bg-slate-900 shadow-lg transition-opacity",
+                          true && "sticky top-5"
                         )}
-                        source={
-                          isJobInbox(inboxId)
-                            ? getMessageFromJob(message)
-                            : getMessageFromChat(message)
-                        }
-                      />
+                      >
+                        <span className="px-2.5 py-2 text-sm font-semibold text-foreground">
+                          {date}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-4">
+                        {messages.map((message) => {
+                          // TODO: Fix this
+                          const isLocal =
+                            message.external_metadata?.sender ===
+                            auth?.shinkai_identity + "/" + auth?.profile;
+
+                          return (
+                            <div
+                              className={cn(
+                                "flex w-[95%] items-start gap-3",
+                                isLocal
+                                  ? "ml-0 mr-auto flex-row"
+                                  : "ml-auto mr-0 flex-row-reverse"
+                              )}
+                              key={message.external_metadata?.scheduled_time}
+                            >
+                              <Avatar className="mt-1 h-8 w-8">
+                                <AvatarImage
+                                  src={
+                                    isLocal
+                                      ? `https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`
+                                      : `https://ui-avatars.com/api/?name=S&background=FF5E5F&color=fff`
+                                  }
+                                  alt={isLocal ? inboxId : "Shinkai AI"}
+                                />
+                                <AvatarFallback className="h-8 w-8" />
+                              </Avatar>
+                              <MarkdownPreview
+                                className={cn(
+                                  "mt-1 rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
+                                  isLocal
+                                    ? "rounded-tl-none border border-slate-800"
+                                    : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+                                )}
+                                source={
+                                  isJobInbox(inboxId)
+                                    ? getMessageFromJob(message)
+                                    : getMessageFromChat(message)
+                                }
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
@@ -265,7 +277,7 @@ const ChatConversation = () => {
       <div className="flex flex-col justify-start">
         <div className="relative flex items-start gap-2 bg-app-gradient p-2 pt-3">
           {isLoading ? (
-            <DotsLoader className="absolute left-10 top-10 flex items-center justify-center" />
+            <DotsLoader className="absolute left-8 top-10 flex items-center justify-center" />
           ) : null}
 
           <Form {...chatForm}>
