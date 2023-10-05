@@ -5,7 +5,7 @@ import type { GetInboxesInput } from "./types";
 export const getInboxes = async ({
   receiver,
   senderSubidentity,
-  shinkaiIdentity,
+  sender,
   targetShinkaiNameProfile,
   my_device_encryption_sk,
   my_device_identity_sk,
@@ -14,7 +14,7 @@ export const getInboxes = async ({
   profile_identity_sk,
 }: GetInboxesInput) => {
   const inboxes = await getAllInboxesForProfile(
-    shinkaiIdentity,
+    sender,
     senderSubidentity,
     receiver,
     targetShinkaiNameProfile,

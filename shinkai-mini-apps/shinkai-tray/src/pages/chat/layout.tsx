@@ -33,15 +33,14 @@ const ChatLayout = () => {
   const auth = useAuth((state) => state.auth);
 
   const { inboxIds } = useGetInboxes({
-    sender: auth?.shinkai_identity ?? "",
+    sender: `${auth?.shinkai_identity}/${auth?.profile}`,
     senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
-    shinkaiIdentity: auth?.shinkai_identity ?? "",
-    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
-    node_encryption_pk: auth?.node_encryption_pk ?? "",
     // Assuming receiver and target_shinkai_name_profile are the same as sender
     receiver: auth?.shinkai_identity ?? "",
     targetShinkaiNameProfile: `${auth?.shinkai_identity}/${auth?.profile}`,
+    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
     profile_encryption_sk: auth?.profile_encryption_sk ?? "",
     profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
