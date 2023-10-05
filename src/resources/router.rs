@@ -7,6 +7,7 @@ use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
     DataContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
 };
+use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 use std::convert::From;
 use std::str::FromStr;
@@ -68,7 +69,7 @@ impl VectorResourceRouter {
                 chunk: chunk.clone(),
                 score: 0.0,
                 resource_pointer: map_resource_pointer.clone(),
-                retrieval_depth: 0,
+                retrieval_path: VRPath::new(),
             };
 
             let pointers = self.ret_data_chunks_to_pointers(&vec![retrieved_data_chunk]);
@@ -148,7 +149,7 @@ impl VectorResourceRouter {
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the shinkai_db_key as the id of the data chunk.
+    /// of the chunk and the shinkai db key (pointer reference) as the id of the data chunk.
     pub fn add_resource_pointer(
         &mut self,
         resource_pointer: &VectorResourcePointer,
