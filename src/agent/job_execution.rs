@@ -141,10 +141,12 @@ impl AgentManager {
 
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
-        let query = generator.generate_embedding_default(job_message.content.clone().as_str()).unwrap();
+        let query = generator
+            .generate_embedding_default(job_message.content.clone().as_str())
+            .unwrap();
         let shinkai_db = self.db.lock().await;
         let ret_data_chunks = shinkai_db
-            .vector_search_tolerance_ranged(query, 10, 0.4, &user_profile.unwrap())
+            .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
             .unwrap();
         eprintln!(
             "ret_data_chunks: {:?}",
@@ -221,8 +223,7 @@ impl AgentManager {
         println!("analysis_inference>  message: {:?}", message);
 
         // Generate the needed prompt
-        let mut filled_prompt = JobPromptGenerator::basic_instant_response_prompt(message.clone());
-        filled_prompt.add_vector_chunk_response(embeddings);
+        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(message.clone(), embeddings);
 
         // Execute LLM inferencing
         let agent_cloned = agent.clone();
@@ -234,8 +235,19 @@ impl AgentManager {
 
         println!("analysis_inference> response: {:?}", response);
 
+        // TODO: check if response is correctly formatted in json (if not send it back)
+
         // TODO: Later update all methods to AgentError
-        Ok(response.unwrap())
+        // Ok(response.unwrap())
+
+        match response {
+            Ok(json) => Ok(json),
+            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
+                eprintln!("Retrying inference with new prompt");
+                self.json_not_found_retry(agent.clone(), text.clone()).await
+            }
+            Err(e) => Err(Box::new(e)),
+        }
 
         // TODO: Later implement re-run logic like below, but as a while loop in analysis phase/some wrapper retry method.
         // Because we can't do normal recursion in async.
@@ -249,6 +261,16 @@ impl AgentManager {
         //     }
         //     _ => Ok(response.unwrap()),
         // }
+    }
+
+    async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, Box<dyn Error>> {
+        let response = tokio::spawn(async move {
+            let mut agent = agent.lock().await;
+            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);
+            agent.inference(prompt).await
+        })
+        .await?;
+        Ok(response?)
     }
 
     pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {

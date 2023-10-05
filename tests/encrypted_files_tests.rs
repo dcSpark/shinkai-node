@@ -28,6 +28,7 @@ use shinkai_vector_resources::resource_errors::VectorResourceError;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::time::Instant;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
@@ -242,7 +243,7 @@ fn sandwich_messages_with_files_test() {
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for a Job");
-                let message = "Tell me. Who are you?".to_string();
+                let message = "What's Shinkai?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
@@ -256,6 +257,94 @@ fn sandwich_messages_with_files_test() {
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                 )
                 .await;
+            }
+            {
+                eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+
+                // Prepare the file to be read
+                let filename = "files/Zeko_Mina_Rollup.pdf";
+                let file_path = Path::new(filename.clone());
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(&file_path)
+                    .map_err(|_| VectorResourceError::FailedPDFParsing)
+                    .unwrap();
+
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                        filename: filename.to_string(),
+                        file: ciphertext,
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("response: {}", response);
+            }
+            {
+                let _m = server
+                    .mock("POST", "/v1/chat/completions")
+                    .match_header("authorization", "Bearer mockapikey")
+                    .with_status(200)
+                    .with_header("content-type", "application/json")
+                    .with_body(
+                        r#"{
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 9,
+                        "completion_tokens": 12,
+                        "total_tokens": 21
+                    }
+                }"#,
+                    )
+                    .create();
+            }
+            {
+                // Send a Message to the Job for processing
+                eprintln!("\n\nSend a message for the Job");
+                let message = "How does Zeko work?".to_string();
+                let start = Instant::now();
+                api_message_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    &agent_subidentity.clone(),
+                    &job_id.clone().to_string(),
+                    &message,
+                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                )
+                .await;
+
+                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
         })
     });

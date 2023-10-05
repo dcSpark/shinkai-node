@@ -28,6 +28,7 @@ pub enum AgentError {
     VectorResource(VectorResourceError),
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
+    SerdeError(serde_json::Error),
 }
 
 impl fmt::Display for AgentError {
@@ -69,6 +70,7 @@ impl fmt::Display for AgentError {
             AgentError::VectorResource(err) => write!(f, "VectorResource error: {}", err),
             AgentError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
             AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
+            AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
         }
     }
 }

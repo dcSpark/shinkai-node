@@ -3,7 +3,7 @@ use crate::tools::router::ShinkaiTool;
 use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
-use std::collections::HashMap;
+use std::{collections::HashMap, convert::TryInto};
 
 //
 // Core Job Step Flow
@@ -197,6 +197,35 @@ impl JobPromptGenerator {
         prompt
     }
 
+    pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+
+        for chunk in chunks {
+            prompt.add_content(format!("{}", chunk), SubPromptType::User);
+        }
+
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt
+    }
+
+    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
+    pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return this same message correctly formatted as json:\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
     pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -293,7 +322,10 @@ impl Prompt {
 
     /// Adds a vector chunk response for extra information
     pub fn add_vector_chunk_response(&mut self, chunks: Vec<String>) {
-        self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, "Use the following information to help you:".to_string())); 
+        self.sub_prompts.push(SubPrompt::Content(
+            SubPromptType::User,
+            "Use the following information to help you:".to_string(),
+        ));
         for chunk in chunks {
             self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, chunk));
         }
@@ -345,33 +377,61 @@ impl Prompt {
     }
 
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
-    pub fn generate_openai_messages(&self) -> Result<Vec<OpenAIApiMessage>, AgentError> {
+    pub fn generate_openai_messages(
+        &self,
+        characters_limit: Option<usize>,
+    ) -> Result<Vec<OpenAIApiMessage>, AgentError> {
         self.check_ebnf_included()?;
 
-        let messages_result: Result<Vec<OpenAIApiMessage>, AgentError> = self
+        let mut total_length = 0;
+        let limit = characters_limit.unwrap_or((3300 as usize).try_into().unwrap());
+        // TODO: adjust this a bit more to be more accurate
+        let extra_characters_from_schema: usize = 43;
+
+        let mut messages_result: Vec<OpenAIApiMessage> = Vec::new();
+
+        // First process all Content sub-prompts until length limit is reached
+        for sub_prompt in self
             .sub_prompts
             .iter()
-            .map(|sub_prompt| match sub_prompt {
-                SubPrompt::Content(prompt_type, content) => {
-                    let role = match prompt_type {
-                        SubPromptType::User => "user".to_string(),
-                        SubPromptType::System => "system".to_string(),
-                    };
-                    Ok(OpenAIApiMessage {
-                        role,
-                        content: content.clone(),
-                    })
+            .filter(|sp| matches!(sp, SubPrompt::Content(_, _)))
+        {
+            if let SubPrompt::Content(prompt_type, content) = sub_prompt {
+                let role = match prompt_type {
+                    SubPromptType::User => "user".to_string(),
+                    SubPromptType::System => "system".to_string(),
+                };
+                if total_length + content.len() + extra_characters_from_schema > limit {
+                    break;
                 }
-                SubPrompt::EBNF(_, ebnf) => {
-                    let enbf_text = self.generate_ebnf_response_string(ebnf);
-                    Ok(OpenAIApiMessage {
-                        role: "system".to_string(),
-                        content: enbf_text,
-                    })
-                }
-            })
-            .collect();
+                total_length += content.len() + extra_characters_from_schema;
+                messages_result.push(OpenAIApiMessage {
+                    role,
+                    content: content.clone(),
+                });
+            }
+        }
 
-        messages_result
+        // Then process all EBNF sub-prompts
+        for sub_prompt in self.sub_prompts.iter().filter(|sp| matches!(sp, SubPrompt::EBNF(_, _))) {
+            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
+                let enbf_text = self.generate_ebnf_response_string(ebnf);
+                messages_result.push(OpenAIApiMessage {
+                    role: "system".to_string(),
+                    content: enbf_text.clone(),
+                });
+                total_length += enbf_text.len() + extra_characters_from_schema;
+            }
+        }
+
+        // TODO: it doesn't seem necessary so far may delete later
+        // let additional_message = OpenAIApiMessage {
+        //     role: "user".to_string(),
+        //     content: format!("```json\n\n"),
+        // };
+        // messages_result.push(additional_message);
+
+        eprintln!("total_length: {}", total_length);
+        Ok(messages_result)
     }
 }
