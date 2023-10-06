@@ -8,6 +8,7 @@ use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::resources::bert_cpp::BertCPPProcess;
 use crate::resources::file_parsing::FileParser;
 use crate::schemas::identity::Identity;
+use blake3::Hasher;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use serde_json::{Map, Value as JsonValue};
@@ -25,9 +26,10 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::source::VRSource;
+use shinkai_vector_resources::source::{SourceDocumentType, SourceFileType, VRSource};
 use std::fmt;
 use std::result::Result::Ok;
+use std::time::Instant;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -86,9 +88,43 @@ impl AgentManager {
                     "process_job_message> processing files_map: ... files: {}",
                     job_message.files_inbox.len()
                 );
-                // TODO: later we  should able to grab errors and return them to the user
-                AgentManager::process_message_multifiles(self.db.clone(), job_message.files_inbox.clone(), profile)
-                    .await?;
+                {
+                    // TODO: refactor this
+                    // Fetch the job
+                    let job_id = job.job_id().to_string();
+                    let full_job = { self.db.lock().await.get_job(&job_id)? };
+
+                    // Acquire Agent
+                    let agent_id = full_job.parent_agent_id.clone();
+                    let mut agent_found = None;
+                    let mut profile_name = String::new();
+                    let mut user_profile: Option<ShinkaiName> = None;
+                    for agent in &self.agents {
+                        let locked_agent = agent.lock().await;
+                        if locked_agent.id == agent_id {
+                            agent_found = Some(agent.clone());
+                            profile_name = locked_agent.full_identity_name.full_name.clone();
+                            user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
+                            break;
+                        }
+                    }
+                    // TODO: later we  should able to grab errors and return them to the user
+                    let inference_response = match agent_found {
+                        Some(agent) => {
+                            AgentManager::process_message_multifiles(
+                                self.db.clone(),
+                                agent,
+                                job_message.files_inbox.clone(),
+                                profile,
+                            )
+                            .await?;
+                        }
+                        None => {
+                            // Handle the None case here. For example, you might want to return an error:
+                            return Err(AgentError::AgentNotFound);
+                        }
+                    };
+                }
             } else {
                 // TODO: move this somewhere else
                 let mut shinkai_db = self.db.lock().await;
@@ -142,9 +178,7 @@ impl AgentManager {
         let prev_execution_context = full_job.execution_context.clone();
         let analysis_context = HashMap::new();
 
-        // Embedding search
-        // TODO: add start of time measurement here
-
+        let start = Instant::now();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
         let query = generator
@@ -162,10 +196,11 @@ impl AgentManager {
                 .filter_map(|data_chunk| data_chunk.chunk.get_data_string().ok())
                 .collect();
         }
+
+        let duration = start.elapsed();
+        eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
         std::mem::drop(shinkai_db);
         std::mem::drop(bert_process);
-
-        // TODO: end time measurement here and print to console
 
         // TODO: Later implement all analysis phase chaining/branching logic starting from here
         // and have multiple methods like process_analysis_inference which use different
@@ -209,9 +244,6 @@ impl AgentManager {
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
-        // there is no deadlock here because it goes out of scope right after
-        // std::mem::drop(shinkai_db); // require to avoid deadlock
-
         Ok(())
     }
 
@@ -241,11 +273,6 @@ impl AgentManager {
 
         println!("analysis_inference> response: {:?}", response);
 
-        // TODO: check if response is correctly formatted in json (if not send it back)
-
-        // TODO: Later update all methods to AgentError
-        // Ok(response.unwrap())
-
         match response {
             Ok(json) => Ok(json),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
@@ -254,19 +281,6 @@ impl AgentManager {
             }
             Err(e) => Err(Box::new(e)),
         }
-
-        // TODO: Later implement re-run logic like below, but as a while loop in analysis phase/some wrapper retry method.
-        // Because we can't do normal recursion in async.
-        //
-        // match response {
-        //     Err(AgentError::FailedExtractingJSONObjectFromResponse(s)) => {
-        //         println!("{}", s);
-        //         let new_message = format!("{}. You must return a valid JSON object as a response.", message);
-        //         self.process_analysis_inference(job, new_message, agent, execution_context, analysis_context)
-        //             .await
-        //     }
-        //     _ => Ok(response.unwrap()),
-        // }
     }
 
     async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, Box<dyn Error>> {
@@ -283,9 +297,22 @@ impl AgentManager {
         unimplemented!()
     }
 
+    fn create_vrsource(filename: &str, file_type: SourceFileType, content_hash: Option<String>) -> VRSource {
+        if filename.starts_with("http") {
+            let filename_without_extension = filename.trim_end_matches(".pdf");
+            VRSource::new_uri_ref(filename_without_extension)
+        } else if filename.starts_with("file") {
+            let filename_without_extension = filename.trim_start_matches("file://").trim_end_matches(".pdf");
+            VRSource::new_source_file_ref(filename_without_extension.to_string(), file_type, content_hash.unwrap())
+        } else {
+            VRSource::none()
+        }
+    }
+
     // TODO(Nico): refactor so it's decomposed
     pub async fn process_message_multifiles(
         db: Arc<Mutex<ShinkaiDB>>,
+        agent: Arc<Mutex<Agent>>,
         files_inbox: String,
         profile: ShinkaiName,
     ) -> Result<HashMap<String, Vec<u8>>, AgentError> {
@@ -309,15 +336,36 @@ impl AgentManager {
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
                 // Generate embeddings for PDF files
-                let desc = "An initial introduction to the Shinkai Network."; // TODO: get the description from the LLM
+                // let desc = "An initial introduction to the Shinkai Network."; // TODO: get the description from the LLM
+
+                let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 10, 3, 200)?;
+                // TODO: use pdf_overview.grouped_text_list to generate the description using an LLM.
+                // TODO: work on the prompts so it can be iterative and we can get a full description
+
+                let agent_clone = agent.clone();
+                let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
+                let description_response = tokio::spawn(async move {
+                    let mut agent = agent_clone.lock().await;
+                    let prompt = JobPromptGenerator::simple_doc_description(grouped_text_list_clone);
+                    agent.inference(prompt).await
+                })
+                .await?;
+
+                eprintln!("description_response: {:?}", description_response);
+
+                let vrsource = Self::create_vrsource(
+                    &filename,
+                    SourceFileType::Document(SourceDocumentType::Pdf),
+                    Some(pdf_overview.blake3_hash),
+                );
                 let doc = FileParser::parse_pdf(
                     &content,
-                    100,
+                    150,
                     &*generator,
                     &filename,
-                    Some(desc),
-                    VRSource::None, // TODO: how can we get the source? if name starts with http then it's an URL if starts with file then it's local
-                    &vec![],        // TODO: should this be computed using RAKE?
+                    Some(&"".to_string()),
+                    vrsource,
+                    &vec![], // TODO: should this be computed using RAKE?
                 )?;
 
                 let resource = BaseVectorResource::from(doc.clone());
@@ -326,7 +374,7 @@ impl AgentManager {
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
             }
-            files_map.insert(filename, content);
+            files_map.insert(filename, content); 
         }
 
         Ok(files_map)

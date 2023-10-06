@@ -9,6 +9,8 @@ use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use tiktoken_rs::get_chat_completion_max_tokens;
+use tiktoken_rs::num_tokens_from_messages;
 
 #[derive(Debug, Deserialize)]
 pub struct Response {
@@ -60,14 +62,30 @@ impl LLMProvider for OpenAI {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
 
-                let messages = prompt.generate_openai_messages(None)?;
+                let tiktoken_messages = prompt.generate_openai_messages(None)?;
+                let used_tokens = num_tokens_from_messages("gpt-4", &tiktoken_messages).unwrap();
+
+                let messages: Vec<OpenAIApiMessage> = tiktoken_messages.into_iter().filter_map(|message| {
+                    if let Some(content) = message.content {
+                        Some(OpenAIApiMessage {
+                            role: message.role,
+                            content,
+                        })
+                    } else {
+                        eprintln!("Warning: Message with role '{}' has no content. Ignoring.", message.role);
+                        None
+                    }
+                }).collect();
+                
                 let messages_json = serde_json::to_value(&messages)?;
+
+                let max_tokens = std::cmp::max(5, 4097 - used_tokens);
 
                 let payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
-                    "max_tokens": 3000, // TODO: need to set up this correctly depending on the length of messages
+                    "max_tokens": max_tokens,
                 });
 
                 let body = serde_json::to_string(&payload)?;
