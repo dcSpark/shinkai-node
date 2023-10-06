@@ -1,7 +1,7 @@
 use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
-use crate::embedding_generator::EmbeddingGenerator;
+use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
@@ -11,6 +11,7 @@ use reqwest::blocking::multipart as blocking_multipart;
 use reqwest::multipart;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct UnstructuredAPI {
@@ -23,30 +24,56 @@ impl UnstructuredAPI {
         Self { api_url, api_key }
     }
 
-    // /// Makes a blocking request to process a file in a buffer to Unstructured,
-    // /// and then processing the returned results into a BaseVectorResource
-    // pub fn process_file_blocking(
-    //     &self,
-    //     file_buffer: Vec<u8>,
-    //     generator: &dyn EmbeddingGenerator,
-    //     name: &str,
-    //     desc: Option<&str>,
-    //     source: VRSource,
-    //     parsing_tags: &Vec<DataTag>,
-    //     max_chunk_size: u64,
-    // ) -> Result<BaseVectorResource, VectorResourceError> {
-    //     // Parse pdf into groups of lines + a resource_id from the hash of the data
-    //     let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-    //     let elements = self.process_file_request_blocking(file_buffer, name)?;
-    //     eprintln!("Parsed file composed of {} elements", elements.len());
+    /// Makes a blocking request to process a file in a buffer to Unstructured,
+    /// and then processing the returned results into a BaseVectorResource
+    pub fn process_file_blocking(
+        &self,
+        file_buffer: Vec<u8>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Parse pdf into groups of lines + a resource_id from the hash of the data
+        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let elements = self.process_file_request_blocking(file_buffer, name)?;
+        eprintln!("Parsed file composed of {} elements", elements.len());
 
-    //     // Create doc resource and initial setup
-    //     let mut doc = DocumentVectorResource::new_empty(name, desc, source, &resource_id);
-    //     doc.set_embedding_model_used(generator.model_type());
+        // Create doc resource and initial setup
+        let mut doc = DocumentVectorResource::new_empty(name, desc, source, &resource_id);
+        doc.set_embedding_model_used(generator.model_type());
 
-    //     // Extract keywords from the elements
-    //     let keywords = UnstructuredParser::extract_keywords(elements, 50);
-    // }
+        // Extract keywords from the elements
+        let keywords = UnstructuredParser::extract_keywords(&elements, 50);
+        println!("Keywords: {:?}", keywords);
+
+        // Set the resource embedding, using the keywords + name + desc + source
+        doc.update_resource_embedding(generator, keywords)?;
+
+        // Generate embeddings for each group of text
+        let mut embeddings = Vec::new();
+        let total_num_embeddings = elements.len();
+        let mut i = 0;
+        for element in &elements {
+            let embedding = generator.generate_embedding_default(&element.text)?;
+            embeddings.push(embedding);
+
+            i += 1;
+            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+        }
+
+        // Add the text + embeddings into the doc
+        for (i, element) in elements.iter().enumerate() {
+            let mut metadata = HashMap::new();
+            // Check if element.metadata.page_number exists, if so then add the value to "page_number" in the hashmap
+
+            doc.append_data(&element.text, Some(metadata), &embeddings[i], parsing_tags);
+        }
+
+        Ok(BaseVectorResource::Document(doc))
+    }
 
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
