@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DotsVerticalIcon, PaperPlaneIcon } from "@radix-ui/react-icons";
+import { PaperPlaneIcon } from "@radix-ui/react-icons";
 import {
   calculateMessageHash,
   extractJobIdFromInbox,
@@ -19,11 +19,11 @@ import { Markdown } from "tiptap-markdown";
 import { z } from "zod";
 
 import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
 import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
 import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
+import DotsLoader from "../../components/ui/dots-loader";
 import {
   Form,
   FormControl,
@@ -34,29 +34,21 @@ import {
 } from "../../components/ui/form";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
-import { useAuth } from "../../store/auth-context";
+import {
+  getMessageFromChat,
+  getMessageFromJob,
+  groupMessagesByDate,
+} from "../../lib/chat-conversation";
+import { cn } from "../../lib/utils";
+import { useAuth } from "../../store/auth";
 
 const chatSchema = z.object({
   message: z.string(),
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getMessageFromJob = (message: any) => {
-  if ("unencrypted" in message.body) {
-    return JSON.parse(
-      message.body.unencrypted.message_data.unencrypted.message_raw_content
-    ).content;
-  }
-  return message.body.unencrypted.message_data.encrypted.content;
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getMessageFromChat = (message: any) => {
-  return message.body.unencrypted.message_data.unencrypted.message_raw_content;
-};
-
 const ChatConversation = () => {
   const { inboxId: encodedInboxId = "" } = useParams();
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const previousChatHeightRef = useRef<number>(0);
   const fromPreviousMessagesRef = useRef<boolean>(false);
@@ -78,13 +70,13 @@ const ChatConversation = () => {
     isSuccess: isChatConversationSuccess,
   } = useGetChatConversationWithPagination({
     inboxId: inboxId as string,
-    shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    profile: setupData?.profile ?? "",
-    my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-    node_encryption_pk: setupData?.node_encryption_pk ?? "",
-    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    profile_identity_sk: setupData?.profile_identity_sk ?? "",
+    shinkaiIdentity: auth?.shinkai_identity ?? "",
+    profile: auth?.profile ?? "",
+    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
+    profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+    profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
   const { mutateAsync: sendMessageToInbox, isLoading: isSendingMessageToInbox } =
@@ -93,36 +85,36 @@ const ChatConversation = () => {
     useSendMessageToJob();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
-    if (!setupData) return;
+    if (!auth) return;
     fromPreviousMessagesRef.current = false;
     if (isJobInbox(inboxId)) {
-      const sender = `${setupData.shinkai_identity}/${setupData.profile}`;
+      const sender = `${auth.shinkai_identity}/${auth.profile}`;
       const jobId = extractJobIdFromInbox(inboxId);
-      await sendMessageToJob({
+      sendMessageToJob({
         jobId,
         message: data.message,
         sender,
         files_inbox: "",
-        shinkaiIdentity: setupData.shinkai_identity,
-        my_device_encryption_sk: setupData.my_device_encryption_sk,
-        my_device_identity_sk: setupData.my_device_identity_sk,
-        node_encryption_pk: setupData.node_encryption_pk,
-        profile_encryption_sk: setupData.profile_encryption_sk,
-        profile_identity_sk: setupData.profile_identity_sk,
+        shinkaiIdentity: auth.shinkai_identity,
+        my_device_encryption_sk: auth.my_device_encryption_sk,
+        my_device_identity_sk: auth.my_device_identity_sk,
+        node_encryption_pk: auth.node_encryption_pk,
+        profile_encryption_sk: auth.profile_encryption_sk,
+        profile_identity_sk: auth.profile_identity_sk,
       });
     } else {
-      const sender = `${setupData.shinkai_identity}/${setupData.profile}/device/${setupData.registration_name}`;
+      const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
-      await sendMessageToInbox({
+      sendMessageToInbox({
         sender,
         receiver,
         message: data.message,
         inboxId: inboxId as string,
-        my_device_encryption_sk: setupData.profile_encryption_sk,
-        my_device_identity_sk: setupData.profile_identity_sk,
-        node_encryption_pk: setupData.node_encryption_pk,
-        profile_encryption_sk: setupData.profile_encryption_sk,
-        profile_identity_sk: setupData.profile_identity_sk,
+        my_device_encryption_sk: auth.profile_encryption_sk,
+        my_device_identity_sk: auth.profile_identity_sk,
+        node_encryption_pk: auth.node_encryption_pk,
+        profile_encryption_sk: auth.profile_encryption_sk,
+        profile_identity_sk: auth.profile_identity_sk,
       });
     }
     chatForm.reset();
@@ -174,22 +166,7 @@ const ChatConversation = () => {
 
   return (
     <div className="flex flex-1 flex-col pt-2">
-      <div className="mb-3 flex shrink-0 items-center gap-2 px-4">
-        <Avatar className="h-7 w-7">
-          <AvatarImage
-            alt="Shinkai AI"
-            className="h-7 w-7"
-            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
-          />
-          <AvatarFallback className="h-7 w-7" />
-        </Avatar>
-        <span className="flex-1 text-left text-sm">{inboxId}</span>
-        <Button size="icon" variant="ghost">
-          <span className="sr-only">Settings</span>
-          <DotsVerticalIcon className="h-4 w-4" />
-        </Button>
-      </div>
-      <ScrollArea className="h-full px-4" ref={chatContainerRef}>
+      <ScrollArea className="h-full px-5" ref={chatContainerRef}>
         {isChatConversationSuccess && (
           <div className="py-2 text-center text-xs">
             {isFetchingPreviousPage || hasPreviousPage ? (
@@ -199,7 +176,7 @@ const ChatConversation = () => {
             )}
           </div>
         )}
-        <div className="space-y-5">
+        <div className="pb-4">
           {isChatConversationLoading &&
             [1, 2, 3, 4].map((index) => (
               <Skeleton className="h-10 w-full rounded-lg" key={index} />
@@ -207,45 +184,67 @@ const ChatConversation = () => {
           {isChatConversationSuccess &&
             data?.pages.map((group, index) => (
               <Fragment key={index}>
-                {group.map((message) => {
-                  // const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
-                  // let isLocalMessage = false;
-                  // if (message.body && "unencrypted" in message.body) {
-                  //   isLocalMessage =
-                  //     message.body.unencrypted.internal_metadata.sender_subidentity ===
-                  //     localIdentity;
-                  // }
+                {Object.entries(groupMessagesByDate(group)).map(([date, messages]) => {
                   return (
-                    <div
-                      className="rounded-lg bg-[rgba(217,217,217,0.04)] px-4 py-6"
-                      key={message.external_metadata?.scheduled_time}
-                    >
-                      {/* <p
+                    <div key={date}>
+                      <div
                         className={cn(
-                          "text-sm",
-                          isLocalMessage ? "text-muted-foreground" : "text-foreground"
+                          "relative z-10 m-auto flex w-[140px] items-center justify-center rounded-xl border border-slate-800 bg-[#131B23] transition-opacity",
+                          true && "sticky top-5"
                         )}
                       >
-                        {isJobInbox(inboxId)
-                          ? getMessageFromJob(message)
-                          : getMessageFromChat(message)}
-                      </p> */}
-                      <MarkdownPreview
-                        source={
-                          isJobInbox(inboxId)
-                            ? getMessageFromJob(message)
-                            : getMessageFromChat(message)
-                        }
-                        className="bg-transparent text-sm text-foreground"
-                      />
-                      {/* <p className="text-xs">
-                        <span className="text-muted-foreground">Sent at </span>
-                        <span className=" text-gray-600">
-                        {new Date(
-                          message?.external_metadata?.scheduled_time ?? ""
-                          ).toLocaleString()}
-                          </span>
-                        </p> */}
+                        <span className="px-2.5 py-2 text-sm text-foreground">
+                          {date}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-4">
+                        {messages.map((message) => {
+                          // TODO: Fix this
+                          const isLocal =
+                            message.external_metadata?.sender ===
+                            auth?.shinkai_identity + "/" + auth?.profile;
+
+                          return (
+                            <div
+                              className={cn(
+                                "flex w-[95%] items-start gap-3",
+                                isLocal
+                                  ? "ml-0 mr-auto flex-row"
+                                  : "ml-auto mr-0 flex-row-reverse"
+                              )}
+                              key={message.external_metadata?.scheduled_time}
+                            >
+                              <Avatar className="mt-1 h-8 w-8">
+                                <AvatarImage
+                                  src={
+                                    isLocal
+                                      ? `https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`
+                                      : `https://ui-avatars.com/api/?name=S&background=FF5E5F&color=fff`
+                                  }
+                                  alt={isLocal ? inboxId : "Shinkai AI"}
+                                />
+                                <AvatarFallback className="h-8 w-8" />
+                              </Avatar>
+                              <MarkdownPreview
+                                className={cn(
+                                  "mt-1 rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
+                                  isLocal
+                                    ? "rounded-tl-none border border-slate-800"
+                                    : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+                                )}
+                                source={
+                                  isJobInbox(inboxId)
+                                    ? getMessageFromJob(message)
+                                    : getMessageFromChat(message)
+                                }
+                                wrapperElement={{
+                                  "data-color-mode": "dark",
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
@@ -255,8 +254,10 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="flex items-start gap-2 bg-app-gradient p-2 pt-3">
-          {/* <EditorContent editor={editor} /> */}
+        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pt-3">
+          {isLoading ? (
+            <DotsLoader className="absolute left-8 top-10 flex items-center justify-center" />
+          ) : null}
 
           <Form {...chatForm}>
             <FormField
@@ -312,7 +313,6 @@ const MessageEditor = ({
   disabled?: boolean;
 }) => {
   const editor = useEditor({
-    editable: !disabled,
     editorProps: {
       attributes: {
         class: "prose prose-invert prose-sm mx-auto focus:outline-none",
@@ -334,12 +334,16 @@ const MessageEditor = ({
       Markdown,
     ],
     content: value,
-
+    autofocus: true,
     onUpdate({ editor }) {
       // onChange(editor.getHTML());
       onChange(editor.storage.markdown.getMarkdown());
     },
   });
+
+  useEffect(() => {
+    editor?.setEditable(!disabled);
+  }, [disabled, editor]);
 
   useEffect(() => {
     setInitialValue === undefined
@@ -352,5 +356,5 @@ const MessageEditor = ({
     if (value === "") editor?.commands.setContent("");
   }, [value, editor]);
 
-  return <EditorContent className="prose-" editor={editor} />;
+  return <EditorContent editor={editor} />;
 };
