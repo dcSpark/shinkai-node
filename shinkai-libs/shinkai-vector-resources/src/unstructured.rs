@@ -103,38 +103,37 @@ impl UnstructuredAPI {
         resource_id: &str,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
-        // If description is None, find the first Title element and use its text as the description
-        let mut resource_desc = desc;
-        if desc.is_none() {
-            if let Some(title_element) = elements
-                .iter()
-                .find(|&element| matches!(element.element_type, ElementType::Title))
-            {
-                resource_desc = Some(&title_element.text);
-            }
-            // If no title available, then use the first narrative text
-            if resource_desc.is_none() {
-                if let Some(element) = elements
-                    .iter()
-                    .find(|&element| matches!(element.element_type, ElementType::NarrativeText))
-                {
-                    resource_desc = Some(&element.text);
-                }
-            }
-        }
+        // Group elements together before generating the doc
+        let text_groups = UnstructuredParser::flat_group_elements_text(&elements, max_chunk_size);
+        self.process_new_doc_resource(text_groups, generator, name, desc, source, parsing_tags, resource_id)
+    }
 
+    /// Recursively processes all text groups & their sub groups into DocumentResources
+    fn process_new_doc_resource(
+        &self,
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // If description is None, use the first text
+        let mut resource_desc = desc;
+        let desc_string = text_groups[0].text.to_string();
+        if desc.is_none() && text_groups.len() > 0 {
+            resource_desc = Some(&desc_string);
+        }
         // Create doc resource and initial setup
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source, &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Extract keywords from the elements
-        let keywords = UnstructuredParser::extract_keywords(&elements, 50);
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
-
-        // Group elements together into ready-to-use strings for embedding generation
-        let text_groups = UnstructuredParser::group_elements_text(&elements, max_chunk_size);
 
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
@@ -260,9 +259,9 @@ impl UnstructuredParser {
 
     /// Extracts the most important keywords from a given text,
     /// using the RAKE algorithm.
-    pub fn extract_keywords(elements: &Vec<UnstructuredElement>, num: u64) -> Vec<String> {
+    pub fn extract_keywords(group: &Vec<GroupedText>, num: u64) -> Vec<String> {
         // Extract all the text out of all the elements and combine them together into a single string
-        let text = elements
+        let text = group
             .iter()
             .map(|element| element.text.as_str())
             .collect::<Vec<&str>>()
@@ -281,7 +280,7 @@ impl UnstructuredParser {
     /// Given a list of `UnstructuredElement`s, groups their text together with some processing logic.
     /// Currently respects max_chunk_size, ensures splitting between narrative text/new title,
     /// and skips over all uncategorized text.
-    pub fn group_elements_text(elements: &Vec<UnstructuredElement>, max_chunk_size: u64) -> Vec<GroupedText> {
+    pub fn flat_group_elements_text(elements: &Vec<UnstructuredElement>, max_chunk_size: u64) -> Vec<GroupedText> {
         let max_chunk_size = max_chunk_size as usize;
         let mut groups = Vec::new();
         let mut current_group = GroupedText::new();
@@ -333,8 +332,8 @@ impl UnstructuredParser {
             groups.push(current_group);
         }
 
-        // Filter out groups with a text of 5 characters or less
-        groups = groups.into_iter().filter(|group| group.text.len() > 5).collect();
+        // Filter out groups with a text of 15 characters or less
+        groups = groups.into_iter().filter(|group| group.text.len() > 15).collect();
 
         groups
     }
@@ -382,6 +381,7 @@ impl UnstructuredParser {
 pub struct GroupedText {
     text: String,
     page_numbers: Vec<u32>,
+    sub_groups: Vec<GroupedText>,
 }
 
 impl GroupedText {
@@ -389,10 +389,11 @@ impl GroupedText {
         GroupedText {
             text: String::new(),
             page_numbers: Vec::new(),
+            sub_groups: Vec::new(),
         }
     }
 
-    /// Pushes data into the GroupedText fields
+    /// Pushes data into this GroupedText
     pub fn push_data(&mut self, text: &str, page_number: Option<u32>) {
         if !self.text.is_empty() {
             self.text.push(' ');
@@ -404,6 +405,11 @@ impl GroupedText {
                 self.page_numbers.push(page_number);
             }
         }
+    }
+
+    /// Pushes a sub-group into this GroupedText
+    pub fn push_sub_group(&mut self, sub_group: GroupedText) {
+        self.sub_groups.push(sub_group);
     }
 
     /// Outputs a String that holds an array of the page numbers
@@ -426,6 +432,7 @@ pub enum ElementType {
     NarrativeText,
     UncategorizedText,
     ListItem,
+    EmailAddress,
 }
 
 /// Output data from Unstructured which holds a piece of text and
