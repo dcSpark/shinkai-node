@@ -289,7 +289,7 @@ impl FileParser {
     /// performed cleanup, ensured that each String is under the 512 token
     /// limit and is ready to be used to create a DataChunk.
     pub fn parse_text(
-        text_list: Vec<String>,
+        unfiltered_text_list: Vec<String>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
         desc: Option<&str>,
@@ -297,6 +297,9 @@ impl FileParser {
         resource_id: &str,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse all text with
     ) -> Result<DocumentVectorResource, VectorResourceError> {
+        let mut text_list = unfiltered_text_list;
+        text_list.retain(|text| !text.is_empty());
+
         // Create doc resource and initial setup
         let mut doc = DocumentVectorResource::new_empty(name, desc, source, resource_id);
         doc.set_embedding_model_used(generator.model_type());
@@ -317,7 +320,7 @@ impl FileParser {
             embeddings.push(embedding);
 
             i += 1;
-            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
 
         // Add the text + embeddings into the doc
@@ -342,7 +345,9 @@ impl FileParser {
     ) -> Result<DocumentVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_to_string_list(buffer, average_chunk_size)?;
+        eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
         let resource_id = Self::generate_data_hash(buffer);
+        eprintln!("Generated resource id: {}", resource_id);
         Self::parse_text(
             grouped_text_list,
             generator,

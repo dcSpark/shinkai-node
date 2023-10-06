@@ -221,6 +221,9 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
         let retrieved_chunks = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
+        if retrieved_chunks.is_empty() {
+            return Ok(Vec::new());
+        }
         let top_chunk = &retrieved_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
             VectorResourceError::VectorResourceEmpty,
         ))?;
@@ -301,6 +304,27 @@ impl ShinkaiDB {
         Ok(resources)
     }
 
+    /// Returns all resource pointers in the profile's Resource Router
+    pub fn get_all_resource_pointers(
+        &self,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+        let router = self.get_profile_resource_router(profile)?;
+        Ok(router.get_all_resource_pointers())
+    }
+
+    /// Performs a vector search using a query embedding and returns the
+    /// num_of_resources amount of most similar VectorResourcePointers.
+    fn vector_search_resource_pointers(
+        &self,
+        query: Embedding,
+        num_of_resources: u64,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+        let router = self.get_profile_resource_router(profile)?;
+        Ok(router.vector_search(query, num_of_resources))
+    }
+
     /// Performs a vector search using a query embedding and returns the
     /// num_of_resources amount of most similar BaseVectorResources.
     pub fn vector_search_resources(
@@ -309,8 +333,7 @@ impl ShinkaiDB {
         num_of_resources: u64,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
-        let router = self.get_profile_resource_router(profile)?;
-        let resource_pointers = router.vector_search(query, num_of_resources);
+        let resource_pointers = self.vector_search_resource_pointers(query, num_of_resources, profile)?;
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {

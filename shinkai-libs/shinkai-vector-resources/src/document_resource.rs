@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, RemoteModel};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VectorResource};
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -94,6 +94,11 @@ impl VectorResource for DocumentVectorResource {
         let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidChunkId)? as usize;
         Ok(self.data_chunks[index].clone())
     }
+
+    /// Returns all data chunks in the MapVectorResource
+    fn get_all_data_chunks(&self) -> Vec<DataChunk> {
+        self.data_chunks.clone()
+    }
 }
 
 impl DocumentVectorResource {
@@ -148,7 +153,7 @@ impl DocumentVectorResource {
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
-        let search_results = self.vector_search_with_traversal(query, 1, &TraversalMethod::UntilDepth(0));
+        let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
         let most_similar_chunk = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_chunk
             .chunk
@@ -180,7 +185,7 @@ impl DocumentVectorResource {
                     chunk: chunk.clone(),
                     score: 0.00,
                     resource_pointer: self.get_resource_pointer(),
-                    retrieval_depth: 0,
+                    retrieval_path: VRPath::new(),
                 });
             }
         }
@@ -204,7 +209,7 @@ impl DocumentVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
-                        retrieval_depth: 0,
+                        retrieval_path: VRPath::new(),
                     }),
                 _ => (),
             }

@@ -60,18 +60,18 @@ impl LLMProvider for OpenAI {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
 
-                let messages = prompt.generate_openai_messages()?;
+                let messages = prompt.generate_openai_messages(None)?;
                 let messages_json = serde_json::to_value(&messages)?;
 
                 let payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
-                    "max_tokens": 3500,
+                    "max_tokens": 3000, // TODO: need to set up this correctly depending on the length of messages
                 });
 
                 let body = serde_json::to_string(&payload)?;
-                // eprintln!("body api chagpt: {}", body);
+                eprintln!("body api chagpt: {}", body);
 
                 let res = client
                     .post(url)
@@ -81,15 +81,27 @@ impl LLMProvider for OpenAI {
                     .send()
                     .await?;
 
-                // eprintln!("Status: {}", res.status());
-                let data: Response = res.json().await.map_err(AgentError::ReqwestError)?;
-                let response_string: String = data
-                    .choices
-                    .iter()
-                    .map(|choice| choice.message.content.clone())
-                    .collect::<Vec<String>>()
-                    .join(" ");
-                Self::extract_first_json_object(&response_string)
+                eprintln!("Status: {}", res.status());
+                let response_text = res.text().await?;
+                eprintln!("Response: {:?}", response_text);
+
+                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
+                eprintln!("data_resp: {:?}", data_resp);
+
+                // let data_resp = res.json::<serde_json::Value>().await;
+                match data_resp {
+                    Ok(value) => {
+                        let data: Response = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                        let response_string: String = data
+                            .choices
+                            .iter()
+                            .map(|choice| choice.message.content.clone())
+                            .collect::<Vec<String>>()
+                            .join(" ");
+                        Self::extract_first_json_object(&response_string)
+                    }
+                    Err(e) => Err(AgentError::SerdeError(e)),
+                }
             } else {
                 Err(AgentError::ApiKeyNotSet)
             }

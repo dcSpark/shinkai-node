@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, RemoteModel};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VectorResource};
+use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -91,6 +91,11 @@ impl VectorResource for MapVectorResource {
             .ok_or(VectorResourceError::InvalidChunkId)?
             .clone())
     }
+
+    /// Returns all data chunks in the MapVectorResource
+    fn get_all_data_chunks(&self) -> Vec<DataChunk> {
+        self.data_chunks.values().cloned().collect()
+    }
 }
 
 impl MapVectorResource {
@@ -151,7 +156,7 @@ impl MapVectorResource {
                         chunk: chunk.clone(),
                         score: 0.00,
                         resource_pointer: self.get_resource_pointer(),
-                        retrieval_depth: 0,
+                        retrieval_path: VRPath::new(),
                     }),
                 _ => (),
             }
