@@ -305,13 +305,7 @@ impl UnstructuredParser {
             // If the current element text is larger than max_chunk_size,
             // split it into chunks and add them to groups
             if element_text.len() > max_chunk_size {
-                let chunks = element_text
-                    .as_str()
-                    .as_bytes()
-                    .chunks(max_chunk_size)
-                    .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
-                    .collect::<Vec<String>>();
-
+                let chunks = Self::split_into_chunks(&element_text, max_chunk_size);
                 for chunk in chunks {
                     let mut new_group = GroupedText::new();
                     new_group.push_data(&chunk, element.metadata.page_number);
@@ -339,7 +333,39 @@ impl UnstructuredParser {
             groups.push(current_group);
         }
 
+        // Filter out groups with a text of 5 characters or less
+        groups = groups.into_iter().filter(|group| group.text.len() > 5).collect();
+
         groups
+    }
+
+    /// Splits a string into chunks at the nearest whitespace to a given size
+    pub fn split_into_chunks(text: &str, chunk_size: usize) -> Vec<String> {
+        let mut chunks = Vec::new();
+        let mut start = 0;
+        while start < text.len() {
+            let end = start + chunk_size;
+            let end = if end < text.len() {
+                let mut end = end;
+                while end > start && !text.as_bytes()[end].is_ascii_whitespace() {
+                    end -= 1;
+                }
+                if end == start {
+                    start + chunk_size
+                } else {
+                    end
+                }
+            } else {
+                text.len()
+            };
+
+            let chunk = &text[start..end];
+            chunks.push(chunk.to_string());
+
+            start = end;
+        }
+
+        chunks
     }
 
     /// Generates a Blake3 hash of the data in the buffer
@@ -366,11 +392,17 @@ impl GroupedText {
         }
     }
 
-    /// Push data into the `GroupedText`
+    /// Pushes data into the GroupedText fields
     pub fn push_data(&mut self, text: &str, page_number: Option<u32>) {
+        if !self.text.is_empty() {
+            self.text.push(' ');
+        }
         self.text.push_str(text);
+
         if let Some(page_number) = page_number {
-            self.page_numbers.push(page_number);
+            if !self.page_numbers.contains(&page_number) {
+                self.page_numbers.push(page_number);
+            }
         }
     }
 
