@@ -36,7 +36,7 @@ impl UnstructuredAPI {
     /// Makes a blocking request to process a file in a buffer to Unstructured,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: For the time being the file name must include the extension ie. `*.pdf`
-    pub fn process_file_blocking(
+    pub fn process_file(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
@@ -50,7 +50,16 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_blocking(file_buffer, name)?;
 
-        self.process_file_shared(elements, generator, name, desc, source, parsing_tags, &resource_id)
+        self.process_file_shared(
+            elements,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            &resource_id,
+            max_chunk_size,
+        )
     }
 
     /// Makes an async request to process a file in a buffer to Unstructured,
@@ -70,7 +79,16 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_async(file_buffer, name).await?;
 
-        self.process_file_shared(elements, generator, name, desc, source, parsing_tags, &resource_id)
+        self.process_file_shared(
+            elements,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            &resource_id,
+            max_chunk_size,
+        )
     }
 
     /// Shared code between the blocking and async versions of the process_file method
@@ -83,36 +101,67 @@ impl UnstructuredAPI {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
+        max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
+        // If description is None, find the first Title element and use its text as the description
+        let mut resource_desc = desc;
+        if desc.is_none() {
+            if let Some(title_element) = elements
+                .iter()
+                .find(|&element| matches!(element.element_type, ElementType::Title))
+            {
+                resource_desc = Some(&title_element.text);
+            }
+            // If no title available, then use the first narrative text
+            if resource_desc.is_none() {
+                if let Some(element) = elements
+                    .iter()
+                    .find(|&element| matches!(element.element_type, ElementType::NarrativeText))
+                {
+                    resource_desc = Some(&element.text);
+                }
+            }
+        }
+
         // Create doc resource and initial setup
-        let mut doc = DocumentVectorResource::new_empty(name, desc, source, &resource_id);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source, &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Extract keywords from the elements
         let keywords = UnstructuredParser::extract_keywords(&elements, 50);
-        println!("Keywords: {:?}", keywords);
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
 
+        // Group elements together into ready-to-use strings for embedding generation
+        let text_groups = UnstructuredParser::group_elements_text(&elements, max_chunk_size);
+
         // Generate embeddings for each group of text
         let mut embeddings = Vec::new();
-        let total_num_embeddings = elements.len();
+        let total_num_embeddings = text_groups.len();
         let mut i = 0;
-        for element in &elements {
-            let embedding = generator.generate_embedding_default(&element.text)?;
+        for grouped_text in &text_groups {
+            println!(
+                "Text: {}\n Page Numbers: {:?}\n\n",
+                grouped_text.text, grouped_text.page_numbers
+            );
+
+            let embedding = generator.generate_embedding_default(&grouped_text.text)?;
             embeddings.push(embedding);
 
             i += 1;
             println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
 
-        // Add the text + embeddings into the doc
-        for (i, element) in elements.iter().enumerate() {
+        // Adds the text + embeddings into the doc as appended new DataChunks
+        for (i, grouped_text) in text_groups.iter().enumerate() {
+            // Add page numbers to metadata
             let mut metadata = HashMap::new();
-            // Check if element.metadata.page_number exists, if so then add the value to "page_number" in the hashmap
+            if !grouped_text.page_numbers.is_empty() {
+                metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
+            }
 
-            doc.append_data(&element.text, Some(metadata), &embeddings[i], parsing_tags);
+            doc.append_data(&grouped_text.text, Some(metadata), &embeddings[i], parsing_tags);
         }
 
         Ok(BaseVectorResource::Document(doc))
@@ -133,15 +182,18 @@ impl UnstructuredAPI {
 
         let form = blocking_multipart::Form::new().part("files", part);
 
-        let res = client
+        let mut request_builder = client
             .post(&self.endpoint_url())
             .header("Accept", "application/json")
-            .multipart(form)
-            .send()?;
+            .multipart(form);
+
+        if let Some(api_key) = &self.api_key {
+            request_builder = request_builder.header("unstructured-api-key", api_key);
+        }
+
+        let res = request_builder.send()?;
 
         let body = res.text()?;
-
-        println!("{:?}", body);
 
         let json: JsonValue = serde_json::from_str(&body)?;
 
@@ -164,12 +216,16 @@ impl UnstructuredAPI {
 
         let form = multipart::Form::new().part("files", part);
 
-        let res = client
+        let mut request_builder = client
             .post(&self.endpoint_url())
             .header("Accept", "application/json")
-            .multipart(form)
-            .send()
-            .await?;
+            .multipart(form);
+
+        if let Some(api_key) = &self.api_key {
+            request_builder = request_builder.header("unstructured-api-key", api_key);
+        }
+
+        let res = request_builder.send().await?;
 
         let body = res.text().await?;
 
@@ -218,13 +274,72 @@ impl UnstructuredParser {
         // Get the keywords
         let keywords = extractor.get_keywords();
 
-        // Printing logic
-        // keywords
-        //     .iter()
-        //     .for_each(|(score, keyword)| println!("{}: {}", keyword, score));
-
         // Return only the keywords, discarding the scores
         keywords.into_iter().map(|(_score, keyword)| keyword).collect()
+    }
+
+    /// Given a list of `UnstructuredElement`s, groups their text together with some processing logic.
+    /// Currently respects max_chunk_size, ensures splitting between narrative text/new title,
+    /// and skips over all uncategorized text.
+    pub fn group_elements_text(elements: &Vec<UnstructuredElement>, max_chunk_size: u64) -> Vec<GroupedText> {
+        let max_chunk_size = max_chunk_size as usize;
+        let mut groups = Vec::new();
+        let mut current_group = GroupedText::new();
+
+        for i in 0..elements.len() {
+            let element = &elements[i];
+            let element_text = element.text.clone();
+
+            // Skip over any uncategorized text (usually filler like headers/footers)
+            if element.element_type == ElementType::UncategorizedText {
+                continue;
+            }
+
+            // If adding the current element text would exceed the max_chunk_size,
+            // push the current group to groups and start a new group
+            if current_group.text.len() + element_text.len() > max_chunk_size {
+                groups.push(current_group);
+                current_group = GroupedText::new();
+            }
+
+            // If the current element text is larger than max_chunk_size,
+            // split it into chunks and add them to groups
+            if element_text.len() > max_chunk_size {
+                let chunks = element_text
+                    .as_str()
+                    .as_bytes()
+                    .chunks(max_chunk_size)
+                    .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
+                    .collect::<Vec<String>>();
+
+                for chunk in chunks {
+                    let mut new_group = GroupedText::new();
+                    new_group.push_data(&chunk, element.metadata.page_number);
+                    groups.push(new_group);
+                }
+                continue;
+            }
+
+            // Add the current element text to the current group
+            current_group.push_data(&element_text, element.metadata.page_number);
+
+            // If the current element type is NarrativeText and the next element's type is Title,
+            // push the current group to groups and start a new group
+            if element.element_type == ElementType::NarrativeText
+                && i + 1 < elements.len()
+                && elements[i + 1].element_type == ElementType::Title
+            {
+                groups.push(current_group);
+                current_group = GroupedText::new();
+            }
+        }
+
+        // Push the last group to groups
+        if !current_group.text.is_empty() {
+            groups.push(current_group);
+        }
+
+        groups
     }
 
     /// Generates a Blake3 hash of the data in the buffer
@@ -236,6 +351,43 @@ impl UnstructuredParser {
     }
 }
 
+/// An intermediary type in between `UnstructuredElement`s and
+/// `Embedding`s/`DataChunk`s
+pub struct GroupedText {
+    text: String,
+    page_numbers: Vec<u32>,
+}
+
+impl GroupedText {
+    pub fn new() -> Self {
+        GroupedText {
+            text: String::new(),
+            page_numbers: Vec::new(),
+        }
+    }
+
+    /// Push data into the `GroupedText`
+    pub fn push_data(&mut self, text: &str, page_number: Option<u32>) {
+        self.text.push_str(text);
+        if let Some(page_number) = page_number {
+            self.page_numbers.push(page_number);
+        }
+    }
+
+    /// Outputs a String that holds an array of the page numbers
+    pub fn format_page_num_string(&self) -> String {
+        format!(
+            "[{}]",
+            self.page_numbers
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+/// Different types of elements Unstructured can output
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub enum ElementType {
     Title,
@@ -244,6 +396,8 @@ pub enum ElementType {
     ListItem,
 }
 
+/// Output data from Unstructured which holds a piece of text and
+/// relevant data.
 #[derive(Debug, Deserialize)]
 pub struct UnstructuredElement {
     #[serde(rename = "type")]

@@ -66,7 +66,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
 
     let resource = api
-        .process_file_blocking(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 400)
+        .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 400)
         .unwrap();
 
     // assert_eq!(1, 2);
