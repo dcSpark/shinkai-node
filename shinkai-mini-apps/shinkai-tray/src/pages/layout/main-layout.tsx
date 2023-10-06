@@ -101,11 +101,11 @@ export function Footer() {
   };
 
   return (
-    <div className="absolute right-4 top-1 flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="absolute bottom-2 left-2 text-sm text-muted-foreground">
       <Popover onOpenChange={setOpen} open={open} modal>
         <PopoverTrigger
           aria-expanded={open}
-          className="rounded-lg p-1 px-2 transition-colors duration-150 hover:bg-gray-800/60"
+          className="rounded-lg bg-app-gradient px-2.5 py-2 shadow-lg transition-colors duration-150 hover:bg-gray-700/40"
           onClick={() => setOpen(true)}
         >
           <span className="text-xs">
@@ -117,7 +117,7 @@ export function Footer() {
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          alignOffset={-25}
+          alignOffset={0}
           className="rounded-md border-0 bg-black bg-gradient-to-r from-[#19242D] to-[#19242D]/90 p-4 shadow-xl"
           side="top"
           sideOffset={2}
@@ -175,16 +175,16 @@ const MainLayout = () => {
   return (
     <div className="relative flex h-full flex-col bg-app-gradient bg-cover text-white">
       <div
-        className="relative flex h-9 shrink-0 cursor-default select-none items-center justify-center text-xs"
+        className="flex h-9 shrink-0 cursor-default select-none items-center justify-center text-xs"
         data-tauri-drag-region
       >
         Shinkai AI
-        <Footer />
       </div>
       <Separator />
       <div className="flex-auto overflow-auto">
         <Outlet />
       </div>
+      <Footer />
     </div>
   );
 };

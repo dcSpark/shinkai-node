@@ -189,11 +189,11 @@ const ChatConversation = () => {
                     <div key={date}>
                       <div
                         className={cn(
-                          "relative z-10 m-auto flex w-[140px] items-center justify-center rounded-xl bg-slate-900 shadow-lg transition-opacity",
+                          "relative z-10 m-auto flex w-[140px] items-center justify-center rounded-xl border border-slate-800 bg-[#131B23] transition-opacity",
                           true && "sticky top-5"
                         )}
                       >
-                        <span className="px-2.5 py-2 text-sm font-semibold text-foreground">
+                        <span className="px-2.5 py-2 text-sm text-foreground">
                           {date}
                         </span>
                       </div>
