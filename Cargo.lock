@@ -2938,9 +2938,11 @@ name = "shinkai_vector_resources"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "byteorder",
  "csv",
  "env_logger",
+ "keyphrases",
  "lazy_static",
  "ordered-float",
  "regex",

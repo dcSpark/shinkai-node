@@ -12,6 +12,8 @@ csv = "1.1.6"
 serde_json = "1.0.105"
 byteorder = "1.4.3"
 ordered-float = "3.7.0"
+blake3 = "1.5.0"
+keyphrases = "0.3.2"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [dependencies.reqwest]
