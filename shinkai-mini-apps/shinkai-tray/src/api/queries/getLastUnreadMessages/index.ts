@@ -1,5 +1,7 @@
-import { getLastUnreadMessagesFromInbox } from "@shinkai_network/shinkai-message-ts/api";
 import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
+
+import { getLastUnreadMessagesFromInbox } from "@shinkai_network/shinkai-message-ts/api";
+
 import { GetLastUnreadMessagesInput } from "./types";
 
 export const getLastUnreadMessages = async ({

@@ -1,6 +1,6 @@
 import type {
-  SerializedAgent,
   AgentCredentialsPayload,
+  SerializedAgent,
 } from "@shinkai_network/shinkai-message-ts/models";
 
 export type CreateAgentInput = {

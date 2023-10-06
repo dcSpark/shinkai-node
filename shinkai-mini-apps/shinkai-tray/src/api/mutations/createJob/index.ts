@@ -6,6 +6,7 @@ import {
   JobCreationWrapper,
   JobScopeWrapper,
 } from "@shinkai_network/shinkai-message-ts/wasm";
+
 import { CreateJobInput } from "./types";
 
 export const createJob = async ({

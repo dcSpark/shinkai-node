@@ -1,8 +1,10 @@
 import * as React from "react";
+
 import { Slot } from "@radix-ui/react-slot";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../../lib/utils";
+import { type VariantProps, cva } from "class-variance-authority";
 import { Loader } from "lucide-react";
+
+import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-gray-300",
@@ -10,7 +12,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary-600 hover:bg-primary-700 text-white shadow dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-50/90",
+          "bg-primary-600 text-white shadow hover:bg-primary-700 dark:bg-gray-50 dark:text-gray-900 dark:hover:bg-gray-50/90",
         destructive:
           "bg-red-500 text-gray-50 shadow-sm hover:bg-red-500/90 dark:bg-red-900 dark:text-gray-50 dark:hover:bg-red-900/90",
         outline:
@@ -52,7 +54,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading ? (
-          <Loader className={cn("w-4 h-4 animate-spin", size !== "icon" && "mr-2")} />
+          <Loader className={cn("h-4 w-4 animate-spin", size !== "icon" && "mr-2")} />
         ) : null}
         {isLoading && size === "icon" ? null : props.children}
       </Comp>

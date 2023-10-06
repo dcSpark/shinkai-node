@@ -1,7 +1,28 @@
+import { Fragment, useCallback, useEffect, useRef } from "react";
+import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
-import { useAuth } from "../../store/auth-context";
-import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
+
+import { zodResolver } from "@hookform/resolvers/zod";
 import { DotsVerticalIcon, PaperPlaneIcon } from "@radix-ui/react-icons";
+import {
+  calculateMessageHash,
+  extractJobIdFromInbox,
+  extractReceiverShinkaiName,
+  isJobInbox,
+} from "@shinkai_network/shinkai-message-ts/utils";
+import { Placeholder } from "@tiptap/extension-placeholder";
+import { EditorContent, useEditor } from "@tiptap/react";
+import { StarterKit } from "@tiptap/starter-kit";
+import MarkdownPreview from "@uiw/react-markdown-preview";
+import { Loader } from "lucide-react";
+import { Markdown } from "tiptap-markdown";
+import { z } from "zod";
+
+import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
+// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
+import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
+import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
+import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { Button } from "../../components/ui/button";
 import {
   Form,
@@ -11,28 +32,9 @@ import {
   FormItem,
   FormLabel,
 } from "../../components/ui/form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-// import { useGetLastUnreadMessages } from "../../api/queries/getLastUnreadMessages/useGetLastUnreadMessages";
-import { useSendMessageToInbox } from "../../api/mutations/sendTextMessage/useSendMessageToInbox";
-import {
-  calculateMessageHash,
-  extractJobIdFromInbox,
-  extractReceiverShinkaiName,
-  isJobInbox,
-} from "@shinkai_network/shinkai-message-ts/utils";
-import { useSendMessageToJob } from "../../api/mutations/sendMessageToJob/useSendMessageToJob";
-import { Fragment, useCallback, useEffect, useRef } from "react";
 import { ScrollArea } from "../../components/ui/scroll-area";
-import { Loader } from "lucide-react";
-import { useGetChatConversationWithPagination } from "../../api/queries/getChatConversation/useGetChatConversationWithPagination";
 import { Skeleton } from "../../components/ui/skeleton";
-import { EditorContent, useEditor } from "@tiptap/react";
-import Placeholder from "@tiptap/extension-placeholder";
-import StarterKit from "@tiptap/starter-kit";
-import { Markdown } from "tiptap-markdown";
-import MarkdownPreview from "@uiw/react-markdown-preview";
+import { useAuth } from "../../store/auth-context";
 
 const chatSchema = z.object({
   message: z.string(),
@@ -56,7 +58,7 @@ const ChatConversation = () => {
   const { inboxId: encodedInboxId = "" } = useParams();
   const { setupData } = useAuth();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const prevChatHeightRef = useRef<number>(0);
+  const previousChatHeightRef = useRef<number>(0);
   const fromPreviousMessagesRef = useRef<boolean>(false);
 
   const inboxId = decodeURIComponent(encodedInboxId);
@@ -119,6 +121,8 @@ const ChatConversation = () => {
         my_device_encryption_sk: setupData.profile_encryption_sk,
         my_device_identity_sk: setupData.profile_identity_sk,
         node_encryption_pk: setupData.node_encryption_pk,
+        profile_encryption_sk: setupData.profile_encryption_sk,
+        profile_identity_sk: setupData.profile_identity_sk,
       });
     }
     chatForm.reset();
@@ -140,12 +144,12 @@ const ChatConversation = () => {
     const chatContainerElement = chatContainerRef.current;
     if (!chatContainerElement) return;
     const currentHeight = chatContainerElement.scrollHeight;
-    const prevHeight = prevChatHeightRef.current;
+    const previousHeight = previousChatHeightRef.current;
 
     if (chatContainerElement.scrollTop < 100 && hasPreviousPage) {
       await fetchPreviousMessages();
-      prevChatHeightRef.current = currentHeight;
-      chatContainerElement.scrollTop = currentHeight - prevHeight;
+      previousChatHeightRef.current = currentHeight;
+      chatContainerElement.scrollTop = currentHeight - previousHeight;
     }
   }, [fetchPreviousMessages, hasPreviousPage]);
 
@@ -169,27 +173,27 @@ const ChatConversation = () => {
   }, [data?.pages]);
 
   return (
-    <div className="flex-1 flex flex-col pt-2">
-      <div className="px-4 mb-3 shrink-0 flex items-center gap-2">
-        <Avatar className="w-7 h-7">
+    <div className="flex flex-1 flex-col pt-2">
+      <div className="mb-3 flex shrink-0 items-center gap-2 px-4">
+        <Avatar className="h-7 w-7">
           <AvatarImage
-            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
             alt="Shinkai AI"
-            className="w-7 h-7"
+            className="h-7 w-7"
+            src={`https://ui-avatars.com/api/?name=${inboxId}&background=0b1115&color=c7c7c7`}
           />
-          <AvatarFallback className="w-7 h-7" />
+          <AvatarFallback className="h-7 w-7" />
         </Avatar>
-        <span className="text-sm flex-1 text-left">{inboxId}</span>
-        <Button variant="ghost" size="icon">
+        <span className="flex-1 text-left text-sm">{inboxId}</span>
+        <Button size="icon" variant="ghost">
           <span className="sr-only">Settings</span>
-          <DotsVerticalIcon className="w-4 h-4" />
+          <DotsVerticalIcon className="h-4 w-4" />
         </Button>
       </div>
       <ScrollArea className="h-full px-4" ref={chatContainerRef}>
         {isChatConversationSuccess && (
-          <div className="text-center py-2 text-xs">
+          <div className="py-2 text-center text-xs">
             {isFetchingPreviousPage || hasPreviousPage ? (
-              <Loader className="flex justify-center text-white animate-spin" />
+              <Loader className="flex animate-spin justify-center text-white" />
             ) : (
               "All messages has been loaded 🎈 "
             )}
@@ -197,12 +201,12 @@ const ChatConversation = () => {
         )}
         <div className="space-y-5">
           {isChatConversationLoading &&
-            [1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="w-full h-10 rounded-lg" />
+            [1, 2, 3, 4].map((index) => (
+              <Skeleton className="h-10 w-full rounded-lg" key={index} />
             ))}
           {isChatConversationSuccess &&
-            data?.pages.map((group, i) => (
-              <Fragment key={i}>
+            data?.pages.map((group, index) => (
+              <Fragment key={index}>
                 {group.map((message) => {
                   // const localIdentity = `${setupData?.profile}/device/${setupData?.registration_name}`;
                   // let isLocalMessage = false;
@@ -213,8 +217,8 @@ const ChatConversation = () => {
                   // }
                   return (
                     <div
+                      className="rounded-lg bg-[rgba(217,217,217,0.04)] px-4 py-6"
                       key={message.external_metadata?.scheduled_time}
-                      className="rounded-lg px-4 py-6 bg-[rgba(217,217,217,0.04)]"
                     >
                       {/* <p
                         className={cn(
@@ -227,21 +231,21 @@ const ChatConversation = () => {
                           : getMessageFromChat(message)}
                       </p> */}
                       <MarkdownPreview
-                        className="bg-transparent text-foreground text-sm"
                         source={
                           isJobInbox(inboxId)
                             ? getMessageFromJob(message)
                             : getMessageFromChat(message)
                         }
+                        className="bg-transparent text-sm text-foreground"
                       />
                       {/* <p className="text-xs">
                         <span className="text-muted-foreground">Sent at </span>
                         <span className=" text-gray-600">
-                          {new Date(
-                            message?.external_metadata?.scheduled_time ?? ""
+                        {new Date(
+                          message?.external_metadata?.scheduled_time ?? ""
                           ).toLocaleString()}
-                        </span>
-                      </p> */}
+                          </span>
+                        </p> */}
                     </div>
                   );
                 })}
@@ -251,35 +255,35 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="bg-app-gradient p-2 pt-3 flex items-start gap-2">
+        <div className="flex items-start gap-2 bg-app-gradient p-2 pt-3">
           {/* <EditorContent editor={editor} /> */}
 
           <Form {...chatForm}>
             <FormField
-              control={chatForm.control}
-              name="message"
               render={({ field }) => (
-                <FormItem className="space-y-0 flex-1">
+                <FormItem className="flex-1 space-y-0">
                   <FormLabel className="sr-only">Enter message</FormLabel>
                   <FormControl>
                     <MessageEditor
                       disabled={isLoading}
                       onChange={field.onChange}
-                      value={field.value}
                       onSubmit={chatForm.handleSubmit(onSubmit)}
+                      value={field.value}
                     />
                   </FormControl>
-                  <FormDescription className="text-xs pt-1">
+                  <FormDescription className="pt-1 text-xs">
                     Press <kbd>⌘</kbd> <kbd>↵</kbd> to send message
                   </FormDescription>
                 </FormItem>
               )}
+              control={chatForm.control}
+              name="message"
             />
 
             <Button
-              onClick={chatForm.handleSubmit(onSubmit)}
-              isLoading={isLoading}
               disabled={isLoading}
+              isLoading={isLoading}
+              onClick={chatForm.handleSubmit(onSubmit)}
               size="icon"
             >
               <PaperPlaneIcon />

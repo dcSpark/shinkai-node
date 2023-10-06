@@ -1,4 +1,19 @@
+import { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+
+import { ApiConfig } from "@shinkai_network/shinkai-message-ts/api";
+import { invoke } from "@tauri-apps/api/tauri";
+
+import ChatConversation from "../pages/chat/chat-conversation";
+import EmptyMessage from "../pages/chat/empty-message";
+import ChatLayout from "../pages/chat/layout";
+import CreateAgentPage from "../pages/create-agent";
+import CreateChatPage from "../pages/create-chat";
+import CreateJobPage from "../pages/create-job";
+import MainLayout from "../pages/layout/main-layout";
+import OnboardingPage from "../pages/onboarding";
+import SettingsPage from "../pages/settings";
+import { useAuth } from "../store/auth-context";
 import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
@@ -6,20 +21,6 @@ import {
   ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "./name";
-import { useAuth } from "../store/auth-context";
-import { useEffect } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
-
-import MainLayout from "../pages/layout/main-layout";
-import CreateAgentPage from "../pages/create-agent";
-import CreateChatPage from "../pages/create-chat";
-import CreateJobPage from "../pages/create-job";
-import { ApiConfig } from "@shinkai_network/shinkai-message-ts/api";
-import ChatLayout from "../pages/chat/layout";
-import EmptyMessage from "../pages/chat/empty-message";
-import ChatConversation from "../pages/chat/chat-conversation";
-import OnboardingPage from "../pages/Onboarding";
-import SettingsPage from "../pages/Settings";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { setupData } = useAuth();
@@ -55,52 +56,52 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route element={<MainLayout />}>
-        <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
+        <Route element={<OnboardingPage />} path={ONBOARDING_PATH} />
         <Route
-          path="inboxes/*"
           element={
             <ProtectedRoute>
               <ChatLayout />
             </ProtectedRoute>
           }
+          path="inboxes/*"
         >
-          <Route index element={<EmptyMessage />} />
-          <Route path=":inboxId" element={<ChatConversation />} />
+          <Route element={<EmptyMessage />} index />
+          <Route element={<ChatConversation />} path=":inboxId" />
         </Route>
         <Route
-          path={ADD_AGENT_PATH}
           element={
             <ProtectedRoute>
               <CreateAgentPage />
             </ProtectedRoute>
           }
+          path={ADD_AGENT_PATH}
         />
         <Route
-          path={CREATE_CHAT_PATH}
           element={
             <ProtectedRoute>
               <CreateChatPage />
             </ProtectedRoute>
           }
+          path={CREATE_CHAT_PATH}
         />
         <Route
-          path={CREATE_JOB_PATH}
           element={
             <ProtectedRoute>
               <CreateJobPage />
             </ProtectedRoute>
           }
+          path={CREATE_JOB_PATH}
         />
         <Route
-          path={SETTINGS_PATH}
           element={
             <ProtectedRoute>
               <SettingsPage />
             </ProtectedRoute>
           }
+          path={SETTINGS_PATH}
         />
       </Route>
-      <Route path="/" element={<Navigate to={"inboxes/"} replace />} />
+      <Route element={<Navigate to={"inboxes/"} replace />} path="/" />
     </Routes>
   );
 };
