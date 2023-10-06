@@ -163,7 +163,6 @@ const ChatConversation = () => {
       scrollToBottom();
     }
   }, [data?.pages]);
-  console.log(data?.pages, "pages");
 
   return (
     <div className="flex flex-1 flex-col pt-2">
@@ -238,6 +237,9 @@ const ChatConversation = () => {
                                     ? getMessageFromJob(message)
                                     : getMessageFromChat(message)
                                 }
+                                wrapperElement={{
+                                  "data-color-mode": "dark",
+                                }}
                               />
                             </div>
                           );
