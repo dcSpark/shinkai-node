@@ -56,7 +56,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let file_name = "Zeko_Mina_Rollup.pdf";
+    let file_name = "shinkai_intro.pdf";
     let file_path = "../../files/".to_string() + file_name;
 
     // Read the file into a byte vector
@@ -69,13 +69,14 @@ fn test_unstructured_parse_pdf_vector_resource() {
         .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 500)
         .unwrap();
 
-    let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
+    // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
+    let query_string = "Who are the authors?";
     let query_embedding1 = generator.generate_embedding_default(query_string).unwrap();
     let res = resource.as_trait_object().vector_search(query_embedding1.clone(), 5);
     for (i, result) in res.iter().enumerate() {
         println!("Result {}: {}", result.score, result.chunk.get_data_string().unwrap());
     }
-    assert_eq!("4.3 Sequencer Generates Queue Of Pending Transfer Requests From the pool smart contract on the DA layer, each sequencer locally generates a queue of pending (to be applied) transfer requests. This is done via a process where the sequencer locally verifies each of the proofs attached to the transfer requests, and cross-references which ones have already been committed Zeko: Recursive zero-knowledge applications, at scale", res[0].chunk.get_data_string().unwrap());
+    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].chunk.get_data_string().unwrap());
 }
 
 pub struct BertCPPProcess {

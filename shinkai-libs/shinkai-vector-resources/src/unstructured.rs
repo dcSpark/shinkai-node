@@ -140,16 +140,16 @@ impl UnstructuredAPI {
         let total_num_embeddings = text_groups.len();
         let mut i = 0;
         for grouped_text in &text_groups {
-            println!(
-                "Text: {}\n Page Numbers: {:?}\n\n",
-                grouped_text.text, grouped_text.page_numbers
-            );
+            // println!(
+            //     "\n\nText: {}\n Page Numbers: {:?}",
+            //     grouped_text.text, grouped_text.page_numbers
+            // );
 
             let embedding = generator.generate_embedding_default(&grouped_text.text)?;
             embeddings.push(embedding);
 
             i += 1;
-            println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
         }
 
         // Adds the text + embeddings into the doc as appended new DataChunks
