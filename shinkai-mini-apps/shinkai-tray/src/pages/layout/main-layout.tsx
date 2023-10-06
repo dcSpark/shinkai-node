@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 
 import { GearIcon, LightningBoltIcon, PersonIcon } from "@radix-ui/react-icons";
 
-import { ShinkaiLogo } from "../../components/icons";
+// import { ShinkaiLogo } from "../../components/icons";
 import {
   Command,
   CommandGroup,
@@ -21,12 +21,12 @@ import {
   ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "../../routes/name";
-import { useAuth } from "../../store/auth-context";
+import { useAuth } from "../../store/auth";
 
 export function Footer() {
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
-  const { setSetupData } = useAuth();
+  const logout = useAuth((state) => state.setLogout);
 
   React.useEffect(() => {
     const down = (event: KeyboardEvent) => {
@@ -62,7 +62,7 @@ export function Footer() {
     setOpen(false);
   };
   const handleLogout = () => {
-    setSetupData(null);
+    logout();
     navigate(ONBOARDING_PATH);
   };
 
@@ -101,12 +101,11 @@ export function Footer() {
   };
 
   return (
-    <div className="flex items-center justify-start bg-app-gradient p-2 pl-4 text-sm text-muted-foreground">
-      <ShinkaiLogo className="mr-2 h-4 w-4 text-primary-600" />
+    <div className="absolute bottom-2 left-2 text-sm text-muted-foreground">
       <Popover onOpenChange={setOpen} open={open} modal>
         <PopoverTrigger
           aria-expanded={open}
-          className="rounded-lg p-1 px-2 transition-colors duration-150 hover:bg-gray-800/60"
+          className="rounded-lg bg-app-gradient px-2.5 py-2 shadow-lg transition-colors duration-150 hover:bg-gray-700/40"
           onClick={() => setOpen(true)}
         >
           <span className="text-xs">
@@ -118,7 +117,7 @@ export function Footer() {
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          alignOffset={-25}
+          alignOffset={0}
           className="rounded-md border-0 bg-black bg-gradient-to-r from-[#19242D] to-[#19242D]/90 p-4 shadow-xl"
           side="top"
           sideOffset={2}
@@ -176,10 +175,10 @@ const MainLayout = () => {
   return (
     <div className="relative flex h-full flex-col bg-app-gradient bg-cover text-white">
       <div
-        className="flex h-8 shrink-0 cursor-default select-none items-center justify-center text-xs"
+        className="flex h-9 shrink-0 cursor-default select-none items-center justify-center text-xs"
         data-tauri-drag-region
       >
-        Custom Topbar (draggable)
+        Shinkai AI
       </div>
       <Separator />
       <div className="flex-auto overflow-auto">

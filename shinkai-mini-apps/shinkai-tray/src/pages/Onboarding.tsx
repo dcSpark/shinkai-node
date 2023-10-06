@@ -23,7 +23,7 @@ import {
 } from "../components/ui/form";
 import { Input } from "../components/ui/input";
 import { HOME_PATH } from "../routes/name";
-import { useAuth } from "../store/auth-context";
+import { useAuth } from "../store/auth";
 
 const formSchema = z.object({
   registration_code: z.string(),
@@ -49,7 +49,8 @@ const formSchema = z.object({
 
 const OnboardingPage = () => {
   const navigate = useNavigate();
-  const { setSetupData } = useAuth();
+  const setAuth = useAuth((state) => state.setAuth);
+  const setLogout = useAuth((state) => state.setLogout);
 
   const setupDataForm = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -88,7 +89,7 @@ const OnboardingPage = () => {
           node_encryption_pk: responseData?.encryption_public_key ?? "",
           node_signature_pk: responseData?.identity_public_key ?? "",
         };
-        setSetupData(updatedSetupData);
+        setAuth(updatedSetupData);
         navigate(HOME_PATH);
       } else {
         throw new Error("Failed to submit registration");
@@ -98,7 +99,7 @@ const OnboardingPage = () => {
 
   useEffect(() => {
     // clean up
-    setSetupData(null);
+    setLogout();
     queryClient.clear();
 
     fetch("http://127.0.0.1:9550/v1/shinkai_health")

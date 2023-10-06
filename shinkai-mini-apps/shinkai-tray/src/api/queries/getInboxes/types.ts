@@ -4,6 +4,5 @@ export type GetInboxesInput = CredentialsPayload & {
   sender: string;
   receiver: string;
   senderSubidentity: string;
-  shinkaiIdentity: string;
   targetShinkaiNameProfile: string;
 };

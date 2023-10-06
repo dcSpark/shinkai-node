@@ -6,7 +6,7 @@ import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Separator } from "../../components/ui/separator";
 import { cn } from "../../lib/utils";
-import { useAuth } from "../../store/auth-context";
+import { useAuth } from "../../store/auth";
 
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
   const resolved = useResolvedPath(to);
@@ -30,20 +30,19 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
 };
 
 const ChatLayout = () => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
 
   const { inboxIds } = useGetInboxes({
-    sender: setupData?.shinkai_identity ?? "",
-    senderSubidentity: `${setupData?.profile}/device/${setupData?.registration_name}`,
-    shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-    node_encryption_pk: setupData?.node_encryption_pk ?? "",
+    sender: auth?.shinkai_identity ?? "",
+    senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
     // Assuming receiver and target_shinkai_name_profile are the same as sender
-    receiver: setupData?.shinkai_identity ?? "",
-    targetShinkaiNameProfile: `${setupData?.shinkai_identity}/${setupData?.profile}`,
-    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    profile_identity_sk: setupData?.profile_identity_sk ?? "",
+    receiver: auth?.shinkai_identity ?? "",
+    targetShinkaiNameProfile: `${auth?.shinkai_identity}/${auth?.profile}`,
+    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
+    profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+    profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
   return (

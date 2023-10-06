@@ -4,20 +4,20 @@ import { LightningBoltIcon } from "@radix-ui/react-icons";
 
 import { useAgents } from "../../api/queries/getAgents/useGetAgents";
 import { ADD_AGENT_PATH, CREATE_JOB_PATH } from "../../routes/name";
-import { useAuth } from "../../store/auth-context";
+import { useAuth } from "../../store/auth";
 
 const EmptyMessage = () => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
 
   const { agents } = useAgents({
-    sender: setupData?.shinkai_identity ?? "",
-    senderSubidentity: `${setupData?.profile}/device/${setupData?.registration_name}`,
-    shinkaiIdentity: setupData?.shinkai_identity ?? "",
-    my_device_encryption_sk: setupData?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: setupData?.my_device_identity_sk ?? "",
-    node_encryption_pk: setupData?.node_encryption_pk ?? "",
-    profile_encryption_sk: setupData?.profile_encryption_sk ?? "",
-    profile_identity_sk: setupData?.profile_identity_sk ?? "",
+    sender: auth?.shinkai_identity ?? "",
+    senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
+    shinkaiIdentity: auth?.shinkai_identity ?? "",
+    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    node_encryption_pk: auth?.node_encryption_pk ?? "",
+    profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+    profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
   return (
     <div className="flex w-full items-center justify-center p-6">

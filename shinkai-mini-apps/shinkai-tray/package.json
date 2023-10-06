@@ -27,7 +27,7 @@
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-switch": "^1.0.3",
     "@radix-ui/react-tooltip": "^1.0.6",
-    "@shinkai_network/shinkai-message-ts": "^0.0.6",
+    "@shinkai_network/shinkai-message-ts": "^0.0.7",
     "@tanstack/react-query": "^4.35.3",
     "@tauri-apps/api": "^1.4.0",
     "@tiptap/extension-placeholder": "^2.1.11",
@@ -50,7 +50,8 @@
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
     "tiptap-markdown": "^0.8.2",
-    "zod": "^3.22.2"
+    "zod": "^3.22.2",
+    "zustand": "^4.4.2"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.10",

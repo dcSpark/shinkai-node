@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { CREATE_JOB_PATH } from "../routes/name";
-import { useAuth } from "../store/auth-context";
+import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
 
 const addAgentSchema = z.object({
@@ -38,7 +38,7 @@ const addAgentSchema = z.object({
 });
 
 const CreateAgentPage = () => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
   const addAgentForm = useForm<z.infer<typeof addAgentSchema>>({
     resolver: zodResolver(addAgentSchema),
@@ -66,15 +66,15 @@ const CreateAgentPage = () => {
       SleepAPI: { model_type: modelType },
     };
 
-    if (!setupData) return;
+    if (!auth) return;
     createAgent({
-      sender_subidentity: setupData.profile,
-      node_name: setupData.shinkai_identity,
+      sender_subidentity: auth.profile,
+      node_name: auth.shinkai_identity,
       agent: {
         allowed_message_senders: [],
         api_key: data.apikey,
         external_url: data.externalUrl,
-        full_identity_name: `${setupData.shinkai_identity}/${setupData.profile}/agent/${data.agentName}`,
+        full_identity_name: `${auth.shinkai_identity}/${auth.profile}/agent/${data.agentName}`,
         id: data.agentName,
         perform_locally: data.performLocally,
         storage_bucket_permissions: [],
@@ -84,11 +84,11 @@ const CreateAgentPage = () => {
         },
       },
       setupDetailsState: {
-        my_device_encryption_sk: setupData.my_device_encryption_sk,
-        my_device_identity_sk: setupData.my_device_identity_sk,
-        node_encryption_pk: setupData.node_encryption_pk,
-        profile_encryption_sk: setupData.profile_encryption_sk,
-        profile_identity_sk: setupData.profile_identity_sk,
+        my_device_encryption_sk: auth.my_device_encryption_sk,
+        my_device_identity_sk: auth.my_device_identity_sk,
+        node_encryption_pk: auth.node_encryption_pk,
+        profile_encryption_sk: auth.profile_encryption_sk,
+        profile_identity_sk: auth.profile_identity_sk,
       },
     });
   };

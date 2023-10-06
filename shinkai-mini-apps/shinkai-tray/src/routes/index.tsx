@@ -13,7 +13,7 @@ import CreateJobPage from "../pages/create-job";
 import MainLayout from "../pages/layout/main-layout";
 import OnboardingPage from "../pages/onboarding";
 import SettingsPage from "../pages/settings";
-import { useAuth } from "../store/auth-context";
+import { useAuth } from "../store/auth";
 import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
@@ -23,13 +23,13 @@ import {
 } from "./name";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { setupData } = useAuth();
+  const auth = useAuth((state) => state.auth);
 
   useEffect(() => {
-    ApiConfig.getInstance().setEndpoint(setupData?.node_address ?? "");
-  }, [setupData?.node_address]);
+    ApiConfig.getInstance().setEndpoint(auth?.node_address ?? "");
+  }, [auth?.node_address]);
 
-  if (!setupData) {
+  if (!auth) {
     return <Navigate to={ONBOARDING_PATH} replace />;
   }
   return children;
