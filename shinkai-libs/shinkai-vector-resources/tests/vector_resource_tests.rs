@@ -15,8 +15,6 @@ use std::time::Duration;
 
 lazy_static! {
     pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
-    pub static ref UNSTRUCTURED_API_URL: &'static str =
-        "https://internal.shinkai.com/x-unstructured-api/general/v0/general";
 }
 
 pub struct BertCPPProcess {
