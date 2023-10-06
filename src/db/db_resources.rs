@@ -221,6 +221,9 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
         let retrieved_chunks = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
+        if retrieved_chunks.is_empty() {
+            return Ok(Vec::new());
+        }
         let top_chunk = &retrieved_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
             VectorResourceError::VectorResourceEmpty,
         ))?;

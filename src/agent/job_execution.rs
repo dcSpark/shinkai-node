@@ -69,18 +69,19 @@ impl AgentManager {
             // - Check if they are parseable (for now just pdfs)
             // - if they are parseable, then parse them and add them to the db
 
+            let sender_subidentity_result =
+                ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
+            let sender_subidentity = match sender_subidentity_result {
+                Ok(subidentity) => subidentity,
+                Err(e) => return Err(AgentError::InvalidSubidentity(e)),
+            };
+            let profile_result = sender_subidentity.extract_profile();
+            let profile = match profile_result {
+                Ok(profile) => profile,
+                Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
+            };
+
             if !job_message.files_inbox.is_empty() {
-                let sender_subidentity_result =
-                    ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
-                let sender_subidentity = match sender_subidentity_result {
-                    Ok(subidentity) => subidentity,
-                    Err(e) => return Err(AgentError::InvalidSubidentity(e)),
-                };
-                let profile_result = sender_subidentity.extract_profile();
-                let profile = match profile_result {
-                    Ok(profile) => profile,
-                    Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
-                };
                 println!(
                     "process_job_message> processing files_map: ... files: {}",
                     job_message.files_inbox.len()
@@ -88,6 +89,11 @@ impl AgentManager {
                 // TODO: later we  should able to grab errors and return them to the user
                 AgentManager::process_message_multifiles(self.db.clone(), job_message.files_inbox.clone(), profile)
                     .await?;
+            } else {
+                // TODO: move this somewhere else
+                let mut shinkai_db = self.db.lock().await;
+                shinkai_db.init_profile_resource_router(&profile)?;
+                std::mem::drop(shinkai_db); // require to avoid deadlock
             }
 
             // TODO(Nico): Notes from conversation with Rob
@@ -148,14 +154,14 @@ impl AgentManager {
         let ret_data_chunks = shinkai_db
             .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
             .unwrap();
-        eprintln!(
-            "ret_data_chunks: {:?}",
-            ret_data_chunks.get(0).unwrap().chunk.get_data_string()
-        );
-        let embedding_chunks: Vec<String> = ret_data_chunks
-            .iter()
-            .filter_map(|data_chunk| data_chunk.chunk.get_data_string().ok())
-            .collect();
+
+        let mut embedding_chunks: Vec<String> = Vec::new();
+        if !ret_data_chunks.is_empty() {
+            embedding_chunks = ret_data_chunks
+                .iter()
+                .filter_map(|data_chunk| data_chunk.chunk.get_data_string().ok())
+                .collect();
+        }
         std::mem::drop(shinkai_db);
         std::mem::drop(bert_process);
 
