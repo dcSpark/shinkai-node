@@ -24,8 +24,18 @@ impl UnstructuredAPI {
         Self { api_url, api_key }
     }
 
+    /// String of the main endpoint url for processing files
+    fn endpoint_url(&self) -> String {
+        if self.api_url.ends_with('/') {
+            format!("{}x-unstructured-api/general/v0/general", self.api_url)
+        } else {
+            format!("{}/x-unstructured-api/general/v0/general", self.api_url)
+        }
+    }
+
     /// Makes a blocking request to process a file in a buffer to Unstructured,
     /// and then processing the returned results into a BaseVectorResource
+    /// Note: For the time being the file name must include the extension ie. `*.pdf`
     pub fn process_file_blocking(
         &self,
         file_buffer: Vec<u8>,
@@ -38,9 +48,42 @@ impl UnstructuredAPI {
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let elements = self.process_file_request_blocking(file_buffer, name)?;
-        eprintln!("Parsed file composed of {} elements", elements.len());
+        let elements = self.file_request_blocking(file_buffer, name)?;
 
+        self.process_file_shared(elements, generator, name, desc, source, parsing_tags, &resource_id)
+    }
+
+    /// Makes an async request to process a file in a buffer to Unstructured,
+    /// and then processing the returned results into a BaseVectorResource
+    /// Note: For the time being the file name must include the extension ie. `*.pdf`
+    pub async fn process_file_async(
+        &self,
+        file_buffer: Vec<u8>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        max_chunk_size: u64,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Parse pdf into groups of lines + a resource_id from the hash of the data
+        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let elements = self.file_request_async(file_buffer, name).await?;
+
+        self.process_file_shared(elements, generator, name, desc, source, parsing_tags, &resource_id)
+    }
+
+    /// Shared code between the blocking and async versions of the process_file method
+    fn process_file_shared(
+        &self,
+        elements: Vec<UnstructuredElement>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
         // Create doc resource and initial setup
         let mut doc = DocumentVectorResource::new_empty(name, desc, source, &resource_id);
         doc.set_embedding_model_used(generator.model_type());
@@ -77,7 +120,7 @@ impl UnstructuredAPI {
 
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
-    pub fn process_file_request_blocking(
+    fn file_request_blocking(
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,
@@ -91,7 +134,7 @@ impl UnstructuredAPI {
         let form = blocking_multipart::Form::new().part("files", part);
 
         let res = client
-            .post(&self.api_url)
+            .post(&self.endpoint_url())
             .header("Accept", "application/json")
             .multipart(form)
             .send()?;
@@ -108,7 +151,7 @@ impl UnstructuredAPI {
 
     /// Makes an async request to process a file in a buffer into a list of
     /// UnstructuredElements
-    async fn process_file_request_async(
+    async fn file_request_async(
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,
@@ -122,7 +165,7 @@ impl UnstructuredAPI {
         let form = multipart::Form::new().part("files", part);
 
         let res = client
-            .post(&self.api_url)
+            .post(&self.endpoint_url())
             .header("Accept", "application/json")
             .multipart(form)
             .send()

@@ -12,10 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 lazy_static! {
-    // pub static ref UNSTRUCTURED_API_URL: &'static str =
-    //     "https://internal.shinkai.com/x-unstructured-api/general/v0/general";
-    pub static ref UNSTRUCTURED_API_URL: &'static str = "http://34.41.225.139/x-unstructured-api/general/v0/general";
-
+    pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
     pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
 }
 
@@ -68,7 +65,9 @@ fn test_unstructured_parse_pdf_vector_resource() {
     // Create an UnstructuredAPI and process the file
     let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
 
-    let resource = api.process_file_blocking(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 400);
+    let resource = api
+        .process_file_blocking(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 400)
+        .unwrap();
 
     // assert_eq!(1, 2);
 }
