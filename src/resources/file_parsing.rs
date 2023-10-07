@@ -1,3 +1,4 @@
+use blake3::Hasher;
 use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
 use mupdf::pdf::PdfDocument;
@@ -8,9 +9,18 @@ use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
+use std::convert::TryInto;
+use std::fs;
 use std::{io::Cursor, vec};
 
 pub struct FileParser {}
+
+pub struct SmartPdfOverview {
+    pub keywords: Vec<String>,
+    pub description: String,
+    pub blake3_hash: String,
+    pub grouped_text_list: Vec<String>,
+}
 
 impl FileParser {
     /// Parse CSV data from a buffer and attempt to automatically detect
@@ -86,20 +96,55 @@ impl FileParser {
         } else {
             average_group_size
         };
-        let text =
-            FileParser::extract_text_from_pdf_buffer(buffer).map_err(|_| VectorResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize);
+        let text = FileParser::extract_text_from_pdf_buffer(buffer, None)
+            .map_err(|_| VectorResourceError::FailedPDFParsing)?;
+        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize)?;
 
-        grouped_text_list
+        // TODO: remove this. only for testing purposes
+        // Convert the Vec<String> into a single String with each element on a new line
+        let grouped_clone = grouped_text_list.clone();
+        let output = grouped_clone.join("\n");
+
+        // Write the output to a text file
+        fs::write("parse_pdf_to_string_list_output.txt", output).expect("Unable to write to file");
+
+        Ok(grouped_text_list)
+    }
+
+    pub fn parse_pdf_text_to_string_list(
+        text: String,
+        average_group_size: u64,
+    ) -> Result<Vec<String>, VectorResourceError> {
+        // Setting average length to 400, to respect small context size LLMs.
+        // Sentences continue past this light 400 cap, so it has to be less than the
+        // hard cap.
+        let num_characters = if average_group_size > 400 {
+            400
+        } else {
+            average_group_size
+        };
+        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize)?;
+
+        // TODO: remove this. only for testing purposes
+        // Convert the Vec<String> into a single String with each element on a new line
+        let grouped_clone = grouped_text_list.clone();
+        let output = grouped_clone.join("\n");
+
+        // Write the output to a text file
+        fs::write("parse_pdf_to_string_list_output.txt", output).expect("Unable to write to file");
+
+        Ok(grouped_text_list)
     }
 
     /// Extracts text from a pdf buffer using MuPDF
-    fn extract_text_from_pdf_buffer(buffer: &[u8]) -> Result<String, mupdf::Error> {
+    fn extract_text_from_pdf_buffer(buffer: &[u8], max_pages: Option<i32>) -> Result<String, mupdf::Error> {
         let document = PdfDocument::from_bytes(buffer)?;
 
         let mut text = String::new();
 
-        for page_number in 0..document.page_count()? {
+        let page_limit = max_pages.unwrap_or(document.page_count()?);
+
+        for page_number in 0..std::cmp::min(document.page_count()?, page_limit) {
             let page = document.load_page(page_number)?;
             let page_text = page.to_text()?;
             text.push_str(&page_text);
@@ -108,12 +153,12 @@ impl FileParser {
         Ok(text)
     }
 
-    /// Generates a Sha256 hash of the input data.
-    pub fn generate_data_hash(buffer: &[u8]) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(format!("{:?}", buffer));
-        let result = hasher.finalize();
-        format!("{:x}", result)
+    /// Generates Blake3 hash of the input data.
+    fn generate_data_blake3_hash(content: &[u8]) -> String {
+        let mut hasher = Hasher::new();
+        hasher.update(content);
+        let hash = hasher.finalize();
+        hash.to_hex().to_string()
     }
 
     /// Extracts the most important keywords from a given text,
@@ -346,7 +391,7 @@ impl FileParser {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_to_string_list(buffer, average_chunk_size)?;
         eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
-        let resource_id = Self::generate_data_hash(buffer);
+        let resource_id = Self::generate_data_blake3_hash(buffer);
         eprintln!("Generated resource id: {}", resource_id);
         Self::parse_text(
             grouped_text_list,
@@ -357,5 +402,37 @@ impl FileParser {
             &resource_id,
             parsing_tags,
         )
+    }
+
+    /// Parses the first X pages of a PDF from a buffer and get the top n keywords using RAKE also
+    /// it obtains the text to generate a description.
+    pub fn parse_pdf_for_keywords_and_description(
+        buffer: &[u8],
+        number_keywords: usize,
+        number_pages: i32,
+        average_chunk_size: u64,
+    ) -> Result<SmartPdfOverview, VectorResourceError> {
+        eprintln!("Parsing pdf for keywords and description");
+        let shortened_text = match FileParser::extract_text_from_pdf_buffer(buffer, Some(number_pages)) {
+            Ok(text) => text,
+            Err(_) => return Err(VectorResourceError::FailedPDFParsing),
+        };
+        eprintln!("Extracted text from pdf");
+        eprintln!("Shortened text: {}", shortened_text);
+        // let keywords = FileParser::extract_keywords(&shortened_text, number_keywords as u64);
+
+        // Parse pdf into groups of lines + a resource_id from the hash of the data
+        let grouped_text_list = Self::parse_pdf_text_to_string_list(shortened_text.clone(), average_chunk_size)?;
+        eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
+        let resource_id = Self::generate_data_blake3_hash(buffer);
+        eprintln!("Generated resource id: {}", resource_id);
+
+        // TODO: we don't need all of this
+        Ok(SmartPdfOverview {
+            keywords: vec![],
+            description: shortened_text,
+            blake3_hash: resource_id,
+            grouped_text_list,
+        })
     }
 }
