@@ -408,24 +408,16 @@ impl FileParser {
     /// it obtains the text to generate a description.
     pub fn parse_pdf_for_keywords_and_description(
         buffer: &[u8],
-        number_keywords: usize,
         number_pages: i32,
         average_chunk_size: u64,
     ) -> Result<SmartPdfOverview, VectorResourceError> {
-        eprintln!("Parsing pdf for keywords and description");
         let shortened_text = match FileParser::extract_text_from_pdf_buffer(buffer, Some(number_pages)) {
             Ok(text) => text,
             Err(_) => return Err(VectorResourceError::FailedPDFParsing),
         };
-        eprintln!("Extracted text from pdf");
-        eprintln!("Shortened text: {}", shortened_text);
-        // let keywords = FileParser::extract_keywords(&shortened_text, number_keywords as u64);
-
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_text_to_string_list(shortened_text.clone(), average_chunk_size)?;
-        eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
         let resource_id = Self::generate_data_blake3_hash(buffer);
-        eprintln!("Generated resource id: {}", resource_id);
 
         // TODO: we don't need all of this
         Ok(SmartPdfOverview {

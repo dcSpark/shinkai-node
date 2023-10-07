@@ -187,6 +187,12 @@ impl InboxName {
     }
 }
 
+impl fmt::Display for InboxName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
