@@ -1,7 +1,7 @@
 use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
-use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
@@ -14,11 +14,13 @@ use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 #[derive(Debug)]
+#[cfg(feature = "native-http")]
 pub struct UnstructuredAPI {
     api_url: String,
     api_key: Option<String>,
 }
 
+#[cfg(feature = "native-http")]
 impl UnstructuredAPI {
     pub fn new(api_url: String, api_key: Option<String>) -> Self {
         Self { api_url, api_key }
@@ -50,7 +52,7 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_blocking(file_buffer, name)?;
 
-        self.process_file_shared(
+        UnstructuredParser::process_elements_into_resource(
             elements,
             generator,
             name,
@@ -79,7 +81,7 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_async(file_buffer, name).await?;
 
-        self.process_file_shared(
+        UnstructuredParser::process_elements_into_resource(
             elements,
             generator,
             name,
@@ -89,81 +91,6 @@ impl UnstructuredAPI {
             &resource_id,
             max_chunk_size,
         )
-    }
-
-    /// Shared code between the blocking and async versions of the process_file method
-    fn process_file_shared(
-        &self,
-        elements: Vec<UnstructuredElement>,
-        generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
-        source: VRSource,
-        parsing_tags: &Vec<DataTag>,
-        resource_id: &str,
-        max_chunk_size: u64,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
-        // Group elements together before generating the doc
-        let text_groups = UnstructuredParser::flat_group_elements_text(&elements, max_chunk_size);
-        self.process_new_doc_resource(text_groups, generator, name, desc, source, parsing_tags, resource_id)
-    }
-
-    /// Recursively processes all text groups & their sub groups into DocumentResources
-    fn process_new_doc_resource(
-        &self,
-        text_groups: Vec<GroupedText>,
-        generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
-        source: VRSource,
-        parsing_tags: &Vec<DataTag>,
-        resource_id: &str,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
-        // If description is None, use the first text
-        let mut resource_desc = desc;
-        let desc_string = text_groups[0].text.to_string();
-        if desc.is_none() && text_groups.len() > 0 {
-            resource_desc = Some(&desc_string);
-        }
-        // Create doc resource and initial setup
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source, &resource_id);
-        doc.set_embedding_model_used(generator.model_type());
-
-        // Extract keywords from the elements
-        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-
-        // Set the resource embedding, using the keywords + name + desc + source
-        doc.update_resource_embedding(generator, keywords)?;
-
-        // Generate embeddings for each group of text
-        let mut embeddings = Vec::new();
-        let total_num_embeddings = text_groups.len();
-        let mut i = 0;
-        for grouped_text in &text_groups {
-            // println!(
-            //     "\n\nText: {}\n Page Numbers: {:?}",
-            //     grouped_text.text, grouped_text.page_numbers
-            // );
-
-            let embedding = generator.generate_embedding_default(&grouped_text.text)?;
-            embeddings.push(embedding);
-
-            i += 1;
-            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
-        }
-
-        // Adds the text + embeddings into the doc as appended new DataChunks
-        for (i, grouped_text) in text_groups.iter().enumerate() {
-            // Add page numbers to metadata
-            let mut metadata = HashMap::new();
-            if !grouped_text.page_numbers.is_empty() {
-                metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
-            }
-
-            doc.append_data(&grouped_text.text, Some(metadata), &embeddings[i], parsing_tags);
-        }
-
-        Ok(BaseVectorResource::Document(doc))
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of
@@ -373,6 +300,81 @@ impl UnstructuredParser {
         hasher.update(buffer);
         let result = hasher.finalize();
         result.to_hex().to_string()
+    }
+
+    /// Processes a list of `UnstructuredElement`s returned from Unstructured into
+    /// a ready-to-go BaseVectorResource
+    fn process_elements_into_resource(
+        elements: Vec<UnstructuredElement>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+        max_chunk_size: u64,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Group elements together before generating the doc
+        let text_groups = UnstructuredParser::flat_group_elements_text(&elements, max_chunk_size);
+        Self::process_new_doc_resource(text_groups, generator, name, desc, source, parsing_tags, resource_id)
+    }
+
+    /// Recursively processes all text groups & their sub groups into DocumentResources
+    /// TODO: Implement the recursive vector resource building
+    fn process_new_doc_resource(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // If description is None, use the first text
+        let mut resource_desc = desc;
+        let desc_string = text_groups[0].text.to_string();
+        if desc.is_none() && text_groups.len() > 0 {
+            resource_desc = Some(&desc_string);
+        }
+        // Create doc resource and initial setup
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source, &resource_id);
+        doc.set_embedding_model_used(generator.model_type());
+
+        // Extract keywords from the elements
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+
+        // Set the resource embedding, using the keywords + name + desc + source
+        doc.update_resource_embedding(generator, keywords)?;
+
+        // Generate embeddings for each group of text
+        let mut embeddings = Vec::new();
+        let total_num_embeddings = text_groups.len();
+        let mut i = 0;
+        for grouped_text in &text_groups {
+            // println!(
+            //     "\n\nText: {}\n Page Numbers: {:?}t ch",
+            //     grouped_text.text, grouped_text.page_numbers
+            // );
+
+            let embedding = generator.generate_embedding_default(&grouped_text.text)?;
+            embeddings.push(embedding);
+
+            i += 1;
+            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
+        }
+
+        // Adds the text + embeddings into the doc as appended new DataChunks
+        for (i, grouped_text) in text_groups.iter().enumerate() {
+            // Add page numbers to metadata
+            let mut metadata = HashMap::new();
+            if !grouped_text.page_numbers.is_empty() {
+                metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
+            }
+
+            doc.append_data(&grouped_text.text, Some(metadata), &embeddings[i], parsing_tags);
+        }
+
+        Ok(BaseVectorResource::Document(doc))
     }
 }
 
