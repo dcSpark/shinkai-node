@@ -10,7 +10,7 @@ import {
 import { z } from "zod";
 
 import { queryClient } from "../api/constants";
-import { useSubmitRegistration } from "../api/mutations/submitRegistation/useSubmitRegistration";
+import { useSubmitRegistrationNoCode } from "../api/mutations/submitRegistation/useSubmitRegistrationNoCode";
 import { Button } from "../components/ui/button";
 import ErrorMessage from "../components/ui/error-message";
 import {
@@ -80,7 +80,7 @@ const OnboardingPage = () => {
     isError,
     error,
     mutateAsync: submitRegistration,
-  } = useSubmitRegistration({
+  } = useSubmitRegistrationNoCode({
     onSuccess: (response) => {
       if (response.success) {
         const responseData = response.data;

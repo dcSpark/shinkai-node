@@ -1,6 +1,7 @@
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
+use tokio::task::JoinError;
 use std::fmt;
 
 #[derive(Debug)]
@@ -29,6 +30,7 @@ pub enum AgentError {
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
     SerdeError(serde_json::Error),
+    TaskJoinError(String)
 }
 
 impl fmt::Display for AgentError {
@@ -71,6 +73,7 @@ impl fmt::Display for AgentError {
             AgentError::InvalidSubidentity(err) => write!(f, "Invalid subidentity: {}", err),
             AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
             AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
+            AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
         }
     }
 }
@@ -119,5 +122,11 @@ impl From<serde_json::Error> for AgentError {
 impl From<VectorResourceError> for AgentError {
     fn from(error: VectorResourceError) -> Self {
         AgentError::VectorResource(error)
+    }
+}
+
+impl From<JoinError> for AgentError {
+    fn from(err: JoinError) -> AgentError {
+        AgentError::TaskJoinError(err.to_string())
     }
 }

@@ -4,6 +4,7 @@ use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
 use std::{collections::HashMap, convert::TryInto};
+use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
 
 //
 // Core Job Step Flow
@@ -200,15 +201,16 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
+            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);
 
+        prompt.add_content(format!("Some context (until you see ------):"), SubPromptType::User);
         for chunk in chunks {
             prompt.add_content(format!("{}", chunk), SubPromptType::User);
         }
-
+        prompt.add_content(format!("------"), SubPromptType::User);        
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);        
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
         prompt
     }
@@ -217,10 +219,29 @@ impl JobPromptGenerator {
     pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return this same message correctly formatted as json:\n".to_string(),
+            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return this same message correctly formatted as json:\n".to_string(),
             SubPromptType::System,
         );
         prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
+    /// Prompt optimized to generate a description based on the first pages of a document
+    pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+                r#"You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. Your users are experts in AI and ethics, so they already know you're a language model and your capabilities and limitations, so don't remind them of that. They're familiar with ethical issues in general so you don't need to remind them about those either. Don't be verbose in your answers, but do provide details and examples where it might help the explanation."#.to_string(),
+                SubPromptType::System,
+            );
+        for chunk in chunks {
+            prompt.add_content(format!("{}", chunk), SubPromptType::User);
+        }
+        prompt.add_content(
+            format!("Take a deep breath and then throughtouly summarize the previous document, make it as explanatory as possible."),
+            SubPromptType::User,
+        );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
         prompt
@@ -379,18 +400,37 @@ impl Prompt {
     /// Processes all sub-prompts into a single output String in OpenAI's message format.
     pub fn generate_openai_messages(
         &self,
-        characters_limit: Option<usize>,
-    ) -> Result<Vec<OpenAIApiMessage>, AgentError> {
+        max_prompt_tokens: Option<usize>,
+    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
         self.check_ebnf_included()?;
 
-        let mut total_length = 0;
-        let limit = characters_limit.unwrap_or((3300 as usize).try_into().unwrap());
-        // TODO: adjust this a bit more to be more accurate
-        let extra_characters_from_schema: usize = 43;
+        // We assume 2048 tokens max for the prompt which is about half of the total 4097
+        let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
+        let model = "gpt-4";
 
-        let mut messages_result: Vec<OpenAIApiMessage> = Vec::new();
+        // let num_tokens = num_tokens_from_messages("gpt-3.5-turbo-0301", &messages).unwrap();
 
-        // First process all Content sub-prompts until length limit is reached
+        let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+        let mut ebnf_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+        let mut current_length: usize = 0;
+
+        // First process all EBNF sub-prompts and calculate their tokens
+        for sub_prompt in self.sub_prompts.iter().filter(|sp| matches!(sp, SubPrompt::EBNF(_, _))) {
+            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
+                let enbf_text = self.generate_ebnf_response_string(ebnf);
+                let new_message = ChatCompletionRequestMessage {
+                    role: "system".to_string(),
+                    content: Some(enbf_text.clone()),
+                    name: None,
+                    function_call: None,
+                };
+                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
+                current_length += new_message_tokens;
+                ebnf_messages.push(new_message);
+            }
+        }
+
+        // Then process all Content sub-prompts until length limit is reached
         for sub_prompt in self
             .sub_prompts
             .iter()
@@ -401,37 +441,23 @@ impl Prompt {
                     SubPromptType::User => "user".to_string(),
                     SubPromptType::System => "system".to_string(),
                 };
-                if total_length + content.len() + extra_characters_from_schema > limit {
+                let new_message = ChatCompletionRequestMessage {
+                    role: role.clone(),
+                    content: Some(content.clone()),
+                    name: None,
+                    function_call: None,
+                };
+                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
+                if current_length + new_message_tokens > limit {
                     break;
                 }
-                total_length += content.len() + extra_characters_from_schema;
-                messages_result.push(OpenAIApiMessage {
-                    role,
-                    content: content.clone(),
-                });
+                tiktoken_messages.push(new_message);
+                current_length += new_message_tokens;
             }
         }
 
-        // Then process all EBNF sub-prompts
-        for sub_prompt in self.sub_prompts.iter().filter(|sp| matches!(sp, SubPrompt::EBNF(_, _))) {
-            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
-                let enbf_text = self.generate_ebnf_response_string(ebnf);
-                messages_result.push(OpenAIApiMessage {
-                    role: "system".to_string(),
-                    content: enbf_text.clone(),
-                });
-                total_length += enbf_text.len() + extra_characters_from_schema;
-            }
-        }
-
-        // TODO: it doesn't seem necessary so far may delete later
-        // let additional_message = OpenAIApiMessage {
-        //     role: "user".to_string(),
-        //     content: format!("```json\n\n"),
-        // };
-        // messages_result.push(additional_message);
-
-        eprintln!("total_length: {}", total_length);
-        Ok(messages_result)
+        // Add EBNF messages after content messages
+        tiktoken_messages.extend(ebnf_messages);
+        Ok(tiktoken_messages)
     }
 }

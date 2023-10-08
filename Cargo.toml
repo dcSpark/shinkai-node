@@ -50,6 +50,7 @@ urlencoding = "1.1.1"
 hex = "=0.4.3"
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
+tiktoken-rs = "0.5.4"
 
 [dependencies.rocksdb]
 version = "0.21.0"
