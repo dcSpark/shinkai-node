@@ -7,8 +7,8 @@ use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 use blake3::Hasher;
 use keyphrases::KeyPhraseExtractor;
-use reqwest::blocking::multipart as blocking_multipart;
-use reqwest::multipart;
+#[cfg(feature = "native-http")]
+use reqwest::{blocking::multipart as blocking_multipart, multipart};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
