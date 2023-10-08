@@ -51,7 +51,6 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Regenerates and updates the resource's embedding.
-    #[cfg(feature = "native-http")]
     fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -175,7 +174,10 @@ pub trait VectorResource {
                 Err(_) => {}
             }
         }
-        self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new())
+        let mut results =
+            self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new());
+        results.truncate(num_of_results as usize);
+        results
     }
 
     /// Internal method which is used to keep track of traversal info
@@ -251,14 +253,16 @@ pub trait VectorResource {
                 Err(_) => {}
             }
         }
-        self._syntactic_vector_search_with_options_core(
+        let mut results = self._syntactic_vector_search_with_options_core(
             query,
             num_of_results,
             data_tag_names,
             traversal,
             vec![],
             VRPath::new(),
-        )
+        );
+        results.truncate(num_of_results as usize);
+        results
     }
 
     /// Internal method which is used to keep track of traversal info

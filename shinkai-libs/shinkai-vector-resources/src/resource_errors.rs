@@ -20,6 +20,7 @@ pub enum VectorResourceError {
     NoEmbeddingProvided,
     DataIsNonMatchingType,
     InvalidVRPath(VRPath),
+    FailedParsingUnstructedAPIJSON(String),
 }
 
 impl fmt::Display for VectorResourceError {
@@ -46,6 +47,9 @@ impl fmt::Display for VectorResourceError {
                 write!(f, "Data inside of the DataChunk is of a different type than requested.")
             }
             VectorResourceError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
+            VectorResourceError::FailedParsingUnstructedAPIJSON(ref s) => {
+                write!(f, "Failed to parse Unstructed API response json: {}", s)
+            }
         }
     }
 }
@@ -66,5 +70,11 @@ impl From<SerdeError> for VectorResourceError {
             serde_json::error::Category::Data => VectorResourceError::FailedJSONParsing,
             serde_json::error::Category::Eof => VectorResourceError::FailedJSONParsing,
         }
+    }
+}
+
+impl From<reqwest::Error> for VectorResourceError {
+    fn from(error: reqwest::Error) -> Self {
+        VectorResourceError::RequestFailed(error.to_string())
     }
 }
