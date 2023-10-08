@@ -11,7 +11,6 @@ use shinkai_vector_resources::{
 pub struct LocalScopeEntry {
     pub resource: BaseVectorResource,
     pub source: SourceFile,
-    // TODO: missing something to check for a resource id 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

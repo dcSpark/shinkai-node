@@ -137,7 +137,6 @@ impl AgentManager {
                             println!("Duplicate LocalScopeEntry detected");
                         }
                     }
-                    // TODO: update job_scope here
                     { 
                         let mut shinkai_db = self.db.lock().await;
                         shinkai_db.update_job_scope(job_id, job_scope)?;

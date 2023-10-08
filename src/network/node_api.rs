@@ -12,9 +12,9 @@ use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use warp::Filter;
-use warp::Buf;
 use warp::fs::file;
+use warp::Buf;
+use warp::Filter;
 
 #[derive(serde::Deserialize)]
 struct NameToExternalProfileData {
@@ -201,7 +201,27 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
-    // get_all_inboxes_for_profile_handler
+    // POST v1/get_all_smart_inboxes_for_profile_handler
+    let get_all_smart_inboxes_for_profile = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_all_smart_inboxes_for_profile")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                get_all_smart_inboxes_for_profile_handler(node_commands_sender.clone(), message)
+            })
+    };
+
+    // POST v1/update_smart_inbox_name_handler
+    let update_smart_inbox_name = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_smart_inbox_name")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                update_smart_inbox_name_handler(node_commands_sender.clone(), message)
+            })
+    };
 
     // POST v1/create_job
     let create_job = {
@@ -296,6 +316,8 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(get_public_key)
         .or(connect)
         .or(get_all_inboxes_for_profile)
+        .or(get_all_smart_inboxes_for_profile)
+        .or(update_smart_inbox_name)
         .or(available_agents)
         .or(add_agent)
         .or(get_last_messages_from_inbox)
@@ -421,7 +443,9 @@ async fn handle_file_upload(
         if let Ok(part) = part_result {
             if let Some(filename) = part.filename() {
                 let filename = filename.to_string();
-                let stream = part.stream().map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
+                let stream = part
+                    .stream()
+                    .map(|res| res.map(|mut buf| buf.copy_to_bytes(buf.remaining()).to_vec()));
                 return Some((filename, stream));
             }
         }
@@ -449,7 +473,10 @@ async fn handle_file_upload(
         let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
         match result {
-            Ok(message) => Ok(Box::new(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK))),
+            Ok(message) => Ok(Box::new(warp::reply::with_status(
+                warp::reply::json(&message),
+                StatusCode::OK,
+            ))),
             Err(error) => Ok(Box::new(warp::reply::with_status(
                 warp::reply::json(&error),
                 StatusCode::from_u16(error.code).unwrap(),
@@ -540,7 +567,35 @@ async fn get_all_inboxes_for_profile_handler(
     .await
 }
 
-// Some(NodeCommand::APIGetAllInboxesForProfile { msg, res }) => self.api_get_all_inboxes_for_profile(msg, res).await?,
+async fn get_all_smart_inboxes_for_profile_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllSmartInboxesForProfile {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn update_smart_inbox_name_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateSmartInboxName {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
 
 async fn create_job_handler(
     node_commands_sender: Sender<NodeCommand>,

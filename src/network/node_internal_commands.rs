@@ -5,7 +5,7 @@ use crate::{
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
-        inbox_permission::InboxPermission,
+        inbox_permission::InboxPermission, smart_inbox::SmartInbox,
     },
 };
 use async_channel::Sender;
@@ -116,6 +116,50 @@ impl Node {
             }
         };
         let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
+            Ok(inboxes) => inboxes,
+            Err(e) => {
+                error!("Failed to get inboxes for profile: {}", e);
+                return Vec::new();
+            }
+        };
+
+        result
+    }
+
+    pub async fn internal_update_smart_inbox_name(&self, inbox_id: String, new_name: String) -> Result<(), String> {
+        match self.db.lock().await.update_smart_inbox_name(&inbox_id, &new_name) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                error!("Failed to update inbox name: {}", e);
+                Err(format!("Failed to update inbox name: {}", e))
+            }
+        }
+    }
+
+    pub async fn internal_get_all_smart_inboxes_for_profile(&self, full_profile_name: String) -> Vec<SmartInbox> {
+        // Obtain the IdentityManager and ShinkaiDB locks
+        let mut identity_manager = self.identity_manager.lock().await;
+
+        // Find the identity based on the provided name
+        let identity = identity_manager.search_identity(full_profile_name.as_str()).await;
+
+        // If identity is None (doesn't exist), return an error message
+        if identity.is_none() {
+            error!("Failed to find identity for profile: {}", full_profile_name);
+            return Vec::new();
+        }
+
+        let identity = identity.unwrap();
+
+        // Check if the found identity is a StandardIdentity. If not, return an empty vector.
+        let standard_identity = match &identity {
+            Identity::Standard(std_identity) => std_identity.clone(),
+            _ => {
+                error!("Identity for profile: {} is not a StandardIdentity", full_profile_name);
+                return Vec::new();
+            }
+        };
+        let result = match self.db.lock().await.get_smart_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 error!("Failed to get inboxes for profile: {}", e);
