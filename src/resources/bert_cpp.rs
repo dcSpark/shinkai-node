@@ -1,9 +1,10 @@
 use lazy_static::lazy_static;
 use std::fs::File;
 use std::io;
+use std::net::TcpStream;
 use std::process::{Child, Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 lazy_static! {
     pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
@@ -23,9 +24,21 @@ impl BertCPPProcess {
             File::open("/dev/null").unwrap()
         };
 
-        // Wait for for previous tests bert.cpp to close
-        let duration = Duration::from_millis(100);
-        thread::sleep(duration);
+        // Wait for the previous tests bert.cpp to close
+        let start_time = Instant::now();
+        let mut disconnected = false;
+        while !disconnected && start_time.elapsed() < Duration::from_millis(500) {
+            thread::sleep(Duration::from_millis(50)); // Wait before each attempt
+            disconnected =
+                TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_err();
+        }
+
+        if !disconnected {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Previous server did not close within 500ms",
+            ));
+        }
 
         let child = Command::new("./bert-cpp-server")
             .arg("--model")
@@ -40,8 +53,20 @@ impl BertCPPProcess {
 
         // Wait for for the BertCPP process to boot up/initialize its
         // web server
-        let duration = Duration::from_millis(150);
-        thread::sleep(duration);
+        let start_time = Instant::now();
+        let mut connected = false;
+        while !connected && start_time.elapsed() < Duration::from_millis(500) {
+            thread::sleep(Duration::from_millis(50)); // Wait before each attempt
+            connected =
+                TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_ok();
+        }
+
+        if !connected {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Could not connect to the server within 500ms",
+            ));
+        }
 
         Ok(BertCPPProcess { child })
     }
@@ -53,7 +78,21 @@ impl Drop for BertCPPProcess {
             Ok(_) => {
                 let duration = Duration::from_millis(150);
                 thread::sleep(duration);
-                println!("Successfully killed the bert-cpp server process.")
+                println!("Successfully killed the bert-cpp server process.");
+
+                // Wait for the BertCPP process to close
+                let start_time = Instant::now();
+                let mut disconnected = false;
+                while !disconnected && start_time.elapsed() < Duration::from_millis(500) {
+                    thread::sleep(Duration::from_millis(50)); // Wait before each attempt
+                    disconnected =
+                        TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap()))
+                            .is_err();
+                }
+
+                if !disconnected {
+                    println!("Warning: The server did not close within 500ms");
+                }
             }
             Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
         }

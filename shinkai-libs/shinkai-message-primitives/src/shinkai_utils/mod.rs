@@ -4,3 +4,4 @@ pub mod shinkai_message_builder;
 pub mod signatures;
 pub mod utils;
 pub mod file_encryption;
+pub mod shinkai_logging;

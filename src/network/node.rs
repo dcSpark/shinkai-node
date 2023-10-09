@@ -16,6 +16,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
@@ -334,7 +335,11 @@ impl Node {
         } else {
             self.ping_interval_secs
         };
-        info!("Automatic Ping interval set to {} seconds", ping_interval_secs);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Automatic Ping interval set to {} seconds", ping_interval_secs),
+        );
 
         let mut ping_interval = async_std::stream::interval(Duration::from_secs(ping_interval_secs));
         let mut commands_clone = self.commands.clone();
@@ -359,8 +364,7 @@ impl Node {
                     command = commands_future => {
                         match command {
                             Some(NodeCommand::Shutdown) => {
-                                eprintln!("Shutdown command received. Stopping the node.");
-                                info!("Shutdown command received. Stopping the node.");
+                                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, "Shutdown command received. Stopping the node.");
                                 break;
                             },
                             Some(NodeCommand::PingAll) => self.ping_all().await?,
@@ -411,7 +415,11 @@ impl Node {
 
     // A function that listens for incoming connections and tries to reconnect if a connection is lost.
     async fn listen_and_reconnect(&self) {
-        info!("{} > TCP: Starting listen and reconnect loop.", self.listen_address);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("{} > TCP: Starting listen and reconnect loop.", self.listen_address),
+        );
         loop {
             match self.listen().await {
                 Ok(_) => unreachable!(),
@@ -423,8 +431,11 @@ impl Node {
     // A function that listens for incoming connections.
     async fn listen(&self) -> io::Result<()> {
         let mut listener = TcpListener::bind(&self.listen_address).await?;
-
-        info!("{} > TCP: Listening on {}", self.listen_address, self.listen_address);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("{} > TCP: Listening on {}", self.listen_address, self.listen_address),
+        );
 
         loop {
             let (mut socket, addr) = listener.accept().await?;
@@ -453,33 +464,33 @@ impl Node {
                 )
                 .await;
                 if let Err(e) = socket.flush().await {
-                    eprintln!("Failed to flush the socket: {}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to flush the socket: {}", e),
+                    );
                 }
             });
         }
     }
 
     async fn retry_messages(&self) -> Result<(), NodeError> {
-        // let current_time = chrono::Local::now();
-        // eprintln!(
-        //     "\n\n*** Retrying messages at {}",
-        //     current_time.format("%Y-%m-%d %H:%M:%S")
-        // );
         let db_lock = self.db.lock().await;
         let messages_to_retry = db_lock.get_messages_to_retry_before(None)?;
-        // eprintln!("Messages to retry: {:?}", messages_to_retry);
 
         for retry_message in messages_to_retry {
-            // eprintln!("Retrying message: {:?}", retry_message.message);
             let encrypted_secret_key = clone_static_secret_key(&self.encryption_secret_key);
-            // let peer = (message.destination_socket, message.receiver.clone()); // Replace with actual peer
             let save_to_db_flag = retry_message.save_to_db_flag;
             let retry = Some(retry_message.retry_count);
 
             // Remove the message from the retry queue
-            db_lock
-                .remove_message_from_retry(&retry_message.message)
-                .unwrap();
+            db_lock.remove_message_from_retry(&retry_message.message).unwrap();
+
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Info,
+                &format!("Retrying message: {:?}", retry_message.message),
+            );
 
             // Retry the message
             Node::send(
@@ -509,9 +520,13 @@ impl Node {
 
     // Connect to a peer node.
     pub async fn connect(&self, peer_address: &str, profile_name: String) -> Result<(), NodeError> {
-        info!(
-            "{} {} > Connecting to {} with profile_name: {:?}",
-            self.node_profile_name, self.listen_address, peer_address, profile_name
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!(
+                "{} {} > Connecting to {} with profile_name: {:?}",
+                self.node_profile_name, self.listen_address, peer_address, profile_name
+            ),
         );
 
         let peer_address = peer_address.parse().expect("Failed to parse peer ip.");
@@ -520,8 +535,6 @@ impl Node {
         let peer = (peer_address, profile_name.clone());
 
         let sender = self.node_profile_name.clone().get_node_name();
-
-        println!(">>> Peer: {:?}", peer);
 
         let receiver_profile_identity = self
             .identity_manager
@@ -558,7 +571,11 @@ impl Node {
         save_to_db_flag: bool,
         retry: Option<u32>,
     ) {
-        println!("Sending {:?} to {:?}", message, peer);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Sending {:?} to {:?}", message, peer),
+        );
         let address = peer.0;
         let message = Arc::new(message);
 
@@ -569,7 +586,11 @@ impl Node {
                     let encoded_msg = message.encode_message().unwrap();
                     let _ = stream.write_all(encoded_msg.as_ref()).await;
                     let _ = stream.flush().await;
-                    info!("Sent message to {}", stream.peer_addr().unwrap());
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Info,
+                        &format!("Sent message to {}", stream.peer_addr().unwrap()),
+                    );
                     if save_to_db_flag {
                         let _ = Node::save_to_db(
                             true,
@@ -582,7 +603,11 @@ impl Node {
                     }
                 }
                 Err(e) => {
-                    println!("Failed to connect to {}: {}", address, e);
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("Failed to connect to {}: {}", address, e),
+                    );
                     // If retry is enabled, add the message to retry list on failure
                     let retry_count = retry.unwrap_or(0) + 1;
                     let db = db.lock().await;
@@ -619,8 +644,11 @@ impl Node {
         // The body should only be decrypted if it's currently encrypted.
         if is_body_encrypted {
             let mut counterpart_identity: String = "".to_string();
-            // Debug only
-            println!("save_to_db> message: {:?}", message.clone());
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Debug,
+                &format!("save_to_db> message: {:?}", message.clone()),
+            );
             if am_i_sender {
                 counterpart_identity = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(message)
                     .unwrap()
@@ -646,29 +674,52 @@ impl Node {
                     message_to_save = decrypted_content;
                 }
                 Err(e) => {
-                    println!(
-                        "save_to_db> my_encrypt_sk: {:?}",
-                        encryption_secret_key_to_string(my_encryption_sk)
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "save_to_db> my_encrypt_sk: {:?}",
+                            encryption_secret_key_to_string(my_encryption_sk)
+                        ),
                     );
-                    println!(
-                        "save_to_db> sender_encrypt_pk: {:?}",
-                        encryption_public_key_to_string(sender_encryption_pk)
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!(
+                            "save_to_db> sender_encrypt_pk: {:?}",
+                            encryption_public_key_to_string(sender_encryption_pk)
+                        ),
                     );
-                    println!("save_to_db> Failed to decrypt message body: {}", e);
-                    println!("save_to_db> For message: {:?}", message);
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("save_to_db> Failed to decrypt message body: {}", e),
+                    );
+                    shinkai_log(
+                        ShinkaiLogOption::Node,
+                        ShinkaiLogLevel::Error,
+                        &format!("save_to_db> For message: {:?}", message),
+                    );
                     return Err(io::Error::new(io::ErrorKind::Other, "Failed to decrypt message body"));
                 }
             }
         }
 
         // TODO: add identity to this fn so we can check for permissions
-        println!("save_to_db> message_to_save: {:?}", message_to_save.clone());
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()));
         let mut db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
             Ok(_) => (),
             Err(e) => {
-                println!("Failed to insert message into inbox: {}", e);
+                shinkai_log(
+                    ShinkaiLogOption::Node,
+                    ShinkaiLogLevel::Error,
+                    &format!("Failed to insert message into inbox: {}", e),
+                );
                 // we will panic for now because that way we can be aware that something is off
                 // NOTE: we shouldn't panic on production!
                 panic!("Failed to insert message into inbox: {}", e);
@@ -687,14 +738,22 @@ impl Node {
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {
-        info!(
-            "\n\n {} > Got message from {:?}",
-            receiver_address, unsafe_sender_address
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!(
+                "{} > Got message from {:?}",
+                receiver_address, unsafe_sender_address
+            ),
         );
 
         // Extract and validate the message
         let message = extract_message(bytes, receiver_address)?;
-        println!("{} > Decoded Message: {:?}", receiver_address, message);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Decoded Message: {:?}", receiver_address, message),
+        );
 
         // Extract sender's public keys and verify the signature
         let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
@@ -709,12 +768,20 @@ impl Node {
 
         verify_message_signature(sender_identity.node_signature_public_key, &message)?;
 
-        debug!(
-            "{} > Sender Profile Name: {:?}",
-            receiver_address, sender_profile_name_string
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Sender Profile Name: {:?}", receiver_address, sender_profile_name_string),
         );
-        debug!("{} > Node Sender Identity: {}", receiver_address, sender_identity);
-        debug!("{} > Verified message signature", receiver_address);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity));
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Verified message signature", receiver_address),
+        );
 
         // Save to db
         {
@@ -728,8 +795,11 @@ impl Node {
             .await?;
         }
 
-        // println!("who am I: {:?}", my_node_profile_name);
-        println!("sender identity: {}", sender_identity);
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
+        );
 
         handle_based_on_message_content_and_encryption(
             message.clone(),
