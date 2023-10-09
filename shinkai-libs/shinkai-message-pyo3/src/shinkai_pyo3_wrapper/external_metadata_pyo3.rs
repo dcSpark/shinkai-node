@@ -11,13 +11,14 @@ use super::shinkai_message_pyo3::PyExternalMetadata;
 #[pymethods]
 impl PyExternalMetadata {
     #[new]
-    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String) -> PyResult<Self> {
+    fn new(sender: String, recipient: String, scheduled_time: String, signature: String, other: String, intra_sender: String) -> PyResult<Self> {
         let inner = ExternalMetadata {
             sender,
             recipient,
             scheduled_time,
             signature,
             other,
+            intra_sender,
         };
 
         Ok(Self { inner })
@@ -88,6 +89,7 @@ impl<'source> FromPyObject<'source> for PyExternalMetadata {
         let scheduled_time = parts[2].to_string();
         let signature = parts[3].to_string();
         let other = parts[4].to_string();
+        let intra_sender = parts[5].to_string();
         Ok(PyExternalMetadata {
             inner: ExternalMetadata {
                 sender,
@@ -95,6 +97,7 @@ impl<'source> FromPyObject<'source> for PyExternalMetadata {
                 scheduled_time,
                 signature,
                 other,
+                intra_sender
             },
         })
     }
@@ -109,6 +112,7 @@ impl ToPyObject for PyExternalMetadata {
             .unwrap();
         dict.set_item("signature", self.inner.signature.clone()).unwrap();
         dict.set_item("other", self.inner.other.clone()).unwrap();
+        dict.set_item("intra_sender", self.inner.intra_sender.clone()).unwrap();
         dict.into()
     }
 }

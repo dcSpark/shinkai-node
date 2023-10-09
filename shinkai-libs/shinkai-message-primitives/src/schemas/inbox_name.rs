@@ -313,6 +313,7 @@ mod tests {
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
+                intra_sender: "".into(),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -351,6 +352,7 @@ mod tests {
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
+                intra_sender: "".into(),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -461,6 +463,7 @@ mod tests {
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
+                intra_sender: "".into(),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,
@@ -496,6 +499,7 @@ mod tests {
                 signature: "3PLx2vZV8kccEEbwPepPQYv2D5zaiSFJXy3JtK57fLuKyh7TBJmcwqMkuCnzLgzAxoatAyKnUSf41smqijpiPBFJ"
                     .into(),
                 other: "".into(),
+                intra_sender: "".into(),
             },
             encryption: EncryptionMethod::None,
             version: ShinkaiVersion::V1_0,

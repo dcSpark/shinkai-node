@@ -237,7 +237,7 @@ fn subidentity_registration() {
                 let unchanged_message = ShinkaiMessageBuilder::new(
                     node2_subencryption_sk.clone(),
                     clone_signature_secret_key(&node2_subidentity_sk),
-                    node1_encryption_pk,
+                    node1_profile_encryption_pk.clone(),
                 )
                 .message_raw_content(message_content.clone())
                 .no_body_encryption()
@@ -335,7 +335,7 @@ fn subidentity_registration() {
                 }
                 let message_to_check_content_unencrypted = message_to_check
                     .clone()
-                    .decrypt_inner_layer(&node1_encryption_sk_clone.clone(), &node2_subencryption_pk)
+                    .decrypt_inner_layer(&&node1_profile_encryption_sk.clone(), &node2_subencryption_pk)
                     .unwrap();
 
                 // This check can't be done using a static value because the nonce is randomly generated
@@ -390,7 +390,7 @@ fn subidentity_registration() {
                 )
                 .await;
 
-                eprintln!("Sending message from Node 1 subidentity to Node 1 subidentity 2");
+                eprintln!("Sending message from Node 1 subidentity to Node 1 subidentity 2 using the intra_sender feature");
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
                 let unchanged_message = ShinkaiMessageBuilder::new(
@@ -398,18 +398,20 @@ fn subidentity_registration() {
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_subencryption_pk_2,
                 )
+                .set_optional_second_public_key_receiver_node(node1_encryption_pk.clone())
                 .message_raw_content(message_content.clone())
-                .no_body_encryption()
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
                 .message_schema_type(MessageSchemaType::TextContent)
                 .internal_metadata(
                     node1_profile_name.to_string().clone(),
                     node1_subidentity_name_2.to_string().clone(),
                     EncryptionMethod::DiffieHellmanChaChaPoly1305,
                 )
-                .external_metadata_with_other(
+                .external_metadata_with_other_and_intra_sender(
                     node1_identity_name.to_string().clone(),
                     node1_identity_name.to_string().clone(),
-                    encryption_public_key_to_string(node1_profile_encryption_pk.clone()),
+                    "".to_string(),
+                    node1_profile_name.to_string().clone(),
                 )
                 .build()
                 .unwrap();
@@ -534,7 +536,7 @@ fn subidentity_registration() {
                                     break;
                                 }
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 // nothing
                             }
                         }

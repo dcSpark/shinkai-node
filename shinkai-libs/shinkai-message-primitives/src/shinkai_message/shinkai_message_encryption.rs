@@ -22,12 +22,21 @@ impl ShinkaiMessage {
         self_sk: &EncryptionStaticKey,
         destination_pk: &EncryptionPublicKey,
     ) -> Result<ShinkaiMessage, ShinkaiMessageError> {
-        if self.encryption != EncryptionMethod::None {
-            return Err(ShinkaiMessageError::AlreadyEncrypted(
-                "Message is already encrypted".to_string(),
-            ));
+        match &self.body {
+            MessageBody::Encrypted(_) => {
+                return Err(ShinkaiMessageError::AlreadyEncrypted(
+                    "Message body is already encrypted".to_string(),
+                ));
+            }
+            MessageBody::Unencrypted(_) => {
+                if self.encryption == EncryptionMethod::None {
+                    return Err(ShinkaiMessageError::AlreadyEncrypted(
+                        "Message encryption method is None".to_string(),
+                    ));
+                }
+            }
         }
-    
+
         let mut message_clone = self.clone();
         message_clone.body = MessageBody::encrypt(&message_clone.body, self_sk, destination_pk)?;
         message_clone.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;

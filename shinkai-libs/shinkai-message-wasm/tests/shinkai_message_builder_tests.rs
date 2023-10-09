@@ -200,6 +200,7 @@ mod tests {
         let job_id = "job123".to_string();
         let content = scope.to_json_str().unwrap();
         let node_sender = "@@sender_node.shinkai".to_string();
+        let sender_subidentity = "main".to_string();
         let node_receiver = "@@receiver_node.shinkai".to_string();
         let node_receiver_subidentity = "@@receiver_subidentity.shinkai".to_string();
 
@@ -212,6 +213,7 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             node_sender.clone(),
+            sender_subidentity.clone(),
             node_receiver.clone(),
             node_receiver_subidentity.clone(),
         );
@@ -243,7 +245,7 @@ mod tests {
 
         // Check internal metadata
         let internal_metadata = body.internal_metadata;
-        assert_eq!(internal_metadata.sender_subidentity, "".to_string());
+        assert_eq!(internal_metadata.sender_subidentity, sender_subidentity.to_string());
         assert_eq!(internal_metadata.recipient_subidentity, node_receiver_subidentity);
 
         // Check external metadata
@@ -265,6 +267,7 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let sender_node = "@@sender_node.shinkai".to_string();
+        let sender_subidentity = "main".to_string();
         let receiver_node = "@@receiver_node.shinkai".to_string();
 
         // Call the function and check the result
@@ -273,6 +276,7 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             sender_node.clone(),
+            sender_subidentity.clone(),
             receiver_node.clone(),
         );
 
@@ -629,6 +633,7 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let sender_node = "@@sender_node.shinkai".to_string();
+        let sender_subidentity = "main".to_string();
         let receiver_node = "@@receiver_node.shinkai".to_string();
 
         // Call the function and check the result
@@ -637,6 +642,7 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             sender_node.clone(),
+            sender_subidentity.clone(),
             receiver_node.clone(),
         );
 
@@ -662,6 +668,7 @@ mod tests {
         // Check internal metadata
         assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
         assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
+        assert_eq!(message.get_sender_intra_sender(), sender_subidentity.to_string());
 
         // Check external metadata
         let external_metadata = message.external_metadata;
@@ -682,6 +689,7 @@ mod tests {
         let receiver_public_key_string = encryption_public_key_to_string(receiver_public_key);
 
         let sender_node = "@@sender_node.shinkai".to_string();
+        let sender_subidentity = "main".to_string();
         let receiver_node = "@@receiver_node.shinkai".to_string();
 
         let error_msg = "Some error occurred.".to_string();
@@ -692,6 +700,7 @@ mod tests {
             my_identity_sk_string.clone(),
             receiver_public_key_string.clone(),
             sender_node.clone(),
+            sender_subidentity.clone(),
             receiver_node.clone(),
             error_msg.clone(),
         );
@@ -715,15 +724,17 @@ mod tests {
 
         // Decrypt the content
         let decrypted_message = message
-            .decrypt_inner_layer(&my_encryption_sk, &receiver_public_key)
+            .decrypt_outer_layer(&my_encryption_sk, &receiver_public_key)
             .expect("Failed to decrypt body content");
 
         let content = decrypted_message.get_message_content().unwrap();
         assert_eq!(content, format!("{{error: \"{}\"}}", error_msg));
 
+        log::debug!("decrypted_message: {:?}", decrypted_message);
+
         // Check internal metadata
-        assert_eq!(message.get_recipient_subidentity().unwrap(), "".to_string());
-        assert_eq!(message.get_sender_subidentity().unwrap(), "".to_string());
+        assert_eq!(message.get_recipient_subidentity(), None);
+        assert_eq!(message.get_sender_subidentity(), None);
 
         // Check external metadata
         let external_metadata = message.external_metadata;

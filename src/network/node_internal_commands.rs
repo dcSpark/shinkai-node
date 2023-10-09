@@ -92,12 +92,12 @@ impl Node {
         result
     }
 
-    pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: String) -> Vec<String> {
+    pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: ShinkaiName) -> Vec<String> {
         // Obtain the IdentityManager and ShinkaiDB locks
         let mut identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
-        let identity = identity_manager.search_identity(full_profile_name.as_str()).await;
+        let identity = identity_manager.search_identity(full_profile_name.full_name.as_str()).await;
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {

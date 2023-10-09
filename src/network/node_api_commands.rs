@@ -41,7 +41,7 @@ use shinkai_message_primitives::{
     shinkai_utils::{
         encryption::{
             clone_static_secret_key, decrypt_with_chacha20poly1305, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key,
+            encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
@@ -66,7 +66,8 @@ impl Node {
                 /*
                 When someone sends an encrypted message, we need to compute the shared key using Diffie-Hellman,
                 but what if they are using a subidentity? We don't know which one because it's encrypted.
-                So the only way to get the pk is if they send it to us in the external_metadata.other field.
+                So the only way to get the pk is if they send it to us in the external_metadata.other field or
+                if they are using intra_sender (which needs to be deleted afterwards).
                 For other cases, we can find it in the identity manager.
                 */
                 let sender_encryption_pk_string = potentially_encrypted_msg.external_metadata.clone().other;
@@ -87,7 +88,7 @@ impl Node {
                         }
                     };
                 } else {
-                    let sender_name = ShinkaiName::from_shinkai_message_only_using_sender_node_name(
+                    let sender_name = ShinkaiName::from_shinkai_message_using_sender_and_intra_sender(
                         &potentially_encrypted_msg.clone(),
                     )?;
 
@@ -107,7 +108,7 @@ impl Node {
                                         .profile_encryption_public_key
                                         .unwrap_or_else(|| std_identity.node_encryption_public_key),
                                 },
-                                Identity::Device(device) => device.node_encryption_public_key,
+                                Identity::Device(device) => device.device_encryption_public_key,
                                 Identity::Agent(_) => return Err(APIError {
                                     code: StatusCode::UNAUTHORIZED.as_u16(),
                                     error: "Unauthorized".to_string(),
@@ -125,6 +126,7 @@ impl Node {
                                 })
                             }
                         };
+                    eprintln!("sender_encryption_pk: {:?}", sender_encryption_pk);
                     msg = match potentially_encrypted_msg
                         .clone()
                         .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)
@@ -1001,8 +1003,16 @@ impl Node {
                 if (std_identity.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
+                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
+                        Ok(name) => name,
+                        Err(_) => ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_requested.clone(),
+                        ).map_err(|err| err.to_string())?,
+                    };
+
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1036,8 +1046,16 @@ impl Node {
                 if (std_device.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
+                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
+                        Ok(name) => name,
+                        Err(_) => ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_requested.clone(),
+                        ).map_err(|err| err.to_string())?,
+                    };
+                    
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1412,7 +1430,7 @@ impl Node {
         eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
 
         let validation_result = self.validate_message(potentially_encrypted_msg, None).await;
-        let (msg, _) = match validation_result {
+        let (mut msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res
@@ -1491,7 +1509,7 @@ impl Node {
         //
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_profile_name_string =
+        let recipient_node_name_string =
             ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
                 .unwrap()
                 .to_string();
@@ -1500,14 +1518,17 @@ impl Node {
             .identity_manager
             .lock()
             .await
-            .external_profile_to_global_identity(&recipient_profile_name_string.clone())
+            .external_profile_to_global_identity(&recipient_node_name_string.clone())
             .await
             .unwrap();
 
         println!(
             "handle_onionized_message > recipient_profile_name_string: {}",
-            recipient_profile_name_string
+            recipient_node_name_string
         );
+
+        msg.external_metadata.intra_sender = "".to_string();
+        msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;
 
         let encrypted_msg = msg.encrypt_outer_layer(
             &self.encryption_secret_key.clone(),
@@ -1523,7 +1544,7 @@ impl Node {
         Node::send(
             encrypted_msg,
             Arc::new(clone_static_secret_key(&self.encryption_secret_key)),
-            (node_addr, recipient_profile_name_string),
+            (node_addr, recipient_node_name_string),
             self.db.clone(),
             self.identity_manager.clone(),
             true,

@@ -72,3 +72,11 @@ impl From<ShinkaiNameError> for NodeError {
         }
     }
 }
+
+impl From<String> for NodeError {
+    fn from(error: String) -> Self {
+        NodeError {
+            message: error,
+        }
+    }
+}
