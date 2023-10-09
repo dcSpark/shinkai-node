@@ -80,6 +80,49 @@ impl RetrievedDataChunk {
         }
         path_string
     }
+
+    /// Formats the data, source, and metadata of all provided `RetrievedDataChunk`s into a bullet-point
+    /// list as a single string. This is to be included inside of a prompt to an LLM.
+    pub fn format_ret_chunks_for_prompt(ret_data_chunks: Vec<RetrievedDataChunk>) -> String {
+        if ret_data_chunks.is_empty() {
+            return String::new();
+        }
+
+        ret_data_chunks
+            .iter()
+            .filter_map(|ret_chunk| ret_chunk.format_for_prompt())
+            .collect::<Vec<String>>()
+            .join("\n\n")
+    }
+
+    /// Formats the data, source, and metadata together into a single string that is ready
+    /// to be included as part of a prompt to an LLM.
+    pub fn format_for_prompt(&self) -> Option<String> {
+        let data_string = self.chunk.get_data_string().ok()?;
+        let source_string = self.resource_pointer.resource_source.format_source_string();
+        let metadata_string = self.format_metadata_string();
+        let formatted_string = if metadata_string.len() > 0 {
+            format!("- {} (Source: {}, {})", data_string, source_string, metadata_string)
+        } else {
+            format!("- {} (Source: {})", data_string, source_string)
+        };
+        Some(formatted_string)
+    }
+
+    /// Parses the metdata of the data chunk, and outputs a readable string which includes
+    /// any metadata relevant to provide to an LLM as context about the retrieved chunk.
+    pub fn format_metadata_string(&self) -> String {
+        match &self.chunk.metadata {
+            Some(metadata) => {
+                if let Some(page_numbers) = metadata.get("page_numbers") {
+                    format!("Pgs: {}", page_numbers)
+                } else {
+                    String::new()
+                }
+            }
+            None => String::new(),
+        }
+    }
 }
 
 /// Represents a data chunk with an id, data, and optional metadata.

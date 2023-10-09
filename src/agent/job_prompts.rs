@@ -3,6 +3,7 @@ use crate::tools::router::ShinkaiTool;
 use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
+use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
 
@@ -198,18 +199,20 @@ impl JobPromptGenerator {
         prompt
     }
 
-    pub fn response_prompt_with_vector_search(job_task: String, chunks_content: Vec<String>) -> Prompt {
+    /// A basic prompt which adds all provided RetrievedDataChunks (likely from a vector search) and explains to the LLM
+    /// that it should use them as context to answer the job_task.
+    pub fn response_prompt_with_vector_search(job_task: String, ret_data_chunks: Vec<RetrievedDataChunk>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an advanced assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
 
-        // "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. If the user mentions the word \"this\" (or similar) you can assume that the users is referring to the context given.".to_string(),
-
+        // Parses the retrieved data chunks into a single string to add to the prompt
+        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks);
         let search_context = format!(
-            "Here is the current context from a vector search with the most relevant data available from the system for you to use to answer the user's questions: ```- {} ```.\n",
-            chunks_content.join("\n\n - "),
+            "Here is the current context from a vector search with the most relevant data available for you to use to answer the user's questions: ``` {}```.\n",
+            ret_chunks_content,
         );
         prompt.add_content(search_context, SubPromptType::System);
 

@@ -28,6 +28,7 @@ use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
 use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -88,11 +89,6 @@ impl AgentManager {
                 Ok(profile) => profile,
                 Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
             };
-
-            // Fetch data we need to execute job step
-            let (full_job, agent_found, profile_name, user_profile) =
-                self.fetch_relevant_job_data(job.job_id()).await?;
-
             //
             // Todo: Implement unprocessed messages logic
             // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
@@ -116,6 +112,11 @@ impl AgentManager {
             // - Go over the files
             // - Check if they are parseable (for now just pdfs)
             // - if they are parseable, then parse them and add them to the db
+
+            // Fetch data we need to execute job step
+            let (full_job, agent_found, profile_name, user_profile) =
+                self.fetch_relevant_job_data(job.job_id()).await?;
+
             if !job_message.files_inbox.is_empty() {
                 println!(
                     "process_job_message> processing files_map: ... files: {}",
@@ -160,7 +161,7 @@ impl AgentManager {
                 // TODO: move this somewhere else
                 let mut shinkai_db = self.db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
-                std::mem::drop(shinkai_db); // require to avoid deadlock
+                std::mem::drop(shinkai_db); // required to avoid deadlock
             }
 
             // TODO(Nico): Notes from conversation with Rob
@@ -203,7 +204,6 @@ impl AgentManager {
         // Setup initial data to start moving through analysis phase
         let prev_execution_context = full_job.execution_context.clone();
         let analysis_context = HashMap::new();
-
         let start = Instant::now();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
@@ -216,14 +216,6 @@ impl AgentManager {
         let ret_data_chunks = shinkai_db
             .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
             .unwrap();
-
-        let mut data_chunks_content: Vec<String> = Vec::new();
-        if !ret_data_chunks.is_empty() {
-            data_chunks_content = ret_data_chunks
-                .iter()
-                .filter_map(|data_chunk| data_chunk.chunk.get_data_string().ok())
-                .collect();
-        }
 
         let duration = start.elapsed();
         eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
@@ -240,7 +232,7 @@ impl AgentManager {
                     full_job,
                     job_message.content.clone(),
                     agent,
-                    data_chunks_content,
+                    ret_data_chunks,
                     prev_execution_context,
                     analysis_context,
                 )
@@ -282,15 +274,14 @@ impl AgentManager {
         job: Job,
         message: String,
         agent: Arc<Mutex<Agent>>,
-        data_chunks_content: Vec<String>,
+        ret_data_chunks: Vec<RetrievedDataChunk>,
         execution_context: HashMap<String, String>,
         analysis_context: HashMap<String, String>,
     ) -> Result<JsonValue, Box<dyn Error>> {
         println!("analysis_inference>  message: {:?}", message);
 
         // Generate the needed prompt
-        let filled_prompt =
-            JobPromptGenerator::response_prompt_with_vector_search(message.clone(), data_chunks_content);
+        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(message.clone(), ret_data_chunks);
 
         // Execute LLM inferencing
         let agent_cloned = agent.clone();
