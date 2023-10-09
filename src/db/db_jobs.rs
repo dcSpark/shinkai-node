@@ -311,6 +311,25 @@ impl ShinkaiDB {
         Ok(jobs)
     }
 
+    pub fn update_job_scope(&mut self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
+        // Define cf name for the scope we need to update
+        let cf_job_id_scope_name = format!("{}_scope", &job_id);
+
+        // Get the needed cf handle
+        let cf_job_id_scope = self
+            .db
+            .cf_handle(&cf_job_id_scope_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_scope_name))?;
+
+        // Convert the new scope to bytes
+        let scope_bytes = scope.to_bytes()?;
+
+        // Update the scope in the DB
+        self.db.put_cf(cf_job_id_scope, job_id.as_bytes(), &scope_bytes)?;
+
+        Ok(())
+    }
+
     /// Fetches all jobs under a specific Agent
     pub fn get_agent_jobs(&self, agent_id: String) -> Result<Vec<Box<dyn JobLike>>, ShinkaiDBError> {
         let cf_name = format!("agentid_{}", &agent_id);

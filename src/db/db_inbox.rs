@@ -9,6 +9,7 @@ use crate::{
     schemas::{
         identity::{IdentityType, StandardIdentity},
         inbox_permission::InboxPermission,
+        smart_inbox::SmartInbox,
     },
     utils::logging_helpers::print_content_time_messages,
 };
@@ -27,11 +28,13 @@ impl ShinkaiDB {
         let cf_name_inbox = inbox_name.clone();
         let cf_name_perms = format!("{}_perms", &inbox_name);
         let cf_name_unread_list = format!("{}_unread_list", &inbox_name);
+        let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_name);
 
         // Create column families
         self.db.create_cf(&cf_name_inbox, &cf_opts)?;
         self.db.create_cf(&cf_name_perms, &cf_opts)?;
         self.db.create_cf(&cf_name_unread_list, &cf_opts)?;
+        self.db.create_cf(&cf_name_smart_inbox_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -43,14 +46,20 @@ impl ShinkaiDB {
             .expect("to be able to access Topic::Inbox");
         batch.put_cf(cf_inbox, &inbox_name, &inbox_name);
 
+        // Add inbox name to the 'smart_inbox_name' column family
+        let cf_smart_inbox_name = self
+            .db
+            .cf_handle(&cf_name_smart_inbox_name)
+            .expect("to be able to access smart inbox name column family");
+        batch.put_cf(cf_smart_inbox_name, &inbox_name, &inbox_name);
+
         // Commit the write batch
         self.db.write(batch)?;
 
         Ok(())
     }
 
-    // TODO: finish this
-    // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regards
+    // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regard
     pub fn unsafe_insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
@@ -101,7 +110,7 @@ impl ShinkaiDB {
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
-        println!("Composite key: {}", composite_key);
+        // println!("Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -130,9 +139,9 @@ impl ShinkaiDB {
         n: usize,
         until_offset_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
-        println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        println!("Offset key: {:?}", until_offset_key);
-        println!("n: {:?}", n);
+        // println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        // println!("Offset key: {:?}", until_offset_key);
+        // println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
@@ -524,5 +533,60 @@ impl ShinkaiDB {
         }
         eprintln!("Inboxes: {:?}", inboxes);
         Ok(inboxes)
+    }
+
+    pub fn get_smart_inboxes_for_profile(
+        &self,
+        profile_name_identity: StandardIdentity,
+    ) -> Result<Vec<SmartInbox>, ShinkaiDBError> {
+        let inboxes = self.get_inboxes_for_profile(profile_name_identity)?;
+
+        let mut smart_inboxes = Vec::new();
+
+        for inbox_id in inboxes {
+            let last_message = self
+                .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
+                .into_iter()
+                .next();
+    
+            // Fetch the custom name from the smart_inbox_name column family
+            let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_id);
+            let cf_smart_inbox_name = self
+                .db
+                .cf_handle(&cf_name_smart_inbox_name)
+                .expect("to be able to access smart inbox name column family");
+            let custom_name = match self.db.get_cf(cf_smart_inbox_name, &inbox_id)? {
+                Some(val) => String::from_utf8(val.to_vec())
+                    .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?,
+                None => inbox_id.clone(), // Use the inbox_id as the default value if the custom name is not found
+            };
+    
+            let smart_inbox = SmartInbox {
+                inbox_id: inbox_id.clone(),
+                custom_name,
+                last_message,
+            };
+    
+            smart_inboxes.push(smart_inbox);
+        }
+
+        Ok(smart_inboxes)
+    }
+
+    pub fn update_smart_inbox_name(&mut self, inbox_id: &str, new_name: &str) -> Result<(), ShinkaiDBError> {
+        // Fetch the column family for the smart_inbox_name
+        let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", inbox_id);
+        let cf_smart_inbox_name = self
+            .db
+            .cf_handle(&cf_name_smart_inbox_name)
+            .ok_or(ShinkaiDBError::InboxNotFound(format!(
+                "Inbox not found: {}",
+                inbox_id
+            )))?;
+    
+        // Update the name in the column family
+        self.db.put_cf(cf_smart_inbox_name, inbox_id, new_name)?;
+    
+        Ok(())
     }
 }

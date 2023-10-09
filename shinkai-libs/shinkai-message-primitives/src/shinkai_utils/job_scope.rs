@@ -1,3 +1,5 @@
+use std::fmt;
+use shinkai_vector_resources::vector_resource::VectorResource;
 use serde::{Deserialize, Serialize};
 use shinkai_vector_resources::{
     base_vector_resources::BaseVectorResource,
@@ -17,7 +19,7 @@ pub struct DBScopeEntry {
     pub source: VRSource,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 /// Job's scope which includes both local entries (source/vector resource stored locally only in job)
 /// and DB entries (source/vector resource stored in the DB, accessible to all jobs)
 pub struct JobScope {
@@ -54,5 +56,21 @@ impl JobScope {
     pub fn to_json_str(&self) -> serde_json::Result<String> {
         let json_str = serde_json::to_string(self)?;
         Ok(json_str)
+    }
+}
+
+impl fmt::Debug for JobScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let local_ids: Vec<String> = self.local.iter().map(|entry| match &entry.resource {
+            BaseVectorResource::Document(doc) => doc.resource_id().to_string(),
+            BaseVectorResource::Map(map) => map.resource_id().to_string(),
+        }).collect();
+
+        let db_ids: Vec<String> = self.database.iter().map(|entry| entry.resource_pointer.reference.clone()).collect();
+
+        f.debug_struct("JobScope")
+            .field("local", &format_args!("{:?}", local_ids))
+            .field("database", &format_args!("{:?}", db_ids))
+            .finish()
     }
 }

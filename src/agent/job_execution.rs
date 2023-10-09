@@ -13,6 +13,7 @@ use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::{
@@ -26,7 +27,7 @@ use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::source::{SourceDocumentType, SourceFileType, VRSource};
+use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
 use std::fmt;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -111,19 +112,37 @@ impl AgentManager {
                     // TODO: later we  should able to grab errors and return them to the user
                     let inference_response = match agent_found {
                         Some(agent) => {
-                            AgentManager::process_message_multifiles(
+                            let resp = AgentManager::process_message_multifiles(
                                 self.db.clone(),
                                 agent,
                                 job_message.files_inbox.clone(),
                                 profile,
                             )
                             .await?;
+                            resp
                         }
                         None => {
                             // Handle the None case here. For example, you might want to return an error:
                             return Err(AgentError::AgentNotFound);
                         }
                     };
+
+                    eprintln!(">>> inference_response: {:?}", inference_response.keys());
+
+                    let mut job_scope = full_job.scope.clone();
+                    for (_, value) in inference_response {
+                        if !job_scope.local.contains(&value) {
+                            job_scope.local.push(value);
+                        } else {
+                            println!("Duplicate LocalScopeEntry detected");
+                        }
+                    }
+                    { 
+                        let mut shinkai_db = self.db.lock().await;
+                        shinkai_db.update_job_scope(job_id, job_scope)?;
+                        eprintln!(">>> job_scope updated");
+                    }
+
                 }
             } else {
                 // TODO: move this somewhere else
@@ -158,6 +177,8 @@ impl AgentManager {
         // Fetch the job
         let job_id = job.job_id().to_string();
         let full_job = { self.db.lock().await.get_job(&job_id)? };
+
+        eprintln!("analysis_phase> full_job: {:?}", full_job);
 
         // Acquire Agent
         let agent_id = full_job.parent_agent_id.clone();
@@ -315,7 +336,7 @@ impl AgentManager {
         agent: Arc<Mutex<Agent>>,
         files_inbox: String,
         profile: ShinkaiName,
-    ) -> Result<HashMap<String, Vec<u8>>, AgentError> {
+    ) -> Result<HashMap<String, LocalScopeEntry>, AgentError> {
         let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
@@ -326,21 +347,16 @@ impl AgentManager {
             Err(e) => return Err(AgentError::ShinkaiDB(e)),
         };
 
-        // Convert the Vec<(String, Vec<u8>)> to a HashMap<String, Vec<u8>>
-        let mut files_map: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut files_map: HashMap<String, LocalScopeEntry> = HashMap::new();
 
         // Create the RemoteEmbeddingGenerator instance
         let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
 
         for (filename, content) in files.into_iter() {
+            eprintln!("Iterating over file: {}", filename);
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
-                // Generate embeddings for PDF files
-                // let desc = "An initial introduction to the Shinkai Network."; // TODO: get the description from the LLM
-
-                let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 10, 3, 200)?;
-                // TODO: use pdf_overview.grouped_text_list to generate the description using an LLM.
-                // TODO: work on the prompts so it can be iterative and we can get a full description
+                let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
 
                 let agent_clone = agent.clone();
                 let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
@@ -351,6 +367,7 @@ impl AgentManager {
                 })
                 .await?;
 
+                // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
                 eprintln!("description_response: {:?}", description_response);
 
                 let vrsource = Self::create_vrsource(
@@ -358,6 +375,7 @@ impl AgentManager {
                     SourceFileType::Document(SourceDocumentType::Pdf),
                     Some(pdf_overview.blake3_hash),
                 );
+                eprintln!("vrsource: {:?}", vrsource);
                 let doc = FileParser::parse_pdf(
                     &content,
                     150,
@@ -365,7 +383,7 @@ impl AgentManager {
                     &filename,
                     Some(&"".to_string()),
                     vrsource,
-                    &vec![], // TODO: should this be computed using RAKE?
+                    &vec![],
                 )?;
 
                 let resource = BaseVectorResource::from(doc.clone());
@@ -373,8 +391,17 @@ impl AgentManager {
                 eprintln!("profile: {:?}", profile);
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
+
+                let local_scope_entry = LocalScopeEntry {
+                    resource: BaseVectorResource::from(doc.clone()),
+                    source: SourceFile::new(
+                        filename.clone(),
+                        SourceFileType::Document(SourceDocumentType::Pdf),
+                        content,
+                    ),
+                };
+                files_map.insert(filename, local_scope_entry);
             }
-            files_map.insert(filename, content); 
         }
 
         Ok(files_map)

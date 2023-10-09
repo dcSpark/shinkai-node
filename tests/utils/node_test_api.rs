@@ -586,3 +586,41 @@ pub async fn api_initial_registration_with_no_code_for_device(
         "Node has the right subidentity"
     );
 }
+
+
+pub async fn api_get_all_inboxes_from_profile(
+    node_commands_sender: Sender<NodeCommand>,
+    subidentity_encryption_sk: EncryptionStaticKey,
+    node_encryption_pk: EncryptionPublicKey,
+    subidentity_signature_sk: SignatureStaticKey,
+    sender: &str,
+    sender_subidentity: &str,
+    recipient: &str,
+) -> Vec<String> {
+    {
+        let inbox_message = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
+            subidentity_encryption_sk.clone(),
+            clone_signature_secret_key(&subidentity_signature_sk),
+            node_encryption_pk,
+            sender_subidentity.to_string(),
+            sender_subidentity.to_string(),
+            sender.to_string(),
+            recipient.to_string(),
+        )
+        .unwrap();
+        eprintln!("inbox_message: {:?}", inbox_message);
+
+        let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::APIGetAllInboxesForProfile {
+                msg: inbox_message,
+                res: res_message_job_sender,
+            })
+            .await
+            .unwrap();
+        let node_job_message = res_message_job_receiver.recv().await.unwrap();
+        eprintln!("get all inboxes: {:?}", node_job_message);
+        assert!(node_job_message.is_ok(), "Job message was successfully processed");
+        return node_job_message.unwrap();
+    }
+}

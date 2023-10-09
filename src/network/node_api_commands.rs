@@ -12,10 +12,11 @@ use crate::{
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
+        smart_inbox::SmartInbox,
     },
 };
+use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
-use aes_gcm::aead::{Aead, generic_array::GenericArray};
 use aes_gcm::KeyInit;
 use async_channel::Sender;
 use blake3::Hasher;
@@ -960,10 +961,131 @@ impl Node {
         Ok(())
     }
 
-    pub async fn api_get_all_inboxes_for_profile(
+    pub async fn api_update_smart_inbox_name(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
-        res: Sender<Result<Vec<String>, APIError>>,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender) = match validation_result {
+            Ok((msg, sender)) => (msg, sender),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let new_name: String = msg.get_message_content()?;
+
+        let inbox_name: String = match &msg.body {
+            MessageBody::Unencrypted(body) => body.internal_metadata.inbox.clone(),
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Inbox name must be in an unencrypted message.".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        match sender {
+            Identity::Standard(std_identity) => {
+                if std_identity.permission_type == IdentityPermissions::Admin {
+                    match self
+                        .internal_update_smart_inbox_name(inbox_name.clone(), new_name)
+                        .await
+                    {
+                        Ok(_) => {
+                            if res.send(Ok(())).await.is_err() {
+                                let error = APIError {
+                                    code: 500,
+                                    error: "ChannelSendError".to_string(),
+                                    message: "Failed to send data through the channel".to_string(),
+                                };
+                                let _ = res.send(Err(error)).await;
+                            }
+                            Ok(())
+                        }
+                        Err(e) => {
+                            let _ = res
+                                .send(Err(APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Failed to update inbox name".to_string(),
+                                    message: e,
+                                }))
+                                .await;
+                            Ok(())
+                        }
+                    }
+                } else {
+                    let db_lock = self.db.lock().await;
+                    let has_permission = db_lock
+                        .has_permission(&inbox_name, &std_identity, InboxPermission::Admin)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                    if has_permission {
+                        match self.internal_update_smart_inbox_name(inbox_name, new_name).await {
+                            Ok(_) => {
+                                if res.send(Ok(())).await.is_err() {
+                                    let error = APIError {
+                                        code: 500,
+                                        error: "ChannelSendError".to_string(),
+                                        message: "Failed to send data through the channel".to_string(),
+                                    };
+                                    let _ = res.send(Err(error)).await;
+                                }
+                                Ok(())
+                            }
+                            Err(e) => {
+                                let _ = res
+                                    .send(Err(APIError {
+                                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                        error: "Failed to update inbox name".to_string(),
+                                        message: e,
+                                    }))
+                                    .await;
+                                Ok(())
+                            }
+                        }
+                    } else {
+                        let _ = res
+                            .send(Err(APIError {
+                                code: StatusCode::FORBIDDEN.as_u16(),
+                                error: "Don't have access".to_string(),
+                                message:
+                                    "Permission denied. You don't have enough permissions to update this inbox name."
+                                        .to_string(),
+                            }))
+                            .await;
+                        Ok(())
+                    }
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn api_get_all_smart_inboxes_for_profile(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<SmartInbox>, APIError>>,
     ) -> Result<(), NodeError> {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
@@ -1003,16 +1125,8 @@ impl Node {
                 if (std_identity.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
-                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
-                        Ok(name) => name,
-                        Err(_) => ShinkaiName::from_node_and_profile(
-                            self.node_profile_name.get_node_name(),
-                            profile_requested.clone(),
-                        ).map_err(|err| err.to_string())?,
-                    };
-
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
+                    let inboxes = self.internal_get_all_smart_inboxes_for_profile(profile_requested).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1046,16 +1160,140 @@ impl Node {
                 if (std_device.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
-                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
-                        Ok(name) => name,
-                        Err(_) => ShinkaiName::from_node_and_profile(
-                            self.node_profile_name.get_node_name(),
-                            profile_requested.clone(),
-                        ).map_err(|err| err.to_string())?,
-                    };
-                    
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
+                    let inboxes = self.internal_get_all_smart_inboxes_for_profile(profile_requested).await;
+
+                    // Send the result back
+                    if res.send(Ok(inboxes)).await.is_err() {
+                        let error = APIError {
+                            code: 500,
+                            error: "ChannelSendError".to_string(),
+                            message: "Failed to send data through the channel".to_string(),
+                        };
+                        let _ = res.send(Err(error)).await;
+                    }
+
+                    Ok(())
+                } else {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        }
+    }
+
+    pub async fn api_get_all_inboxes_for_profile(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender) = match validation_result {
+            Ok((msg, sender)) => (msg, sender),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile_requested_str: String = msg.get_message_content()?;
+        let profile_requested: ShinkaiName;
+        if ShinkaiName::validate_name(&profile_requested_str).is_ok() {
+            profile_requested = ShinkaiName::new(profile_requested_str.clone()).map_err(|err| err.to_string())?;
+        } else {
+            profile_requested = ShinkaiName::from_node_and_profile(
+                self.node_profile_name.get_node_name(),
+                profile_requested_str.clone(),
+            )
+            .map_err(|err| err.to_string())?;
+        }
+
+        // Check that the message is coming from someone with the right permissions to do this action
+        match sender {
+            Identity::Standard(std_identity) => {
+                // should be safe. previously checked in validate_message
+                let sender_profile_name = match std_identity.full_identity_name.get_profile_name() {
+                    Some(name) => name,
+                    None => {
+                        let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+                        return Ok(());
+                    }
+                };
+
+                if (std_identity.permission_type == IdentityPermissions::Admin)
+                    || (sender_profile_name == profile_requested.get_profile_name().unwrap_or("".to_string()))
+                {
+                    // Get all inboxes for the profile
+                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+
+                    // Send the result back
+                    if res.send(Ok(inboxes)).await.is_err() {
+                        let error = APIError {
+                            code: 500,
+                            error: "ChannelSendError".to_string(),
+                            message: "Failed to send data through the channel".to_string(),
+                        };
+                        let _ = res.send(Err(error)).await;
+                    }
+
+                    Ok(())
+                } else {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: format!(
+                                "Permission denied. You don't have enough permissions to see this profile's inboxes list: {}",
+                                profile_requested
+                            ),
+                        }))
+                        .await;
+
+                    return Ok(());
+                }
+            }
+            Identity::Device(std_device) => {
+                let sender_profile_name = std_device.full_identity_name.get_profile_name().unwrap();
+
+                if (std_device.permission_type == IdentityPermissions::Admin)
+                    || (sender_profile_name == profile_requested.get_profile_name().unwrap_or("".to_string()))
+                {
+                    // Get all inboxes for the profile
+                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1377,11 +1615,11 @@ impl Node {
         let private_key_slice = &private_key_array[..];
         let private_key_generic_array = GenericArray::from_slice(private_key_slice);
         let cipher = Aes256Gcm::new(private_key_generic_array);
-        
+
         // Assuming `encrypted_nonce` is a hex string of the nonce used in encryption
         let nonce_bytes = hex::decode(&encrypted_nonce).unwrap();
         let nonce = GenericArray::from_slice(&nonce_bytes);
-        
+
         // Decrypt file
         let decrypted_file_result = cipher.decrypt(nonce, file_data.as_ref());
         let decrypted_file = match decrypted_file_result {
@@ -1509,10 +1747,9 @@ impl Node {
         //
         // By default we encrypt all the messages between nodes. So if the message is not encrypted do it
         // we know the node that we want to send the message to from the recipient profile name
-        let recipient_node_name_string =
-            ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
-                .unwrap()
-                .to_string();
+        let recipient_node_name_string = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
+            .unwrap()
+            .to_string();
 
         let external_global_identity = self
             .identity_manager

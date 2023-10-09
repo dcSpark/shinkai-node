@@ -201,16 +201,16 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
+            "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. If the user mentions the word \"this\" (or similar) you can assume that the users is referring to the context given.".to_string(),
             SubPromptType::System,
         );
-
-        prompt.add_content(format!("Some context (until you see ------):"), SubPromptType::User);
-        for chunk in chunks {
-            prompt.add_content(format!("{}", chunk), SubPromptType::User);
-        }
-        prompt.add_content(format!("------"), SubPromptType::User);        
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);        
+    
+        let chunks_content = format!(
+            "The following is some context (if it's multiple chunks is separated by ## and it ends with ------): \n {} \n ------ \n {}",
+            chunks.join(" ## "),
+            job_task
+        );
+        prompt.add_content(chunks_content, SubPromptType::User);
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
         prompt
     }

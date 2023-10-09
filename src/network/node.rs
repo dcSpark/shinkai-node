@@ -35,6 +35,7 @@ use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
 };
 use crate::schemas::identity::{Identity, StandardIdentity};
+use crate::schemas::smart_inbox::SmartInbox;
 
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
 use super::node_error::NodeError;
@@ -97,6 +98,14 @@ pub enum NodeCommand {
     APIGetAllInboxesForProfile {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<String>, APIError>>,
+    },
+    APIGetAllSmartInboxesForProfile {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<SmartInbox>, APIError>>,
+    },
+    APIUpdateSmartInboxName {
+        msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
     },
     APIGetLastMessagesFromInbox {
         msg: ShinkaiMessage,
@@ -390,6 +399,8 @@ impl Node {
                             Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
                             Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
                             Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
+                            Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
+                            Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
                             _ => break,
                         }
                     }

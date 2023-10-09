@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-
+use std::fmt;
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope};
 
 pub type JobId = String;

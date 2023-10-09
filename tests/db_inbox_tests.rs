@@ -2,7 +2,9 @@ use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message::{
+    MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
+};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -329,7 +331,7 @@ fn db_inbox() {
         .unwrap();
 
     let message4 = generate_message_with_text(
-        "Hello World 4".to_string(),
+        "Hello World 6".to_string(),
         node1_encryption_sk.clone(),
         clone_signature_secret_key(&node1_identity_sk),
         node1_subencryption_pk,
@@ -338,7 +340,7 @@ fn db_inbox() {
         "2023-07-02T20:53:34.815Z".to_string(),
     );
     let message5 = generate_message_with_text(
-        "Hello World 5".to_string(),
+        "Hello World 7".to_string(),
         node1_encryption_sk.clone(),
         clone_signature_secret_key(&node1_identity_sk),
         node1_subencryption_pk,
@@ -362,7 +364,9 @@ fn db_inbox() {
         IdentityPermissions::Standard,
     );
     let _ = shinkai_db.insert_profile(node1_profile_identity.clone());
-    let inboxes = shinkai_db.get_inboxes_for_profile(node1_profile_identity).unwrap();
+    let inboxes = shinkai_db
+        .get_inboxes_for_profile(node1_profile_identity.clone())
+        .unwrap();
     assert_eq!(inboxes.len(), 1);
 
     let node1_identity = StandardIdentity::new(
@@ -375,11 +379,73 @@ fn db_inbox() {
         StandardIdentityType::Profile,
         IdentityPermissions::Standard,
     );
-    let inboxes = shinkai_db.get_inboxes_for_profile(node1_identity).unwrap();
+    let inboxes = shinkai_db.get_inboxes_for_profile(node1_identity.clone()).unwrap();
     assert_eq!(inboxes.len(), 3);
     assert!(inboxes.contains(&inbox_name_value));
     assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false".to_string()));
     assert!(inboxes.contains(&"inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false".to_string()));
+
+    // Test get_smart_inboxes_for_profile
+    let smart_inboxes = shinkai_db
+        .get_smart_inboxes_for_profile(node1_identity.clone())
+        .unwrap();
+    assert_eq!(smart_inboxes.len(), 3);
+
+    // Check if smart_inboxes contain the expected results
+    let expected_inbox_ids = vec![
+        "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false",
+        "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false",
+        "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false",
+    ];
+
+    for smart_inbox in smart_inboxes {
+        assert!(expected_inbox_ids.contains(&smart_inbox.inbox_id.as_str()));
+        assert_eq!(smart_inbox.inbox_id, smart_inbox.custom_name);
+
+        // Check the last_message of each smart_inbox
+        if let Some(last_message) = smart_inbox.last_message {
+            match last_message.body {
+                MessageBody::Unencrypted(ref body) => match body.message_data {
+                    MessageData::Unencrypted(ref data) => {
+                        match smart_inbox.inbox_id.as_str() {
+                            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
+                                assert_eq!(data.message_raw_content, "Hello World 5");
+                            }
+                            "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
+                                assert_eq!(data.message_raw_content, "Hello World 6");
+                            }
+                            "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
+                                assert_eq!(data.message_raw_content, "Hello World 7");
+                            }
+                            _ => panic!("Unexpected inbox_id"),
+                        }
+                    }
+                    _ => panic!("Expected unencrypted message data"),
+                },
+                _ => panic!("Expected unencrypted message body"),
+            }
+            assert_eq!(last_message.external_metadata.sender, "@@node1.shinkai");
+            assert_eq!(last_message.external_metadata.recipient, "@@node1.shinkai");
+            assert_eq!(last_message.encryption, EncryptionMethod::None);
+            assert_eq!(last_message.version, ShinkaiVersion::V1_0);
+        }
+    }
+
+    // Update the name of one of the inboxes
+    let inbox_to_update = "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false";
+    let new_name = "New Inbox Name";
+    shinkai_db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
+
+    // Get smart_inboxes again
+    let updated_smart_inboxes = shinkai_db.get_smart_inboxes_for_profile(node1_identity).unwrap();
+
+    // Check if the name of the updated inbox has been changed
+    for smart_inbox in updated_smart_inboxes {
+        if smart_inbox.inbox_id == inbox_to_update {
+            eprintln!("Smart inbox: {:?}", smart_inbox);
+            assert_eq!(smart_inbox.custom_name, new_name);
+        }
+    }
 }
 
 #[test]
