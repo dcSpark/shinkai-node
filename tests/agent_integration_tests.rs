@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMe
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -74,15 +75,19 @@ fn node_agent_registration() {
             true,
         );
 
-        println!("Starting Node");
         let node1_handler = tokio::spawn(async move {
-            println!("\n\n");
-            println!("Starting node 1");
+            shinkai_log(
+                ShinkaiLogOption::Tests,
+                ShinkaiLogLevel::Debug,
+                &format!("Starting Node 1"));
             let _ = node1.await.start().await;
         });
 
         let interactions_handler = tokio::spawn(async move {
-            println!("Registration of an Admin Profile");
+            shinkai_log(
+                ShinkaiLogOption::Tests,
+                ShinkaiLogLevel::Debug,
+                &format!("\n\nRegistration of an Admin Profile"));
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -104,7 +109,10 @@ fn node_agent_registration() {
             let mut server = Server::new();
             {
                 // Register an Agent
-                eprintln!("\n\nRegister an Agent in Node1 and verify it");
+                shinkai_log(
+                    ShinkaiLogOption::Tests,
+                    ShinkaiLogLevel::Debug,
+                    &format!("\n\nRegister an Agent in Node1 and verify it"));
                 let open_ai = OpenAI {
                     model_type: "gpt-3.5-turbo".to_string(),
                 };
@@ -176,7 +184,10 @@ fn node_agent_registration() {
                 format!("{}/agent/{}", node1_subidentity_name.clone(), node1_agent.clone()).to_string();
             {
                 // Create a Job
-                eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
+                shinkai_log(
+                    ShinkaiLogOption::Tests,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Creating a Job for Agent {}", agent_subidentity.clone()));
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
@@ -190,7 +201,10 @@ fn node_agent_registration() {
             }
             {
                 // Send a Message to the Job for processing
-                eprintln!("\n\nSend a message for a Job");
+                shinkai_log(
+                    ShinkaiLogOption::API,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Sending a message to Job {}", job_id.clone()));
                 let message = "Tell me. Who are you?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),
@@ -230,7 +244,11 @@ fn node_agent_registration() {
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
 
-                println!("### node2_last_messages: {:?}", node2_last_messages);
+                shinkai_log(
+                    ShinkaiLogOption::Tests,
+                    ShinkaiLogLevel::Debug,
+                    &format!("node2_last_messages: {:?}", node2_last_messages),
+                );
                 let shinkai_message_content_agent = node2_last_messages[1].get_message_content().unwrap();
                 let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
@@ -305,7 +323,6 @@ fn node_agent_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                println!("### node2_last_messages: {:?}", node2_last_messages);
 
                 let shinkai_message_content_agent = node2_last_messages[2].get_message_content().unwrap();
                 let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
@@ -318,7 +335,6 @@ fn node_agent_registration() {
                     node2_last_messages[1].external_metadata.scheduled_time,
                     node2_last_messages[1].calculate_message_hash()
                 );
-                eprintln!("next_msg offset: {}", offset);
                 let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
