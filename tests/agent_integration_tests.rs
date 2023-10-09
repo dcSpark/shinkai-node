@@ -242,16 +242,15 @@ fn node_agent_registration() {
             }
             {
                 // Check Profile inboxes (to confirm job's there)
-                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
-                eprintln!("sender: {}", sender);
+                let full_profile = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
 
                 let msg = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_encryption_pk.clone(),
-                    sender.clone().to_string(),
-                    "".to_string(),
-                    sender,
+                    full_profile.clone().to_string(),
+                    node1_subidentity_name.clone().to_string(),
+                    node1_identity_name.clone().to_string(),
                     node1_identity_name.clone().to_string(),
                 )
                 .unwrap();

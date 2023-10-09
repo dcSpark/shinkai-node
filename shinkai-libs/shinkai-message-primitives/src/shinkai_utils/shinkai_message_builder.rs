@@ -468,7 +468,8 @@ impl ShinkaiMessageBuilder {
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
-        node_sender: ProfileName,
+        sender: ProfileName,
+        sender_subidentity: String,
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -478,14 +479,14 @@ impl ShinkaiMessageBuilder {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content(body)
             .internal_metadata_with_schema(
-                "".to_string(),
+                sender_subidentity.to_string(),
                 node_receiver_subidentity.clone(),
                 "".to_string(),
                 MessageSchemaType::JobCreationSchema,
                 EncryptionMethod::None,
             )
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-            .external_metadata(node_receiver, node_sender)
+            .external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity)
             .build()
     }
 
@@ -497,6 +498,7 @@ impl ShinkaiMessageBuilder {
         my_signature_secret_key: SignatureStaticKey,
         receiver_public_key: EncryptionPublicKey,
         node_sender: ProfileName,
+        sender_subidentity: String,
         node_receiver: ProfileName,
         node_receiver_subidentity: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -515,14 +517,14 @@ impl ShinkaiMessageBuilder {
         ShinkaiMessageBuilder::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)
             .message_raw_content(body)
             .internal_metadata_with_schema(
-                "".to_string(),
+                sender_subidentity.to_string(),
                 node_receiver_subidentity.clone(),
                 inbox,
                 MessageSchemaType::JobMessageSchema,
                 EncryptionMethod::None,
             )
             .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-            .external_metadata(node_receiver, node_sender)
+            .external_metadata_with_intra_sender(node_receiver, node_sender, sender_subidentity)
             .build()
     }
 
@@ -751,13 +753,13 @@ impl ShinkaiMessageBuilder {
         .message_raw_content(symmetric_key_sk)
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
         .internal_metadata_with_schema(
-            sender_subidentity,
+            sender_subidentity.clone(),
             "".to_string(),
             inbox.to_string(),
             MessageSchemaType::SymmetricKeyExchange,
             EncryptionMethod::None,
         )
-        .external_metadata(receiver.clone(), sender)
+        .external_metadata_with_intra_sender(receiver.clone(), sender, sender_subidentity)
         .build()
     }
 
@@ -777,14 +779,14 @@ impl ShinkaiMessageBuilder {
         )
         .message_raw_content(full_profile)
         .internal_metadata_with_schema(
-            sender_subidentity,
+            sender_subidentity.clone(),
             "".to_string(),
             "".to_string(),
             MessageSchemaType::TextContent,
             EncryptionMethod::None,
         )
         .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-        .external_metadata(receiver, sender)
+        .external_metadata_with_intra_sender(receiver, sender, sender_subidentity)
         .build()
     }
 

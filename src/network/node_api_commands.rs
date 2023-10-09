@@ -1003,8 +1003,16 @@ impl Node {
                 if (std_identity.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
+                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
+                        Ok(name) => name,
+                        Err(_) => ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_requested.clone(),
+                        ).map_err(|err| err.to_string())?,
+                    };
+
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {
@@ -1038,8 +1046,16 @@ impl Node {
                 if (std_device.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
+                    let shinkai_name = match ShinkaiName::new(profile_requested.clone()) {
+                        Ok(name) => name,
+                        Err(_) => ShinkaiName::from_node_and_profile(
+                            self.node_profile_name.get_node_name(),
+                            profile_requested.clone(),
+                        ).map_err(|err| err.to_string())?,
+                    };
+                    
                     // Get all inboxes for the profile
-                    let inboxes = self.internal_get_all_inboxes_for_profile(profile_requested).await;
+                    let inboxes = self.internal_get_all_inboxes_for_profile(shinkai_name).await;
 
                     // Send the result back
                     if res.send(Ok(inboxes)).await.is_err() {

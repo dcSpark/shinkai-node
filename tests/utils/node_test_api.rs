@@ -431,7 +431,8 @@ pub async fn api_create_job(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            full_sender.to_string(),
+            sender.to_string(),
+            sender_subidentity.to_string(),
             sender.to_string(),
             recipient_subidentity.to_string(),
         )
@@ -477,7 +478,8 @@ pub async fn api_message_job(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
             node_encryption_pk,
-            full_sender.to_string(),
+            sender.to_string(),
+            sender_subidentity.to_string(),
             sender.to_string(),
             recipient_subidentity.to_string(),
         )
