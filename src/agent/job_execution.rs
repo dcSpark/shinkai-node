@@ -13,7 +13,7 @@ use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
-use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
+use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, LocalScopeEntry};
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::{
@@ -26,8 +26,10 @@ use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
 use std::fmt;
 use std::result::Result::Ok;
@@ -61,6 +63,80 @@ impl AgentManager {
         }
 
         Ok((full_job, agent_found, profile_name, user_profile))
+    }
+
+    /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
+    /// and returns all of them in a single list ready to be used.
+    pub async fn fetch_resources_from_job_scope(
+        &self,
+        job_scope: &JobScope,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
+        let mut resources = Vec::new();
+
+        // Add local resources to the list
+        for local_entry in &job_scope.local {
+            resources.push(local_entry.resource.clone());
+        }
+
+        // Fetch DB resources and add them to the list
+        let db = self.db.lock().await;
+        for db_entry in &job_scope.database {
+            let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
+            resources.push(resource);
+        }
+
+        Ok(resources)
+    }
+
+    /// Perform a vector search on all local & DB-held Vector Resources specified in the JobScope.
+    pub async fn job_scope_vector_search(
+        &self,
+        job_scope: &JobScope,
+        query: Embedding,
+        num_of_results: u64,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.fetch_resources_from_job_scope(job_scope, profile).await?;
+
+        // Perform vector search on all resources
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort the retrieved chunks by score before returning
+        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+
+        Ok(sorted_retrieved_chunks)
+    }
+
+    /// Perform a syntactic vector search on all local & DB-held Vector Resources specified in the JobScope.
+    pub async fn job_scope_syntactic_vector_search(
+        &self,
+        job_scope: &JobScope,
+        query: Embedding,
+        num_of_results: u64,
+        profile: &ShinkaiName,
+        data_tag_names: &Vec<String>,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.fetch_resources_from_job_scope(job_scope, profile).await?;
+
+        // Perform syntactic vector search on all resources
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results =
+                resource
+                    .as_trait_object()
+                    .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort the retrieved chunks by score before returning
+        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+
+        Ok(sorted_retrieved_chunks)
     }
 
     /// Processes a job message which will trigger a job step
