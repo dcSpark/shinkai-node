@@ -193,7 +193,6 @@ fn sandwich_messages_with_files_test() {
                     node1_identity_name.to_string(),
                 )
                 .unwrap();
-                eprintln!("msg: {:?}", msg);
 
                 let (res_sender, res_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -201,102 +200,26 @@ fn sandwich_messages_with_files_test() {
                     .await
                     .unwrap();
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                eprintln!("response: {}", response);
-            }
-            {
-                eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-
-                // New File A
-                // // Prepare the file to be sent
-                // let file_path = Path::new("tmp_tests/test_file.txt");
-                // // Create the directory if it does not exist
-                // if let Some(parent) = file_path.parent() {
-                //     fs::create_dir_all(parent).expect("Failed to create directory");
-                // }
-                // let file_content = "This is a test file";
-                // fs::write(&file_path, file_content).expect("Unable to write file");
-
-                // // Read the entire file into a Vec<u8>
-                // let file_data = tokio::fs::read(&file_path).await.expect("Failed to read file");
-
-                // New File B
-                // Prepare the file to be read
-                let file_path = Path::new("files/shinkai_intro.pdf");
-
-                // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
-                    .map_err(|_| VectorResourceError::FailedPDFParsing)
-                    .unwrap();
-
-                // Encrypt the file using Aes256Gcm
-                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
-                let nonce = GenericArray::from_slice(&[0u8; 12]);
-                let nonce_slice = nonce.as_slice();
-                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
-                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
-
-                // Prepare the other parameters
-                let filename = "shinkai_intro.pdf";
-
-                // Prepare the response channel
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: filename.to_string(),
-                        file: ciphertext,
-                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
-                        encrypted_nonce: nonce_str,
-                        res: res_sender,
-                    })
-                    .await
-                    .unwrap();
-
-                // Receive the response
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("response: {}", response);
-            }
-
-            {
-                // api_get_all_inboxes_from_profile
-                eprintln!("\n\nGet All Profiles");
-                let inboxes = api_get_all_inboxes_from_profile(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    node1_identity_name.clone().as_str(),
-                )
-                .await;
-                assert_eq!(inboxes.len(), 1);
-            }
-            {
-                // Send a Message to the Job for processing
-                eprintln!("\n\nSend a message for a Job");
-                let message = "What's Shinkai?".to_string();
-                api_message_job(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
-                    &job_id.clone().to_string(),
-                    &message,
-                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
-                )
-                .await;
             }
             // {
-            //     eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+            //     eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
+            //     // New File A
+            //     // // Prepare the file to be sent
+            //     // let file_path = Path::new("tmp_tests/test_file.txt");
+            //     // // Create the directory if it does not exist
+            //     // if let Some(parent) = file_path.parent() {
+            //     //     fs::create_dir_all(parent).expect("Failed to create directory");
+            //     // }
+            //     // let file_content = "This is a test file";
+            //     // fs::write(&file_path, file_content).expect("Unable to write file");
+
+            //     // // Read the entire file into a Vec<u8>
+            //     // let file_data = tokio::fs::read(&file_path).await.expect("Failed to read file");
+
+            //     // New File B
             //     // Prepare the file to be read
-            //     let filename = "files/Zeko_Mina_Rollup.pdf";
-            //     let file_path = Path::new(filename.clone());
+            //     let file_path = Path::new("files/shinkai_intro.pdf");
 
             //     // Read the file into a buffer
             //     let file_data = std::fs::read(&file_path)
@@ -309,6 +232,9 @@ fn sandwich_messages_with_files_test() {
             //     let nonce_slice = nonce.as_slice();
             //     let nonce_str = aes_nonce_to_hex_string(nonce_slice);
             //     let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+            //     // Prepare the other parameters
+            //     let filename = "shinkai_intro.pdf";
 
             //     // Prepare the response channel
             //     let (res_sender, res_receiver) = async_channel::bounded(1);
@@ -330,7 +256,77 @@ fn sandwich_messages_with_files_test() {
             //     eprintln!("response: {}", response);
             // }
 
+            // {
+            //     // api_get_all_inboxes_from_profile
+            //     eprintln!("\n\nGet All Profiles");
+            //     let inboxes = api_get_all_inboxes_from_profile(
+            //         node1_commands_sender.clone(),
+            //         clone_static_secret_key(&node1_profile_encryption_sk),
+            //         node1_encryption_pk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_identity_name.clone().as_str(),
+            //         node1_profile_name.clone().as_str(),
+            //         node1_identity_name.clone().as_str(),
+            //     )
+            //     .await;
+            //     assert_eq!(inboxes.len(), 1);
+            // }
+            // {
+            //     // Send a Message to the Job for processing
+            //     eprintln!("\n\nSend a message for a Job");
+            //     let message = "What's Shinkai?".to_string();
+            //     api_message_job(
+            //         node1_commands_sender.clone(),
+            //         clone_static_secret_key(&node1_profile_encryption_sk),
+            //         node1_encryption_pk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_identity_name.clone().as_str(),
+            //         node1_profile_name.clone().as_str(),
+            //         &agent_subidentity.clone(),
+            //         &job_id.clone().to_string(),
+            //         &message,
+            //         &hash_of_aes_encryption_key_hex(symmetrical_sk),
+            //     )
+            //     .await;
+            // }
+            {
+                eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
+                // Prepare the file to be read
+                let filename = "files/Zeko_Mina_Rollup.pdf";
+                let file_path = Path::new(filename.clone());
+
+                // Read the file into a buffer
+                let file_data = std::fs::read(&file_path)
+                    .map_err(|_| VectorResourceError::FailedPDFParsing)
+                    .unwrap();
+
+                // Encrypt the file using Aes256Gcm
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let nonce_slice = nonce.as_slice();
+                let nonce_str = aes_nonce_to_hex_string(nonce_slice);
+                let ciphertext = cipher.encrypt(nonce, file_data.as_ref()).expect("encryption failure!");
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
+                        filename: filename.to_string(),
+                        file: ciphertext,
+                        public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
+                        encrypted_nonce: nonce_str,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("response: {}", response);
+            }
 
             // {
             //     let _m = server
@@ -360,28 +356,28 @@ fn sandwich_messages_with_files_test() {
             //         )
             //         .create();
             // }
-            // {
-            //     // Send a Message to the Job for processing
-            //     eprintln!("\n\nSend a message for the Job");
-            //     let message = "How does Zeko work?".to_string();
-            //     let start = Instant::now();
-            //     api_message_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //         &job_id.clone().to_string(),
-            //         &message,
-            //         &hash_of_aes_encryption_key_hex(symmetrical_sk),
-            //     )
-            //     .await;
+            {
+                // Send a Message to the Job for processing
+                eprintln!("\n\nSend a message for the Job");
+                let message = "What's Zeko?".to_string();
+                let start = Instant::now();
+                api_message_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    &agent_subidentity.clone(),
+                    &job_id.clone().to_string(),
+                    &message,
+                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
+                )
+                .await;
 
-            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            // }
+                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
+            }
         })
     });
 }
