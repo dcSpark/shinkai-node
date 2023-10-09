@@ -198,7 +198,7 @@ impl JobPromptGenerator {
         prompt
     }
 
-    pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
+    pub fn response_prompt_with_vector_search(job_task: String, chunks_content: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an advanced assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
@@ -209,7 +209,7 @@ impl JobPromptGenerator {
 
         let search_context = format!(
             "Here is the current context from a vector search with the most relevant data available from the system for you to use to answer the user's questions: ```- {} ```.\n",
-            chunks.join("\n\n - "),
+            chunks_content.join("\n\n - "),
         );
         prompt.add_content(search_context, SubPromptType::System);
 

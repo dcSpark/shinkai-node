@@ -137,12 +137,11 @@ impl AgentManager {
                             println!("Duplicate LocalScopeEntry detected");
                         }
                     }
-                    { 
+                    {
                         let mut shinkai_db = self.db.lock().await;
                         shinkai_db.update_job_scope(job_id, job_scope)?;
                         eprintln!(">>> job_scope updated");
                     }
-
                 }
             } else {
                 // TODO: move this somewhere else
@@ -210,9 +209,9 @@ impl AgentManager {
             .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
             .unwrap();
 
-        let mut embedding_chunks: Vec<String> = Vec::new();
+        let mut data_chunks_content: Vec<String> = Vec::new();
         if !ret_data_chunks.is_empty() {
-            embedding_chunks = ret_data_chunks
+            data_chunks_content = ret_data_chunks
                 .iter()
                 .filter_map(|data_chunk| data_chunk.chunk.get_data_string().ok())
                 .collect();
@@ -233,7 +232,7 @@ impl AgentManager {
                     full_job,
                     job_message.content.clone(),
                     agent,
-                    embedding_chunks,
+                    data_chunks_content,
                     prev_execution_context,
                     analysis_context,
                 )
@@ -275,14 +274,15 @@ impl AgentManager {
         job: Job,
         message: String,
         agent: Arc<Mutex<Agent>>,
-        embeddings: Vec<String>,
+        data_chunks_content: Vec<String>,
         execution_context: HashMap<String, String>,
         analysis_context: HashMap<String, String>,
     ) -> Result<JsonValue, Box<dyn Error>> {
         println!("analysis_inference>  message: {:?}", message);
 
         // Generate the needed prompt
-        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(message.clone(), embeddings);
+        let filled_prompt =
+            JobPromptGenerator::response_prompt_with_vector_search(message.clone(), data_chunks_content);
 
         // Execute LLM inferencing
         let agent_cloned = agent.clone();
