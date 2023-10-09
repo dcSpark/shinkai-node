@@ -139,7 +139,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2),
+            EmbeddingModelType::RemoteModel(RemoteModel::MultiQAMiniLML6),
         )
     }
 

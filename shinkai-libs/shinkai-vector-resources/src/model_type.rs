@@ -32,6 +32,7 @@ pub enum RemoteModel {
     OpenAITextEmbeddingAda002,
     AllMiniLML6v2,
     AllMiniLML12v2,
+    MultiQAMiniLML6,
     Other(String),
 }
 
@@ -41,7 +42,7 @@ impl fmt::Display for RemoteModel {
             RemoteModel::OpenAITextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
             RemoteModel::AllMiniLML6v2 => write!(f, "all-MiniLM-L6-v2"),
             RemoteModel::AllMiniLML12v2 => write!(f, "all-MiniLM-L12-v2"),
-
+            RemoteModel::MultiQAMiniLML6 => write!(f, "multi-qa-MiniLM-L6-cos-v1"),
             RemoteModel::Other(name) => write!(f, "{}", name),
         }
     }
