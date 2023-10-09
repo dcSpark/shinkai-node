@@ -209,7 +209,7 @@ impl JobPromptGenerator {
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
-        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks);
+        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
         let search_context = format!(
             "Here is the current context from a vector search with the most relevant data available for you to use to answer the user's questions: ``` {}```.\n",
             ret_chunks_content,
