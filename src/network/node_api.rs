@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -337,7 +340,11 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
 
     warp::serve(routes).run(address).await;
 
-    println!("Server successfully started at: {}", &address);
+    shinkai_log(
+        ShinkaiLogOption::API,
+        ShinkaiLogLevel::Info,
+        &format!("Server successfully started at: {}", &address)
+    );
 }
 
 async fn handle_node_command<T, U>(
@@ -351,16 +358,16 @@ where
 {
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
-        .clone() // Clone here
+        .clone()
         .send(command(node_commands_sender, message, res_sender))
         .await
         .map_err(|_| warp::reject::reject())?;
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&message), StatusCode::OK)),
+        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&json!({"status": "success", "data": message})), StatusCode::OK)),
         Err(error) => Ok(warp::reply::with_status(
-            warp::reply::json(&error),
+            warp::reply::json(&json!({"status": "error", "error": error})),
             StatusCode::from_u16(error.code).unwrap(),
         )),
     }
