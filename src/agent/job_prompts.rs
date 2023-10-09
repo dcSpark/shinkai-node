@@ -201,7 +201,7 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
+            "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question.".to_string(),
             SubPromptType::System,
         );
 

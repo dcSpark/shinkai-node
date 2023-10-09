@@ -35,8 +35,8 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 mod utils;
 use crate::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
-    api_registration_device_node_profile_main,
+    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile,
+    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
 };
 use crate::utils::node_test_local::local_registration_profile_node;
 use mockito::Server;
@@ -75,6 +75,107 @@ fn sandwich_messages_with_files_test() {
                 )
                 .await;
             }
+            let mut server = Server::new();
+            {
+                // Register an Agent
+                eprintln!("\n\nRegister an Agent in Node1 and verify it");
+                let open_ai = OpenAI {
+                    model_type: "gpt-3.5-turbo".to_string(),
+                };
+                let agent_name = ShinkaiName::new(
+                    format!(
+                        "{}/{}/agent/{}",
+                        node1_identity_name.clone(),
+                        node1_profile_name.clone(),
+                        node1_agent.clone()
+                    )
+                    .to_string(),
+                )
+                .unwrap();
+
+                let _m = server
+                    .mock("POST", "/v1/chat/completions")
+                    .match_header("authorization", "Bearer mockapikey")
+                    .with_status(200)
+                    .with_header("content-type", "application/json")
+                    .with_body(
+                        r#"{
+                    "id": "chatcmpl-123",
+                    "object": "chat.completion",
+                    "created": 1677652288,
+                    "choices": [{
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                        },
+                        "finish_reason": "stop"
+                    }],
+                    "usage": {
+                        "prompt_tokens": 9,
+                        "completion_tokens": 12,
+                        "total_tokens": 21
+                    }
+                }"#,
+                    )
+                    .create();
+
+                let agent = SerializedAgent {
+                    id: node1_agent.clone().to_string(),
+                    full_identity_name: agent_name,
+                    perform_locally: false,
+                    external_url: Some("https://api.openai.com".to_string()),
+                    // external_url: Some(server.url()),
+                    api_key: Some("sk-".to_string()),
+                    // api_key: Some("mockapikey".to_string()),
+                    model: AgentLLMInterface::OpenAI(open_ai),
+                    toolkit_permissions: vec![],
+                    storage_bucket_permissions: vec![],
+                    allowed_message_senders: vec![],
+                };
+                api_agent_registration(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    agent,
+                )
+                .await;
+            }
+
+            let mut job_id = "".to_string();
+            let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
+            {
+                // Create a Job
+                eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
+                job_id = api_create_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    &agent_subidentity.clone(),
+                )
+                .await;
+            }
+            {
+                // api_get_all_inboxes_from_profile
+                eprintln!("\n\nGet All Profiles");
+                let inboxes = api_get_all_inboxes_from_profile(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    node1_identity_name.clone().as_str(),
+                )
+                .await;
+                assert_eq!(inboxes.len(), 1);
+            }
 
             // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
             {
@@ -92,6 +193,7 @@ fn sandwich_messages_with_files_test() {
                     node1_identity_name.to_string(),
                 )
                 .unwrap();
+                eprintln!("msg: {:?}", msg);
 
                 let (res_sender, res_receiver) = async_channel::bounded(1);
                 node1_commands_sender
@@ -155,91 +257,21 @@ fn sandwich_messages_with_files_test() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("response: {}", response);
             }
-            let mut server = Server::new();
+
             {
-                // Register an Agent
-                eprintln!("\n\nRegister an Agent in Node1 and verify it");
-                let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo".to_string(),
-                };
-                let agent_name = ShinkaiName::new(
-                    format!(
-                        "{}/{}/agent/{}",
-                        node1_identity_name.clone(),
-                        node1_profile_name.clone(),
-                        node1_agent.clone()
-                    )
-                    .to_string(),
-                )
-                .unwrap();
-
-                let _m = server
-                    .mock("POST", "/v1/chat/completions")
-                    .match_header("authorization", "Bearer mockapikey")
-                    .with_status(200)
-                    .with_header("content-type", "application/json")
-                    .with_body(
-                        r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
-                        "total_tokens": 21
-                    }
-                }"#,
-                    )
-                    .create();
-
-                let agent = SerializedAgent {
-                    id: node1_agent.clone().to_string(),
-                    full_identity_name: agent_name,
-                    perform_locally: false,
-                    external_url: Some("https://api.openai.com".to_string()),
-                    // external_url: Some(server.url()),
-                    api_key: Some("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".to_string()),
-                    // api_key: Some("mockapikey".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
-                };
-                api_agent_registration(
+                // api_get_all_inboxes_from_profile
+                eprintln!("\n\nGet All Profiles");
+                let inboxes = api_get_all_inboxes_from_profile(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
                     node1_profile_name.clone().as_str(),
-                    agent,
-                )
-                .await;
-            }
-
-            let mut job_id = "".to_string();
-            let agent_subidentity = format!("{}/agent/{}", node1_profile_name.clone(), node1_agent.clone()).to_string();
-            {
-                // Create a Job
-                eprintln!("\n\nCreate a Job for the previous Agent in Node1 and verify it");
-                job_id = api_create_job(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
                     node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
                 )
                 .await;
+                assert_eq!(inboxes.len(), 1);
             }
             {
                 // Send a Message to the Job for processing
@@ -297,6 +329,9 @@ fn sandwich_messages_with_files_test() {
             //     let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
             //     eprintln!("response: {}", response);
             // }
+
+
+
             // {
             //     let _m = server
             //         .mock("POST", "/v1/chat/completions")

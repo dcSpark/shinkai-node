@@ -596,12 +596,8 @@ pub async fn api_get_all_inboxes_from_profile(
     sender: &str,
     sender_subidentity: &str,
     recipient: &str,
-) {
+) -> Vec<String> {
     {
-        let full_sender = format!("{}/{}", sender, sender_subidentity);
-        // let shinkai_full_sender = ShinkaiName::new(full_sender.clone()).unwrap();
-        eprintln!("@@ full_sender: {}", full_sender);
-
         let inbox_message = ShinkaiMessageBuilder::get_all_inboxes_for_profile(
             subidentity_encryption_sk.clone(),
             clone_signature_secret_key(&subidentity_signature_sk),
@@ -623,8 +619,8 @@ pub async fn api_get_all_inboxes_from_profile(
             .await
             .unwrap();
         let node_job_message = res_message_job_receiver.recv().await.unwrap();
-        eprintln!("get all profiles: {:?}", node_job_message);
-
+        eprintln!("get all inboxes: {:?}", node_job_message);
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
+        return node_job_message.unwrap();
     }
 }

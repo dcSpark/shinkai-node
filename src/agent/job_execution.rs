@@ -353,6 +353,7 @@ impl AgentManager {
         let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
 
         for (filename, content) in files.into_iter() {
+            eprintln!("Iterating over file: {}", filename);
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
                 let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;

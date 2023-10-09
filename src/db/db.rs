@@ -35,6 +35,7 @@ pub enum Topic {
     MessagesToRetry,
     MessageBoxSymmetricKeys,
     MessageBoxSymmetricKeysTimes,
+    TempFilesInbox,
 }
 
 impl Topic {
@@ -62,6 +63,7 @@ impl Topic {
             Self::MessagesToRetry => "mesages_to_retry",
             Self::MessageBoxSymmetricKeys => "message_box_symmetric_keys",
             Self::MessageBoxSymmetricKeysTimes => "message_box_symmetric_keys_times",
+            Self::TempFilesInbox => "temp_files_inbox",
         }
     }
 }
@@ -152,6 +154,7 @@ impl ShinkaiDB {
                 Topic::MessagesToRetry.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeys.as_str().to_string(),
                 Topic::MessageBoxSymmetricKeysTimes.as_str().to_string(),
+                Topic::TempFilesInbox.as_str().to_string(),
             ]
         };
 

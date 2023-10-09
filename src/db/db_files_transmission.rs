@@ -66,8 +66,8 @@ impl ShinkaiDB {
         // Add encrypted inbox name to the list in the 'inbox' topic
         let cf_inbox = self
             .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
+            .cf_handle(Topic::TempFilesInbox.as_str())
+            .expect("to be able to access Topic::TempFilesInbox");
         batch.put_cf(cf_inbox, &hex_blake3_has, &cf_name_encrypted_inbox);
 
         // Add current time to MessageBoxSymmetricKeysTimes with public_key as the key
@@ -93,8 +93,8 @@ impl ShinkaiDB {
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
+            .cf_handle(Topic::TempFilesInbox.as_str())
+            .expect("to be able to access Topic::TempFilesInbox");
         let cf_name_encrypted_inbox = self
             .db
             .get_cf(cf_inbox, &hex_blake3_hash)?
@@ -128,8 +128,8 @@ impl ShinkaiDB {
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
+            .cf_handle(Topic::TempFilesInbox.as_str())
+            .expect("to be able to access Topic::TempFilesInbox");
         let cf_name_encrypted_inbox = self
             .db
             .get_cf(cf_inbox, &hex_blake3_hash)?
@@ -162,8 +162,8 @@ impl ShinkaiDB {
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self
             .db
-            .cf_handle(Topic::Inbox.as_str())
-            .expect("to be able to access Topic::Inbox");
+            .cf_handle(Topic::TempFilesInbox.as_str())
+            .expect("to be able to access Topic::TempFilesInbox");
         let cf_name_encrypted_inbox = self
             .db
             .get_cf(cf_inbox, &hex_blake3_hash)?
