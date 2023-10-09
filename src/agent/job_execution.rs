@@ -36,6 +36,32 @@ use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl AgentManager {
+    /// Fetches boilerplate/relevant data required for a job to process a step
+    async fn fetch_relevant_job_data(
+        &self,
+        job_id: &str,
+    ) -> Result<(Job, Option<Arc<Mutex<Agent>>>, String, Option<ShinkaiName>), AgentError> {
+        // Fetch the job
+        let full_job = { self.db.lock().await.get_job(job_id)? };
+
+        // Acquire Agent
+        let agent_id = full_job.parent_agent_id.clone();
+        let mut agent_found = None;
+        let mut profile_name = String::new();
+        let mut user_profile: Option<ShinkaiName> = None;
+        for agent in &self.agents {
+            let locked_agent = agent.lock().await;
+            if locked_agent.id == agent_id {
+                agent_found = Some(agent.clone());
+                profile_name = locked_agent.full_identity_name.full_name.clone();
+                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
+                break;
+            }
+        }
+
+        Ok((full_job, agent_found, profile_name, user_profile))
+    }
+
     /// Processes a job message which will trigger a job step
     pub async fn process_job_step(
         &mut self,
@@ -43,10 +69,29 @@ impl AgentManager {
         job_message: JobMessage,
     ) -> Result<String, AgentError> {
         if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
+            // Basic setup
             let job = job.clone();
+            let job_id = job.job_id().to_string();
             let mut shinkai_db = self.db.lock().await;
-            println!("process_job_step> job_message: {:?}", job_message);
             shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+            println!("process_job_step> job_message: {:?}", job_message);
+
+            // Verify identity/profile match
+            let sender_subidentity_result =
+                ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
+            let sender_subidentity = match sender_subidentity_result {
+                Ok(subidentity) => subidentity,
+                Err(e) => return Err(AgentError::InvalidSubidentity(e)),
+            };
+            let profile_result = sender_subidentity.extract_profile();
+            let profile = match profile_result {
+                Ok(profile) => profile,
+                Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
+            };
+
+            // Fetch data we need to execute job step
+            let (full_job, agent_found, profile_name, user_profile) =
+                self.fetch_relevant_job_data(job.job_id()).await?;
 
             //
             // Todo: Implement unprocessed messages logic
@@ -71,46 +116,14 @@ impl AgentManager {
             // - Go over the files
             // - Check if they are parseable (for now just pdfs)
             // - if they are parseable, then parse them and add them to the db
-
-            let sender_subidentity_result =
-                ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
-            let sender_subidentity = match sender_subidentity_result {
-                Ok(subidentity) => subidentity,
-                Err(e) => return Err(AgentError::InvalidSubidentity(e)),
-            };
-            let profile_result = sender_subidentity.extract_profile();
-            let profile = match profile_result {
-                Ok(profile) => profile,
-                Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
-            };
-
             if !job_message.files_inbox.is_empty() {
                 println!(
                     "process_job_message> processing files_map: ... files: {}",
                     job_message.files_inbox.len()
                 );
                 {
-                    // TODO: refactor this
-                    // Fetch the job
-                    let job_id = job.job_id().to_string();
-                    let full_job = { self.db.lock().await.get_job(&job_id)? };
-
-                    // Acquire Agent
-                    let agent_id = full_job.parent_agent_id.clone();
-                    let mut agent_found = None;
-                    let mut profile_name = String::new();
-                    let mut user_profile: Option<ShinkaiName> = None;
-                    for agent in &self.agents {
-                        let locked_agent = agent.lock().await;
-                        if locked_agent.id == agent_id {
-                            agent_found = Some(agent.clone());
-                            profile_name = locked_agent.full_identity_name.full_name.clone();
-                            user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
-                            break;
-                        }
-                    }
-                    // TODO: later we  should able to grab errors and return them to the user
-                    let new_scope_entries = match agent_found {
+                    // TODO: later we should able to grab errors and return them to the user
+                    let new_scope_entries = match agent_found.clone() {
                         Some(agent) => {
                             let resp = AgentManager::process_message_multifiles(
                                 self.db.clone(),
@@ -139,7 +152,7 @@ impl AgentManager {
                     }
                     {
                         let mut shinkai_db = self.db.lock().await;
-                        shinkai_db.update_job_scope(job_id, job_scope)?;
+                        shinkai_db.update_job_scope(job.job_id().to_string(), job_scope)?;
                         eprintln!(">>> job_scope updated");
                     }
                 }
@@ -159,40 +172,33 @@ impl AgentManager {
             // User closes job after finishing, if not saving by default, ask user whether they want to save the document to the DB
 
             // TODO(Nico): move this to a parallel thread that runs in the background
-            let _ = self.analysis_phase(&**job, job_message.clone()).await?;
+            let _ = self
+                .analysis_phase(&**job, job_message, full_job, agent_found, profile_name, user_profile)
+                .await?;
 
             // After analysis phase, we execute the resulting execution plan
             //    let executor = PlanExecutor::new(agent, execution_plan)?;
             //    executor.execute_plan();
 
-            return Ok(job_message.job_id.clone());
+            return Ok(job_id.clone());
         } else {
             return Err(AgentError::JobNotFound);
         }
     }
 
     // Begins processing the analysis phase of the job
-    pub async fn analysis_phase(&self, job: &dyn JobLike, job_message: JobMessage) -> Result<(), AgentError> {
+    pub async fn analysis_phase(
+        &self,
+        job: &dyn JobLike,
+        job_message: JobMessage,
+        full_job: Job,
+        agent_found: Option<Arc<Mutex<Agent>>>,
+        profile_name: String,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<(), AgentError> {
         // Fetch the job
         let job_id = job.job_id().to_string();
-        let full_job = { self.db.lock().await.get_job(&job_id)? };
-
         eprintln!("analysis_phase> full_job: {:?}", full_job);
-
-        // Acquire Agent
-        let agent_id = full_job.parent_agent_id.clone();
-        let mut agent_found = None;
-        let mut profile_name = String::new();
-        let mut user_profile: Option<ShinkaiName> = None;
-        for agent in &self.agents {
-            let locked_agent = agent.lock().await;
-            if locked_agent.id == agent_id {
-                agent_found = Some(agent.clone());
-                profile_name = locked_agent.full_identity_name.full_name.clone();
-                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
-                break;
-            }
-        }
 
         // Setup initial data to start moving through analysis phase
         let prev_execution_context = full_job.execution_context.clone();
