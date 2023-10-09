@@ -201,16 +201,22 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. If the user mentions the word \"this\" (or similar) you can assume that the users is referring to the context given.".to_string(),
+            "You are an advanced assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
-    
-        let chunks_content = format!(
-            "The following is some context (if it's multiple chunks is separated by ## and it ends with ------): \n {} \n ------ \n {}",
-            chunks.join(" ## "),
-            job_task
+
+        // "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. If the user mentions the word \"this\" (or similar) you can assume that the users is referring to the context given.".to_string(),
+
+        let search_context = format!(
+            "Here is the current context from a vector search with the most relevant data available from the system for you to use to answer the user's questions: ```- {} ```.\n",
+            chunks.join("\n\n - "),
         );
-        prompt.add_content(chunks_content, SubPromptType::User);
+        prompt.add_content(search_context, SubPromptType::System);
+
+        let pre_task_text = format!("The user has asked: ");
+        prompt.add_content(pre_task_text, SubPromptType::System);
+        prompt.add_content(job_task, SubPromptType::User);
+
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
         prompt
     }
