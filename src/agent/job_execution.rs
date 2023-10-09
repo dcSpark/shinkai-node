@@ -110,7 +110,7 @@ impl AgentManager {
                         }
                     }
                     // TODO: later we  should able to grab errors and return them to the user
-                    let inference_response = match agent_found {
+                    let new_scope_entries = match agent_found {
                         Some(agent) => {
                             let resp = AgentManager::process_message_multifiles(
                                 self.db.clone(),
@@ -127,10 +127,10 @@ impl AgentManager {
                         }
                     };
 
-                    eprintln!(">>> inference_response: {:?}", inference_response.keys());
+                    eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
 
                     let mut job_scope = full_job.scope.clone();
-                    for (_, value) in inference_response {
+                    for (_, value) in new_scope_entries {
                         if !job_scope.local.contains(&value) {
                             job_scope.local.push(value);
                         } else {
@@ -205,6 +205,8 @@ impl AgentManager {
             .generate_embedding_default(job_message.content.clone().as_str())
             .unwrap();
         let shinkai_db = self.db.lock().await;
+
+        // Perform a vector search to find
         let ret_data_chunks = shinkai_db
             .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
             .unwrap();
