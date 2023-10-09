@@ -43,14 +43,30 @@ impl ShinkaiMessage {
 
     pub fn get_sender_subidentity(&self) -> Option<String> {
         match &self.body {
-            MessageBody::Unencrypted(body) => Some(body.internal_metadata.sender_subidentity.clone()),
+            MessageBody::Unencrypted(body) => {
+                if body.internal_metadata.sender_subidentity.is_empty() {
+                    Some("".to_string())
+                } else {
+                    Some(body.internal_metadata.sender_subidentity.clone())
+                }
+            },
             _ => None,
         }
     }
 
+    pub fn get_sender_intra_sender(&self) -> String {
+        self.external_metadata.intra_sender.to_string()
+    }
+
     pub fn get_recipient_subidentity(&self) -> Option<String> {
         match &self.body {
-            MessageBody::Unencrypted(body) => Some(body.internal_metadata.recipient_subidentity.clone()),
+            MessageBody::Unencrypted(body) => {
+                if body.internal_metadata.recipient_subidentity.is_empty() {
+                    Some("".to_string())
+                } else {
+                    Some(body.internal_metadata.recipient_subidentity.clone())
+                }
+            },
             _ => None,
         }
     }

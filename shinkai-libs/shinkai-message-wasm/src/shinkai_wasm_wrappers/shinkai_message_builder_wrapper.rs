@@ -901,7 +901,7 @@ impl ShinkaiMessageBuilderWrapper {
             ShinkaiMessageBuilderWrapper::new(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)?;
 
         let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg))?;
-        let _ = builder.empty_encrypted_internal_metadata();
+        let _ = builder.empty_non_encrypted_internal_metadata();
         let _ = builder.body_encryption(JsValue::from_str(EncryptionMethod::DiffieHellmanChaChaPoly1305.as_str()));
         let _ = builder.external_metadata_with_intra(receiver, sender, sender_subidentity);
         builder.build_to_string()

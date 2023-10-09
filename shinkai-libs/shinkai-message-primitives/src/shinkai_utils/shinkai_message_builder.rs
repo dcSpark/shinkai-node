@@ -319,7 +319,7 @@ impl ShinkaiMessageBuilder {
             && new_self.internal_metadata.as_ref().unwrap().encryption != encryption_method_none
             && new_self.optional_second_public_key_receiver_node == None
         {
-            return Err("Encryption should not be set on both body and internal  metadata simultaneously without optional_second_public_key_receiver_node.");
+            return Err("Encryption should not be set on both body and internal metadata simultaneously without optional_second_public_key_receiver_node.");
         }
 
         // Fix inbox name if it's empty

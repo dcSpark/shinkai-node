@@ -110,6 +110,7 @@ mod tests {
             String::from("2023-07-02T20:53:34Z"),
             String::from("test_signature"),
             String::from("test_other"),
+            String::from("intra_sender"),
         );
         let message = ShinkaiMessage::new(
             body,
@@ -151,7 +152,8 @@ mod tests {
                     "recipient": "test_recipient",
                     "scheduled_time": "2023-07-02T20:53:34Z",
                     "signature": "test_signature",
-                    "other": "test_other"
+                    "other": "test_other",
+                    "intra_sender": "intra_sender"
                 },
                 "encryption": "DiffieHellmanChaChaPoly1305",
                 "version": "V1_0"
@@ -159,7 +161,7 @@ mod tests {
         );
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_from_jsvalue() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");
@@ -186,7 +188,8 @@ mod tests {
                 "recipient": "test_recipient",
                 "scheduled_time": "2023-07-02T20:53:34Z",
                 "signature": "test_signature",
-                "other": "test_other"
+                "other": "test_other",
+                "intra_sender": "intra_sender"
             },
             "encryption": "DiffieHellmanChaChaPoly1305",
             "version": "V1_0" 
@@ -240,5 +243,6 @@ mod tests {
         assert_eq!(external_metadata.scheduled_time, String::from("2023-07-02T20:53:34Z"));
         assert_eq!(external_metadata.signature, String::from("test_signature"));
         assert_eq!(external_metadata.other, String::from("test_other"));
+        assert_eq!(external_metadata.intra_sender, String::from("intra_sender"));
     }
 }
