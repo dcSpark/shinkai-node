@@ -67,7 +67,7 @@ impl AgentManager {
 
     /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
     /// and returns all of them in a single list ready to be used.
-    pub async fn fetch_resources_from_job_scope(
+    pub async fn fetch_job_scope_resources(
         &self,
         job_scope: &JobScope,
         profile: &ShinkaiName,
@@ -86,6 +86,8 @@ impl AgentManager {
             resources.push(resource);
         }
 
+        std::mem::drop(db);
+
         Ok(resources)
     }
 
@@ -97,7 +99,8 @@ impl AgentManager {
         num_of_results: u64,
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_resources_from_job_scope(job_scope, profile).await?;
+        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
+        println!("Num of resources fetched: {}", resources.len());
 
         // Perform vector search on all resources
         let mut retrieved_chunks = Vec::new();
@@ -105,6 +108,8 @@ impl AgentManager {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
             retrieved_chunks.extend(results);
         }
+
+        println!("Num of chunks retrieved: {}", retrieved_chunks.len());
 
         // Sort the retrieved chunks by score before returning
         let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
@@ -121,7 +126,7 @@ impl AgentManager {
         profile: &ShinkaiName,
         data_tag_names: &Vec<String>,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_resources_from_job_scope(job_scope, profile).await?;
+        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
 
         // Perform syntactic vector search on all resources
         let mut retrieved_chunks = Vec::new();
@@ -249,9 +254,7 @@ impl AgentManager {
             // User closes job after finishing, if not saving by default, ask user whether they want to save the document to the DB
 
             // TODO(Nico): move this to a parallel thread that runs in the background
-            let _ = self
-                .analysis_phase(&**job, job_message, full_job, agent_found, profile_name, user_profile)
-                .await?;
+            let _ = self.analysis_phase(&job_id, job_message).await?;
 
             // After analysis phase, we execute the resulting execution plan
             //    let executor = PlanExecutor::new(agent, execution_plan)?;
@@ -264,17 +267,9 @@ impl AgentManager {
     }
 
     // Begins processing the analysis phase of the job
-    pub async fn analysis_phase(
-        &self,
-        job: &dyn JobLike,
-        job_message: JobMessage,
-        full_job: Job,
-        agent_found: Option<Arc<Mutex<Agent>>>,
-        profile_name: String,
-        user_profile: Option<ShinkaiName>,
-    ) -> Result<(), AgentError> {
-        // Fetch the job
-        let job_id = job.job_id().to_string();
+    pub async fn analysis_phase(&self, job_id: &str, job_message: JobMessage) -> Result<(), AgentError> {
+        // Re-fetching job data from the db. This guarantees we have an up-to-date JobScope if any files were uploaded
+        let (full_job, agent_found, profile_name, user_profile) = self.fetch_relevant_job_data(job_id).await?;
         eprintln!("analysis_phase> full_job: {:?}", full_job);
 
         // Setup initial data to start moving through analysis phase
@@ -286,16 +281,14 @@ impl AgentManager {
         let query = generator
             .generate_embedding_default(job_message.content.clone().as_str())
             .unwrap();
-        let shinkai_db = self.db.lock().await;
 
-        // Perform a vector search to find
-        let ret_data_chunks = shinkai_db
-            .vector_search_tolerance_ranged(query, 2, 0.4, &user_profile.unwrap())
-            .unwrap();
+        // Perform a vector search to find relevant data chunks
+        let ret_data_chunks = self
+            .job_scope_vector_search(full_job.scope(), query, 3, &user_profile.unwrap())
+            .await?;
 
         let duration = start.elapsed();
         eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
-        std::mem::drop(shinkai_db);
         std::mem::drop(bert_process);
 
         // TODO: Later implement all analysis phase chaining/branching logic starting from here
@@ -326,7 +319,7 @@ impl AgentManager {
         // Save inference response to job inbox
         let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
-            job_id.clone(),
+            job_id.to_string(),
             inference_content.to_string(),
             identity_secret_key_clone,
             profile_name.clone(),
