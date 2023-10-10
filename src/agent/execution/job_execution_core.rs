@@ -49,7 +49,7 @@ impl AgentManager {
                 Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
             };
 
-            // Todo: Implement unprocessed messages/queuing logic
+            // TODO: Implement unprocessed messages/queuing logic
             // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
             // However if unprocessed message count  == 0, then:
             // 0. You add the unprocessed message to the list in the DB
@@ -70,67 +70,14 @@ impl AgentManager {
             let (mut full_job, agent_found, profile_name, user_profile) =
                 self.fetch_relevant_job_data(job.job_id()).await?;
 
-            //
-            if !job_message.files_inbox.is_empty() {
-                println!(
-                    "process_job_message> processing files_map: ... files: {}",
-                    job_message.files_inbox.len()
-                );
-                // TODO: later we should able to grab errors and return them to the user
-                let new_scope_entries = match agent_found.clone() {
-                    Some(agent) => {
-                        let resp = AgentManager::process_message_multifiles(
-                            self.db.clone(),
-                            agent,
-                            job_message.files_inbox.clone(),
-                            profile,
-                        )
-                        .await?;
-                        resp
-                    }
-                    None => {
-                        // Handle the None case here. For example, you might want to return an error:
-                        return Err(AgentError::AgentNotFound);
-                    }
-                };
-
-                eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
-
-                for (_, value) in new_scope_entries {
-                    if !full_job.scope.local.contains(&value) {
-                        full_job.scope.local.push(value);
-                    } else {
-                        println!("Duplicate LocalScopeEntry detected");
-                    }
-                }
-                {
-                    let mut shinkai_db = self.db.lock().await;
-                    shinkai_db.update_job_scope(job.job_id().to_string(), full_job.scope.clone())?;
-                    eprintln!(">>> job_scope updated");
-                }
-            } else {
-                // TODO: move this somewhere else
-                let mut shinkai_db = self.db.lock().await;
-                shinkai_db.init_profile_resource_router(&profile)?;
-                std::mem::drop(shinkai_db); // required to avoid deadlock
-            }
-
-            // TODO(Nico): Notes from conversation with Rob
-            // create a job
-            // check box whether to save added documents to db permanantly
-            // user sends messages with files, files get vector resources generated automatically (if can be ingested)
-            // If not saving to db permanantly, then the vec resource is serialized and saved into the local job scope
-            // If are saving to db permanantly, then the vec resource is saved to db directly, and pointer is added to remote job scope
-            // User closes job after finishing, if not saving by default, ask user whether they want to save the document to the DB
+            // Processes any files which were sent with the job message
+            self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile)
+                .await?;
 
             // TODO(Nico): move this to a parallel thread that runs in the background
             let _ = self
-                .process_inference_chain(job_message, full_job, agent_found, profile_name, user_profile)
+                .process_inference_chain(job_message, full_job, agent_found.clone(), profile_name, user_profile)
                 .await?;
-
-            // After analysis phase, we execute the resulting execution plan
-            //    let executor = PlanExecutor::new(agent, execution_plan)?;
-            //    executor.execute_plan();
 
             return Ok(job_id.clone());
         } else {
@@ -193,8 +140,67 @@ impl AgentManager {
         Ok(())
     }
 
-    // TODO(Nico): refactor so it's decomposed
-    pub async fn process_message_multifiles(
+    /// Processes the files sent together with the current job_message into Vector Resources,
+    /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.
+    pub async fn process_job_message_files(
+        &self,
+        job_message: &JobMessage,
+        agent_found: Option<Arc<Mutex<Agent>>>,
+        full_job: &mut Job,
+        profile: ShinkaiName,
+    ) -> Result<(), AgentError> {
+        if !job_message.files_inbox.is_empty() {
+            println!(
+                "process_job_message> processing files_map: ... files: {}",
+                job_message.files_inbox.len()
+            );
+            // TODO: later we should able to grab errors and return them to the user
+            let new_scope_entries = match agent_found.clone() {
+                Some(agent) => {
+                    let resp = AgentManager::process_files_inbox(
+                        self.db.clone(),
+                        agent,
+                        job_message.files_inbox.clone(),
+                        profile,
+                    )
+                    .await?;
+                    resp
+                }
+                None => {
+                    // Handle the None case here. For example, you might want to return an error:
+                    return Err(AgentError::AgentNotFound);
+                }
+            };
+
+            eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
+
+            for (_, value) in new_scope_entries {
+                if !full_job.scope.local.contains(&value) {
+                    full_job.scope.local.push(value);
+                } else {
+                    println!("Duplicate LocalScopeEntry detected");
+                }
+            }
+            {
+                let mut shinkai_db = self.db.lock().await;
+                shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
+                eprintln!(">>> job_scope updated");
+            }
+        } else {
+            // TODO: move this somewhere else
+            let mut shinkai_db = self.db.lock().await;
+            shinkai_db.init_profile_resource_router(&profile)?;
+            std::mem::drop(shinkai_db); // required to avoid deadlock
+        }
+
+        Ok(())
+    }
+
+    // TODO: refactor so it's decomposed
+    /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
+    /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
+    /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
+    pub async fn process_files_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
         agent: Arc<Mutex<Agent>>,
         files_inbox: String,
