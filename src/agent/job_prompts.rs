@@ -68,17 +68,25 @@ impl JobPromptGenerator {
 
     /// A basic prompt for answering based off of vector searching content which explains to the LLM
     /// that it should use them as context to answer the job_task, with the ability to further search.
-    pub fn response_prompt_with_vector_search(job_task: String, ret_data_chunks: Vec<RetrievedDataChunk>) -> Prompt {
+    pub fn response_prompt_with_vector_search(
+        job_task: String,
+        ret_data_chunks: Vec<RetrievedDataChunk>,
+        summary_text: Option<String>,
+    ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
+        if let Some(summary) = summary_text {
+            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+        }
+
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 3500);
         let search_context = format!(
-            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
+            "Here is a list of relevant new content the user provided for you to use while answering: ``` {}```.\n",
             ret_chunks_content,
         );
         prompt.add_content(search_context, SubPromptType::User);
@@ -92,8 +100,11 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query (which uses terms from the provided content to embelish the query) and perform a new vector search by:"), SubPromptType::System);
-        prompt.add_ebnf(String::from(r#""{" "search" ":" string "}""#), SubPromptType::System);
+        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and a detailed summary using terms from the provided content:"), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#""{" "search" ":" string, "summary": "string" }""#),
+            SubPromptType::System,
+        );
 
         prompt
     }

@@ -289,12 +289,12 @@ impl AgentManager {
         eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
 
         // TODO: Later implement all analysis phase chaining/branching logic starting from here
-        // and have multiple methods like process_analysis_inference which use different
+        // and have multiple methods like process_qa_inference_chain which use different
         // prompts and are called as needed to arrive at a full execution plan ready to be returned
 
         let inference_response = match agent_found {
             Some(agent) => {
-                self.process_analysis_inference(
+                self.process_qa_inference_chain(
                     full_job,
                     job_message.content.clone(),
                     agent,
@@ -302,6 +302,7 @@ impl AgentManager {
                     analysis_context,
                     &generator,
                     user_profile,
+                    None,
                     None,
                     0,
                 )
@@ -339,7 +340,7 @@ impl AgentManager {
     }
 
     #[async_recursion]
-    async fn process_analysis_inference(
+    async fn process_qa_inference_chain(
         &self,
         full_job: Job,
         job_task: String,
@@ -349,9 +350,10 @@ impl AgentManager {
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
         search_text: Option<String>,
+        summary_text: Option<String>,
         iteration_count: u64,
     ) -> Result<JsonValue, AgentError> {
-        println!("process_analysis_inference>  message: {:?}", job_task);
+        println!("process_qa_inference_chain>  message: {:?}", job_task);
 
         // Use search_text if provided, otherwise use job_task to generate the query
         let query_text = search_text.unwrap_or(job_task.clone());
@@ -362,9 +364,9 @@ impl AgentManager {
             .await?;
 
         let filled_prompt = if iteration_count < 5 {
-            JobPromptGenerator::response_prompt_with_vector_search(query_text.clone(), ret_data_chunks)
+            JobPromptGenerator::response_prompt_with_vector_search(job_task.clone(), ret_data_chunks, summary_text)
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(query_text.clone(), ret_data_chunks)
+            JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_data_chunks)
         };
 
         let agent_cloned = agent.clone();
@@ -392,10 +394,17 @@ impl AgentManager {
             return Ok(response_json.clone());
         }
 
-        let inference_content = match response_json.get("search") {
-            Some(search) => search
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?,
+        let (new_search_text, summary) = match response_json.get("search") {
+            Some(search) => {
+                let search_str = search
+                    .as_str()
+                    .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?;
+                let summary_str = response_json
+                    .get("summary")
+                    .and_then(|s| s.as_str())
+                    .map(|s| s.to_string());
+                (search_str, summary_str)
+            }
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
 
@@ -405,7 +414,7 @@ impl AgentManager {
         }
 
         // Recurse with the new search text and increment iteration_count
-        self.process_analysis_inference(
+        self.process_qa_inference_chain(
             full_job,
             job_task.to_string(),
             agent,
@@ -413,7 +422,8 @@ impl AgentManager {
             analysis_context,
             generator,
             user_profile,
-            Some(inference_content.to_string()),
+            Some(new_search_text.to_string()),
+            summary,
             iteration_count + 1,
         )
         .await
