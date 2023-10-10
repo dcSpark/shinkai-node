@@ -1,8 +1,8 @@
+use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::{AgentManager, JobManager};
-use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::resources::bert_cpp::BertCPPProcess;
@@ -42,111 +42,6 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use super::job_prompts::Prompt;
 
 impl AgentManager {
-    /// Fetches boilerplate/relevant data required for a job to process a step
-    async fn fetch_relevant_job_data(
-        &self,
-        job_id: &str,
-    ) -> Result<(Job, Option<Arc<Mutex<Agent>>>, String, Option<ShinkaiName>), AgentError> {
-        // Fetch the job
-        let full_job = { self.db.lock().await.get_job(job_id)? };
-
-        // Acquire Agent
-        let agent_id = full_job.parent_agent_id.clone();
-        let mut agent_found = None;
-        let mut profile_name = String::new();
-        let mut user_profile: Option<ShinkaiName> = None;
-        for agent in &self.agents {
-            let locked_agent = agent.lock().await;
-            if locked_agent.id == agent_id {
-                agent_found = Some(agent.clone());
-                profile_name = locked_agent.full_identity_name.full_name.clone();
-                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
-                break;
-            }
-        }
-
-        Ok((full_job, agent_found, profile_name, user_profile))
-    }
-
-    /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
-    /// and returns all of them in a single list ready to be used.
-    pub async fn fetch_job_scope_resources(
-        &self,
-        job_scope: &JobScope,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
-        let mut resources = Vec::new();
-
-        // Add local resources to the list
-        for local_entry in &job_scope.local {
-            resources.push(local_entry.resource.clone());
-        }
-
-        // Fetch DB resources and add them to the list
-        let db = self.db.lock().await;
-        for db_entry in &job_scope.database {
-            let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
-            resources.push(resource);
-        }
-
-        std::mem::drop(db);
-
-        Ok(resources)
-    }
-
-    /// Perform a vector search on all local & DB-held Vector Resources specified in the JobScope.
-    pub async fn job_scope_vector_search(
-        &self,
-        job_scope: &JobScope,
-        query: Embedding,
-        num_of_results: u64,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
-        println!("Num of resources fetched: {}", resources.len());
-
-        // Perform vector search on all resources
-        let mut retrieved_chunks = Vec::new();
-        for resource in resources {
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_chunks.extend(results);
-        }
-
-        println!("Num of chunks retrieved: {}", retrieved_chunks.len());
-
-        // Sort the retrieved chunks by score before returning
-        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-
-        Ok(sorted_retrieved_chunks)
-    }
-
-    /// Perform a syntactic vector search on all local & DB-held Vector Resources specified in the JobScope.
-    pub async fn job_scope_syntactic_vector_search(
-        &self,
-        job_scope: &JobScope,
-        query: Embedding,
-        num_of_results: u64,
-        profile: &ShinkaiName,
-        data_tag_names: &Vec<String>,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
-
-        // Perform syntactic vector search on all resources
-        let mut retrieved_chunks = Vec::new();
-        for resource in resources {
-            let results =
-                resource
-                    .as_trait_object()
-                    .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
-            retrieved_chunks.extend(results);
-        }
-
-        // Sort the retrieved chunks by score before returning
-        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-
-        Ok(sorted_retrieved_chunks)
-    }
-
     /// Processes a job message which will trigger a job step
     pub async fn process_job_step(
         &mut self,
@@ -342,8 +237,8 @@ impl AgentManager {
         Ok(())
     }
 
-    /// An inference chain for question-answer job tasks which vector search the
-    /// in the JobScope and accumulate a summary
+    /// An inference chain for question-answer job tasks which vector searches the Vector Resources
+    /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     async fn process_qa_inference_chain(
         &self,
@@ -486,6 +381,112 @@ impl AgentManager {
         unimplemented!()
     }
 
+    /// Fetches boilerplate/relevant data required for a job to process a step
+    async fn fetch_relevant_job_data(
+        &self,
+        job_id: &str,
+    ) -> Result<(Job, Option<Arc<Mutex<Agent>>>, String, Option<ShinkaiName>), AgentError> {
+        // Fetch the job
+        let full_job = { self.db.lock().await.get_job(job_id)? };
+
+        // Acquire Agent
+        let agent_id = full_job.parent_agent_id.clone();
+        let mut agent_found = None;
+        let mut profile_name = String::new();
+        let mut user_profile: Option<ShinkaiName> = None;
+        for agent in &self.agents {
+            let locked_agent = agent.lock().await;
+            if locked_agent.id == agent_id {
+                agent_found = Some(agent.clone());
+                profile_name = locked_agent.full_identity_name.full_name.clone();
+                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
+                break;
+            }
+        }
+
+        Ok((full_job, agent_found, profile_name, user_profile))
+    }
+
+    /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
+    /// and returns all of them in a single list ready to be used.
+    pub async fn fetch_job_scope_resources(
+        &self,
+        job_scope: &JobScope,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
+        let mut resources = Vec::new();
+
+        // Add local resources to the list
+        for local_entry in &job_scope.local {
+            resources.push(local_entry.resource.clone());
+        }
+
+        // Fetch DB resources and add them to the list
+        let db = self.db.lock().await;
+        for db_entry in &job_scope.database {
+            let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
+            resources.push(resource);
+        }
+
+        std::mem::drop(db);
+
+        Ok(resources)
+    }
+
+    /// Perform a vector search on all local & DB-held Vector Resources specified in the JobScope.
+    pub async fn job_scope_vector_search(
+        &self,
+        job_scope: &JobScope,
+        query: Embedding,
+        num_of_results: u64,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
+        println!("Num of resources fetched: {}", resources.len());
+
+        // Perform vector search on all resources
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+            retrieved_chunks.extend(results);
+        }
+
+        println!("Num of chunks retrieved: {}", retrieved_chunks.len());
+
+        // Sort the retrieved chunks by score before returning
+        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+
+        Ok(sorted_retrieved_chunks)
+    }
+
+    /// Perform a syntactic vector search on all local & DB-held Vector Resources specified in the JobScope.
+    pub async fn job_scope_syntactic_vector_search(
+        &self,
+        job_scope: &JobScope,
+        query: Embedding,
+        num_of_results: u64,
+        profile: &ShinkaiName,
+        data_tag_names: &Vec<String>,
+    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
+
+        // Perform syntactic vector search on all resources
+        let mut retrieved_chunks = Vec::new();
+        for resource in resources {
+            let results =
+                resource
+                    .as_trait_object()
+                    .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
+            retrieved_chunks.extend(results);
+        }
+
+        // Sort the retrieved chunks by score before returning
+        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+
+        Ok(sorted_retrieved_chunks)
+    }
+
+    /// Creates a VRSource using relevant data about a source file
     fn create_vrsource(filename: &str, file_type: SourceFileType, content_hash: Option<String>) -> VRSource {
         if filename.starts_with("http") {
             let filename_without_extension = filename.trim_end_matches(".pdf");

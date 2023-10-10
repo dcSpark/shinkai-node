@@ -1,6 +1,5 @@
-use super::AgentError;
+use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::LLMProvider;
-use crate::agent::job_prompts::Prompt;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::Value as JsonValue;

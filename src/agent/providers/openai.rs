@@ -1,6 +1,4 @@
-use crate::agent::job_prompts::Prompt;
-
-use super::AgentError;
+use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;

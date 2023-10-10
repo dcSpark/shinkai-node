@@ -1,6 +1,5 @@
+use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use crate::tools::router::ShinkaiTool;
-
-use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
 use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;

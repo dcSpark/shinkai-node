@@ -20,7 +20,7 @@ mod tests {
         },
         shinkai_utils::utils::hash_string,
     };
-    use shinkai_node::agent::{agent::Agent, error::AgentError, job_prompts::JobPromptGenerator};
+    use shinkai_node::agent::{agent::Agent, error::AgentError, execution::job_prompts::JobPromptGenerator};
 
     use super::*;
 
