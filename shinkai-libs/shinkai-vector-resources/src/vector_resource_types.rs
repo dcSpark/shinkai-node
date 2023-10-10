@@ -80,6 +80,77 @@ impl RetrievedDataChunk {
         }
         path_string
     }
+
+    /// Formats the data, source, and metadata of all provided `RetrievedDataChunk`s into a bullet-point
+    /// list as a single string. This is to be included inside of a prompt to an LLM.
+    /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
+    pub fn format_ret_chunks_for_prompt(ret_data_chunks: Vec<RetrievedDataChunk>, max_characters: usize) -> String {
+        if ret_data_chunks.is_empty() {
+            return String::new();
+        }
+
+        let mut result = String::new();
+        let mut remaining_chars = max_characters;
+
+        for ret_chunk in ret_data_chunks {
+            if let Some(formatted_chunk) = ret_chunk.format_for_prompt(remaining_chars) {
+                if formatted_chunk.len() > remaining_chars {
+                    break;
+                }
+                result.push_str(&formatted_chunk);
+                result.push_str("\n\n ");
+                remaining_chars -= formatted_chunk.len();
+            }
+        }
+
+        result
+    }
+
+    /// Formats the data, source, and metadata together into a single string that is ready
+    /// to be included as part of a prompt to an LLM.
+    /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
+    pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
+        let source_string = self.resource_pointer.resource_source.format_source_string();
+        let metadata_string = self.format_metadata_string();
+
+        let base_length = source_string.len() + metadata_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
+
+        if base_length > max_characters {
+            return None;
+        }
+
+        let data_string = self.chunk.get_data_string().ok()?;
+        let data_length = max_characters - base_length;
+
+        let data_string = if data_string.len() > data_length {
+            data_string[..data_length].to_string()
+        } else {
+            data_string
+        };
+
+        let formatted_string = if metadata_string.len() > 0 {
+            format!("- {} (Source: {}, {})", data_string, source_string, metadata_string)
+        } else {
+            format!("- {} (Source: {})", data_string, source_string)
+        };
+
+        Some(formatted_string)
+    }
+
+    /// Parses the metdata of the data chunk, and outputs a readable string which includes
+    /// any metadata relevant to provide to an LLM as context about the retrieved chunk.
+    pub fn format_metadata_string(&self) -> String {
+        match &self.chunk.metadata {
+            Some(metadata) => {
+                if let Some(page_numbers) = metadata.get("page_numbers") {
+                    format!("Pgs: {}", page_numbers)
+                } else {
+                    String::new()
+                }
+            }
+            None => String::new(),
+        }
+    }
 }
 
 /// Represents a data chunk with an id, data, and optional metadata.

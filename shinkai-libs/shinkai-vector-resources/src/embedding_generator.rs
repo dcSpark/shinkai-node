@@ -19,7 +19,7 @@ lazy_static! {
 const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
-pub trait EmbeddingGenerator {
+pub trait EmbeddingGenerator: Sync {
     fn model_type(&self) -> EmbeddingModelType;
 
     /// Generates an embedding from the given input string, and assigns the
@@ -84,8 +84,9 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // If we're using a Bert model with a Bert-CPP server
-        if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
-            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2)
+        if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
+            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
+            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
         {
             let vector = self.generate_embedding_bert_cpp(input_string)?;
             return Ok(Embedding {
@@ -119,9 +120,9 @@ impl RemoteEmbeddingGenerator {
     /// to the webserver of a local running instance of BertCPP using the
     /// default set port.
     ///
-    /// Expected to have downloaded & be using the AllMiniLML12v2 model.
+    /// Expected to have downloaded & be using the AllMiniLML6v2 model.
     pub fn new_default() -> RemoteEmbeddingGenerator {
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2);
+        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2);
         let url = format!("localhost:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
