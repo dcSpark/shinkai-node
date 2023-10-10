@@ -91,11 +91,6 @@ impl Agent {
                     .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
                     .await
             }
-            AgentLLMInterface::Sleep(sleep_api) => {
-                sleep_api
-                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
-                    .await
-            }
             AgentLLMInterface::LocalLLM(local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }

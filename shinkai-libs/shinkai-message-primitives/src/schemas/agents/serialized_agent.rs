@@ -21,8 +21,6 @@ pub struct SerializedAgent {
 pub enum AgentLLMInterface {
     #[serde(rename = "openai")]
     OpenAI(OpenAI),
-    #[serde(rename = "sleep")]
-    Sleep(SleepAPI),
     #[serde(rename = "local-llm")]
     LocalLLM(LocalLLM),
 }
@@ -43,10 +41,8 @@ impl FromStr for AgentLLMInterface {
             let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
         } else {
-            Ok(AgentLLMInterface::Sleep(SleepAPI {}))
+            // TODO: nothing else for now
+            Err(())
         }
     }
 }
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-pub struct SleepAPI {}

@@ -51,6 +51,7 @@ hex = "=0.4.3"
 aes-gcm = "0.10.3"
 blake3 = "1.2.0"
 tiktoken-rs = "0.5.4"
+crossbeam-queue = "0.3.8"
 
 [dependencies.rocksdb]
 version = "0.21.0"

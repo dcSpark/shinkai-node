@@ -11,6 +11,7 @@ use crate::schemas::identity::Identity;
 use blake3::Hasher;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use serde::{Serialize, Deserialize};
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
@@ -34,6 +35,12 @@ use std::time::Instant;
 use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct JobForProcessing {
+    job_message: JobMessage,
+    profile: ShinkaiName,
+}
 
 impl AgentManager {
     /// Processes a job message which will trigger a job step
