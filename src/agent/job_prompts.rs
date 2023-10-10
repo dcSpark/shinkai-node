@@ -121,12 +121,17 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search_final(
         job_task: String,
         ret_data_chunks: Vec<RetrievedDataChunk>,
+        summary_text: Option<String>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
+
+        if let Some(summary) = summary_text {
+            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+        }
 
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
@@ -140,6 +145,10 @@ impl JobPromptGenerator {
         prompt.add_content(pre_task_text, SubPromptType::System);
         prompt.add_content(job_task, SubPromptType::User);
 
+        prompt.add_content(
+            format!("Use the content to add any final details to the summary and directly answer the user's question:"),
+            SubPromptType::System,
+        );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
         prompt
     }

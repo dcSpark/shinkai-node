@@ -303,7 +303,7 @@ impl AgentManager {
                     &generator,
                     user_profile,
                     None,
-                    None,
+                    Some(job_message.content.clone()),
                     None,
                     0,
                 )
@@ -374,7 +374,11 @@ impl AgentManager {
                 prev_search_text,
             )
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_data_chunks)
+            JobPromptGenerator::response_prompt_with_vector_search_final(
+                job_task.clone(),
+                ret_data_chunks,
+                summary_text,
+            )
         };
 
         let agent_cloned = agent.clone();
