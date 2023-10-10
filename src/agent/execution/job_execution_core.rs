@@ -1,7 +1,6 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
-use crate::agent::execution::inference_chains::InferenceChain;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::{AgentManager, JobManager};
 use crate::agent::plan_executor::PlanExecutor;
@@ -183,38 +182,17 @@ impl AgentManager {
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 
-        // TODO: Later implement inference chain decision making here before choosing which chain to use.
-        // For now we just use qa inference chain by default.
-        let chosen_chain = InferenceChain::QAChain;
-        let mut inference_response_content = String::new();
-        let mut new_execution_context = HashMap::new();
-
-        match chosen_chain {
-            InferenceChain::QAChain => {
-                if let Some(agent) = agent_found {
-                    inference_response_content = self
-                        .process_qa_inference_chain(
-                            full_job,
-                            job_message.content.clone(),
-                            agent,
-                            prev_execution_context,
-                            &generator,
-                            user_profile,
-                            None,
-                            Some(job_message.content.clone()),
-                            None,
-                            0,
-                        )
-                        .await?;
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone());
-                } else {
-                    return Err(AgentError::AgentNotFound);
-                }
-            }
-            // Add other chains here
-            _ => {}
-        };
+        // Call the inference chain router to choose which chain to use, and call it
+        let (inference_response_content, new_execution_context) = self
+            .inference_chain_router(
+                agent_found,
+                full_job,
+                job_message.clone(),
+                prev_execution_context,
+                &generator,
+                user_profile,
+            )
+            .await?;
         let duration = start.elapsed();
         println!("Time elapsed for inference chain processing is: {:?}", duration);
 
@@ -243,7 +221,7 @@ impl AgentManager {
     /// An inference chain for question-answer job tasks which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
-    async fn process_qa_inference_chain(
+    pub async fn process_qa_inference_chain(
         &self,
         full_job: Job,
         job_task: String,
