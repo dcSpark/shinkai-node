@@ -8,6 +8,7 @@ use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::resources::bert_cpp::BertCPPProcess;
 use crate::resources::file_parsing::FileParser;
 use crate::schemas::identity::Identity;
+use async_recursion::async_recursion;
 use blake3::Hasher;
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -301,6 +302,7 @@ impl AgentManager {
                     analysis_context,
                     &generator,
                     user_profile,
+                    None,
                 )
                 .await
             }
@@ -335,6 +337,7 @@ impl AgentManager {
         Ok(())
     }
 
+    #[async_recursion]
     async fn process_analysis_inference(
         &self,
         full_job: Job,
@@ -344,20 +347,20 @@ impl AgentManager {
         analysis_context: HashMap<String, String>,
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
+        search_text: Option<String>,
     ) -> Result<JsonValue, AgentError> {
         println!("process_analysis_inference>  message: {:?}", job_task);
 
-        // Perform a vector search to find relevant data chunks
-        let query = generator.generate_embedding_default(&job_task).unwrap();
+        // Use search_text if provided, otherwise use job_task to generate the query
+        let query_text = search_text.unwrap_or(job_task.clone());
+        let query = generator.generate_embedding_default(&query_text).unwrap();
+
         let ret_data_chunks = self
             .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.clone().unwrap())
             .await?;
 
-        // Generate the needed prompt
-        let filled_prompt =
-            JobPromptGenerator::response_prompt_with_vector_search_part_one(job_task.clone(), ret_data_chunks);
+        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(query_text.clone(), ret_data_chunks);
 
-        // Execute LLM inferencing
         let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
             let mut agent = agent_cloned.lock().await;
@@ -367,7 +370,7 @@ impl AgentManager {
 
         println!("analysis_inference> response: {:?}", response);
 
-        let first_answer_json = match response {
+        let response_json = match response {
             Ok(json) => Ok(json),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
                 eprintln!("Retrying inference with new prompt");
@@ -379,46 +382,29 @@ impl AgentManager {
             Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
         }?;
 
-        // Check if LLM responded with an answer from the first inference
-        if let Some(answer) = first_answer_json.get("answer") {
-            return Ok(answer.clone());
+        if let Some(answer) = response_json.get("answer") {
+            return Ok(response_json.clone());
         }
 
-        // If not, check that it responded with a search
-        let inference_content = match first_answer_json.get("search") {
+        let inference_content = match response_json.get("search") {
             Some(search) => search
                 .as_str()
                 .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?,
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
-        // Continue with the rest of the function...
-        // Vector Search with first answer
-        let query = generator.generate_embedding_default(&inference_content).unwrap();
-        let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.unwrap())
-            .await?;
 
-        // Generate the needed prompt for the second inference
-        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search_part_two(job_task, ret_data_chunks);
-
-        // Execute LLM inferencing for the second time
-        let agent_cloned = agent.clone();
-        let response = tokio::spawn(async move {
-            let mut agent = agent_cloned.lock().await;
-            agent.inference(filled_prompt).await
-        })
-        .await?;
-
-        println!("analysis_inference> response: {:?}", response);
-
-        match response {
-            Ok(json) => Ok(json),
-            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
-                eprintln!("Retrying inference with new prompt");
-                self.json_not_found_retry(agent.clone(), text.clone()).await
-            }
-            Err(e) => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string())),
-        }
+        // Recurse with the new search text
+        self.process_analysis_inference(
+            full_job,
+            job_task.to_string(),
+            agent,
+            execution_context,
+            analysis_context,
+            generator,
+            user_profile,
+            Some(inference_content.to_string()),
+        )
+        .await
     }
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object

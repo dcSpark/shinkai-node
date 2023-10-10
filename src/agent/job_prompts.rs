@@ -68,20 +68,17 @@ impl JobPromptGenerator {
 
     /// A basic prompt which adds all provided RetrievedDataChunks (likely from a vector search) and explains to the LLM
     /// that it should use them as context to answer the job_task.
-    pub fn response_prompt_with_vector_search_part_one(
-        job_task: String,
-        ret_data_chunks: Vec<RetrievedDataChunk>,
-    ) -> Prompt {
+    pub fn response_prompt_with_vector_search(job_task: String, ret_data_chunks: Vec<RetrievedDataChunk>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant running in a system who only has access to the provided data and your own knowledge to answer any question the user provides.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
         let search_context = format!(
-            "Here is a list of the most relevant data available from a vector search: ``` {}```.\n",
+            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
             ret_chunks_content,
         );
         prompt.add_content(search_context, SubPromptType::User);
@@ -95,7 +92,7 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very clear search query and perform a new vector search by:"), SubPromptType::System);
+        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query (which uses terms from the provided content to embelish the query) and perform a new vector search by:"), SubPromptType::System);
         prompt.add_ebnf(String::from(r#""{" "search" ":" string "}""#), SubPromptType::System);
 
         prompt
@@ -103,7 +100,7 @@ impl JobPromptGenerator {
 
     /// A basic prompt which adds all provided RetrievedDataChunks (likely from a vector search) and explains to the LLM
     /// that it should use them as context to answer the job_task.
-    pub fn response_prompt_with_vector_search_part_two(
+    pub fn response_prompt_with_vector_search_final(
         job_task: String,
         ret_data_chunks: Vec<RetrievedDataChunk>,
     ) -> Prompt {
