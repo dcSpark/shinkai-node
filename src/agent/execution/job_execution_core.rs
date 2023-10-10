@@ -150,7 +150,7 @@ impl AgentManager {
 
             // TODO(Nico): move this to a parallel thread that runs in the background
             let _ = self
-                .analysis_phase(job_message, full_job, agent_found, profile_name, user_profile)
+                .inference_chain_processor(job_message, full_job, agent_found, profile_name, user_profile)
                 .await?;
 
             // After analysis phase, we execute the resulting execution plan
@@ -163,8 +163,9 @@ impl AgentManager {
         }
     }
 
-    // Begins processing the analysis phase of the job
-    pub async fn analysis_phase(
+    // Processes the provided message & job data, routes them to a specific inference chain,
+    // and then processes and saves the output result from the chain.
+    pub async fn inference_chain_processor(
         &self,
         job_message: JobMessage,
         full_job: Job,
@@ -173,23 +174,18 @@ impl AgentManager {
         user_profile: Option<ShinkaiName>,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();
-        eprintln!("analysis_phase> full_job: {:?}", full_job);
+        eprintln!("inference_chain_processor> full_job: {:?}", full_job);
 
-        // Setup initial data to start moving through analysis phase
+        // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
         let analysis_context = HashMap::new();
-        let start = Instant::now();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
+        let start = Instant::now();
 
-        let duration = start.elapsed();
-        eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
-
-        // TODO: Later implement all analysis phase chaining/branching logic starting from here
-        // and have multiple methods like process_qa_inference_chain which use different
-        // prompts and are called as needed to arrive at a full execution plan ready to be returned
-
-        let inference_response = match agent_found {
+        // TODO: Later implement inference chain routing here before choosing which chain to use.
+        // For now we just use qa inference chain by default.
+        let inference_response_content = match agent_found {
             Some(agent) => {
                 self.process_qa_inference_chain(
                     full_job,
@@ -208,28 +204,22 @@ impl AgentManager {
             }
             None => Err(AgentError::AgentNotFound),
         }?;
-        let inference_content = match inference_response.get("answer") {
-            Some(answer) => answer
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
-            None => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
-        };
+        let duration = start.elapsed();
+        println!("Time elapsed for inference chain processing is: {:?}", duration);
 
-        // Save inference response to job inbox
+        // Save inference response to DB
         let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.to_string(),
-            inference_content.to_string(),
+            inference_response_content.to_string(),
             identity_secret_key_clone,
             profile_name.clone(),
             profile_name.clone(),
         )
         .unwrap();
-
-        // Save the step history
         let mut shinkai_db = self.db.lock().await;
         shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
-        shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
+        shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
         std::mem::drop(bert_process);
@@ -253,7 +243,7 @@ impl AgentManager {
         prev_search_text: Option<String>,
         summary_text: Option<String>,
         iteration_count: u64,
-    ) -> Result<JsonValue, AgentError> {
+    ) -> Result<String, AgentError> {
         println!("process_qa_inference_chain>  message: {:?}", job_task);
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
@@ -282,9 +272,12 @@ impl AgentManager {
         // Inference the agent's LLM with the prompt
         let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
 
-        // If it has an answer, the chain is finished and so just return the response json
+        // If it has an answer, the chain is finished and so just return the answer response as a String
         if let Some(answer) = response_json.get("answer") {
-            return Ok(response_json.clone());
+            let answer_str = answer
+                .as_str()
+                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?;
+            return Ok(answer_str.to_string());
         }
         // If iteration_count is 5 and we still don't have an answer, return an error
         else if iteration_count >= 5 {
