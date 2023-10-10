@@ -283,18 +283,9 @@ impl AgentManager {
         let start = Instant::now();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
-        let query = generator
-            .generate_embedding_default(job_message.content.clone().as_str())
-            .unwrap();
-
-        // Perform a vector search to find relevant data chunks
-        let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.unwrap())
-            .await?;
 
         let duration = start.elapsed();
         eprintln!("Time elapsed in parsing the embeddings is: {:?}", duration);
-        std::mem::drop(bert_process);
 
         // TODO: Later implement all analysis phase chaining/branching logic starting from here
         // and have multiple methods like process_analysis_inference which use different
@@ -306,13 +297,14 @@ impl AgentManager {
                     full_job,
                     job_message.content.clone(),
                     agent,
-                    ret_data_chunks,
                     prev_execution_context,
                     analysis_context,
+                    &generator,
+                    user_profile,
                 )
                 .await
             }
-            None => Err(Box::new(AgentError::AgentNotFound) as Box<dyn std::error::Error>),
+            None => Err(AgentError::AgentNotFound),
         }?;
         let inference_content = match inference_response.get("answer") {
             Some(answer) => answer
@@ -338,26 +330,76 @@ impl AgentManager {
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
+        std::mem::drop(bert_process);
+
         Ok(())
     }
 
-    /// Temporary method that does no chaining/advanced prompting/context usage,
-    /// but simply inferences the LLM to get a direct response back
     async fn process_analysis_inference(
         &self,
-        job: Job,
-        message: String,
+        full_job: Job,
+        job_task: String,
         agent: Arc<Mutex<Agent>>,
-        ret_data_chunks: Vec<RetrievedDataChunk>,
         execution_context: HashMap<String, String>,
         analysis_context: HashMap<String, String>,
-    ) -> Result<JsonValue, Box<dyn Error>> {
-        println!("analysis_inference>  message: {:?}", message);
+        generator: &dyn EmbeddingGenerator,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<JsonValue, AgentError> {
+        println!("process_analysis_inference>  message: {:?}", job_task);
+
+        // Perform a vector search to find relevant data chunks
+        let query = generator.generate_embedding_default(&job_task).unwrap();
+        let ret_data_chunks = self
+            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.clone().unwrap())
+            .await?;
 
         // Generate the needed prompt
-        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(message.clone(), ret_data_chunks);
+        let filled_prompt =
+            JobPromptGenerator::response_prompt_with_vector_search_part_one(job_task.clone(), ret_data_chunks);
 
         // Execute LLM inferencing
+        let agent_cloned = agent.clone();
+        let response = tokio::spawn(async move {
+            let mut agent = agent_cloned.lock().await;
+            agent.inference(filled_prompt).await
+        })
+        .await?;
+
+        println!("analysis_inference> response: {:?}", response);
+
+        let first_answer_json = match response {
+            Ok(json) => Ok(json),
+            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
+                eprintln!("Retrying inference with new prompt");
+                match self.json_not_found_retry(agent.clone(), text.clone()).await {
+                    Ok(json) => Ok(json),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string())),
+        }?;
+
+        // Extract the answer from the first inference
+        let inference_content = match first_answer_json.get("answer") {
+            Some(answer) => answer
+                .as_str()
+                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
+            None => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
+        };
+
+        // Vector Search with first answer
+        let query = generator.generate_embedding_default(&inference_content).unwrap();
+        let ret_data_chunks = self
+            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.unwrap())
+            .await?;
+
+        // Generate the needed prompt for the second inference
+        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search_part_two(
+            inference_content.to_string(),
+            ret_data_chunks,
+        );
+
+        // Execute LLM inferencing for the second time
         let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
             let mut agent = agent_cloned.lock().await;
@@ -373,13 +415,13 @@ impl AgentManager {
                 eprintln!("Retrying inference with new prompt");
                 self.json_not_found_retry(agent.clone(), text.clone()).await
             }
-            Err(e) => Err(Box::new(e)),
+            Err(e) => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string())),
         }
     }
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
     /// that we can parse.
-    async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, Box<dyn Error>> {
+    async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, AgentError> {
         let response = tokio::spawn(async move {
             let mut agent = agent.lock().await;
             let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);

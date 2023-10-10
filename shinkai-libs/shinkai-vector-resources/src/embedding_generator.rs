@@ -19,7 +19,7 @@ lazy_static! {
 const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
-pub trait EmbeddingGenerator {
+pub trait EmbeddingGenerator: Sync {
     fn model_type(&self) -> EmbeddingModelType;
 
     /// Generates an embedding from the given input string, and assigns the
