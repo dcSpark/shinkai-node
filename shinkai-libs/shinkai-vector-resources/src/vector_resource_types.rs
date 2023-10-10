@@ -98,7 +98,7 @@ impl RetrievedDataChunk {
                     break;
                 }
                 result.push_str(&formatted_chunk);
-                result.push_str("\n\n");
+                result.push_str("\n\n ");
                 remaining_chars -= formatted_chunk.len();
             }
         }

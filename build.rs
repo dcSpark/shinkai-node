@@ -15,8 +15,8 @@ fn main() {
     prepare_bert_cpp();
 
     // Remote Embedding Generator model (used via Bert.cpp server)
-    let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/multi-qa-MiniLM-L6-cos-v1/ggml-model-q4_1.bin";
-    let model_filename = "models/multi-qa-MiniLM-L6-cos-v1.bin";
+    let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L6-v2/ggml-model-q4_1.bin";
+    let model_filename = "models/all-MiniLM-L6-v2.bin";
     download_file(model_url, model_filename, model_filename);
 
     // Prepare toolkit executor and example toolkit to use with rust tests
