@@ -1,45 +1,25 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
-use crate::agent::job::{Job, JobId, JobLike};
-use crate::agent::job_manager::{AgentManager, JobManager};
-use crate::agent::plan_executor::PlanExecutor;
-use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::agent::job::{Job, JobLike};
+use crate::agent::job_manager::AgentManager;
+use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
 use crate::resources::file_parsing::FileParser;
-use crate::schemas::identity::Identity;
-use async_recursion::async_recursion;
-use blake3::Hasher;
-use chrono::Utc;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use serde_json::{Map, Value as JsonValue};
-use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
-use shinkai_message_primitives::shinkai_utils::job_scope::{JobScope, LocalScopeEntry};
+use serde_json::Value as JsonValue;
+use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
-    shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreationInfo, JobMessage, JobPreMessage, MessageSchemaType},
-    },
+    schemas::shinkai_name::ShinkaiName,
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::JobMessage},
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
-use shinkai_vector_resources::data_tags::DataTag;
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
-use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
-use shinkai_vector_resources::vector_resource::VectorResource;
-use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
-use std::fmt;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType};
 use std::result::Result::Ok;
 use std::time::Instant;
-use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::sync::{mpsc, Mutex};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
-use super::job_prompts::Prompt;
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::Mutex;
 
 impl AgentManager {
     /// Processes a job message which will trigger a job step
@@ -150,7 +130,7 @@ impl AgentManager {
 
             // TODO(Nico): move this to a parallel thread that runs in the background
             let _ = self
-                .inference_chain_processor(job_message, full_job, agent_found, profile_name, user_profile)
+                .process_inference_chain(job_message, full_job, agent_found, profile_name, user_profile)
                 .await?;
 
             // After analysis phase, we execute the resulting execution plan
@@ -163,9 +143,9 @@ impl AgentManager {
         }
     }
 
-    // Processes the provided message & job data, routes them to a specific inference chain,
-    // and then processes and saves the output result from the chain.
-    pub async fn inference_chain_processor(
+    /// Processes the provided message & job data, routes them to a specific inference chain,
+    /// and then parses + saves the output result to the DB.
+    pub async fn process_inference_chain(
         &self,
         job_message: JobMessage,
         full_job: Job,
@@ -174,7 +154,7 @@ impl AgentManager {
         user_profile: Option<ShinkaiName>,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();
-        eprintln!("inference_chain_processor> full_job: {:?}", full_job);
+        eprintln!("process_inference_chain> full_job: {:?}", full_job);
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
@@ -196,7 +176,7 @@ impl AgentManager {
         let duration = start.elapsed();
         println!("Time elapsed for inference chain processing is: {:?}", duration);
 
-        // Prepare data from inference response to save to the DB
+        // Prepare data to save inference response to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.to_string(),
@@ -216,269 +196,6 @@ impl AgentManager {
         std::mem::drop(bert_process);
 
         Ok(())
-    }
-
-    /// An inference chain for question-answer job tasks which vector searches the Vector Resources
-    /// in the JobScope to find relevant content for the LLM to use at each step.
-    #[async_recursion]
-    pub async fn process_qa_inference_chain(
-        &self,
-        full_job: Job,
-        job_task: String,
-        agent: Arc<Mutex<Agent>>,
-        execution_context: HashMap<String, String>,
-        generator: &dyn EmbeddingGenerator,
-        user_profile: Option<ShinkaiName>,
-        search_text: Option<String>,
-        prev_search_text: Option<String>,
-        summary_text: Option<String>,
-        iteration_count: u64,
-    ) -> Result<String, AgentError> {
-        println!("process_qa_inference_chain>  message: {:?}", job_task);
-
-        // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
-        let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator.generate_embedding_default(&query_text).unwrap();
-        let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap())
-            .await?;
-
-        // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_prompt = if iteration_count < 5 {
-            JobPromptGenerator::response_prompt_with_vector_search(
-                job_task.clone(),
-                ret_data_chunks,
-                summary_text,
-                prev_search_text,
-            )
-        } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(
-                job_task.clone(),
-                ret_data_chunks,
-                summary_text,
-            )
-        };
-
-        // Inference the agent's LLM with the prompt
-        let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
-
-        // If it has an answer, the chain is finished and so just return the answer response as a String
-        if let Some(answer) = response_json.get("answer") {
-            let answer_str = answer
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?;
-            return Ok(answer_str.to_string());
-        }
-        // If iteration_count is 5 and we still don't have an answer, return an error
-        else if iteration_count >= 5 {
-            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
-        }
-
-        // If not an answer, then the LLM must respond with a search/summary, so we parse them
-        // to use for the next recursive call
-        let (new_search_text, summary) = match response_json.get("search") {
-            Some(search) => {
-                let search_str = search
-                    .as_str()
-                    .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?;
-                let summary_str = response_json
-                    .get("summary")
-                    .and_then(|s| s.as_str())
-                    .map(|s| s.to_string());
-                (search_str, summary_str)
-            }
-            None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
-        };
-
-        // Recurse with the new search/summary text and increment iteration_count
-        self.process_qa_inference_chain(
-            full_job,
-            job_task.to_string(),
-            agent,
-            execution_context,
-            generator,
-            user_profile,
-            Some(new_search_text.to_string()),
-            search_text,
-            summary,
-            iteration_count + 1,
-        )
-        .await
-    }
-
-    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
-    /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent(
-        &self,
-        agent: Arc<Mutex<Agent>>,
-        filled_prompt: Prompt,
-    ) -> Result<JsonValue, AgentError> {
-        let agent_cloned = agent.clone();
-        let response = tokio::spawn(async move {
-            let mut agent = agent_cloned.lock().await;
-            agent.inference(filled_prompt).await
-        })
-        .await?;
-        println!("inference_agent> response: {:?}", response);
-
-        // Validates that the response is a proper JSON object, else inferences again to get the
-        // LLM to parse the previous response into proper JSON
-        self.extract_json_value_from_inference_response(response, agent.clone())
-            .await
-    }
-
-    /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
-    /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
-    async fn extract_json_value_from_inference_response(
-        &self,
-        response: Result<JsonValue, AgentError>,
-        agent: Arc<Mutex<Agent>>,
-    ) -> Result<JsonValue, AgentError> {
-        match response {
-            Ok(json) => Ok(json),
-            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
-                eprintln!("Retrying inference with new prompt");
-                match self.json_not_found_retry(agent.clone(), text.clone()).await {
-                    Ok(json) => Ok(json),
-                    Err(e) => Err(e),
-                }
-            }
-            Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
-        }
-    }
-
-    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
-    /// that we can parse.
-    async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, AgentError> {
-        let response = tokio::spawn(async move {
-            let mut agent = agent.lock().await;
-            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);
-            agent.inference(prompt).await
-        })
-        .await?;
-        Ok(response?)
-    }
-
-    pub async fn execution_phase(&self) -> Result<Vec<ShinkaiMessage>, Box<dyn Error>> {
-        unimplemented!()
-    }
-
-    /// Fetches boilerplate/relevant data required for a job to process a step
-    async fn fetch_relevant_job_data(
-        &self,
-        job_id: &str,
-    ) -> Result<(Job, Option<Arc<Mutex<Agent>>>, String, Option<ShinkaiName>), AgentError> {
-        // Fetch the job
-        let full_job = { self.db.lock().await.get_job(job_id)? };
-
-        // Acquire Agent
-        let agent_id = full_job.parent_agent_id.clone();
-        let mut agent_found = None;
-        let mut profile_name = String::new();
-        let mut user_profile: Option<ShinkaiName> = None;
-        for agent in &self.agents {
-            let locked_agent = agent.lock().await;
-            if locked_agent.id == agent_id {
-                agent_found = Some(agent.clone());
-                profile_name = locked_agent.full_identity_name.full_name.clone();
-                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
-                break;
-            }
-        }
-
-        Ok((full_job, agent_found, profile_name, user_profile))
-    }
-
-    /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
-    /// and returns all of them in a single list ready to be used.
-    pub async fn fetch_job_scope_resources(
-        &self,
-        job_scope: &JobScope,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
-        let mut resources = Vec::new();
-
-        // Add local resources to the list
-        for local_entry in &job_scope.local {
-            resources.push(local_entry.resource.clone());
-        }
-
-        // Fetch DB resources and add them to the list
-        let db = self.db.lock().await;
-        for db_entry in &job_scope.database {
-            let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
-            resources.push(resource);
-        }
-
-        std::mem::drop(db);
-
-        Ok(resources)
-    }
-
-    /// Perform a vector search on all local & DB-held Vector Resources specified in the JobScope.
-    pub async fn job_scope_vector_search(
-        &self,
-        job_scope: &JobScope,
-        query: Embedding,
-        num_of_results: u64,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
-        println!("Num of resources fetched: {}", resources.len());
-
-        // Perform vector search on all resources
-        let mut retrieved_chunks = Vec::new();
-        for resource in resources {
-            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_chunks.extend(results);
-        }
-
-        println!("Num of chunks retrieved: {}", retrieved_chunks.len());
-
-        // Sort the retrieved chunks by score before returning
-        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-
-        Ok(sorted_retrieved_chunks)
-    }
-
-    /// Perform a syntactic vector search on all local & DB-held Vector Resources specified in the JobScope.
-    pub async fn job_scope_syntactic_vector_search(
-        &self,
-        job_scope: &JobScope,
-        query: Embedding,
-        num_of_results: u64,
-        profile: &ShinkaiName,
-        data_tag_names: &Vec<String>,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
-
-        // Perform syntactic vector search on all resources
-        let mut retrieved_chunks = Vec::new();
-        for resource in resources {
-            let results =
-                resource
-                    .as_trait_object()
-                    .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
-            retrieved_chunks.extend(results);
-        }
-
-        // Sort the retrieved chunks by score before returning
-        let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-
-        Ok(sorted_retrieved_chunks)
-    }
-
-    /// Creates a VRSource using relevant data about a source file
-    fn create_vrsource(filename: &str, file_type: SourceFileType, content_hash: Option<String>) -> VRSource {
-        if filename.starts_with("http") {
-            let filename_without_extension = filename.trim_end_matches(".pdf");
-            VRSource::new_uri_ref(filename_without_extension)
-        } else if filename.starts_with("file") {
-            let filename_without_extension = filename.trim_start_matches("file://").trim_end_matches(".pdf");
-            VRSource::new_source_file_ref(filename_without_extension.to_string(), file_type, content_hash.unwrap())
-        } else {
-            VRSource::none()
-        }
     }
 
     // TODO(Nico): refactor so it's decomposed
