@@ -14,7 +14,7 @@ impl AgentManager {
     /// An inference chain for question-answer job tasks which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
-    pub async fn process_qa_inference_chain(
+    pub async fn start_qa_inference_chain(
         &self,
         full_job: Job,
         job_task: String,
@@ -27,7 +27,7 @@ impl AgentManager {
         summary_text: Option<String>,
         iteration_count: u64,
     ) -> Result<String, AgentError> {
-        println!("process_qa_inference_chain>  message: {:?}", job_task);
+        println!("start_qa_inference_chain>  message: {:?}", job_task);
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
@@ -84,7 +84,7 @@ impl AgentManager {
         };
 
         // Recurse with the new search/summary text and increment iteration_count
-        self.process_qa_inference_chain(
+        self.start_qa_inference_chain(
             full_job,
             job_task.to_string(),
             agent,

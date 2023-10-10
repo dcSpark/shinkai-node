@@ -38,7 +38,7 @@ impl AgentManager {
             InferenceChain::QAChain => {
                 if let Some(agent) = agent_found {
                     inference_response_content = self
-                        .process_qa_inference_chain(
+                        .start_qa_inference_chain(
                             full_job,
                             job_message.content.clone(),
                             agent,

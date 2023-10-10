@@ -48,8 +48,8 @@ impl AgentManager {
                 Ok(profile) => profile,
                 Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
             };
-            //
-            // Todo: Implement unprocessed messages logic
+
+            // Todo: Implement unprocessed messages/queuing logic
             // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
             // However if unprocessed message count  == 0, then:
             // 0. You add the unprocessed message to the list in the DB
@@ -61,21 +61,16 @@ impl AgentManager {
             //    and take the result and append it both to the Job inbox and step history
             // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially
 
-            //
             // let current_unprocessed_message_count = ...
             shinkai_db.add_to_unprocessed_messages_list(job.job_id().to_string(), job_message.content.clone())?;
 
             std::mem::drop(shinkai_db); // require to avoid deadlock
 
-            // TODO(Nico): adding embeddings here to test. needs to be moved out
-            // - Go over the files
-            // - Check if they are parseable (for now just pdfs)
-            // - if they are parseable, then parse them and add them to the db
-
             // Fetch data we need to execute job step
             let (mut full_job, agent_found, profile_name, user_profile) =
                 self.fetch_relevant_job_data(job.job_id()).await?;
 
+            //
             if !job_message.files_inbox.is_empty() {
                 println!(
                     "process_job_message> processing files_map: ... files: {}",
