@@ -65,18 +65,24 @@ impl LLMProvider for OpenAI {
                 let tiktoken_messages = prompt.generate_openai_messages(None)?;
                 let used_tokens = num_tokens_from_messages("gpt-4", &tiktoken_messages).unwrap();
 
-                let messages: Vec<OpenAIApiMessage> = tiktoken_messages.into_iter().filter_map(|message| {
-                    if let Some(content) = message.content {
-                        Some(OpenAIApiMessage {
-                            role: message.role,
-                            content,
-                        })
-                    } else {
-                        eprintln!("Warning: Message with role '{}' has no content. Ignoring.", message.role);
-                        None
-                    }
-                }).collect();
-                
+                let messages: Vec<OpenAIApiMessage> = tiktoken_messages
+                    .into_iter()
+                    .filter_map(|message| {
+                        if let Some(content) = message.content {
+                            Some(OpenAIApiMessage {
+                                role: message.role,
+                                content,
+                            })
+                        } else {
+                            eprintln!(
+                                "Warning: Message with role '{}' has no content. Ignoring.",
+                                message.role
+                            );
+                            None
+                        }
+                    })
+                    .collect();
+
                 let messages_json = serde_json::to_value(&messages)?;
 
                 let max_tokens = std::cmp::max(5, 4097 - used_tokens);
@@ -101,10 +107,10 @@ impl LLMProvider for OpenAI {
 
                 eprintln!("Status: {}", res.status());
                 let response_text = res.text().await?;
-                eprintln!("Response: {:?}", response_text);
+                //eprintln!("Response: {:?}", response_text);
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
-                eprintln!("data_resp: {:?}", data_resp);
+                //eprintln!("data_resp: {:?}", data_resp);
 
                 // let data_resp = res.json::<serde_json::Value>().await;
                 match data_resp {

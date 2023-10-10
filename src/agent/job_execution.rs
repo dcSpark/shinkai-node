@@ -39,6 +39,8 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use super::job_prompts::Prompt;
+
 impl AgentManager {
     /// Fetches boilerplate/relevant data required for a job to process a step
     async fn fetch_relevant_job_data(
@@ -340,7 +342,8 @@ impl AgentManager {
         Ok(())
     }
 
-    /// An
+    /// An inference chain for question-answer job tasks which vector search the
+    /// in the JobScope and accumulate a summary
     #[async_recursion]
     async fn process_qa_inference_chain(
         &self,
@@ -358,14 +361,14 @@ impl AgentManager {
     ) -> Result<JsonValue, AgentError> {
         println!("process_qa_inference_chain>  message: {:?}", job_task);
 
-        // Use search_text if provided, otherwise use job_task to generate the query
+        // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();
-
         let ret_data_chunks = self
             .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap())
             .await?;
 
+        // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < 5 {
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
@@ -381,31 +384,20 @@ impl AgentManager {
             )
         };
 
-        let agent_cloned = agent.clone();
-        let response = tokio::spawn(async move {
-            let mut agent = agent_cloned.lock().await;
-            agent.inference(filled_prompt).await
-        })
-        .await?;
+        // Inference the agent's LLM with the prompt
+        let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
 
-        println!("analysis_inference> response: {:?}", response);
-
-        let response_json = match response {
-            Ok(json) => Ok(json),
-            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
-                eprintln!("Retrying inference with new prompt");
-                match self.json_not_found_retry(agent.clone(), text.clone()).await {
-                    Ok(json) => Ok(json),
-                    Err(e) => Err(e),
-                }
-            }
-            Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
-        }?;
-
+        // If it has an answer, the chain is finished and so just return the response json
         if let Some(answer) = response_json.get("answer") {
             return Ok(response_json.clone());
         }
+        // If iteration_count is 5 and we still don't have an answer, return an error
+        else if iteration_count >= 5 {
+            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+        }
 
+        // If not an answer, then the LLM must respond with a search/summary, so we parse them
+        // to use for the next recursive call
         let (new_search_text, summary) = match response_json.get("search") {
             Some(search) => {
                 let search_str = search
@@ -420,12 +412,7 @@ impl AgentManager {
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
 
-        // If iteration_count is 5 and we still don't have an answer, return an error
-        if iteration_count >= 5 {
-            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
-        }
-
-        // Recurse with the new search text and increment iteration_count
+        // Recurse with the new search/summary text and increment iteration_count
         self.process_qa_inference_chain(
             full_job,
             job_task.to_string(),
@@ -440,6 +427,47 @@ impl AgentManager {
             iteration_count + 1,
         )
         .await
+    }
+
+    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
+    /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
+    pub async fn inference_agent(
+        &self,
+        agent: Arc<Mutex<Agent>>,
+        filled_prompt: Prompt,
+    ) -> Result<JsonValue, AgentError> {
+        let agent_cloned = agent.clone();
+        let response = tokio::spawn(async move {
+            let mut agent = agent_cloned.lock().await;
+            agent.inference(filled_prompt).await
+        })
+        .await?;
+        println!("inference_agent> response: {:?}", response);
+
+        // Validates that the response is a proper JSON object, else inferences again to get the
+        // LLM to parse the previous response into proper JSON
+        self.extract_json_value_from_inference_response(response, agent.clone())
+            .await
+    }
+
+    /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
+    /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
+    async fn extract_json_value_from_inference_response(
+        &self,
+        response: Result<JsonValue, AgentError>,
+        agent: Arc<Mutex<Agent>>,
+    ) -> Result<JsonValue, AgentError> {
+        match response {
+            Ok(json) => Ok(json),
+            Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
+                eprintln!("Retrying inference with new prompt");
+                match self.json_not_found_retry(agent.clone(), text.clone()).await {
+                    Ok(json) => Ok(json),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
+        }
     }
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
