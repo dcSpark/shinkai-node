@@ -304,6 +304,7 @@ impl AgentManager {
                     user_profile,
                     None,
                     None,
+                    None,
                     0,
                 )
                 .await
@@ -339,6 +340,7 @@ impl AgentManager {
         Ok(())
     }
 
+    /// An
     #[async_recursion]
     async fn process_qa_inference_chain(
         &self,
@@ -350,13 +352,14 @@ impl AgentManager {
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
         search_text: Option<String>,
+        prev_search_text: Option<String>,
         summary_text: Option<String>,
         iteration_count: u64,
     ) -> Result<JsonValue, AgentError> {
         println!("process_qa_inference_chain>  message: {:?}", job_task);
 
         // Use search_text if provided, otherwise use job_task to generate the query
-        let query_text = search_text.unwrap_or(job_task.clone());
+        let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();
 
         let ret_data_chunks = self
@@ -364,7 +367,12 @@ impl AgentManager {
             .await?;
 
         let filled_prompt = if iteration_count < 5 {
-            JobPromptGenerator::response_prompt_with_vector_search(job_task.clone(), ret_data_chunks, summary_text)
+            JobPromptGenerator::response_prompt_with_vector_search(
+                job_task.clone(),
+                ret_data_chunks,
+                summary_text,
+                prev_search_text,
+            )
         } else {
             JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_data_chunks)
         };
@@ -423,6 +431,7 @@ impl AgentManager {
             generator,
             user_profile,
             Some(new_search_text.to_string()),
+            search_text,
             summary,
             iteration_count + 1,
         )

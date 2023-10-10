@@ -72,6 +72,7 @@ impl JobPromptGenerator {
         job_task: String,
         ret_data_chunks: Vec<RetrievedDataChunk>,
         summary_text: Option<String>,
+        prev_search_text: Option<String>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -100,7 +101,13 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and a detailed summary using terms from the provided content:"), SubPromptType::System);
+        // Tell the LLM about the previous search term to avoid it
+        if let Some(prev_search) = prev_search_text {
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then extend the existing summary with more information, and think of a new search query to perform a vector search (something different than `{}` to get better results):", prev_search), SubPromptType::System);
+        } else {
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and create a detailed summary using terms from the provided content:"), SubPromptType::System);
+        }
+
         prompt.add_ebnf(
             String::from(r#""{" "search" ":" string, "summary": "string" }""#),
             SubPromptType::System,
