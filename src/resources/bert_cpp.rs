@@ -24,20 +24,25 @@ impl BertCPPProcess {
             File::open("/dev/null").unwrap()
         };
 
-        // Wait for the previous tests bert.cpp to close
-        let start_time = Instant::now();
-        let mut disconnected = false;
-        while !disconnected && start_time.elapsed() < Duration::from_millis(500) {
-            thread::sleep(Duration::from_millis(50)); // Wait before each attempt
-            disconnected =
-                TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_err();
-        }
+        // Check if the previous tests bert.cpp is still running
+        let mut disconnected =
+            TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_err();
 
         if !disconnected {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Previous server did not close within 500ms",
-            ));
+            // If it is still running, then wait for it to close
+            let start_time = Instant::now();
+            while !disconnected && start_time.elapsed() < Duration::from_millis(1000) {
+                thread::sleep(Duration::from_millis(200)); // Wait before each attempt
+                disconnected =
+                    TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_err();
+            }
+
+            if !disconnected {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    "Previous server did not close within 500ms",
+                ));
+            }
         }
 
         let child = Command::new("./bert-cpp-server")
@@ -55,8 +60,8 @@ impl BertCPPProcess {
         // web server
         let start_time = Instant::now();
         let mut connected = false;
-        while !connected && start_time.elapsed() < Duration::from_millis(500) {
-            thread::sleep(Duration::from_millis(50)); // Wait before each attempt
+        while !connected && start_time.elapsed() < Duration::from_millis(1000) {
+            thread::sleep(Duration::from_millis(200)); // Wait before each attempt
             connected =
                 TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap())).is_ok();
         }
@@ -79,8 +84,8 @@ impl Drop for BertCPPProcess {
                 // Wait for the BertCPP process to close
                 let start_time = Instant::now();
                 let mut disconnected = false;
-                while !disconnected && start_time.elapsed() < Duration::from_millis(500) {
-                    thread::sleep(Duration::from_millis(50)); // Wait before each attempt
+                while !disconnected && start_time.elapsed() < Duration::from_millis(800) {
+                    thread::sleep(Duration::from_millis(200)); // Wait before each attempt
                     disconnected =
                         TcpStream::connect(("localhost", DEFAULT_LOCAL_EMBEDDINGS_PORT.parse::<u16>().unwrap()))
                             .is_err();
