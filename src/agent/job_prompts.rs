@@ -66,8 +66,8 @@ impl JobPromptGenerator {
         prompt
     }
 
-    /// A basic prompt which adds all provided RetrievedDataChunks (likely from a vector search) and explains to the LLM
-    /// that it should use them as context to answer the job_task.
+    /// A basic prompt for answering based off of vector searching content which explains to the LLM
+    /// that it should use them as context to answer the job_task, with the ability to further search.
     pub fn response_prompt_with_vector_search(job_task: String, ret_data_chunks: Vec<RetrievedDataChunk>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -98,22 +98,22 @@ impl JobPromptGenerator {
         prompt
     }
 
-    /// A basic prompt which adds all provided RetrievedDataChunks (likely from a vector search) and explains to the LLM
-    /// that it should use them as context to answer the job_task.
+    /// A basic prompt for answering based off of vector searching content which explains to the LLM
+    /// that it should use them as context to answer the job_task with no option to further search.
     pub fn response_prompt_with_vector_search_final(
         job_task: String,
         ret_data_chunks: Vec<RetrievedDataChunk>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant running in a system who only has access to the provided data and your own knowledge to answer any question the user provides. Always do your best to parse the data and to provide an answer.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
         let search_context = format!(
-            "Here is a list of the most relevant data available from a vector search: ``` {}```.\n",
+            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
             ret_chunks_content,
         );
         prompt.add_content(search_context, SubPromptType::System);
@@ -308,56 +308,41 @@ impl Prompt {
         let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
         let model = "gpt-4";
 
-        // let num_tokens = num_tokens_from_messages("gpt-3.5-turbo-0301", &messages).unwrap();
-
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
-        let mut ebnf_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
         let mut current_length: usize = 0;
 
-        // First process all EBNF sub-prompts and calculate their tokens
-        for sub_prompt in self.sub_prompts.iter().filter(|sp| matches!(sp, SubPrompt::EBNF(_, _))) {
-            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
-                let enbf_text = self.generate_ebnf_response_string(ebnf);
-                let new_message = ChatCompletionRequestMessage {
-                    role: "system".to_string(),
-                    content: Some(enbf_text.clone()),
-                    name: None,
-                    function_call: None,
-                };
-                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
-                current_length += new_message_tokens;
-                ebnf_messages.push(new_message);
-            }
-        }
-
-        // Then process all Content sub-prompts until length limit is reached
-        for sub_prompt in self
-            .sub_prompts
-            .iter()
-            .filter(|sp| matches!(sp, SubPrompt::Content(_, _)))
-        {
-            if let SubPrompt::Content(prompt_type, content) = sub_prompt {
-                let role = match prompt_type {
-                    SubPromptType::User => "user".to_string(),
-                    SubPromptType::System => "system".to_string(),
-                };
-                let new_message = ChatCompletionRequestMessage {
-                    role: role.clone(),
-                    content: Some(content.clone()),
-                    name: None,
-                    function_call: None,
-                };
-                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
-                if current_length + new_message_tokens > limit {
-                    break;
+        // Process all sub-prompts in their original order
+        for sub_prompt in &self.sub_prompts {
+            let (prompt_type, text) = match sub_prompt {
+                SubPrompt::Content(prompt_type, content) => (prompt_type, content.clone()),
+                SubPrompt::EBNF(prompt_type, ebnf) => {
+                    let ebnf_string = self.generate_ebnf_response_string(ebnf);
+                    (prompt_type, ebnf_string)
                 }
-                tiktoken_messages.push(new_message);
-                current_length += new_message_tokens;
+            };
+
+            let role = match prompt_type {
+                SubPromptType::User => "user".to_string(),
+                SubPromptType::System => "system".to_string(),
+            };
+
+            let new_message = ChatCompletionRequestMessage {
+                role: role.clone(),
+                content: Some(text),
+                name: None,
+                function_call: None,
+            };
+
+            let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
+                .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
+            if current_length + new_message_tokens > limit {
+                break;
             }
+
+            tiktoken_messages.push(new_message);
+            current_length += new_message_tokens;
         }
 
-        // Add EBNF messages after content messages
-        tiktoken_messages.extend(ebnf_messages);
         Ok(tiktoken_messages)
     }
 }

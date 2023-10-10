@@ -32,6 +32,7 @@ pub enum AgentError {
     SerdeError(serde_json::Error),
     TaskJoinError(String),
     InferenceRecursionLimitReached(String),
+    TokenizationError(String),
 }
 
 impl fmt::Display for AgentError {
@@ -76,6 +77,7 @@ impl fmt::Display for AgentError {
             AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
             AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
             AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this job_task: {}", s),
+            AgentError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
 
         }
     }
