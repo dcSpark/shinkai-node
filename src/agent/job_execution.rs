@@ -303,6 +303,7 @@ impl AgentManager {
                     &generator,
                     user_profile,
                     None,
+                    0,
                 )
                 .await
             }
@@ -348,6 +349,7 @@ impl AgentManager {
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
         search_text: Option<String>,
+        iteration_count: u64,
     ) -> Result<JsonValue, AgentError> {
         println!("process_analysis_inference>  message: {:?}", job_task);
 
@@ -356,10 +358,14 @@ impl AgentManager {
         let query = generator.generate_embedding_default(&query_text).unwrap();
 
         let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.clone().unwrap())
+            .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap())
             .await?;
 
-        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search(query_text.clone(), ret_data_chunks);
+        let filled_prompt = if iteration_count < 5 {
+            JobPromptGenerator::response_prompt_with_vector_search(query_text.clone(), ret_data_chunks)
+        } else {
+            JobPromptGenerator::response_prompt_with_vector_search_final(query_text.clone(), ret_data_chunks)
+        };
 
         let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
@@ -393,7 +399,12 @@ impl AgentManager {
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
 
-        // Recurse with the new search text
+        // If iteration_count is 5 and we still don't have an answer, return an error
+        if iteration_count >= 5 {
+            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+        }
+
+        // Recurse with the new search text and increment iteration_count
         self.process_analysis_inference(
             full_job,
             job_task.to_string(),
@@ -403,6 +414,7 @@ impl AgentManager {
             generator,
             user_profile,
             Some(inference_content.to_string()),
+            iteration_count + 1,
         )
         .await
     }

@@ -1,8 +1,8 @@
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
-use tokio::task::JoinError;
 use std::fmt;
+use tokio::task::JoinError;
 
 #[derive(Debug)]
 pub enum AgentError {
@@ -30,7 +30,8 @@ pub enum AgentError {
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
     SerdeError(serde_json::Error),
-    TaskJoinError(String)
+    TaskJoinError(String),
+    InferenceRecursionLimitReached(String),
 }
 
 impl fmt::Display for AgentError {
@@ -74,6 +75,8 @@ impl fmt::Display for AgentError {
             AgentError::InvalidProfileSubidentity(s) => write!(f, "Invalid profile subidentity: {}", s),
             AgentError::SerdeError(err) => write!(f, "Serde error: {}", err),
             AgentError::TaskJoinError(s) => write!(f, "Task join error: {}", s),
+            AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this job_task: {}", s),
+
         }
     }
 }

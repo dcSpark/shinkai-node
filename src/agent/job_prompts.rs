@@ -76,7 +76,7 @@ impl JobPromptGenerator {
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
-        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
+        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 3500);
         let search_context = format!(
             "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
             ret_chunks_content,
@@ -250,17 +250,6 @@ impl Prompt {
     /// Adds a content sub-prompt
     pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
         self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
-    }
-
-    /// Adds a vector chunk response for extra information
-    pub fn add_vector_chunk_response(&mut self, chunks: Vec<String>) {
-        self.sub_prompts.push(SubPrompt::Content(
-            SubPromptType::User,
-            "Use the following information to help you:".to_string(),
-        ));
-        for chunk in chunks {
-            self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, chunk));
-        }
     }
 
     /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
