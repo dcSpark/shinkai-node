@@ -44,7 +44,7 @@ impl BertCPPProcess {
             .arg("--model")
             .arg("models/all-MiniLM-L12-v2.bin")
             .arg("--threads")
-            .arg("8")
+            .arg("6")
             .arg("--port")
             .arg(format!("{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string()))
             .stdout(Stdio::from(dev_null.try_clone().unwrap())) // Redirect stdout

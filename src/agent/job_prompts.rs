@@ -146,10 +146,16 @@ impl JobPromptGenerator {
         prompt.add_content(job_task, SubPromptType::User);
 
         prompt.add_content(
-            format!("Use the content to add any final details to the summary and directly answer the user's question:"),
+            format!("Use the content to add any final details to the summary and directly answer the user's question."),
             SubPromptType::System,
         );
+
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
         prompt
     }
 
