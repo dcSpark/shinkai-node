@@ -76,10 +76,6 @@ impl Drop for BertCPPProcess {
     fn drop(&mut self) {
         match self.child.kill() {
             Ok(_) => {
-                let duration = Duration::from_millis(150);
-                thread::sleep(duration);
-                println!("Successfully killed the bert-cpp server process.");
-
                 // Wait for the BertCPP process to close
                 let start_time = Instant::now();
                 let mut disconnected = false;
@@ -93,6 +89,7 @@ impl Drop for BertCPPProcess {
                 if !disconnected {
                     println!("Warning: The server did not close within 500ms");
                 }
+                println!("Successfully killed the bert-cpp server process.");
             }
             Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
         }
