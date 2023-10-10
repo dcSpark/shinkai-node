@@ -1,6 +1,7 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
+use crate::agent::execution::inference_chains::InferenceChain;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::{AgentManager, JobManager};
 use crate::agent::plan_executor::PlanExecutor;
@@ -178,36 +179,46 @@ impl AgentManager {
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
-        let analysis_context = HashMap::new();
         let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 
-        // TODO: Later implement inference chain routing here before choosing which chain to use.
+        // TODO: Later implement inference chain decision making here before choosing which chain to use.
         // For now we just use qa inference chain by default.
-        let inference_response_content = match agent_found {
-            Some(agent) => {
-                self.process_qa_inference_chain(
-                    full_job,
-                    job_message.content.clone(),
-                    agent,
-                    prev_execution_context,
-                    analysis_context,
-                    &generator,
-                    user_profile,
-                    None,
-                    Some(job_message.content.clone()),
-                    None,
-                    0,
-                )
-                .await
+        let chosen_chain = InferenceChain::QAChain;
+        let mut inference_response_content = String::new();
+        let mut new_execution_context = HashMap::new();
+
+        match chosen_chain {
+            InferenceChain::QAChain => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = self
+                        .process_qa_inference_chain(
+                            full_job,
+                            job_message.content.clone(),
+                            agent,
+                            prev_execution_context,
+                            &generator,
+                            user_profile,
+                            None,
+                            Some(job_message.content.clone()),
+                            None,
+                            0,
+                        )
+                        .await?;
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone());
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
             }
-            None => Err(AgentError::AgentNotFound),
-        }?;
+            // Add other chains here
+            _ => {}
+        };
         let duration = start.elapsed();
         println!("Time elapsed for inference chain processing is: {:?}", duration);
 
-        // Save inference response to DB
+        // Prepare data from inference response to save to the DB
         let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.to_string(),
@@ -217,10 +228,12 @@ impl AgentManager {
             profile_name.clone(),
         )
         .unwrap();
+        // Save response data to DB
         let mut shinkai_db = self.db.lock().await;
         shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
+        shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
         std::mem::drop(bert_process);
 
@@ -236,7 +249,6 @@ impl AgentManager {
         job_task: String,
         agent: Arc<Mutex<Agent>>,
         execution_context: HashMap<String, String>,
-        analysis_context: HashMap<String, String>,
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
         search_text: Option<String>,
@@ -306,7 +318,6 @@ impl AgentManager {
             job_task.to_string(),
             agent,
             execution_context,
-            analysis_context,
             generator,
             user_profile,
             Some(new_search_text.to_string()),
