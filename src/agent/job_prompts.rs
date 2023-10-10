@@ -41,139 +41,6 @@ use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, Chat
 //
 //
 
-lazy_static! {
-    static ref bootstrap_plan_prompt: String = String::from(
-        r#"
-
-    You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
-
- The user has asked the system:
-
-    `{}`
-
-Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
-
-Keep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step.
-
-Respond using the following EBNF and absolutely nothing else:
-"{" "plan" ":" "[" string ("," string)* "]" "}"
-
-"#
-    );
-
-
-// Output:
-// {
-// "plan": [
-// "Retrieve the current date and time for New York.",
-// "Query a weather API for New York's current weather using the obtained date and time.",
-// "Parse the weather data to extract the current weather conditions."
-// ]
-// }
-
-
-
-// Example ebnf of weather fetch output for testing
-// weather-fetch-output ::= "{" "city" ":" text "," "weather-description" ":" text "," "tool" ": \"Weather Fetch\", "}"  text ::= [a-zA-Z0-9_]+
-
-    static ref task_bootstrap_prompt: String = String::from(
-        r#"
-    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
-
-    ```
-    Datetime ::= 4DIGIT "-" 2DIGIT "-" 2DIGIT "T" 2DIGIT ":" 2DIGIT ":" 2DIGIT
-    ```
-
-    The current task at hand is:
-
-    `Query a weather API for New York's current weather using the obtained date and time.`
-
-    
-    If it is a task not pertaining to recent/current knowledge and you can respond respond directly without any external help, respond using the following EBNF and absolutely nothing else:
-
-    `"{" "prepared" ":" true "}"`
-
-    If you do not have the ability to respond correctly yourself, it is your goal is to find the final tool that will provide you with the capabilities you need. 
-    Search to find tools which you can use, respond using the following EBNF and absolutely nothing else:
-
-    "{" ("tool-search" ":" string) "}"
-
-    Only respond with an answer if you are not using any tools. Make sure the response matches the EBNF and includes absolutely nothing else. 
-
-    ```json
-    "#
-    );
-    static ref tool_selection_prompt: String = String::from(
-        r#"
-
-    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
-
-    ```
-    Datetime: 2023-09-13T14:30:00
-    ```
-
-    The current task at hand is:
-
-    `Query a weather API for New York's current weather using the obtained date and time.`
-
-    Here are up to 10 of the most relevant tools available:
-    1. Name: Weather Fetch - Description: Requests weather via an API given a city name.
-    2. Name: Country Population - Description: Provides population numbers given a country name.
-    3. Name: HTTP GET - Description: Issues an http get request to a specified URL. Note: Only fetch URLs from user's input or from output of other tools.
-
-    It is your goal to select the final tool that will enable the system to accomplish the user's task. The system may end up needing to chain multiple tools to acquire all needed info/data, but the goal right now is to find the final tool.
-    Select the name of the tool from the list above that fulfill this, respond using the following EBNF and absolutely nothing else:
-
-    "{" ("tool" ":" string) "}"
-
-    If none of the tools match explain what the issue is by responding using the following EBNF and absolutely nothing else:
-
-    "{" ("error" ":" string) "}"
-
-
-    ```json
-
-
-
-        "#
-    );
-    static ref tool_ebnf_prompt: String = String::from(
-        r#"
-
-    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
-
-    ```
-    Datetime: 2023-09-13T14:30:00
-    ```
-
-    The current task at hand is:
-
-    `Query a weather API for New York's current weather using the obtained date and time.`
-
-    The system has selected the following tool to be used:
-
-    Tool Name: Weather Fetch
-    Toolkit Name: weather-toolkit
-    Description: Requests weather via an API given a city name.
-    Tool Input EBNF: "{" "city" ":" text "," "datetime" ":" text "," "tool" ": \"Weather Fetch\"," "toolkit" ": \"weather-toolkit\" }"  text ::= [a-zA-Z0-9_]+ 
-
-    Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.
-
-    If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
-
-    "{" ("prepared" ":" true) "}"
-    
-    If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data by responding using the following EBNF and absolutely nothing else:
-
-    "{" ("tool-search" ":" string) "}"
-
-    ```json
-
-
-    "#
-    );
-}
-
 pub struct JobPromptGenerator {}
 
 impl JobPromptGenerator {
@@ -204,7 +71,7 @@ impl JobPromptGenerator {
     pub fn response_prompt_with_vector_search(job_task: String, ret_data_chunks: Vec<RetrievedDataChunk>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
+            "You are an advanced assistant running in a system who only has access to the context to answer any question the user provides. Do your best to parse the context and provide a reasonable answer.".to_string(),
             SubPromptType::System,
         );
 
@@ -228,7 +95,7 @@ impl JobPromptGenerator {
     pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return this same message correctly formatted as json:\n".to_string(),
+            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return the content of the following message correctly formatted as json:\n".to_string(),
             SubPromptType::System,
         );
         prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
@@ -469,4 +336,137 @@ impl Prompt {
         tiktoken_messages.extend(ebnf_messages);
         Ok(tiktoken_messages)
     }
+}
+
+lazy_static! {
+    static ref bootstrap_plan_prompt: String = String::from(
+        r#"
+
+    You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.
+
+ The user has asked the system:
+
+    `{}`
+
+Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.
+
+Keep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step.
+
+Respond using the following EBNF and absolutely nothing else:
+"{" "plan" ":" "[" string ("," string)* "]" "}"
+
+"#
+    );
+
+
+// Output:
+// {
+// "plan": [
+// "Retrieve the current date and time for New York.",
+// "Query a weather API for New York's current weather using the obtained date and time.",
+// "Parse the weather data to extract the current weather conditions."
+// ]
+// }
+
+
+
+// Example ebnf of weather fetch output for testing
+// weather-fetch-output ::= "{" "city" ":" text "," "weather-description" ":" text "," "tool" ": \"Weather Fetch\", "}"  text ::= [a-zA-Z0-9_]+
+
+    static ref task_bootstrap_prompt: String = String::from(
+        r#"
+    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
+
+    ```
+    Datetime ::= 4DIGIT "-" 2DIGIT "-" 2DIGIT "T" 2DIGIT ":" 2DIGIT ":" 2DIGIT
+    ```
+
+    The current task at hand is:
+
+    `Query a weather API for New York's current weather using the obtained date and time.`
+
+    
+    If it is a task not pertaining to recent/current knowledge and you can respond respond directly without any external help, respond using the following EBNF and absolutely nothing else:
+
+    `"{" "prepared" ":" true "}"`
+
+    If you do not have the ability to respond correctly yourself, it is your goal is to find the final tool that will provide you with the capabilities you need. 
+    Search to find tools which you can use, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("tool-search" ":" string) "}"
+
+    Only respond with an answer if you are not using any tools. Make sure the response matches the EBNF and includes absolutely nothing else. 
+
+    ```json
+    "#
+    );
+    static ref tool_selection_prompt: String = String::from(
+        r#"
+
+    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
+
+    ```
+    Datetime: 2023-09-13T14:30:00
+    ```
+
+    The current task at hand is:
+
+    `Query a weather API for New York's current weather using the obtained date and time.`
+
+    Here are up to 10 of the most relevant tools available:
+    1. Name: Weather Fetch - Description: Requests weather via an API given a city name.
+    2. Name: Country Population - Description: Provides population numbers given a country name.
+    3. Name: HTTP GET - Description: Issues an http get request to a specified URL. Note: Only fetch URLs from user's input or from output of other tools.
+
+    It is your goal to select the final tool that will enable the system to accomplish the user's task. The system may end up needing to chain multiple tools to acquire all needed info/data, but the goal right now is to find the final tool.
+    Select the name of the tool from the list above that fulfill this, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("tool" ":" string) "}"
+
+    If none of the tools match explain what the issue is by responding using the following EBNF and absolutely nothing else:
+
+    "{" ("error" ":" string) "}"
+
+
+    ```json
+
+
+
+        "#
+    );
+    static ref tool_ebnf_prompt: String = String::from(
+        r#"
+
+    You are an assistant running in a system who only has access to a series of tools, your own knowledge, and the current context of acquired info includes:
+
+    ```
+    Datetime: 2023-09-13T14:30:00
+    ```
+
+    The current task at hand is:
+
+    `Query a weather API for New York's current weather using the obtained date and time.`
+
+    The system has selected the following tool to be used:
+
+    Tool Name: Weather Fetch
+    Toolkit Name: weather-toolkit
+    Description: Requests weather via an API given a city name.
+    Tool Input EBNF: "{" "city" ":" text "," "datetime" ":" text "," "tool" ": \"Weather Fetch\"," "toolkit" ": \"weather-toolkit\" }"  text ::= [a-zA-Z0-9_]+ 
+
+    Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.
+
+    If all of the data/information to use the tool is available, respond using the following EBNF and absolutely nothing else:
+
+    "{" ("prepared" ":" true) "}"
+    
+    If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data by responding using the following EBNF and absolutely nothing else:
+
+    "{" ("tool-search" ":" string) "}"
+
+    ```json
+
+
+    "#
+    );
 }

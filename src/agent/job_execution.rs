@@ -195,7 +195,7 @@ impl AgentManager {
             // - if they are parseable, then parse them and add them to the db
 
             // Fetch data we need to execute job step
-            let (full_job, agent_found, profile_name, user_profile) =
+            let (mut full_job, agent_found, profile_name, user_profile) =
                 self.fetch_relevant_job_data(job.job_id()).await?;
 
             if !job_message.files_inbox.is_empty() {
@@ -203,40 +203,37 @@ impl AgentManager {
                     "process_job_message> processing files_map: ... files: {}",
                     job_message.files_inbox.len()
                 );
+                // TODO: later we should able to grab errors and return them to the user
+                let new_scope_entries = match agent_found.clone() {
+                    Some(agent) => {
+                        let resp = AgentManager::process_message_multifiles(
+                            self.db.clone(),
+                            agent,
+                            job_message.files_inbox.clone(),
+                            profile,
+                        )
+                        .await?;
+                        resp
+                    }
+                    None => {
+                        // Handle the None case here. For example, you might want to return an error:
+                        return Err(AgentError::AgentNotFound);
+                    }
+                };
+
+                eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
+
+                for (_, value) in new_scope_entries {
+                    if !full_job.scope.local.contains(&value) {
+                        full_job.scope.local.push(value);
+                    } else {
+                        println!("Duplicate LocalScopeEntry detected");
+                    }
+                }
                 {
-                    // TODO: later we should able to grab errors and return them to the user
-                    let new_scope_entries = match agent_found.clone() {
-                        Some(agent) => {
-                            let resp = AgentManager::process_message_multifiles(
-                                self.db.clone(),
-                                agent,
-                                job_message.files_inbox.clone(),
-                                profile,
-                            )
-                            .await?;
-                            resp
-                        }
-                        None => {
-                            // Handle the None case here. For example, you might want to return an error:
-                            return Err(AgentError::AgentNotFound);
-                        }
-                    };
-
-                    eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
-
-                    let mut job_scope = full_job.scope.clone();
-                    for (_, value) in new_scope_entries {
-                        if !job_scope.local.contains(&value) {
-                            job_scope.local.push(value);
-                        } else {
-                            println!("Duplicate LocalScopeEntry detected");
-                        }
-                    }
-                    {
-                        let mut shinkai_db = self.db.lock().await;
-                        shinkai_db.update_job_scope(job.job_id().to_string(), job_scope)?;
-                        eprintln!(">>> job_scope updated");
-                    }
+                    let mut shinkai_db = self.db.lock().await;
+                    shinkai_db.update_job_scope(job.job_id().to_string(), full_job.scope.clone())?;
+                    eprintln!(">>> job_scope updated");
                 }
             } else {
                 // TODO: move this somewhere else
@@ -254,7 +251,9 @@ impl AgentManager {
             // User closes job after finishing, if not saving by default, ask user whether they want to save the document to the DB
 
             // TODO(Nico): move this to a parallel thread that runs in the background
-            let _ = self.analysis_phase(&job_id, job_message).await?;
+            let _ = self
+                .analysis_phase(job_message, full_job, agent_found, profile_name, user_profile)
+                .await?;
 
             // After analysis phase, we execute the resulting execution plan
             //    let executor = PlanExecutor::new(agent, execution_plan)?;
@@ -267,9 +266,15 @@ impl AgentManager {
     }
 
     // Begins processing the analysis phase of the job
-    pub async fn analysis_phase(&self, job_id: &str, job_message: JobMessage) -> Result<(), AgentError> {
-        // Re-fetching job data from the db. This guarantees we have an up-to-date JobScope if any files were uploaded
-        let (full_job, agent_found, profile_name, user_profile) = self.fetch_relevant_job_data(job_id).await?;
+    pub async fn analysis_phase(
+        &self,
+        job_message: JobMessage,
+        full_job: Job,
+        agent_found: Option<Arc<Mutex<Agent>>>,
+        profile_name: String,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<(), AgentError> {
+        let job_id = full_job.job_id().to_string();
         eprintln!("analysis_phase> full_job: {:?}", full_job);
 
         // Setup initial data to start moving through analysis phase
@@ -284,7 +289,7 @@ impl AgentManager {
 
         // Perform a vector search to find relevant data chunks
         let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 3, &user_profile.unwrap())
+            .job_scope_vector_search(full_job.scope(), query, 10, &user_profile.unwrap())
             .await?;
 
         let duration = start.elapsed();
@@ -372,6 +377,8 @@ impl AgentManager {
         }
     }
 
+    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
+    /// that we can parse.
     async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, Box<dyn Error>> {
         let response = tokio::spawn(async move {
             let mut agent = agent.lock().await;
