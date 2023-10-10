@@ -999,6 +999,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
+ "humantime",
+ "is-terminal",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2916,6 +2929,7 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "chrono-tz",
+ "colored",
  "console_log",
  "ed25519-dalek",
  "hex",
@@ -2951,7 +2965,7 @@ dependencies = [
  "clap 3.2.25",
  "csv",
  "ed25519-dalek",
- "env_logger",
+ "env_logger 0.10.0",
  "futures",
  "hex",
  "image",
@@ -2990,7 +3004,7 @@ dependencies = [
  "blake3",
  "byteorder",
  "csv",
- "env_logger",
+ "env_logger 0.9.3",
  "keyphrases",
  "lazy_static",
  "ordered-float",

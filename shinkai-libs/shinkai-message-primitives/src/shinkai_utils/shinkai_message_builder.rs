@@ -1057,7 +1057,6 @@ mod tests {
             let message_data = shinkai_body.message_data;
             if let MessageData::Unencrypted(shinkai_data) = message_data {
                 let decrypted_content = shinkai_data.message_raw_content;
-                eprintln!("\n\ndecrypted content: {}", decrypted_content);
                 assert_eq!(decrypted_content, "body content");
             }
         }
@@ -1161,7 +1160,6 @@ mod tests {
             sender.clone(),
             recipient.clone(),
         );
-        println!("message_result: {:?}", message_result);
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
         let message_clone = message.clone();
@@ -1224,7 +1222,6 @@ mod tests {
             sender.clone(),
             recipient.clone(),
         );
-        println!("message_result: {:?}", message_result);
         assert!(message_result.is_ok());
         let message = message_result.unwrap();
 

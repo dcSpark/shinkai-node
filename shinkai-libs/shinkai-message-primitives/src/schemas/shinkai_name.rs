@@ -1,7 +1,7 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use crate::shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage};
+use crate::{shinkai_message::shinkai_message::{MessageBody, ShinkaiMessage}, shinkai_utils::shinkai_logging::{ShinkaiLogOption, ShinkaiLogLevel, shinkai_log}};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ShinkaiName {
@@ -92,6 +92,7 @@ impl ShinkaiName {
             } else if *s == "device" {
                 ShinkaiSubidentityType::Device
             } else {
+                shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Error, &format!("Invalid subidentity type: {}", s));
                 panic!("Invalid subidentity type");
             }
         });
@@ -110,7 +111,7 @@ impl ShinkaiName {
         match Self::validate_name(&shinkai_name) {
             Ok(_) => true,
             Err(err) => {
-                eprintln!("### Validation error: {}", err);
+                shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Validation error: {}", err));
                 false
             }
         }
@@ -120,20 +121,17 @@ impl ShinkaiName {
         let parts: Vec<&str> = raw_name.split('/').collect();
 
         if !(parts.len() >= 1 && parts.len() <= 4) {
-            eprintln!(
-                "Name should have one to four parts: node, profile, type (device or agent), and name: {}",
-                raw_name
-            );
+            shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Name should have one to four parts: node, profile, type (device or agent), and name: {}", raw_name));
             return Err("Name should have one to four parts: node, profile, type (device or agent), and name.");
         }
 
         if !parts[0].starts_with("@@") || !parts[0].ends_with(".shinkai") {
-            eprintln!("### Validation error: {}", raw_name);
+            shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Validation error: {}", raw_name));
             return Err("Node part of the name should start with '@@' and end with '.shinkai'.");
         }
 
         if !Regex::new(r"^@@[a-zA-Z0-9\_\.]+\.shinkai$").unwrap().is_match(parts[0]) {
-            eprintln!("Node part of the name contains invalid characters: {}", raw_name);
+            shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Node part of the name contains invalid characters: {}", raw_name));
             return Err("Node part of the name contains invalid characters.");
         }
 
@@ -142,6 +140,7 @@ impl ShinkaiName {
         for (index, part) in parts.iter().enumerate() {
             if index == 0 {
                 if part.contains("/") {
+                    shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Root node name cannot contain '/': {}", raw_name));
                     return Err("Root node name cannot contain '/'.");
                 }
                 continue;
@@ -151,14 +150,17 @@ impl ShinkaiName {
                 && !(part == &ShinkaiSubidentityType::Agent.to_string()
                     || part == &ShinkaiSubidentityType::Device.to_string())
             {
+                shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("The third part should either be 'agent' or 'device': {}", raw_name));
                 return Err("The third part should either be 'agent' or 'device'.");
             }
 
             if index == 3 && !re.is_match(part) {
+                shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("The fourth part (name after 'agent' or 'device') should be alphanumeric or underscore: {}", raw_name));
                 return Err("The fourth part (name after 'agent' or 'device') should be alphanumeric or underscore.");
             }
 
             if index != 0 && index != 2 && (!re.is_match(part) || part.contains(".shinkai")) {
+                shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("Name parts should be alphanumeric or underscore and not contain '.shinkai': {}", raw_name));
                 return Err("Name parts should be alphanumeric or underscore and not contain '.shinkai'.");
             }
         }
@@ -167,6 +169,7 @@ impl ShinkaiName {
             && (parts[2] == &ShinkaiSubidentityType::Agent.to_string()
                 || parts[2] == &ShinkaiSubidentityType::Device.to_string())
         {
+            shinkai_log(ShinkaiLogOption::Identity, ShinkaiLogLevel::Info, &format!("If type is 'agent' or 'device', a fourth part is expected: {}", raw_name));
             return Err("If type is 'agent' or 'device', a fourth part is expected.");
         }
 

@@ -1,6 +1,6 @@
 [package]
 name = "shinkai_message_wasm"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2018"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
@@ -26,6 +26,7 @@ anyhow = "1.0.72"
 thiserror = "1.0.44"
 console_log = "0.2"
 log = "0.4.14"
+env_logger = "0.10"
 hex = "=0.4.3"
 blake3 = "1.2.0"
 
