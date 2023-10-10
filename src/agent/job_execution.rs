@@ -376,17 +376,22 @@ impl AgentManager {
                     Err(e) => Err(e),
                 }
             }
-            Err(e) => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string())),
+            Err(e) => Err(AgentError::FailedExtractingJSONObjectFromResponse(e.to_string())),
         }?;
 
-        // Extract the answer from the first inference
-        let inference_content = match first_answer_json.get("answer") {
-            Some(answer) => answer
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
-            None => Err(AgentError::InferenceJSONResponseMissingField("answer".to_string()))?,
-        };
+        // Check if LLM responded with an answer from the first inference
+        if let Some(answer) = first_answer_json.get("answer") {
+            return Ok(answer.clone());
+        }
 
+        // If not, check that it responded with a search
+        let inference_content = match first_answer_json.get("search") {
+            Some(search) => search
+                .as_str()
+                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?,
+            None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
+        };
+        // Continue with the rest of the function...
         // Vector Search with first answer
         let query = generator.generate_embedding_default(&inference_content).unwrap();
         let ret_data_chunks = self
@@ -394,10 +399,7 @@ impl AgentManager {
             .await?;
 
         // Generate the needed prompt for the second inference
-        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search_part_two(
-            inference_content.to_string(),
-            ret_data_chunks,
-        );
+        let filled_prompt = JobPromptGenerator::response_prompt_with_vector_search_part_two(job_task, ret_data_chunks);
 
         // Execute LLM inferencing for the second time
         let agent_cloned = agent.clone();

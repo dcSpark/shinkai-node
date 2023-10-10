@@ -74,27 +74,30 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant running in a system who only has access to the context and your own knowledge to answer any question the user provides. Always do your best to parse the context and provide a reasonable answer.".to_string(),
+            "You are an advanced assistant running in a system who only has access to the provided data and your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
         let search_context = format!(
-            "Here is a list from a vector search with the most relevant data available: ``` {}```.\n",
+            "Here is a list of the most relevant data available from a vector search: ``` {}```.\n",
             ret_chunks_content,
         );
-        prompt.add_content(search_context, SubPromptType::System);
+        prompt.add_content(search_context, SubPromptType::User);
 
-        let pre_task_text = format!("The user has asked: ");
-        prompt.add_content(pre_task_text, SubPromptType::System);
+        prompt.add_content(format!("The user has asked: "), SubPromptType::System);
         prompt.add_content(job_task, SubPromptType::User);
 
-        let post_task_text =
-            format!("Rephrase the user's question to be as clear as possible, and make sure to include pieces of relevant data to flesh it out.");
-        prompt.add_content(post_task_text, SubPromptType::System);
-
+        prompt.add_content(
+            format!("If you have enough information to directly answer the user's question:"),
+            SubPromptType::System,
+        );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very clear search query and perform a new vector search by:"), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#""{" "search" ":" string "}""#), SubPromptType::System);
+
         prompt
     }
 
@@ -106,14 +109,14 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant running in a system who only has access to the context and your own knowledge to answer any question the user provides. Always do your best to parse the context and provide a reasonable answer.".to_string(),
+            "You are an advanced assistant running in a system who only has access to the provided data and your own knowledge to answer any question the user provides. Always do your best to parse the data and to provide an answer.".to_string(),
             SubPromptType::System,
         );
 
         // Parses the retrieved data chunks into a single string to add to the prompt
         let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
         let search_context = format!(
-            "Here is the current context from a vector search with the most relevant data available for you to use to answer the user's questions: ``` {}```.\n",
+            "Here is a list of the most relevant data available from a vector search: ``` {}```.\n",
             ret_chunks_content,
         );
         prompt.add_content(search_context, SubPromptType::System);
