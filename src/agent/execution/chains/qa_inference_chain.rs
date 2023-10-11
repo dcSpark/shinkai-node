@@ -78,7 +78,7 @@ impl AgentManager {
                 let summary_str = response_json
                     .get("summary")
                     .and_then(|s| s.as_str())
-                    .map(|s| s.to_string());
+                    .map(|s| Self::ending_stripper(s));
                 (search_str.to_string(), summary_str)
             }
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
@@ -92,6 +92,7 @@ impl AgentManager {
             );
             let response_json = self.inference_agent(agent.clone(), retry_prompt).await?;
             if let Some(search) = response_json.get("search") {
+                println!("QA Chain New Search Retry Term: {:?}", search);
                 new_search_text = search
                     .as_str()
                     .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?
@@ -124,11 +125,13 @@ impl AgentManager {
             "however,",
             "unfortunately",
             "additional research",
+            "futher research",
             "may be required",
             "i do not",
             "further information",
             "specific details",
             "provided content",
+            "more information",
             "not available",
         ];
 
