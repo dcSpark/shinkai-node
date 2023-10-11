@@ -23,7 +23,6 @@ impl AgentManager {
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
         search_text: Option<String>,
-        prev_search_text: Option<String>,
         summary_text: Option<String>,
         iteration_count: u64,
     ) -> Result<String, AgentError> {
@@ -42,7 +41,7 @@ impl AgentManager {
                 job_task.clone(),
                 ret_data_chunks,
                 summary_text,
-                prev_search_text,
+                Some(query_text),
             )
         } else {
             JobPromptGenerator::response_prompt_with_vector_search_final(
@@ -94,21 +93,20 @@ impl AgentManager {
             generator,
             user_profile,
             Some(new_search_text.to_string()),
-            search_text,
             summary,
             iteration_count + 1,
         )
         .await
     }
 
-    /// Removes last sentence from answer if it contains any of the unwanted phrases.
+    /// Removes last sentence from an answer string if it contains any of the unwanted phrases.
     /// This is used because the LLM sometimes answers properly, but then adds useless last sentence such as
     /// "However, specific details are not provided in the content." at the end.
-    pub fn ending_stripper(answer: &str) -> String {
-        let mut sentences: Vec<&str> = answer.split('.').collect();
+    pub fn ending_stripper(string: &str) -> String {
+        let mut sentences: Vec<&str> = string.split('.').collect();
 
         let unwanted_phrases = [
-            "however",
+            "however,",
             "unfortunately",
             "additional research",
             "may be required",

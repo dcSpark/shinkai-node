@@ -46,7 +46,6 @@ impl AgentManager {
                             generator,
                             user_profile,
                             None,
-                            Some(job_message.content.clone()),
                             None,
                             0,
                         )
