@@ -44,7 +44,7 @@ use shinkai_message_primitives::{
             clone_static_secret_key, decrypt_with_chacha20poly1305, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
-        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
     },
 };
 use std::pin::Pin;
@@ -127,7 +127,6 @@ impl Node {
                                 })
                             }
                         };
-                    eprintln!("sender_encryption_pk: {:?}", sender_encryption_pk);
                     msg = match potentially_encrypted_msg
                         .clone()
                         .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)
@@ -142,11 +141,16 @@ impl Node {
                         }
                     };
                 }
-                println!("after decrypt_message_body_if_needed> msg: {:?}", msg);
             } else {
                 msg = potentially_encrypted_msg.clone();
             }
         }
+
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("after decrypt_message_body_if_needed: {:?}", msg).as_str(),
+        );
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
@@ -762,7 +766,6 @@ impl Node {
             }
         }
 
-        db.debug_print_all_keys_for_profiles_identity_key();
         let result = db
             .use_registration_code(
                 &code.clone(),
@@ -777,7 +780,6 @@ impl Node {
             .map(|_| "true".to_string());
 
         println!("handle_registration_code_usage> after use_registration_code");
-        db.debug_print_all_keys_for_profiles_identity_key();
         std::mem::drop(db);
 
         match result {
@@ -1635,6 +1637,15 @@ impl Node {
                 return Ok(());
             }
         };
+
+        shinkai_log(
+            ShinkaiLogOption::DetailedAPI,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "api_add_file_to_inbox_with_symmetric_key> filename: {}, hex_blake3_hash: {}, decrypted_file.len(): {}",
+                filename, hex_blake3_hash, decrypted_file.len()
+            ).as_str()
+        );
 
         match self
             .db

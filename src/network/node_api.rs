@@ -1,5 +1,6 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
+use chrono::format;
 use futures::Stream;
 use futures::StreamExt;
 use futures::TryFutureExt;
@@ -299,7 +300,8 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "add_file_to_inbox_with_symmetric_key" / String / String)
             .and(warp::post())
-            .and(warp::multipart::form())
+            .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
+            .and(warp::multipart::form().max_length(1024 * 1024 * 200))
             .and_then(
                 move |string1: String, string2: String, form: warp::multipart::FormData| {
                     handle_file_upload(node_commands_sender.clone(), string1, string2, form)
@@ -448,6 +450,11 @@ async fn handle_file_upload(
 ) -> Result<Box<dyn warp::Reply + Send>, warp::Rejection> {
     let mut stream = Box::pin(form.filter_map(|part_result| async move {
         if let Ok(part) = part_result {
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Debug,
+                format!("Received file: {:?}", part).as_str(),
+            );
             if let Some(filename) = part.filename() {
                 let filename = filename.to_string();
                 let stream = part
@@ -802,6 +809,20 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
             "Please check your request method.",
         ));
         Ok(warp::reply::with_status(json, StatusCode::METHOD_NOT_ALLOWED))
+    } else if let Some(_) = err.find::<warp::reject::PayloadTooLarge>() {
+        let json = warp::reply::json(&APIError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "Payload Too Large",
+            "The request payload is too large.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::PAYLOAD_TOO_LARGE))
+    } else if let Some(_) = err.find::<warp::reject::InvalidQuery>() {
+        let json = warp::reply::json(&APIError::new(
+            StatusCode::BAD_REQUEST,
+            "Invalid Query",
+            "The request query string is invalid.",
+        ));
+        Ok(warp::reply::with_status(json, StatusCode::BAD_REQUEST))
     } else {
         // Unexpected error, we don't want to expose anything to the user.
         let json = warp::reply::json(&APIError::new(
