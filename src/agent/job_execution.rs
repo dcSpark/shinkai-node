@@ -36,12 +36,6 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct JobForProcessing {
-    job_message: JobMessage,
-    profile: ShinkaiName,
-}
-
 impl AgentManager {
     /// Processes a job message which will trigger a job step
     pub async fn process_job_step(
