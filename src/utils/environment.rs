@@ -1,6 +1,7 @@
 use std::env;
 use std::net::{IpAddr, SocketAddr};
 
+#[derive(Debug, Clone)]
 pub struct NodeEnvironment {
     pub global_identity_name: String,
     pub listen_address: SocketAddr,

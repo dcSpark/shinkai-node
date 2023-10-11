@@ -3,6 +3,7 @@ use crate::tools::router::ShinkaiTool;
 use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
+use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
 
@@ -39,6 +40,345 @@ use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, Chat
 //
 //
 //
+
+pub struct JobPromptGenerator {}
+
+impl JobPromptGenerator {
+    /// Parses an execution context hashmap to string to be added into a content subprompt
+    fn parse_context_to_string(context: HashMap<String, String>) -> String {
+        context
+            .into_iter()
+            .map(|(key, value)| format!("{}: {}", key, value))
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
+
+    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
+    pub fn basic_instant_response_prompt(job_task: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
+    /// A basic prompt for answering based off of vector searching content which explains to the LLM
+    /// that it should use them as context to answer the job_task, with the ability to further search.
+    pub fn response_prompt_with_vector_search(
+        job_task: String,
+        ret_data_chunks: Vec<RetrievedDataChunk>,
+        summary_text: Option<String>,
+        prev_search_text: Option<String>,
+    ) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            SubPromptType::System,
+        );
+
+        if let Some(summary) = summary_text {
+            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+        }
+
+        // Parses the retrieved data chunks into a single string to add to the prompt
+        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 3500);
+        let search_context = format!(
+            "Here is a list of relevant new content the user provided for you to use while answering: ``` {}```.\n",
+            ret_chunks_content,
+        );
+        prompt.add_content(search_context, SubPromptType::User);
+
+        prompt.add_content(format!("The user has asked: "), SubPromptType::System);
+        prompt.add_content(job_task, SubPromptType::User);
+
+        prompt.add_content(
+            format!("If you have enough information to directly answer the user's question:"),
+            SubPromptType::System,
+        );
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        // Tell the LLM about the previous search term to avoid it
+        if let Some(prev_search) = prev_search_text {
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then extend the existing summary with more information, and think of a new search query to perform a vector search (something different than `{}` to get better results):", prev_search), SubPromptType::System);
+        } else {
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and create a detailed summary using terms from the provided content:"), SubPromptType::System);
+        }
+
+        prompt.add_ebnf(
+            String::from(r#""{" "search" ":" string, "summary": "string" }""#),
+            SubPromptType::System,
+        );
+
+        prompt
+    }
+
+    /// A basic prompt for answering based off of vector searching content which explains to the LLM
+    /// that it should use them as context to answer the job_task with no option to further search.
+    pub fn response_prompt_with_vector_search_final(
+        job_task: String,
+        ret_data_chunks: Vec<RetrievedDataChunk>,
+        summary_text: Option<String>,
+    ) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            SubPromptType::System,
+        );
+
+        if let Some(summary) = summary_text {
+            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+        }
+
+        // Parses the retrieved data chunks into a single string to add to the prompt
+        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
+        let search_context = format!(
+            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
+            ret_chunks_content,
+        );
+        prompt.add_content(search_context, SubPromptType::System);
+
+        let pre_task_text = format!("The user has asked: ");
+        prompt.add_content(pre_task_text, SubPromptType::System);
+        prompt.add_content(job_task, SubPromptType::User);
+
+        prompt.add_content(
+            format!("Use the content to add any final details to the summary and directly answer the user's question."),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
+        prompt
+    }
+
+    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
+    pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return the content of the following message correctly formatted as json:\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
+    /// Prompt optimized to generate a description based on the first pages of a document
+    pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+                r#"You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. Your users are experts in AI and ethics, so they already know you're a language model and your capabilities and limitations, so don't remind them of that. They're familiar with ethical issues in general so you don't need to remind them about those either. Don't be verbose in your answers, but do provide details and examples where it might help the explanation."#.to_string(),
+                SubPromptType::System,
+            );
+        for chunk in chunks {
+            prompt.add_content(format!("{}", chunk), SubPromptType::User);
+        }
+        prompt.add_content(
+            format!("Take a deep breath and then throughtouly summarize the previous document, make it as explanatory as possible."),
+            SubPromptType::User,
+        );
+        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt
+    }
+
+    pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
+            SubPromptType::System,
+        );
+        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_content(
+            String::from(
+                "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
+            ),
+            SubPromptType::System,
+        );
+        prompt.add_ebnf(
+            String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"),
+            SubPromptType::System,
+        );
+
+        prompt
+    }
+
+    /// Prompt for having the LLM validate whether inputs for a given tool are available
+    pub fn tool_inputs_validation_prompt(context: HashMap<String, String>, task: String, tool: ShinkaiTool) -> Prompt {
+        let context_string = Self::parse_context_to_string(context);
+        let tool_summary = tool.formatted_tool_summary(true); // true to include EBNF output
+
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are an assistant running in a system who only has access to a series of tools, your own knowledge. The current context of acquired info includes:\n\n```\n{}\n```\n",
+                context_string
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            format!("The current task at hand is:\n\n`{}`", task),
+            SubPromptType::User,
+        );
+
+        prompt.add_content(
+            format!("We have selected the following tool to be used:\n\n{}", tool_summary),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            String::from(
+                "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from("{{\"prepared\": true}}"), SubPromptType::User);
+
+        prompt.add_content(
+            String::from(
+
+                "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_ebnf(String::from("{{\"tool-search\": \"string\"}}"), SubPromptType::User);
+
+        prompt
+    }
+}
+
+pub enum SubPromptType {
+    User,
+    System,
+}
+
+pub enum SubPrompt {
+    Content(SubPromptType, String),
+    EBNF(SubPromptType, String),
+}
+
+pub struct Prompt {
+    pub sub_prompts: Vec<SubPrompt>,
+}
+
+impl Prompt {
+    pub fn new() -> Self {
+        Self {
+            sub_prompts: Vec::new(),
+        }
+    }
+
+    /// Adds a content sub-prompt
+    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
+    }
+
+    /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
+    /// string that specifies the output must match this EBNF string.
+    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
+        self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
+    }
+
+    /// Validates that there is at least one EBNF sub-prompt to ensure
+    /// the LLM knows what to output.
+    pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
+        if !self
+            .sub_prompts
+            .iter()
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _)))
+        {
+            return Err(AgentError::UserPromptMissingEBNFDefinition);
+        }
+        Ok(())
+    }
+
+    fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
+        format!(
+            "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
+            ebnf
+        )
+    }
+
+    /// Processes all sub-prompts into a single output String.
+    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
+        self.check_ebnf_included()?;
+
+        let json_response_required = String::from("```json");
+        let content = self
+            .sub_prompts
+            .iter()
+            .map(|sub_prompt| match sub_prompt {
+                SubPrompt::Content(_, content) => content.clone(),
+                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
+            })
+            .collect::<Vec<String>>()
+            .join("\n")
+            + "\n"
+            + &json_response_required;
+        Ok(content)
+    }
+
+    /// Processes all sub-prompts into a single output String in OpenAI's message format.
+    pub fn generate_openai_messages(
+        &self,
+        max_prompt_tokens: Option<usize>,
+    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
+        self.check_ebnf_included()?;
+
+        // We assume 2048 tokens max for the prompt which is about half of the total 4097
+        let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
+        let model = "gpt-4";
+
+        let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
+        let mut current_length: usize = 0;
+
+        // Process all sub-prompts in their original order
+        for sub_prompt in &self.sub_prompts {
+            let (prompt_type, text) = match sub_prompt {
+                SubPrompt::Content(prompt_type, content) => (prompt_type, content.clone()),
+                SubPrompt::EBNF(prompt_type, ebnf) => {
+                    let ebnf_string = self.generate_ebnf_response_string(ebnf);
+                    (prompt_type, ebnf_string)
+                }
+            };
+
+            let role = match prompt_type {
+                SubPromptType::User => "user".to_string(),
+                SubPromptType::System => "system".to_string(),
+            };
+
+            let new_message = ChatCompletionRequestMessage {
+                role: role.clone(),
+                content: Some(text),
+                name: None,
+                function_call: None,
+            };
+
+            let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
+                .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
+            if current_length + new_message_tokens > limit {
+                break;
+            }
+
+            tiktoken_messages.push(new_message);
+            current_length += new_message_tokens;
+        }
+
+        Ok(tiktoken_messages)
+    }
+}
 
 lazy_static! {
     static ref bootstrap_plan_prompt: String = String::from(
@@ -171,299 +511,4 @@ Respond using the following EBNF and absolutely nothing else:
 
     "#
     );
-}
-
-pub struct JobPromptGenerator {}
-
-impl JobPromptGenerator {
-    /// Parses an execution context hashmap to string to be added into a content subprompt
-    fn parse_context_to_string(context: HashMap<String, String>) -> String {
-        context
-            .into_iter()
-            .map(|(key, value)| format!("{}: {}", key, value))
-            .collect::<Vec<String>>()
-            .join("\n")
-    }
-
-    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn basic_instant_response_prompt(job_task: String) -> Prompt {
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-            "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
-            SubPromptType::System,
-        );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
-
-        prompt
-    }
-
-    pub fn response_prompt_with_vector_search(job_task: String, chunks: Vec<String>) -> Prompt {
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-            "You are an advanced assistant running in a system who only has access your own knowledge to answer any question the user provides.".to_string(),
-            SubPromptType::System,
-        );
-
-        // "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. If the user mentions the word \"this\" (or similar) you can assume that the users is referring to the context given.".to_string(),
-
-        let search_context = format!(
-            "Here is the current context from a vector search with the most relevant data available from the system for you to use to answer the user's questions: ```- {} ```.\n",
-            chunks.join("\n\n - "),
-        );
-        prompt.add_content(search_context, SubPromptType::System);
-
-        let pre_task_text = format!("The user has asked: ");
-        prompt.add_content(pre_task_text, SubPromptType::System);
-        prompt.add_content(job_task, SubPromptType::User);
-
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
-        prompt
-    }
-
-    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return this same message correctly formatted as json:\n".to_string(),
-            SubPromptType::System,
-        );
-        prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
-
-        prompt
-    }
-
-    /// Prompt optimized to generate a description based on the first pages of a document
-    pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-                r#"You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. Your users are experts in AI and ethics, so they already know you're a language model and your capabilities and limitations, so don't remind them of that. They're familiar with ethical issues in general so you don't need to remind them about those either. Don't be verbose in your answers, but do provide details and examples where it might help the explanation."#.to_string(),
-                SubPromptType::System,
-            );
-        for chunk in chunks {
-            prompt.add_content(format!("{}", chunk), SubPromptType::User);
-        }
-        prompt.add_content(
-            format!("Take a deep breath and then throughtouly summarize the previous document, make it as explanatory as possible."),
-            SubPromptType::User,
-        );
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
-
-        prompt
-    }
-
-    pub fn bootstrap_plan_prompt(job_task: String) -> Prompt {
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-            "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
-            SubPromptType::System,
-        );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);
-        prompt.add_content(
-            String::from(
-                "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
-            ),
-            SubPromptType::System,
-        );
-        prompt.add_ebnf(
-            String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"),
-            SubPromptType::System,
-        );
-
-        prompt
-    }
-
-    /// Prompt for having the LLM validate whether inputs for a given tool are available
-    pub fn tool_inputs_validation_prompt(context: HashMap<String, String>, task: String, tool: ShinkaiTool) -> Prompt {
-        let context_string = Self::parse_context_to_string(context);
-        let tool_summary = tool.formatted_tool_summary(true); // true to include EBNF output
-
-        let mut prompt = Prompt::new();
-        prompt.add_content(
-            format!(
-                "You are an assistant running in a system who only has access to a series of tools, your own knowledge. The current context of acquired info includes:\n\n```\n{}\n```\n",
-                context_string
-            ),
-            SubPromptType::System,
-        );
-
-        prompt.add_content(
-            format!("The current task at hand is:\n\n`{}`", task),
-            SubPromptType::User,
-        );
-
-        prompt.add_content(
-            format!("We have selected the following tool to be used:\n\n{}", tool_summary),
-            SubPromptType::System,
-        );
-
-        prompt.add_content(
-            String::from(
-                "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
-            ),
-            SubPromptType::System,
-        );
-
-        prompt.add_ebnf(String::from("{{\"prepared\": true}}"), SubPromptType::User);
-
-        prompt.add_content(
-            String::from(
-
-                "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
-            ),
-            SubPromptType::System,
-        );
-
-        prompt.add_ebnf(String::from("{{\"tool-search\": \"string\"}}"), SubPromptType::User);
-
-        prompt
-    }
-}
-
-pub enum SubPromptType {
-    User,
-    System,
-}
-
-pub enum SubPrompt {
-    Content(SubPromptType, String),
-    EBNF(SubPromptType, String),
-}
-
-pub struct Prompt {
-    pub sub_prompts: Vec<SubPrompt>,
-}
-
-impl Prompt {
-    pub fn new() -> Self {
-        Self {
-            sub_prompts: Vec::new(),
-        }
-    }
-
-    /// Adds a content sub-prompt
-    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
-        self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
-    }
-
-    /// Adds a vector chunk response for extra information
-    pub fn add_vector_chunk_response(&mut self, chunks: Vec<String>) {
-        self.sub_prompts.push(SubPrompt::Content(
-            SubPromptType::User,
-            "Use the following information to help you:".to_string(),
-        ));
-        for chunk in chunks {
-            self.sub_prompts.push(SubPrompt::Content(SubPromptType::User, chunk));
-        }
-    }
-
-    /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
-    /// string that specifies the output must match this EBNF string.
-    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
-        self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
-    }
-
-    /// Validates that there is at least one EBNF sub-prompt to ensure
-    /// the LLM knows what to output.
-    pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
-        if !self
-            .sub_prompts
-            .iter()
-            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _)))
-        {
-            return Err(AgentError::UserPromptMissingEBNFDefinition);
-        }
-        Ok(())
-    }
-
-    fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
-        format!(
-            "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
-            ebnf
-        )
-    }
-
-    /// Processes all sub-prompts into a single output String.
-    pub fn generate_single_output_string(&self) -> Result<String, AgentError> {
-        self.check_ebnf_included()?;
-
-        let json_response_required = String::from("```json");
-        let content = self
-            .sub_prompts
-            .iter()
-            .map(|sub_prompt| match sub_prompt {
-                SubPrompt::Content(_, content) => content.clone(),
-                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
-            })
-            .collect::<Vec<String>>()
-            .join("\n")
-            + "\n"
-            + &json_response_required;
-        Ok(content)
-    }
-
-    /// Processes all sub-prompts into a single output String in OpenAI's message format.
-    pub fn generate_openai_messages(
-        &self,
-        max_prompt_tokens: Option<usize>,
-    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
-        self.check_ebnf_included()?;
-
-        // We assume 2048 tokens max for the prompt which is about half of the total 4097
-        let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
-        let model = "gpt-4";
-
-        // let num_tokens = num_tokens_from_messages("gpt-3.5-turbo-0301", &messages).unwrap();
-
-        let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
-        let mut ebnf_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
-        let mut current_length: usize = 0;
-
-        // First process all EBNF sub-prompts and calculate their tokens
-        for sub_prompt in self.sub_prompts.iter().filter(|sp| matches!(sp, SubPrompt::EBNF(_, _))) {
-            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
-                let enbf_text = self.generate_ebnf_response_string(ebnf);
-                let new_message = ChatCompletionRequestMessage {
-                    role: "system".to_string(),
-                    content: Some(enbf_text.clone()),
-                    name: None,
-                    function_call: None,
-                };
-                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
-                current_length += new_message_tokens;
-                ebnf_messages.push(new_message);
-            }
-        }
-
-        // Then process all Content sub-prompts until length limit is reached
-        for sub_prompt in self
-            .sub_prompts
-            .iter()
-            .filter(|sp| matches!(sp, SubPrompt::Content(_, _)))
-        {
-            if let SubPrompt::Content(prompt_type, content) = sub_prompt {
-                let role = match prompt_type {
-                    SubPromptType::User => "user".to_string(),
-                    SubPromptType::System => "system".to_string(),
-                };
-                let new_message = ChatCompletionRequestMessage {
-                    role: role.clone(),
-                    content: Some(content.clone()),
-                    name: None,
-                    function_call: None,
-                };
-                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()]).unwrap();
-                if current_length + new_message_tokens > limit {
-                    break;
-                }
-                tiktoken_messages.push(new_message);
-                current_length += new_message_tokens;
-            }
-        }
-
-        // Add EBNF messages after content messages
-        tiktoken_messages.extend(ebnf_messages);
-        Ok(tiktoken_messages)
-    }
 }

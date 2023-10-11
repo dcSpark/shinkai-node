@@ -136,7 +136,7 @@ impl MapVectorResource {
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),
-            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML12v2),
+            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2),
         )
     }
 

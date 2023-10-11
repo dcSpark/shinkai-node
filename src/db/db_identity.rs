@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Identi
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
 };
@@ -256,11 +257,11 @@ impl ShinkaiDB {
         // Write the batch
         self.db.write(batch)?;
 
-        println!(
-            "insert_profile::identity.full_identity_name: {}",
-            identity.full_identity_name
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("Inserted profile: {}", profile_name).as_str(),
         );
-        self.debug_print_all_keys_for_profiles_identity_key();
 
         Ok(())
     }
@@ -319,7 +320,11 @@ impl ShinkaiDB {
         let cf_identity = match self.db.cf_handle(Topic::ProfilesIdentityKey.as_str()) {
             Some(handle) => handle,
             None => {
-                eprintln!("Failed to get column family handle for ProfilesIdentityKey");
+                shinkai_log(
+                    ShinkaiLogOption::Identity,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get column family handle for ProfilesIdentityKey").as_str(),
+                );
                 return;
             }
         };
@@ -336,12 +341,20 @@ impl ShinkaiDB {
                     // If it's not, you might get a panic. Consider using
                     // String::from_utf8_lossy if there's a possibility of invalid UTF-8
                     let key_str = String::from_utf8(key.to_vec()).unwrap();
-                    println!("print_all_keys_for_profiles_identity_key> {}", key_str);
+                    shinkai_log(
+                        ShinkaiLogOption::Identity,
+                        ShinkaiLogLevel::Debug,
+                        format!("print_all_keys_for_profiles_identity_key {}", key_str).as_str(),
+                    );
                     self.print_all_devices_for_profile(&key_str);
                 }
                 Err(e) => {
                     // Optionally handle the error, e.g., print it out
-                    eprintln!("Error reading from database: {}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Identity,
+                        ShinkaiLogLevel::Error,
+                        format!("Error reading from database: {}", e).as_str(),
+                    );
                 }
             }
         }
@@ -352,7 +365,11 @@ impl ShinkaiDB {
         let cf_device = match self.db.cf_handle(Topic::DevicesIdentityKey.as_str()) {
             Some(handle) => handle,
             None => {
-                eprintln!("Failed to get column family handle for Devices");
+                shinkai_log(
+                    ShinkaiLogOption::Identity,
+                    ShinkaiLogLevel::Error,
+                    format!("Failed to get column family handle for Devices").as_str(),
+                );
                 return;
             }
         };
@@ -369,12 +386,20 @@ impl ShinkaiDB {
 
                     // Check if the key (device identity name) contains the profile name
                     if key_str.contains(profile_name) {
-                        println!("print_all_devices_for_profile> {}", key_str);
+                        shinkai_log(
+                            ShinkaiLogOption::Identity,
+                            ShinkaiLogLevel::Debug,
+                            format!("print_all_devices_for_profile {}", key_str).as_str(),
+                        );
                     }
                 }
                 Err(e) => {
                     // Optionally handle the error, e.g., print it out
-                    eprintln!("Error reading from database: {}", e);
+                    shinkai_log(
+                        ShinkaiLogOption::Identity,
+                        ShinkaiLogLevel::Error,
+                        format!("Error reading from database: {}", e).as_str(),
+                    );
                 }
             }
         }
@@ -478,8 +503,6 @@ impl ShinkaiDB {
     }
 
     pub fn get_profile(&self, full_identity_name: ShinkaiName) -> Result<Option<StandardIdentity>, ShinkaiDBError> {
-        self.debug_print_all_keys_for_profiles_identity_key();
-
         let profile_name = full_identity_name
             .get_profile_name()
             .ok_or(ShinkaiDBError::InvalidIdentityName(full_identity_name.to_string()))?;

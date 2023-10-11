@@ -1,5 +1,0 @@
-backend: bert-embeddings
-embeddings: true
-name: all-MiniLM-L12-v2
-parameters:
-  model: all-MiniLM-L12-v2.bin

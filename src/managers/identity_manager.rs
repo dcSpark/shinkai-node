@@ -8,6 +8,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -32,7 +33,6 @@ impl IdentityManager {
                 .into_iter()
                 .collect()
         };
-        println!("\n\n ### identities_manager identities: {:?}", identities);
 
         let agents = {
             let db = db.lock().await;
@@ -41,12 +41,9 @@ impl IdentityManager {
                 .map(Identity::Agent)
                 .collect::<Vec<_>>()
         };
-        println!("\n\n ## identities_manager agents: {:?}", agents);
-
         {
             let db = db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
-            // println!("identities_manager identities: {:?}", identities);
         }
 
         identities.extend(agents);
@@ -68,36 +65,54 @@ impl IdentityManager {
     }
 
     pub async fn add_profile_subidentity(&mut self, identity: StandardIdentity) -> anyhow::Result<()> {
-        eprintln!("add_profile_subidentity > identity: {}", identity);
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!(
+                "add_profile_subidentity > identity: {}",
+                identity
+            ).as_str()
+        );
         let previously_had_profile_identity = self.has_profile_identity();
         self.local_identities.push(Identity::Standard(identity.clone()));
 
         if !previously_had_profile_identity && self.has_profile_identity() {
-            eprintln!("YAY! first profile added!");
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Debug,
+                format!(
+                    "YAY! first profile added! identity: {}",
+                    identity
+                ).as_str()
+            );
             self.is_ready = true;
-        }
-
-        {
-            let db = self.db.lock().await;
-            db.debug_print_all_keys_for_profiles_identity_key();
         }
         Ok(())
     }
 
     pub async fn add_agent_subidentity(&mut self, agent: SerializedAgent) -> anyhow::Result<()> {
-        println!("add_agent_subidentity > agent: {:?}", agent);
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!(
+                "add_agent_subidentity > agent: {:?}",
+                agent
+            ).as_str()
+        );
         self.local_identities.push(Identity::Agent(agent.clone()));
         Ok(())
     }
 
     pub async fn add_device_subidentity(&mut self, device: DeviceIdentity) -> anyhow::Result<()> {
-        println!("add_device_subidentity > device: {}", device);
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!(
+                "add_device_subidentity > device: {}",
+                device
+            ).as_str()
+        );
         self.local_identities.push(Identity::Device(device.clone()));
-
-        {
-            let db = self.db.lock().await;
-            db.debug_print_all_keys_for_profiles_identity_key();
-        }
         Ok(())
     }
 
@@ -108,11 +123,6 @@ impl IdentityManager {
     }
 
     pub async fn search_local_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        {
-            let db = self.db.lock().await;
-            db.debug_print_all_keys_for_profiles_identity_key();
-        }
-
         let node_in_question = ShinkaiName::new(full_identity_name.to_string()).ok()?.extract_node();
         // If the node name matches local node, search in self.identities
         if self.local_node_name == node_in_question {
@@ -121,10 +131,6 @@ impl IdentityManager {
                 .filter_map(|identity| match identity {
                     Identity::Standard(standard_identity) => {
                         if standard_identity.full_identity_name.to_string() == full_identity_name {
-                            println!(
-                                "FOUND! search_local_identity > standard_identity: {}",
-                                standard_identity
-                            );
                             Some(Identity::Standard(standard_identity.clone()))
                         } else {
                             None
@@ -152,7 +158,6 @@ impl IdentityManager {
     }
 
     pub async fn search_local_agent(&self, agent_id: &str) -> Option<SerializedAgent> {
-        println!("search_local_agent > agent_id: {}", agent_id);
         let db = self.db.lock().await;
         db.get_agent(agent_id).ok().flatten()
     }
@@ -163,11 +168,6 @@ impl IdentityManager {
     }
 
     pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        println!("search_identity > full_identity_name: {}", full_identity_name);
-        {
-            let db = self.db.lock().await;
-            db.debug_print_all_keys_for_profiles_identity_key();
-        }
         let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
         let node_name = identity_name.extract_node();
 
@@ -218,16 +218,24 @@ impl IdentityManager {
     }
 
     pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
-        println!(
-            "external_profile_to_global_identity > full_profile_name: {}",
-            full_profile_name
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Debug,
+            format!(
+                "external_profile_to_global_identity > full_profile_name: {}",
+                full_profile_name
+            ).as_str()
         );
 
         let full_identity_name = match ShinkaiName::new(full_profile_name.to_string().clone()) {
             Ok(name) => name,
             Err(_) => {
-                println!(
-                    "external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false"
+                shinkai_log(
+                    ShinkaiLogOption::Identity,
+                    ShinkaiLogLevel::Error,
+                    format!(
+                        "external_profile_to_global_identity > is_valid_node_identity_name_and_no_subidentities: false"
+                    ).as_str()
                 );
                 return None;
             }
@@ -270,9 +278,13 @@ impl IdentityManager {
     ) -> Result<(), NodeError> {
         // eprintln!("signature check > sender_subidentity: {:?}", sender_subidentity);
         if sender_subidentity.is_none() {
-            eprintln!(
-                "signature check > Subidentity not found for profile name: {}",
-                decrypted_message.external_metadata.clone().sender
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Error,
+                format!(
+                    "signature check > Subidentity not found for profile name: {}",
+                    decrypted_message.external_metadata.clone().sender
+                ).as_str()
             );
             return Err(NodeError {
                 message: format!(
@@ -290,15 +302,25 @@ impl IdentityManager {
             Identity::Standard(std_identity) => std_identity.profile_signature_public_key.clone(),
             Identity::Device(std_device) => Some(std_device.device_signature_public_key.clone()),
             Identity::Agent(_) => {
-                eprintln!("signature check > Agent identities cannot send onionized messages");
+                shinkai_log(
+                    ShinkaiLogOption::Identity,
+                    ShinkaiLogLevel::Error,
+                    format!(
+                        "signature check > Agent identities cannot send onionized messages"
+                    ).as_str()
+                );
                 return Ok(());
             }
         };
 
         if signature_public_key.is_none() {
-            eprintln!(
-                "signature check > Signature public key doesn't exist for identity: {}",
-                subidentity.get_full_identity_name()
+            shinkai_log(
+                ShinkaiLogOption::Identity,
+                ShinkaiLogLevel::Error,
+                format!(
+                    "signature check > Signature public key doesn't exist for identity: {}",
+                    subidentity.get_full_identity_name()
+                ).as_str()
             );
             return Err(NodeError {
                 message: format!("Failed to verify message signature. Signature public key doesn't exist for identity"),
@@ -308,7 +330,14 @@ impl IdentityManager {
         match verify_message_signature(signature_public_key.unwrap(), &original_message.clone()) {
             Ok(_) => Ok({}),
             Err(e) => {
-                eprintln!("signature check > Failed to verify message signature: {}", e);
+                shinkai_log(
+                    ShinkaiLogOption::Identity,
+                    ShinkaiLogLevel::Error,
+                    format!(
+                        "signature check > Failed to verify message signature: {}",
+                        e.to_string()
+                    ).as_str()
+                );
                 return Err(NodeError {
                     message: format!("Failed to verify message signature: {}", e.to_string()),
                 });
