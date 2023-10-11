@@ -25,6 +25,7 @@ impl AgentManager {
         search_text: Option<String>,
         summary_text: Option<String>,
         iteration_count: u64,
+        max_iterations: u64,
     ) -> Result<String, AgentError> {
         println!("start_qa_inference_chain>  message: {:?}", job_task);
 
@@ -36,7 +37,7 @@ impl AgentManager {
             .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_prompt = if iteration_count < 5 {
+        let filled_prompt = if iteration_count < max_iterations {
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
                 ret_data_chunks,
@@ -59,8 +60,8 @@ impl AgentManager {
             println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
         }
-        // If iteration_count is > 5 and we still don't have an answer, return an error
-        else if iteration_count > 5 {
+        // If iteration_count is > max_iterations and we still don't have an answer, return an error
+        else if iteration_count > max_iterations {
             return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
         }
 
@@ -105,6 +106,7 @@ impl AgentManager {
             Some(new_search_text),
             summary,
             iteration_count + 1,
+            max_iterations,
         )
         .await
     }

@@ -114,7 +114,7 @@ impl JobPromptGenerator {
             }
             prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content, and think of a search query to find new content:"), SubPromptType::System);
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System);
         }
 
         prompt.add_ebnf(
