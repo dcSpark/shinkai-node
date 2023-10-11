@@ -12,6 +12,32 @@ use tokio::sync::Mutex;
 use super::job_prompts::{JobPromptGenerator, Prompt};
 
 impl AgentManager {
+    /// Extracts a String using the provided key in the JSON response
+    /// Errors if the key is not present.
+    pub fn extract_inference_json_response(&self, response_json: JsonValue, key: &str) -> Result<String, AgentError> {
+        if let Some(value) = response_json.get(key) {
+            let value_str = value
+                .as_str()
+                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField(key.to_string()))?;
+            Ok(value_str.to_string())
+        } else {
+            Err(AgentError::InferenceJSONResponseMissingField(key.to_string()))
+        }
+    }
+
+    /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
+    /// a valid JSON object/retrying if it isn't, and finally attempt to extract the provided key
+    /// from the JSON object. Errors if the key is not found.
+    pub async fn inference_agent_and_extract(
+        &self,
+        agent: Arc<Mutex<Agent>>,
+        filled_prompt: Prompt,
+        key: &str,
+    ) -> Result<String, AgentError> {
+        let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
+        self.extract_inference_json_response(response_json, key)
+    }
+
     /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
     pub async fn inference_agent(
@@ -35,7 +61,7 @@ impl AgentManager {
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
     /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
-    pub async fn extract_json_value_from_inference_response(
+    async fn extract_json_value_from_inference_response(
         &self,
         response: Result<JsonValue, AgentError>,
         agent: Arc<Mutex<Agent>>,

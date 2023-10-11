@@ -51,14 +51,10 @@ impl AgentManager {
             )
         };
 
-        // Inference the agent's LLM with the prompt
+        // Inference the agent's LLM with the prompt. If it has an answer, the chain
+        // is finished and so just return the answer response as a cleaned String
         let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
-
-        // If it has an answer, the chain is finished and so just return the answer response as a String
-        if let Some(answer) = response_json.get("answer") {
-            let answer_str = answer
-                .as_str()
-                .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?;
+        if let Ok(answer_str) = self.extract_inference_json_response(response_json, "answer") {
             let cleaned_answer = Self::ending_stripper(&answer_str);
             println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
@@ -70,33 +66,31 @@ impl AgentManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (mut new_search_text, summary) = match response_json.get("search") {
-            Some(search) => {
-                let search_str = search
-                    .as_str()
-                    .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?;
+        let (mut new_search_text, summary) = match self.extract_inference_json_response(response_json.clone(), "search")
+        {
+            Ok(search_str) => {
                 let summary_str = response_json
                     .get("summary")
                     .and_then(|s| s.as_str())
                     .map(|s| Self::ending_stripper(s));
-                (search_str.to_string(), summary_str)
+                (search_str, summary_str)
             }
-            None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
+            Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
-        if Some(new_search_text.to_string()) == search_text {
+        if Some(new_search_text.clone()) == search_text {
             let retry_prompt = JobPromptGenerator::retry_new_search_term_prompt(
-                new_search_text.to_string(),
+                new_search_text.clone(),
                 summary.clone().unwrap_or_default(),
             );
             let response_json = self.inference_agent(agent.clone(), retry_prompt).await?;
-            if let Some(search) = response_json.get("search") {
-                println!("QA Chain New Search Retry Term: {:?}", search);
-                new_search_text = search
-                    .as_str()
-                    .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?
-                    .to_string(); // Clone the string value directly
+            match self.extract_inference_json_response(response_json, "search") {
+                Ok(search_str) => {
+                    println!("QA Chain New Search Retry Term: {:?}", search_str);
+                    new_search_text = search_str;
+                }
+                Err(_) => {}
             }
         }
 
