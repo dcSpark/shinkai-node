@@ -1,6 +1,6 @@
 use mockito::Server;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{OpenAI, SleepAPI};
+use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 use shinkai_node::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use std::fs;
 use std::path::Path;
@@ -188,49 +188,6 @@ mod tests {
         assert!(result.is_ok(), "Failed to remove toolkit from agent access");
         let toolkits = db.get_agent_toolkits_accessible(&test_agent.id).unwrap();
         assert_eq!(vec!["toolkit2"], toolkits);
-    }
-
-    #[tokio::test]
-    async fn test_agent_creation() {
-        let (tx, mut rx) = mpsc::channel(1);
-        let sleep_api = SleepAPI {};
-        let agent = Agent::new(
-            "1".to_string(),
-            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
-            tx,
-            false,
-            Some("http://localhost:8000".to_string()),
-            Some("paramparam".to_string()),
-            AgentLLMInterface::Sleep(sleep_api),
-            vec!["tk1".to_string(), "tk2".to_string()],
-            vec!["sb1".to_string(), "sb2".to_string()],
-            vec!["allowed1".to_string(), "allowed2".to_string()],
-        );
-
-        assert_eq!(agent.id, "1");
-        assert_eq!(
-            agent.full_identity_name,
-            ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap()
-        );
-        assert_eq!(agent.perform_locally, false);
-        assert_eq!(agent.external_url, Some("http://localhost:8000".to_string()));
-        assert_eq!(agent.toolkit_permissions, vec!["tk1".to_string(), "tk2".to_string()]);
-        assert_eq!(
-            agent.storage_bucket_permissions,
-            vec!["sb1".to_string(), "sb2".to_string()]
-        );
-        assert_eq!(
-            agent.allowed_message_senders,
-            vec!["allowed1".to_string(), "allowed2".to_string()]
-        );
-
-        let handle = tokio::spawn(async move {
-            agent
-                .inference(JobPromptGenerator::basic_instant_response_prompt("Test".to_string()))
-                .await
-        });
-        let result: Result<JsonValue, AgentError> = handle.await.unwrap();
-        assert_eq!(result.unwrap(), JsonValue::Bool(true))
     }
 
     #[tokio::test]

@@ -7,3 +7,4 @@ pub mod job_manager;
 pub mod job_prompts;
 pub mod plan_executor;
 pub mod providers;
+pub mod queue;
