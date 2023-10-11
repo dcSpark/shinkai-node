@@ -14,12 +14,6 @@ export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 
 # Add these lines to enable all log options
-export LOG_BLOCKCHAIN=1
-export LOG_DATABASE=1
-export LOG_IDENTITY=1
-export LOG_API=1
-export LOG_DETAILED_API=1
-export LOG_NODE=1
-export LOG_INTERNAL_API=1
+export LOG_ALL=1
 
 cargo run

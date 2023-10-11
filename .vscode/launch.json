@@ -39,7 +39,22 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "NODE_IP": "0.0.0.0",
+                "NODE_PORT": "9552",
+                "NODE_API_IP": "0.0.0.0",
+                "NODE_API_PORT": "9550",
+                "IDENTITY_SECRET_KEY": "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
+                "ENCRYPTION_SECRET_KEY": "d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159",
+                "PING_INTERVAL_SECS": "0",
+                "GLOBAL_IDENTITY_NAME": "@@node1.shinkai",
+                "RUST_LOG": "debug,error,info",
+                "STARTING_NUM_QR_PROFILES": "1",
+                "STARTING_NUM_QR_DEVICES": "1",
+                "FIRST_DEVICE_NEEDS_REGISTRATION_CODE": "false",
+                "LOG_ALL": "1"
+            }
         },
         {
             "type": "lldb",

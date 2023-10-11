@@ -93,10 +93,6 @@ impl Node {
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-
-        // TODO: remove this
-        db.debug_print_all_keys_for_profiles_identity_key();
-
         let code = db
             .generate_registration_new_code(permissions, code_type)
             .unwrap_or_else(|_| "".to_string());
