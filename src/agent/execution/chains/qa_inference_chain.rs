@@ -32,7 +32,7 @@ impl AgentManager {
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();
         let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap())
+            .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
             .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt

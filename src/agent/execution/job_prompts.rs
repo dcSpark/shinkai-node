@@ -75,12 +75,18 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
 
         if let Some(summary) = summary_text {
-            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+            prompt.add_content(
+                format!(
+                    "Here is the current summary of content another assistant found to answer the user's question: {}",
+                    summary
+                ),
+                SubPromptType::System,
+            );
         }
 
         // Parses the retrieved data chunks into a single string to add to the prompt
@@ -128,12 +134,18 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides.".to_string(),
             SubPromptType::System,
         );
 
         if let Some(summary) = summary_text {
-            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+            prompt.add_content(
+                format!(
+                    "Here is the current summary of content another assistant found to answer the user's question: {}",
+                    summary
+                ),
+                SubPromptType::System,
+            );
         }
 
         // Parses the retrieved data chunks into a single string to add to the prompt
@@ -155,10 +167,6 @@ impl JobPromptGenerator {
 
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
-            SubPromptType::System,
-        );
         prompt
     }
 
@@ -191,16 +199,16 @@ impl JobPromptGenerator {
     pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-                r#"You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. Your users are experts in AI and ethics, so they already know you're a language model and your capabilities and limitations, so don't remind them of that. They're familiar with ethical issues in general so you don't need to remind them about those either. Don't be verbose in your answers, but do provide details and examples where it might help the explanation."#.to_string(),
-                SubPromptType::System,
-            );
+            r#"You are an advanced assistant who is specialized in summarizing information."#.to_string(),
+            SubPromptType::System,
+        );
 
-        prompt.add_content(format!("Here are segements from a document:"), SubPromptType::User);
+        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User);
         for chunk in chunks {
             prompt.add_content(format!("{}", chunk), SubPromptType::User);
         }
         prompt.add_content(
-            format!("Take a deep breath and thoroughly summarize the previous segments, making it as explanatory as possible."),
+            format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
             SubPromptType::User,
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);

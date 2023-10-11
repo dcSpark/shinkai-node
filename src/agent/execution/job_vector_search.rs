@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
+use shinkai_vector_resources::vector_resource_types::{DataChunk, RetrievedDataChunk, VectorResourcePointer};
 use std::result::Result::Ok;
 
 impl AgentManager {
@@ -35,19 +35,22 @@ impl AgentManager {
     }
 
     /// Perform a vector search on all local & DB-held Vector Resources specified in the JobScope.
+    /// If include_description is true then adds the description of the Vector Resource as an auto-included
+    /// RetrievedDataChunk at the front of the returned list.
     pub async fn job_scope_vector_search(
         &self,
         job_scope: &JobScope,
         query: Embedding,
         num_of_results: u64,
         profile: &ShinkaiName,
+        include_description: bool,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
         let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
         println!("Num of resources fetched: {}", resources.len());
 
         // Perform vector search on all resources
         let mut retrieved_chunks = Vec::new();
-        for resource in resources {
+        for resource in &resources {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
             retrieved_chunks.extend(results);
         }
@@ -56,11 +59,16 @@ impl AgentManager {
 
         // Sort the retrieved chunks by score before returning
         let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+        let updated_chunks = self
+            .include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
+            .await;
 
-        Ok(sorted_retrieved_chunks)
+        Ok(updated_chunks)
     }
 
     /// Perform a syntactic vector search on all local & DB-held Vector Resources specified in the JobScope.
+    /// If include_description is true then adds the description of the Vector Resource as an auto-included
+    /// RetrievedDataChunk at the front of the returned list.
     pub async fn job_scope_syntactic_vector_search(
         &self,
         job_scope: &JobScope,
@@ -68,12 +76,13 @@ impl AgentManager {
         num_of_results: u64,
         profile: &ShinkaiName,
         data_tag_names: &Vec<String>,
+        include_description: bool,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
         let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
 
         // Perform syntactic vector search on all resources
         let mut retrieved_chunks = Vec::new();
-        for resource in resources {
+        for resource in &resources {
             let results =
                 resource
                     .as_trait_object()
@@ -83,7 +92,45 @@ impl AgentManager {
 
         // Sort the retrieved chunks by score before returning
         let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
+        let updated_chunks = self
+            .include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
+            .await;
 
-        Ok(sorted_retrieved_chunks)
+        Ok(updated_chunks)
+    }
+
+    /// If include_description is true then adds the description of the Vector Resource
+    /// that the top scored retrieved chunk is from, by prepending a fake RetrievedDataChunk
+    /// with the description inside. Removes the lowest scored chunk to preserve list length.
+    async fn include_description_retrieved_chunk(
+        &self,
+        include_description: bool,
+        sorted_retrieved_chunks: Vec<RetrievedDataChunk>,
+        resources: &[BaseVectorResource],
+    ) -> Vec<RetrievedDataChunk> {
+        let mut new_chunks = sorted_retrieved_chunks.clone();
+
+        if include_description && !sorted_retrieved_chunks.is_empty() {
+            let pointer = sorted_retrieved_chunks[0].resource_pointer.clone();
+
+            // Iterate through resources until we find one with a matching resource pointer
+            for resource in resources {
+                if resource.as_trait_object().get_resource_pointer() == pointer {
+                    if let Some(description) = resource.as_trait_object().description() {
+                        let description_chunk = RetrievedDataChunk::new(
+                            DataChunk::new(String::new(), &description, None, &vec![]),
+                            1.0 as f32,
+                            pointer,
+                            sorted_retrieved_chunks[0].retrieval_path.clone(),
+                        );
+                        new_chunks.insert(0, description_chunk);
+                        new_chunks.pop(); // Remove the last element to maintain the same length
+                    }
+                    break;
+                }
+            }
+        }
+
+        new_chunks
     }
 }

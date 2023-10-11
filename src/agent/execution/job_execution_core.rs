@@ -245,7 +245,6 @@ impl AgentManager {
 
                 // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
                 eprintln!("description_response: {:?}", description_response);
-                eprintln!("vrsource: {:?}", vrsource);
 
                 let resource = BaseVectorResource::from(doc.clone());
                 shinkai_db.init_profile_resource_router(&profile)?;
