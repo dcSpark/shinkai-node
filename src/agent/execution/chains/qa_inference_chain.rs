@@ -60,10 +60,12 @@ impl AgentManager {
             let answer_str = answer
                 .as_str()
                 .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("answer".to_string()))?;
-            return Ok(answer_str.to_string());
+            let cleaned_answer = Self::ending_stripper(&answer_str);
+            println!("QA Chain Final Answer: {:?}", cleaned_answer);
+            return Ok(cleaned_answer);
         }
-        // If iteration_count is 5 and we still don't have an answer, return an error
-        else if iteration_count >= 5 {
+        // If iteration_count is > 5 and we still don't have an answer, return an error
+        else if iteration_count > 5 {
             return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
         }
 
@@ -97,5 +99,37 @@ impl AgentManager {
             iteration_count + 1,
         )
         .await
+    }
+
+    /// Removes last sentence from answer if it contains any of the unwanted phrases.
+    /// This is used because the LLM sometimes answers properly, but then adds useless last sentence such as
+    /// "However, specific details are not provided in the content." at the end.
+    pub fn ending_stripper(answer: &str) -> String {
+        let mut sentences: Vec<&str> = answer.split('.').collect();
+
+        let unwanted_phrases = [
+            "however",
+            "unfortunately",
+            "additional research",
+            "may be required",
+            "i do not",
+            "further information",
+            "specific details",
+            "provided content",
+            "not available",
+        ];
+
+        while let Some(last_sentence) = sentences.pop() {
+            if last_sentence.trim().is_empty() {
+                continue;
+            }
+            let sentence = last_sentence.trim_start().to_lowercase();
+            if !unwanted_phrases.iter().any(|&phrase| sentence.contains(phrase)) {
+                sentences.push(last_sentence);
+            }
+            break;
+        }
+
+        sentences.join(".")
     }
 }
