@@ -72,6 +72,7 @@ impl JobPromptGenerator {
         ret_data_chunks: Vec<RetrievedDataChunk>,
         summary_text: Option<String>,
         prev_search_text: Option<String>,
+        previous_job_step_response: Option<String>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -79,10 +80,19 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
+        if let Some(prev_response) = previous_job_step_response {
+            prompt.add_content(
+                format!(
+                    "Here is previous context provided from answering the user's last question/task: `{}`",
+                    prev_response
+                ),
+                SubPromptType::System,
+            );
+        }
         if let Some(summary) = summary_text {
             prompt.add_content(
                 format!(
-                    "Here is the current summary of content another assistant found to answer the user's question: {}",
+                    "Here is the current summary of content another assistant found to answer the user's question: `{}`",
                     summary
                 ),
                 SubPromptType::System,
