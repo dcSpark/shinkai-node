@@ -141,7 +141,7 @@ mod tests {
         // Subscribe to notifications from "my_queue"
         let receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             for msg in receiver.iter() {
                 println!("Received (from subscriber): {:?}", msg);
 
@@ -160,6 +160,7 @@ mod tests {
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
                 }
+                break;
             }
         });
 
@@ -175,7 +176,9 @@ mod tests {
         manager.push("my_queue", job.clone()).unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+
+        handle.join().unwrap();
     }
 
     #[test]
@@ -184,18 +187,6 @@ mod tests {
         let db_path = "db_tests/";
         let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
         let mut manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).unwrap();
-
-        // Subscribe to notifications from "my_queue"
-        let receiver = manager.subscribe("my_queue");
-        std::thread::spawn(move || {
-            for msg in receiver.iter() {
-                shinkai_log(
-                    ShinkaiLogOption::Tests,
-                    ShinkaiLogLevel::Info,
-                    format!("Received (from subscriber): {:?}", msg).as_str(),
-                );
-            }
-        });
 
         // Push to a queue
         let job = JobForProcessing {
@@ -218,7 +209,7 @@ mod tests {
         manager.push("my_queue", job2.clone()).unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         // Create a new manager and recover the state
         let mut new_manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).unwrap();
@@ -260,7 +251,7 @@ mod tests {
         // Subscribe to notifications from "my_queue"
         let receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             for msg in receiver.iter() {
                 println!("Received (from subscriber): {:?}", msg);
 
@@ -279,6 +270,7 @@ mod tests {
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
                 }
+                break;
             }
         });
 
@@ -287,6 +279,7 @@ mod tests {
         manager.push("my_queue", job.clone()).unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        handle.join().unwrap();
     }
 }
