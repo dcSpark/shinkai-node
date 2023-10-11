@@ -70,7 +70,7 @@ impl AgentManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (new_search_text, summary) = match response_json.get("search") {
+        let (mut new_search_text, summary) = match response_json.get("search") {
             Some(search) => {
                 let search_str = search
                     .as_str()
@@ -79,10 +79,25 @@ impl AgentManager {
                     .get("summary")
                     .and_then(|s| s.as_str())
                     .map(|s| s.to_string());
-                (search_str, summary_str)
+                (search_str.to_string(), summary_str)
             }
             None => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
         };
+
+        // If the new search text is the same as the previous one, prompt the agent for a new search term
+        if Some(new_search_text.to_string()) == search_text {
+            let retry_prompt = JobPromptGenerator::retry_new_search_term_prompt(
+                new_search_text.to_string(),
+                summary.clone().unwrap_or_default(),
+            );
+            let response_json = self.inference_agent(agent.clone(), retry_prompt).await?;
+            if let Some(search) = response_json.get("search") {
+                new_search_text = search
+                    .as_str()
+                    .ok_or_else(|| AgentError::InferenceJSONResponseMissingField("search".to_string()))?
+                    .to_string(); // Clone the string value directly
+            }
+        }
 
         // Recurse with the new search/summary text and increment iteration_count
         self.start_qa_inference_chain(
@@ -92,7 +107,7 @@ impl AgentManager {
             execution_context,
             generator,
             user_profile,
-            Some(new_search_text.to_string()),
+            Some(new_search_text),
             summary,
             iteration_count + 1,
         )

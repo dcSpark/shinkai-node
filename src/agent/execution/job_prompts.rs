@@ -100,11 +100,15 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        // Tell the LLM about the previous search term to avoid it
-        if let Some(prev_search) = prev_search_text {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then extend the existing summary with more information, and think of a new search query to perform a vector search (something more unique & detailed than `{}` to get better results):", prev_search), SubPromptType::System);
+        // Tell the LLM about the previous search term (up to max 3 words to not confuse it) to avoid searching the same
+        if let Some(mut prev_search) = prev_search_text {
+            let words: Vec<&str> = prev_search.split_whitespace().collect();
+            if words.len() > 3 {
+                prev_search = words[..3].join(" ");
+            }
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and create a detailed summary using terms from the provided content:"), SubPromptType::System);
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content, and think of a search query to find new content:"), SubPromptType::System);
         }
 
         prompt.add_ebnf(
@@ -155,6 +159,18 @@ impl JobPromptGenerator {
             format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
             SubPromptType::System,
         );
+        prompt
+    }
+
+    /// Prompt to be used for getting the LLM to generate a new/different search term if the LLM repeated
+    pub fn retry_new_search_term_prompt(search_term: String, summary: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+        format!("Based on the following summary: \n\n{}\n\nYou need to come up with a unique and detailed search term that is different than the provided one: `{}`", summary, search_term),
+        SubPromptType::System,
+    );
+        prompt.add_ebnf(String::from(r#""{" "search" ":" string }""#), SubPromptType::System);
+
         prompt
     }
 
