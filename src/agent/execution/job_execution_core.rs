@@ -7,7 +7,7 @@ use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
 use crate::resources::file_parsing::FileParser;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::shinkai_utils::job_scope::LocalScopeEntry;
+use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::JobMessage},
@@ -155,26 +155,27 @@ impl AgentManager {
                 job_message.files_inbox.len()
             );
             // TODO: later we should able to grab errors and return them to the user
-            let new_scope_entries = match agent_found.clone() {
-                Some(agent) => {
-                    let resp = self
-                        .process_files_inbox(self.db.clone(), agent, job_message.files_inbox.clone(), profile)
-                        .await?;
-                    resp
-                }
-                None => {
-                    // Handle the None case here. For example, you might want to return an error:
-                    return Err(AgentError::AgentNotFound);
-                }
-            };
-
+            let new_scope_entries = self
+                .process_files_inbox(self.db.clone(), agent_found, job_message.files_inbox.clone(), profile)
+                .await?;
             eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
 
             for (_, value) in new_scope_entries {
-                if !full_job.scope.local.contains(&value) {
-                    full_job.scope.local.push(value);
-                } else {
-                    println!("Duplicate LocalScopeEntry detected");
+                match value {
+                    ScopeEntry::Local(local_entry) => {
+                        if !full_job.scope.local.contains(&local_entry) {
+                            full_job.scope.local.push(local_entry);
+                        } else {
+                            println!("Duplicate LocalScopeEntry detected");
+                        }
+                    }
+                    ScopeEntry::Database(db_entry) => {
+                        if !full_job.scope.database.contains(&db_entry) {
+                            full_job.scope.database.push(db_entry);
+                        } else {
+                            println!("Duplicate DBScopeEntry detected");
+                        }
+                    }
                 }
             }
             {
@@ -199,10 +200,16 @@ impl AgentManager {
     pub async fn process_files_inbox(
         &self,
         db: Arc<Mutex<ShinkaiDB>>,
-        agent: Arc<Mutex<Agent>>,
+        agent: Option<Arc<Mutex<Agent>>>,
         files_inbox: String,
         profile: ShinkaiName,
-    ) -> Result<HashMap<String, LocalScopeEntry>, AgentError> {
+    ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
+        // Handle the None case if the agent is not found
+        let agent = match agent {
+            Some(agent) => agent,
+            None => return Err(AgentError::AgentNotFound),
+        };
+
         let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
@@ -213,7 +220,7 @@ impl AgentManager {
         };
         // Create the RemoteEmbeddingGenerator instance
         let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
-        let mut files_map: HashMap<String, LocalScopeEntry> = HashMap::new();
+        let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
         // Start processing the files
         for (filename, content) in files.into_iter() {
@@ -258,7 +265,7 @@ impl AgentManager {
                         content,
                     ),
                 };
-                files_map.insert(filename, local_scope_entry);
+                files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
             }
         }
 
