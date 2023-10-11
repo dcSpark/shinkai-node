@@ -54,7 +54,7 @@ impl AgentManager {
         // Inference the agent's LLM with the prompt. If it has an answer, the chain
         // is finished and so just return the answer response as a cleaned String
         let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
-        if let Ok(answer_str) = self.extract_inference_json_response(response_json, "answer") {
+        if let Ok(answer_str) = self.extract_inference_json_response(response_json.clone(), "answer") {
             let cleaned_answer = Self::ending_stripper(&answer_str);
             println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);

@@ -157,13 +157,9 @@ impl AgentManager {
             // TODO: later we should able to grab errors and return them to the user
             let new_scope_entries = match agent_found.clone() {
                 Some(agent) => {
-                    let resp = AgentManager::process_files_inbox(
-                        self.db.clone(),
-                        agent,
-                        job_message.files_inbox.clone(),
-                        profile,
-                    )
-                    .await?;
+                    let resp = self
+                        .process_files_inbox(self.db.clone(), agent, job_message.files_inbox.clone(), profile)
+                        .await?;
                     resp
                 }
                 None => {
@@ -201,6 +197,7 @@ impl AgentManager {
     /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
+        &self,
         db: Arc<Mutex<ShinkaiDB>>,
         agent: Arc<Mutex<Agent>>,
         files_inbox: String,
@@ -209,55 +206,48 @@ impl AgentManager {
         let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
-
         // Check if there was an error getting the files
         let files = match files_result {
             Ok(files) => files,
             Err(e) => return Err(AgentError::ShinkaiDB(e)),
         };
-
-        let mut files_map: HashMap<String, LocalScopeEntry> = HashMap::new();
-
         // Create the RemoteEmbeddingGenerator instance
         let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
+        let mut files_map: HashMap<String, LocalScopeEntry> = HashMap::new();
 
+        // Start processing the files
         for (filename, content) in files.into_iter() {
             eprintln!("Iterating over file: {}", filename);
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
+                // Prepare description
                 let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
-
-                let agent_clone = agent.clone();
                 let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
-                let description_response = tokio::spawn(async move {
-                    let mut agent = agent_clone.lock().await;
-                    let prompt = JobPromptGenerator::simple_doc_description(grouped_text_list_clone);
-                    agent.inference(prompt).await
-                })
-                .await?;
-
-                // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
-                eprintln!("description_response: {:?}", description_response);
+                let prompt = JobPromptGenerator::simple_doc_description(grouped_text_list_clone);
+                let description_response = self
+                    .inference_agent_and_extract(agent.clone(), prompt, "answer")
+                    .await?;
 
                 let vrsource = Self::create_vrsource(
                     &filename,
                     SourceFileType::Document(SourceDocumentType::Pdf),
                     Some(pdf_overview.blake3_hash),
                 );
-                eprintln!("vrsource: {:?}", vrsource);
                 let doc = FileParser::parse_pdf(
                     &content,
                     150,
                     &*generator,
                     &filename,
-                    Some(&"".to_string()),
+                    Some(&description_response),
                     vrsource,
                     &vec![],
                 )?;
 
+                // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
+                eprintln!("description_response: {:?}", description_response);
+                eprintln!("vrsource: {:?}", vrsource);
+
                 let resource = BaseVectorResource::from(doc.clone());
-                // eprintln!("resource: {:?}", resource);
-                eprintln!("profile: {:?}", profile);
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 
