@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 /// An intermediary type in between `UnstructuredElement`s and
 /// `Embedding`s/`DataChunk`s
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GroupedText {
     pub text: String,
     pub page_numbers: Vec<u32>,

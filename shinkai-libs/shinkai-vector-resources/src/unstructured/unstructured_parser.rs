@@ -170,7 +170,6 @@ impl UnstructuredParser {
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources
-    /// TODO: Implement the recursive vector resource building
     fn process_new_doc_resource(
         text_groups: Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
@@ -187,7 +186,7 @@ impl UnstructuredParser {
             resource_desc = Some(&desc_string);
         }
         // Create doc resource and initial setup
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source, &resource_id);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
         // Extract keywords from the elements
@@ -196,19 +195,38 @@ impl UnstructuredParser {
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
 
-        // Generate embeddings for each group of text
+        // Add each text group as either Vector Resource DataChunks,
+        // or data-holding DataChunks depending on if each has any sub-groups
         for grouped_text in &text_groups {
-            // Generate the embedding
-            let embedding = generator.generate_embedding_default(&grouped_text.text)?;
-
-            // Add page numbers to metadata
-            let mut metadata = HashMap::new();
-            if !grouped_text.page_numbers.is_empty() {
+            // If the grouped_text has at least 1 sub group, recurse
+            if !grouped_text.sub_groups.is_empty() {
+                let new_name = &grouped_text.text;
+                let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
+                let new_doc = Self::process_new_doc_resource(
+                    grouped_text.sub_groups.clone(),
+                    generator,
+                    new_name,
+                    None,
+                    source.clone(),
+                    parsing_tags,
+                    &new_resource_id,
+                )?;
+                let mut metadata = HashMap::new();
                 metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
-            }
+                doc.append_vector_resource(new_doc, Some(metadata));
+            } else {
+                // Generate the embedding
+                let embedding = generator.generate_embedding_default(&grouped_text.text)?;
 
-            // Append the data
-            doc.append_data(&grouped_text.text, Some(metadata), &embedding, parsing_tags);
+                // Add page numbers to metadata
+                let mut metadata = HashMap::new();
+                if !grouped_text.page_numbers.is_empty() {
+                    metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
+                }
+
+                // Append the data
+                doc.append_data(&grouped_text.text, Some(metadata), &embedding, parsing_tags);
+            }
         }
 
         Ok(BaseVectorResource::Document(doc))
