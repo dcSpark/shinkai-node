@@ -1,15 +1,4 @@
-use crate::base_vector_resources::BaseVectorResource;
-use crate::data_tags::DataTag;
-use crate::document_resource::DocumentVectorResource;
-use crate::embedding_generator::EmbeddingGenerator;
-use crate::resource_errors::VectorResourceError;
-use crate::source::VRSource;
-use crate::vector_resource::VectorResource;
-use blake3::Hasher;
-use keyphrases::KeyPhraseExtractor;
 use serde::Deserialize;
-use serde_json::Value as JsonValue;
-use std::collections::HashMap;
 
 /// An intermediary type in between `UnstructuredElement`s and
 /// `Embedding`s/`DataChunk`s

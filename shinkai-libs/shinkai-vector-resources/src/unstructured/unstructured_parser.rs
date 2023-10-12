@@ -152,7 +152,7 @@ impl UnstructuredParser {
         result.to_hex().to_string()
     }
 
-    /// Processes a list of `UnstructuredElement`s returned from Unstructured into
+    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource
     pub fn process_elements_into_resource(
         elements: Vec<UnstructuredElement>,
@@ -197,31 +197,18 @@ impl UnstructuredParser {
         doc.update_resource_embedding(generator, keywords)?;
 
         // Generate embeddings for each group of text
-        let mut embeddings = Vec::new();
-        let total_num_embeddings = text_groups.len();
-        let mut i = 0;
         for grouped_text in &text_groups {
-            // println!(
-            //     "\n\nText: {}\n Page Numbers: {:?}t ch",
-            //     grouped_text.text, grouped_text.page_numbers
-            // );
-
+            // Generate the embedding
             let embedding = generator.generate_embedding_default(&grouped_text.text)?;
-            embeddings.push(embedding);
 
-            i += 1;
-            // println!("Generated chunk embedding {}/{}", i, total_num_embeddings);
-        }
-
-        // Adds the text + embeddings into the doc as appended new DataChunks
-        for (i, grouped_text) in text_groups.iter().enumerate() {
             // Add page numbers to metadata
             let mut metadata = HashMap::new();
             if !grouped_text.page_numbers.is_empty() {
                 metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
             }
 
-            doc.append_data(&grouped_text.text, Some(metadata), &embeddings[i], parsing_tags);
+            // Append the data
+            doc.append_data(&grouped_text.text, Some(metadata), &embedding, parsing_tags);
         }
 
         Ok(BaseVectorResource::Document(doc))
