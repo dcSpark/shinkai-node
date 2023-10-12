@@ -132,11 +132,6 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
-        prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
-            SubPromptType::System,
-        );
-
         prompt
     }
 
@@ -163,29 +158,26 @@ impl JobPromptGenerator {
             );
         }
 
+        // TODO: Either re-introduce this or delete it after testing with more QA in practice.
         // Parses the retrieved data chunks into a single string to add to the prompt
-        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
-        let search_context = format!(
-            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
-            ret_chunks_content,
-        );
-        prompt.add_content(search_context, SubPromptType::System);
+        // let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
+        // let search_context = format!(
+        //     "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
+        //     ret_chunks_content,
+        // );
+        // prompt.add_content(search_context, SubPromptType::System);
 
         let pre_task_text = format!("The user has asked: ");
         prompt.add_content(pre_task_text, SubPromptType::System);
         prompt.add_content(job_task, SubPromptType::User);
 
         prompt.add_content(
-            format!("Use the content to add any final details to the summary and directly answer the user's question."),
+            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand:"),
             SubPromptType::System,
         );
 
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
-            SubPromptType::System,
-        );
         prompt
     }
 
