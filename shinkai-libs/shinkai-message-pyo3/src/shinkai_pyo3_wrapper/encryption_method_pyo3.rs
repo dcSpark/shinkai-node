@@ -13,8 +13,8 @@ pub struct PyEncryptionMethod {
 #[pymethods]
 impl PyEncryptionMethod {
     #[new]
-    #[args(value = "\"None\"")]
-    pub fn new(value: &str) -> Self {
+    pub fn new(value: Option<&str>) -> Self {
+        let value = value.unwrap_or("None");
         let inner = match value {
             "None" => EncryptionMethod::None,
             // Add other cases here for other possible values of EncryptionMethod
