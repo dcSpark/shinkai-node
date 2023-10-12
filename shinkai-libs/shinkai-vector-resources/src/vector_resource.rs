@@ -133,8 +133,9 @@ pub trait VectorResource {
     /// This is exhaustive and can begin from any starting_path. Shorten_data cuts the string
     /// content short to improve readability.
     fn print_all_data_chunks_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool) {
-        println!("Chunks #: {}", self.chunk_embeddings().len());
+        println!("Chunks 1st level #: {}", self.chunk_embeddings().len());
         let data_chunks = self.get_data_chunks_exhaustive(starting_path);
+        println!("Found Chunks #: {}", data_chunks.len());
         for chunk in data_chunks {
             let path = chunk.retrieval_path.format_to_string();
             let data = match &chunk.chunk.data {
@@ -241,6 +242,7 @@ pub trait VectorResource {
             }
             // Fake score all as 0 if unscored exhaustive
             &TraversalMethod::UnscoredAllChunks => {
+                score_num_of_results = (&self.chunk_embeddings()).len() as u64;
                 scores = self
                     .chunk_embeddings()
                     .iter()
@@ -428,7 +430,7 @@ pub trait VectorResource {
 
         // If at least one vector resource exists in the DataChunks then re-sort
         // after fetching deeper level results to ensure ordering are correct
-        if vector_resource_count >= 1 {
+        if vector_resource_count >= 1 && traversal != &TraversalMethod::UnscoredAllChunks {
             return RetrievedDataChunk::sort_by_score(&current_level_results, num_of_results);
         }
         // Otherwise just return 1st level results
