@@ -121,6 +121,40 @@ pub trait VectorResource {
         VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
+    /// Returns every single data chunk at any level in the whole Vector Resource, including sub Vector Resources
+    /// and the DataChunks they hold. If a starting_path is provided then fetches all data chunks from there,
+    /// else starts at root.
+    fn get_data_chunks_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedDataChunk> {
+        let empty_embedding = Embedding::new("", vec![]);
+        self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path)
+    }
+
+    /// Prints all data chunks and their paths to easily/quickly examine a Vector Resource.
+    /// This is exhaustive and can begin from any starting_path. Shorten_data cuts the string
+    /// content short to improve readability.
+    fn print_all_data_chunks_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool) {
+        println!("Chunks #: {}", self.chunk_embeddings().len());
+        let data_chunks = self.get_data_chunks_exhaustive(starting_path);
+        for chunk in data_chunks {
+            let path = chunk.retrieval_path.format_to_string();
+            let data = match &chunk.chunk.data {
+                DataContent::Data(s) => {
+                    if shorten_data && s.len() > 20 {
+                        s[..20].to_string()
+                    } else {
+                        s.to_string()
+                    }
+                }
+                DataContent::Resource(resource) => format!(
+                    "<{}> - {} Chunks Held Inside",
+                    resource.as_trait_object().name(),
+                    resource.as_trait_object().chunk_embeddings().len()
+                ),
+            };
+            println!("{}: {}", path, data);
+        }
+    }
+
     /// Retrieves a data chunk, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
     fn get_data_chunk_with_path(&self, path: VRPath) -> Result<DataChunk, VectorResourceError> {
@@ -181,7 +215,9 @@ pub trait VectorResource {
         }
         let mut results =
             self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new());
-        results.truncate(num_of_results as usize);
+        if traversal != &TraversalMethod::UnscoredAllChunks {
+            results.truncate(num_of_results as usize);
+        }
         results
     }
 
@@ -281,7 +317,9 @@ pub trait VectorResource {
             vec![],
             VRPath::new(),
         );
-        results.truncate(num_of_results as usize);
+        if traversal != &TraversalMethod::UnscoredAllChunks {
+            results.truncate(num_of_results as usize);
+        }
         results
     }
 

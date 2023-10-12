@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
+use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::source::VRSource;
@@ -70,6 +71,8 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let resource = api
         .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 500)
         .unwrap();
+
+    resource.as_trait_object().print_all_data_chunks_exhaustive(None, true);
 
     // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
     let query_string = "Who are the authors?";
