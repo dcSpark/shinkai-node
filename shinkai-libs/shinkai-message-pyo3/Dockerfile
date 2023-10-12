@@ -54,6 +54,8 @@ RUN python --version && \
 # Set the working directory
 WORKDIR /project
 
+RUN pip install patchelf
+
 # Entrypoint
 CMD ["/bin/bash"]
 
