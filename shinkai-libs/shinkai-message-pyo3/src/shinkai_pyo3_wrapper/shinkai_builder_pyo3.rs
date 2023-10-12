@@ -564,6 +564,145 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    fn initial_registration_with_no_code_for_device(
+        my_device_encryption_sk: String,
+        my_device_signature_sk: String,
+        profile_encryption_sk: String,
+        profile_signature_sk: String,
+        registration_name: String,
+        sender: String,
+        sender_subidentity: String,
+        recipient: String,
+    ) -> PyResult<String> {
+        let my_subidentity_encryption_sk_type = match string_to_encryption_static_key(&my_device_encryption_sk) {
+            Ok(key) => key,
+            Err(_) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid device encryption key",
+                ))
+            }
+        };
+        let my_subidentity_signature_sk_type = match string_to_signature_secret_key(&my_device_signature_sk) {
+            Ok(key) => key,
+            Err(_) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid device signature key",
+                ))
+            }
+        };
+        let profile_encryption_sk_type = match string_to_encryption_static_key(&profile_encryption_sk) {
+            Ok(key) => key,
+            Err(_) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid profile encryption key",
+                ))
+            }
+        };
+        let profile_signature_sk_type = match string_to_signature_secret_key(&profile_signature_sk) {
+            Ok(key) => key,
+            Err(_) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid profile signature key",
+                ))
+            }
+        };
+
+        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
+        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
+
+        let identity_type = "device".to_string();
+        let permission_type = "admin".to_string();
+
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+        let registration_code = RegistrationCode {
+            code: "".to_string(),
+            registration_name: registration_name.clone(),
+            device_identity_pk: signature_public_key_to_string(my_subidentity_signature_pk),
+            device_encryption_pk: other.clone(),
+            profile_identity_pk: signature_public_key_to_string(profile_signature_pk),
+            profile_encryption_pk: encryption_public_key_to_string(profile_encryption_pk),
+            identity_type,
+            permission_type,
+        };
+
+        let body = match serde_json::to_string(&registration_code) {
+            Ok(body) => body,
+            Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
+        };
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+
+        Python::with_gil(|py| {
+            let schema = match Py::new(
+                py,
+                PyMessageSchemaType {
+                    inner: MessageSchemaType::UseRegistrationCode,
+                },
+            ) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create schema",
+                    ))
+                }
+            };
+
+            let builder_result = PyShinkaiMessageBuilder::new(
+                my_device_encryption_sk,
+                my_device_signature_sk,
+                other.clone(),
+            );
+
+            match builder_result {
+                Ok(mut builder) => {
+                    let body_encryption = Py::new(
+                        py,
+                        PyEncryptionMethod {
+                            inner: EncryptionMethod::None,
+                        },
+                    )?;
+                    let internal_encryption = Py::new(
+                        py,
+                        PyEncryptionMethod {
+                            inner: EncryptionMethod::None,
+                        },
+                    )?;
+
+                    match builder.message_raw_content(body) {
+                        Ok(_) => (),
+                        Err(e) => return Err(e),
+                    }
+
+                    match builder.body_encryption(body_encryption) {
+                        Ok(_) => (),
+                        Err(e) => return Err(e),
+                    }
+
+                    match builder.external_metadata_with_other_and_intra_sender(recipient, sender, other, sender_subidentity.clone()) {
+                        Ok(_) => (),
+                        Err(e) => return Err(e),
+                    }
+
+                    match builder.internal_metadata_with_schema(
+                        sender_subidentity,
+                        "".to_string(),
+                        "".to_string(),
+                        schema,
+                        internal_encryption,
+                    ) {
+                        Ok(_) => (),
+                        Err(e) => return Err(e),
+                    }
+
+                    builder.build_to_string()
+                }
+                Err(e) => Err(e),
+            }
+        })
+    }
+
+    #[staticmethod]
     fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
