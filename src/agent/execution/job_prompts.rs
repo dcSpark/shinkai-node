@@ -1,6 +1,5 @@
+use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use crate::tools::router::ShinkaiTool;
-
-use super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use lazy_static::lazy_static;
 use serde_json::to_string;
 use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
@@ -73,6 +72,7 @@ impl JobPromptGenerator {
         ret_data_chunks: Vec<RetrievedDataChunk>,
         summary_text: Option<String>,
         prev_search_text: Option<String>,
+        previous_job_step_response: Option<String>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -80,8 +80,23 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
+        if let Some(prev_response) = previous_job_step_response {
+            prompt.add_content(
+                format!(
+                    "Here is previous context provided from answering the user's last question/task: `{}`",
+                    prev_response
+                ),
+                SubPromptType::System,
+            );
+        }
         if let Some(summary) = summary_text {
-            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+            prompt.add_content(
+                format!(
+                    "Here is the current summary of content another assistant found to answer the user's question: `{}`",
+                    summary
+                ),
+                SubPromptType::System,
+            );
         }
 
         // Parses the retrieved data chunks into a single string to add to the prompt
@@ -101,11 +116,15 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
-        // Tell the LLM about the previous search term to avoid it
-        if let Some(prev_search) = prev_search_text {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then extend the existing summary with more information, and think of a new search query to perform a vector search (something different than `{}` to get better results):", prev_search), SubPromptType::System);
+        // Tell the LLM about the previous search term (up to max 3 words to not confuse it) to avoid searching the same
+        if let Some(mut prev_search) = prev_search_text {
+            let words: Vec<&str> = prev_search.split_whitespace().collect();
+            if words.len() > 3 {
+                prev_search = words[..3].join(" ");
+            }
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then think of a very detailed search query to perform a new vector search, and create a detailed summary using terms from the provided content:"), SubPromptType::System);
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System);
         }
 
         prompt.add_ebnf(
@@ -130,32 +149,47 @@ impl JobPromptGenerator {
         );
 
         if let Some(summary) = summary_text {
-            prompt.add_content(format!("Here is the current summary from another assitant of content they found to answer the user's question: {}", summary), SubPromptType::System);
+            prompt.add_content(
+                format!(
+                    "Here is the current summary of content another assistant found to answer the user's question: {}",
+                    summary
+                ),
+                SubPromptType::System,
+            );
         }
 
+        // TODO: Either re-introduce this or delete it after testing with more QA in practice.
         // Parses the retrieved data chunks into a single string to add to the prompt
-        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
-        let search_context = format!(
-            "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
-            ret_chunks_content,
-        );
-        prompt.add_content(search_context, SubPromptType::System);
+        // let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
+        // let search_context = format!(
+        //     "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
+        //     ret_chunks_content,
+        // );
+        // prompt.add_content(search_context, SubPromptType::System);
 
         let pre_task_text = format!("The user has asked: ");
         prompt.add_content(pre_task_text, SubPromptType::System);
         prompt.add_content(job_task, SubPromptType::User);
 
         prompt.add_content(
-            format!("Use the content to add any final details to the summary and directly answer the user's question."),
+            format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand:"),
             SubPromptType::System,
         );
 
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
+        prompt
+    }
+
+    /// Prompt to be used for getting the LLM to generate a new/different search term if the LLM repeated
+    pub fn retry_new_search_term_prompt(search_term: String, summary: String) -> Prompt {
+        let mut prompt = Prompt::new();
         prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
-            SubPromptType::System,
-        );
+        format!("Based on the following summary: \n\n{}\n\nYou need to come up with a unique and detailed search term that is different than the provided one: `{}`", summary, search_term),
+        SubPromptType::System,
+    );
+        prompt.add_ebnf(String::from(r#""{" "search" ":" string }""#), SubPromptType::System);
+
         prompt
     }
 
@@ -176,17 +210,24 @@ impl JobPromptGenerator {
     pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-                r#"You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so. Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. Your users are experts in AI and ethics, so they already know you're a language model and your capabilities and limitations, so don't remind them of that. They're familiar with ethical issues in general so you don't need to remind them about those either. Don't be verbose in your answers, but do provide details and examples where it might help the explanation."#.to_string(),
-                SubPromptType::System,
-            );
+            "You are an advanced assistant who who is specialized in summarizing information. Do not ask for further context or information in your answer, simply summarize as much information as possible.".to_string(),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User);
         for chunk in chunks {
             prompt.add_content(format!("{}", chunk), SubPromptType::User);
         }
         prompt.add_content(
-            format!("Take a deep breath and then throughtouly summarize the previous document, make it as explanatory as possible."),
+            format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
             SubPromptType::User,
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
 
         prompt
     }
