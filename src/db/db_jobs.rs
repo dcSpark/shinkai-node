@@ -311,6 +311,7 @@ impl ShinkaiDB {
         Ok(jobs)
     }
 
+    /// Updates the JobScope of a job given it's id
     pub fn update_job_scope(&mut self, job_id: String, scope: JobScope) -> Result<(), ShinkaiDBError> {
         // Define cf name for the scope we need to update
         let cf_job_id_scope_name = format!("{}_scope", &job_id);

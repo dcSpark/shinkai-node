@@ -1,6 +1,6 @@
 use super::error::AgentError;
+use super::execution::job_prompts::Prompt;
 use super::providers::LLMProvider;
-use crate::agent::job_prompts::Prompt;
 use reqwest::Client;
 use serde_json::{Map, Value as JsonValue};
 use shinkai_message_primitives::{
