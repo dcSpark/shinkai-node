@@ -22,14 +22,13 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 #[pyclass]
 pub struct PyShinkaiMessageBuilder {
-    // pub inner: ShinkaiMessageBuilder,
     pub inner: Option<ShinkaiMessageBuilder>,
 }
 
 #[pymethods]
 impl PyShinkaiMessageBuilder {
     #[new]
-    #[args(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)]
+    #[pyo3(text_signature = "(my_encryption_secret_key, my_signature_secret_key, receiver_public_key)")]
     fn new(
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
@@ -195,9 +194,29 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
+    fn external_metadata_with_intra_sender(&mut self, recipient: String, sender: String, intra_sender: String) -> PyResult<()> {
+        if let Some(inner) = self.inner.take() {
+            let new_inner = inner.external_metadata_with_intra_sender(recipient, sender, intra_sender);
+            self.inner = Some(new_inner);
+            Ok(())
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
+        }
+    }
+
     fn external_metadata_with_other(&mut self, recipient: String, sender: String, other: String) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.external_metadata_with_other(recipient, sender, other);
+            self.inner = Some(new_inner);
+            Ok(())
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("inner is None"))
+        }
+    }
+
+    fn external_metadata_with_other_and_intra_sender(&mut self, recipient: String, sender: String, other: String, intra_sender: String) -> PyResult<()> {
+        if let Some(inner) = self.inner.take() {
+            let new_inner = inner.external_metadata_with_other_and_intra_sender(recipient, sender, other, intra_sender);
             self.inner = Some(new_inner);
             Ok(())
         } else {
@@ -312,7 +331,7 @@ impl PyShinkaiMessageBuilder {
                         Err(e) => return Err(e),
                     }
 
-                    match builder.external_metadata_with_other(recipient, sender, other) {
+                    match builder.external_metadata_with_other_and_intra_sender(recipient, sender, other, sender_subidentity.clone()) {
                         Ok(_) => (),
                         Err(e) => return Err(e),
                     }
@@ -608,11 +627,11 @@ impl PyShinkaiMessageBuilder {
         receiver_public_key: String,
         inbox: String,
         count: usize,
-        offset: Option<String>,
         sender: String,
         sender_subidentity: String,
         recipient: String,
         recipient_subidentity: String,
+        offset: Option<String>,
     ) -> PyResult<String> {
         let inbox_name = match InboxName::new(inbox.clone()) {
             Ok(name) => name,
@@ -841,7 +860,7 @@ impl PyShinkaiMessageBuilder {
                 }
             };
 
-            let encryption = match Py::new(py, PyEncryptionMethod::new("None")) {
+            let encryption = match Py::new(py, PyEncryptionMethod::new(Some("None"))) {
                 Ok(encryption) => encryption,
                 Err(_) => {
                     return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -913,7 +932,7 @@ impl PyShinkaiMessageBuilder {
                 }
             };
 
-            let encryption = match Py::new(py, PyEncryptionMethod::new("None")) {
+            let encryption = match Py::new(py, PyEncryptionMethod::new(Some("None"))) {
                 Ok(encryption) => encryption,
                 Err(_) => {
                     return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(

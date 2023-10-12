@@ -73,6 +73,16 @@ impl PyExternalMetadata {
     fn set_other(&mut self, other: String) {
         self.inner.other = other;
     }
+
+    #[getter]
+    fn get_intra_sender(&self) -> PyResult<String> {
+        Ok(self.inner.intra_sender.clone())
+    }
+
+    #[setter]
+    fn set_intra_sender(&mut self, intra_sender: String) {
+        self.inner.intra_sender = intra_sender;
+    }
 }
 
 impl<'source> FromPyObject<'source> for PyExternalMetadata {
