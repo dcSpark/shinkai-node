@@ -7,7 +7,7 @@ use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
 use crate::resources::file_parsing::FileParser;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::shinkai_utils::job_scope::{LocalScopeEntry, ScopeEntry};
+use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::JobMessage},
@@ -16,6 +16,7 @@ use shinkai_message_primitives::{
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType};
+use shinkai_vector_resources::vector_resource::VectorResource;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
@@ -71,7 +72,7 @@ impl AgentManager {
                 self.fetch_relevant_job_data(job.job_id()).await?;
 
             // Processes any files which were sent with the job message
-            self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile)
+            self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile, false)
                 .await?;
 
             // TODO(Nico): move this to a parallel thread that runs in the background
@@ -148,6 +149,7 @@ impl AgentManager {
         agent_found: Option<Arc<Mutex<Agent>>>,
         full_job: &mut Job,
         profile: ShinkaiName,
+        save_to_db_directly: bool,
     ) -> Result<(), AgentError> {
         if !job_message.files_inbox.is_empty() {
             println!(
@@ -156,7 +158,13 @@ impl AgentManager {
             );
             // TODO: later we should able to grab errors and return them to the user
             let new_scope_entries = self
-                .process_files_inbox(self.db.clone(), agent_found, job_message.files_inbox.clone(), profile)
+                .process_files_inbox(
+                    self.db.clone(),
+                    agent_found,
+                    job_message.files_inbox.clone(),
+                    profile,
+                    save_to_db_directly,
+                )
                 .await?;
             eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
 
@@ -203,6 +211,7 @@ impl AgentManager {
         agent: Option<Arc<Mutex<Agent>>>,
         files_inbox: String,
         profile: ShinkaiName,
+        save_to_db_directly: bool,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
         // Handle the None case if the agent is not found
         let agent = match agent {
@@ -231,9 +240,11 @@ impl AgentManager {
                 let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
                 let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
                 let prompt = JobPromptGenerator::simple_doc_description(grouped_text_list_clone);
-                let description_response = self
-                    .inference_agent_and_extract(agent.clone(), prompt, "answer")
-                    .await?;
+                let description_response = Self::ending_stripper(
+                    &self
+                        .inference_agent_and_extract(agent.clone(), prompt, "answer")
+                        .await?,
+                );
 
                 let vrsource = Self::create_vrsource(
                     &filename,
@@ -246,26 +257,35 @@ impl AgentManager {
                     &*generator,
                     &filename,
                     Some(&description_response),
-                    vrsource,
+                    vrsource.clone(),
                     &vec![],
                 )?;
 
                 // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
                 eprintln!("description_response: {:?}", description_response);
 
+                // Now create Local/DBScopeEntry
                 let resource = BaseVectorResource::from(doc.clone());
-                shinkai_db.init_profile_resource_router(&profile)?;
-                shinkai_db.save_resource(resource, &profile).unwrap();
+                if save_to_db_directly {
+                    shinkai_db.init_profile_resource_router(&profile)?;
+                    shinkai_db.save_resource(resource, &profile).unwrap();
 
-                let local_scope_entry = LocalScopeEntry {
-                    resource: BaseVectorResource::from(doc.clone()),
-                    source: SourceFile::new(
-                        filename.clone(),
-                        SourceFileType::Document(SourceDocumentType::Pdf),
-                        content,
-                    ),
-                };
-                files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
+                    let db_scope_entry = DBScopeEntry {
+                        resource_pointer: doc.get_resource_pointer(),
+                        source: vrsource,
+                    };
+                    files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
+                } else {
+                    let local_scope_entry = LocalScopeEntry {
+                        resource: BaseVectorResource::from(doc.clone()),
+                        source: SourceFile::new(
+                            filename.clone(),
+                            SourceFileType::Document(SourceDocumentType::Pdf),
+                            content,
+                        ),
+                    };
+                    files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
+                }
             }
         }
 

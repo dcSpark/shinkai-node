@@ -76,7 +76,7 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
@@ -132,6 +132,11 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
+
         prompt
     }
 
@@ -144,7 +149,7 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides.".to_string(),
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
@@ -177,6 +182,10 @@ impl JobPromptGenerator {
 
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
 
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
         prompt
     }
 
@@ -209,7 +218,7 @@ impl JobPromptGenerator {
     pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
-            r#"You are an advanced assistant who is specialized in summarizing information."#.to_string(),
+            "You are an advanced assistant who who is specialized in summarizing information. Do not ask for further context or information in your answer, simply summarize as much information as possible.".to_string(),
             SubPromptType::System,
         );
 
@@ -222,6 +231,11 @@ impl JobPromptGenerator {
             SubPromptType::User,
         );
         prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+
+        prompt.add_content(
+            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            SubPromptType::System,
+        );
 
         prompt
     }
