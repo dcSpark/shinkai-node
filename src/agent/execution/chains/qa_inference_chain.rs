@@ -3,7 +3,7 @@ use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
 use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
-use crate::agent::job_manager::AgentManager;
+use crate::agent::job_manager::JobManager;
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -11,7 +11,7 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-impl AgentManager {
+impl JobManager {
     /// An inference chain for question-answer job tasks which vector searches the Vector Resources
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]

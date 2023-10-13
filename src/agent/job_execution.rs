@@ -40,7 +40,7 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-impl AgentManager {
+impl JobManager {
     /// Fetches boilerplate/relevant data required for a job to process a step
     async fn fetch_relevant_job_data(
         &self,

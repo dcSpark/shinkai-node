@@ -1,4 +1,4 @@
-use crate::agent::job_manager::AgentManager;
+use crate::agent::job_manager::JobManager;
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
@@ -7,7 +7,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource_types::{DataChunk, RetrievedDataChunk, VectorResourcePointer};
 use std::result::Result::Ok;
 
-impl AgentManager {
+impl JobManager {
     /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
     /// and returns all of them in a single list ready to be used.
     pub async fn fetch_job_scope_resources(

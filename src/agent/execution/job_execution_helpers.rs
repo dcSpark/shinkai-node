@@ -1,7 +1,6 @@
-use crate::agent::agent::Agent;
+use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
-use crate::agent::job_manager::AgentManager;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::source::{SourceFileType, VRSource};
@@ -11,7 +10,7 @@ use tokio::sync::Mutex;
 
 use super::job_prompts::{JobPromptGenerator, Prompt};
 
-impl AgentManager {
+impl JobManager {
     /// Extracts a String using the provided key in the JSON response
     /// Errors if the key is not present.
     pub fn extract_inference_json_response(&self, response_json: JsonValue, key: &str) -> Result<String, AgentError> {

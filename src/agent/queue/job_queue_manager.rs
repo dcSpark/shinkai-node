@@ -5,15 +5,16 @@ use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use std::collections::HashMap;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
 type Subscriber<T> = mpsc::Sender<T>;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct JobForProcessing {
-    job_message: JobMessage,
-    profile: ShinkaiName,
+    pub job_message: JobMessage,
+    pub profile: ShinkaiName,
 }
 
 #[derive(Debug)]
@@ -24,9 +25,9 @@ pub struct JobQueueManager<T> {
 }
 
 impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T> {
-    pub fn new(db: Arc<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
+    pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
         // Lock the db for safe access
-        let db_lock = db.lock().unwrap();
+        let db_lock = db.lock().await;
 
         // Call the get_all_queues method to get all queue data from the db
         match db_lock.get_all_queues() {
@@ -48,40 +49,40 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T
         }
     }
 
-    fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
-        let db = self.db.lock().unwrap();
+    async fn get_queue(&self, key: &str) -> Result<Vec<T>, ShinkaiDBError> {
+        let db = self.db.lock().await;
         db.get_job_queues(key)
     }
 
-    pub fn push(&mut self, key: &str, value: T) -> Result<(), ShinkaiDBError> {
+    pub async fn push(&mut self, key: &str, value: T) -> Result<(), ShinkaiDBError> {
         let queue = self
             .queues
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(Vec::new())));
 
-        let mut guarded_queue = queue.lock().unwrap();
+        let mut guarded_queue = queue.lock().await;
         guarded_queue.push(value.clone());
 
         // Persist queue to the database
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().await;
         db.persist_queue(key, &guarded_queue)?;
 
         // Notify subscribers
         if let Some(subs) = self.subscribers.get(key) {
             for sub in subs.iter() {
-                sub.send(value.clone()).unwrap();
+                let _ = sub.send(value.clone()).await;
             }
         }
         Ok(())
     }
 
-    pub fn dequeue(&mut self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
+    pub async fn dequeue(&mut self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
         // Ensure the specified key exists in the queues hashmap, initializing it with an empty queue if necessary
         let queue = self
             .queues
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(Vec::new())));
-        let mut guarded_queue = queue.lock().unwrap();
+        let mut guarded_queue = queue.lock().await;
 
         // Check if there's an element to dequeue, and remove it if so
         let result = if guarded_queue.get(0).is_some() {
@@ -91,14 +92,14 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T
         };
 
         // Persist queue to the database
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().await;
         db.persist_queue(key, &guarded_queue)?;
 
         Ok(result)
     }
 
     pub fn subscribe(&mut self, key: &str) -> mpsc::Receiver<T> {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel(100);
         self.subscribers
             .entry(key.to_string())
             .or_insert_with(Vec::new)
@@ -132,21 +133,21 @@ mod tests {
         let _ = fs::remove_dir_all(&path);
     }
 
-    #[test]
-    fn test_queue_manager() {
+    #[tokio::test]
+    async fn test_queue_manager() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<JobForProcessing>::new(db).unwrap();
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
-        let handle = std::thread::spawn(move || {
-            for msg in receiver.iter() {
+        let handle = tokio::spawn(async move {
+            while let Some(msg) = receiver.recv().await {
                 println!("Received (from subscriber): {:?}", msg);
 
                 // Dequeue from the queue inside the subscriber thread
-                if let Ok(Some(message)) = manager_clone.dequeue("my_queue") {
+                if let Ok(Some(message)) = manager_clone.dequeue("my_queue").await {
                     println!("Dequeued (from subscriber): {:?}", message);
 
                     // Assert that the subscriber dequeued the correct message
@@ -155,7 +156,7 @@ mod tests {
 
                 eprintln!("Dequeued (from subscriber): {:?}", msg);
                 // Assert that the queue is now empty
-                match manager_clone.dequeue("my_queue") {
+                match manager_clone.dequeue("my_queue").await {
                     Ok(None) => (),
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
@@ -173,20 +174,20 @@ mod tests {
             },
             profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         };
-        manager.push("my_queue", job.clone()).unwrap();
+        manager.push("my_queue", job.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        tokio::time::sleep(std::time::Duration::from_millis(500));
 
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
 
-    #[test]
-    fn test_queue_manager_consistency() {
+    #[tokio::test]
+    async fn test_queue_manager_consistency() {
         setup();
         let db_path = "db_tests/";
         let db = Arc::new(Mutex::new(ShinkaiDB::new(db_path).unwrap()));
-        let mut manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).unwrap();
+        let mut manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
 
         // Push to a queue
         let job = JobForProcessing {
@@ -205,17 +206,17 @@ mod tests {
             },
             profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         };
-        manager.push("my_queue", job.clone()).unwrap();
-        manager.push("my_queue", job2.clone()).unwrap();
+        manager.push("my_queue", job.clone()).await.unwrap();
+        manager.push("my_queue", job2.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_millis(500));
+        tokio::time::sleep(std::time::Duration::from_millis(500));
 
         // Create a new manager and recover the state
-        let mut new_manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).unwrap();
+        let mut new_manager = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
 
         // Try to pop the job from the queue using the new manager
-        match new_manager.dequeue("my_queue") {
+        match new_manager.dequeue("my_queue").await {
             Ok(Some(recovered_job)) => {
                 shinkai_log(
                     ShinkaiLogOption::Tests,
@@ -228,7 +229,7 @@ mod tests {
             Err(e) => panic!("Failed to pop job from queue: {:?}", e),
         }
 
-        match new_manager.dequeue("my_queue") {
+        match new_manager.dequeue("my_queue").await {
             Ok(Some(recovered_job)) => {
                 shinkai_log(
                     ShinkaiLogOption::Tests,
@@ -242,21 +243,21 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_queue_manager_with_jsonvalue() {
+    #[tokio::test]
+    async fn test_queue_manager_with_jsonvalue() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<Result<JsonValue, JobQueueManagerError>>::new(db).unwrap();
+        let mut manager = JobQueueManager::<Result<JsonValue, JobQueueManagerError>>::new(db).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
         let receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
-        let handle = std::thread::spawn(move || {
-            for msg in receiver.iter() {
+        let handle = tokio::spawn(async move {
+            while let Some(msg) = receiver.recv().await {
                 println!("Received (from subscriber): {:?}", msg);
 
                 // Dequeue from the queue inside the subscriber thread
-                if let Ok(Some(message)) = manager_clone.dequeue("my_queue") {
+                if let Ok(Some(message)) = manager_clone.dequeue("my_queue").await {
                     println!("Dequeued (from subscriber): {:?}", message);
 
                     // Assert that the subscriber dequeued the correct message
@@ -265,7 +266,7 @@ mod tests {
 
                 eprintln!("Dequeued (from subscriber): {:?}", msg);
                 // Assert that the queue is now empty
-                match manager_clone.dequeue("my_queue") {
+                match manager_clone.dequeue("my_queue").await {
                     Ok(None) => (),
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
@@ -276,10 +277,10 @@ mod tests {
 
         // Push to a queue
         let job = Ok(JsonValue::String("my content".to_string()));
-        manager.push("my_queue", job.clone()).unwrap();
+        manager.push("my_queue", job.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        handle.join().unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500));
+        handle.await.unwrap();
     }
 }

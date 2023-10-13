@@ -1,7 +1,7 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
-use crate::agent::job_manager::AgentManager;
+use crate::agent::job_manager::JobManager;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -15,7 +15,7 @@ pub enum InferenceChain {
     CodingChain,
 }
 
-impl AgentManager {
+impl JobManager {
     /// Chooses an inference chain based on the job message (using the agent's LLM)
     /// and then starts using the chosen chain.
     /// Returns the final String result from the inferencing, and a new execution context.
