@@ -233,6 +233,9 @@ impl UnstructuredParser {
         let mut current_group = GroupedText::new();
         let mut current_title_group: Option<GroupedText> = None;
 
+        // Remove duplicate titles to cleanup elements
+        let elements = Self::remove_duplicate_title_elements(elements);
+
         for i in 0..elements.len() {
             let element = &elements[i];
             let element_text = element.text.clone();
@@ -307,6 +310,33 @@ impl UnstructuredParser {
             .collect();
 
         groups
+    }
+
+    /// Removes any title element which occurs more than once.
+    /// Useful especially for PDFs/docs where headers/footers repeat
+    /// and Unstructured failed to separate them out as Uncategorized.
+    pub fn remove_duplicate_title_elements(elements: &Vec<UnstructuredElement>) -> Vec<UnstructuredElement> {
+        let mut title_counts = HashMap::new();
+        let mut result = Vec::new();
+
+        // First pass: count the occurrences of each title
+        for element in elements {
+            if element.element_type == ElementType::Title {
+                *title_counts.entry(&element.text).or_insert(0) += 1;
+            }
+        }
+
+        // Second pass: build the result, skipping titles that appear more than once
+        for element in elements {
+            if element.element_type == ElementType::Title {
+                if title_counts[&element.text] > 1 {
+                    continue;
+                }
+            }
+            result.push(element.clone());
+        }
+
+        result
     }
 
     /// Splits a string into chunks at the nearest whitespace to a given size

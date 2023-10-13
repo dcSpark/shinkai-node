@@ -51,7 +51,7 @@ impl GroupedText {
 }
 
 /// Different types of elements Unstructured can output
-#[derive(Debug, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Deserialize, PartialEq, Eq, Clone)]
 pub enum ElementType {
     Title,
     NarrativeText,
@@ -62,7 +62,7 @@ pub enum ElementType {
 
 /// Output data from Unstructured which holds a piece of text and
 /// relevant data.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct UnstructuredElement {
     #[serde(rename = "type")]
     pub element_type: ElementType,
@@ -71,7 +71,7 @@ pub struct UnstructuredElement {
     pub text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Metadata {
     pub filename: String,
     pub file_directory: Option<String>,
@@ -100,7 +100,7 @@ pub struct Metadata {
     pub detection_class_prob: Option<Vec<f32>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
 pub struct Link {
     text: String,
     url: String,
