@@ -272,10 +272,10 @@ impl JobManager {
             Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
         };
 
-        let job_for_processing = JobForProcessing {
-            job_message: job_message.clone(),
-            profile: profile.clone(),
-        };
+        let job_for_processing = JobForProcessing::new(
+            job_message.clone(),
+            profile.clone(),
+        );
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;
         let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
