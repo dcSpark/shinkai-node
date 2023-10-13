@@ -59,8 +59,8 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    // let file_name = "shinkai_intro.pdf";
-    let file_name = "Zeko_Mina_Rollup.pdf";
+    let file_name = "shinkai_intro.pdf";
+    // let file_name = "Zeko_Mina_Rollup.pdf";
     let file_path = "../../files/".to_string() + file_name;
 
     // Read the file into a byte vector

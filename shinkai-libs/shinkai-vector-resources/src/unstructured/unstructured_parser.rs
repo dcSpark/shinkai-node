@@ -236,8 +236,19 @@ impl UnstructuredParser {
         // Remove duplicate titles to cleanup elements
         let elements = Self::remove_duplicate_title_elements(elements);
 
-        for i in 0..elements.len() {
-            let element = &elements[i];
+        // Pre-processing step: handle the first sequence of consecutive titles
+        let mut elements_iter = elements.iter().peekable();
+        while let Some(element) = elements_iter.peek() {
+            if element.element_type == ElementType::Title {
+                current_group.push_data(&element.text, element.metadata.page_number);
+                elements_iter.next(); // advance the iterator
+            } else {
+                break;
+            }
+        }
+
+        // Main loop: process the remaining elements
+        for element in elements_iter {
             let element_text = element.text.clone();
 
             // Skip over any uncategorized text (usually filler like headers/footers)
