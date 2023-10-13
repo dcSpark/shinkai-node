@@ -13,6 +13,10 @@ export STARTING_NUM_QR_PROFILES="1"
 export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 
+export INITIAL_AGENT_NAME="my_gpt"
+export INITIAL_AGENT_URL="https://api.openai.com"
+export INITIAL_AGENT_MODEL="openai:chatgpt3-turbo"
+
 # Add these lines to enable all log options
 export LOG_ALL=1
 

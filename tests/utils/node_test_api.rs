@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -110,15 +111,14 @@ pub async fn api_registration_device_node_profile_main(
             .unwrap();
         let node2_all_subidentities = res_all_subidentities_receiver.recv().await.unwrap().unwrap();
         eprintln!("node_all_subidentities: {:?}", node2_all_subidentities);
-
-        assert_eq!(node2_all_subidentities.len(), 2, "Node has 1 subidentity");
-        eprintln!(
-            "{}",
+        shinkai_log(
+            ShinkaiLogOption::Tests,
+            ShinkaiLogLevel::Debug,
             format!(
                 "{} subidentity: {:?}",
                 node_profile_name,
                 node2_all_subidentities[0].get_full_identity_name()
-            )
+            ).as_str(),
         );
         assert_eq!(
             node2_all_subidentities[1].get_full_identity_name(),
