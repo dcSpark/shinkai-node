@@ -674,7 +674,6 @@ impl Node {
         msg: ShinkaiMessage,
         res: Sender<Result<APIUseRegistrationCodeSuccessResponse, APIError>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        println!("handle_registration_code_usage");
         let sender_encryption_pk_string = msg.external_metadata.clone().other;
         let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).unwrap();
 
@@ -686,15 +685,15 @@ impl Node {
 
         // Deserialize body.content into RegistrationCode
         let content = decrypted_message.get_message_content()?;
-        println!("handle_registration_code_usage> content: {:?}", content);
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Debug,
+            format!("Registration code usage content: {}", content).as_str(),
+        );
         // let registration_code: RegistrationCode = serde_json::from_str(&content).unwrap();
         let registration_code: RegistrationCode = serde_json::from_str(&content).map_err(|e| NodeError {
             message: format!("Failed to deserialize the content: {}", e),
         })?;
-        println!(
-            "handle_registration_code_usage> registration_code: {:?}",
-            registration_code
-        );
 
         // Extract values from the ShinkaiMessage
         let mut code = registration_code.code;
@@ -704,47 +703,42 @@ impl Node {
         let device_identity_pk = registration_code.device_identity_pk;
         let device_encryption_pk = registration_code.device_encryption_pk;
         let identity_type = registration_code.identity_type;
-        println!("handle_registration_code_usage> identity_type: {:?}", identity_type);
         // Comment (to me): this should be able to handle Device and Agent identities
         // why are we forcing standard_idendity_type?
         // let standard_identity_type = identity_type.to_standard().unwrap();
         let permission_type = registration_code.permission_type;
-
-        println!("handle_registration_code_usage> code: {:?}", code);
-        println!("identity_type: {:?}", identity_type);
-        println!("registration name: {}", registration_name);
-        println!("permission_type: {:?}", permission_type);
-
         let db = self.db.lock().await;
-        println!("handle_registration_code_usage> before use_registration_code");
 
         // if first_device_registration_needs_code is false
         // then create a new registration code and use it
         // else use the code provided
-        println!(
-            "handle_registration_code_usage> first_device_needs_registration_code: {:?}",
-            self.first_device_needs_registration_code
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Info,
+            format!("registration code usage> first device needs registration code?: {:?}", self.first_device_needs_registration_code).as_str(),
         );
+
+        let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
+            Ok(exists) => exists,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to check if main profile exists: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        shinkai_log(
+            ShinkaiLogOption::Identity,
+            ShinkaiLogLevel::Debug,
+            format!("registration code usage> main_profile_exists: {:?}", main_profile_exists).as_str(),
+        );
+
         if self.first_device_needs_registration_code == false {
-            let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
-                Ok(exists) => exists,
-                Err(err) => {
-                    let _ = res
-                        .send(Err(APIError {
-                            code: StatusCode::BAD_REQUEST.as_u16(),
-                            error: "Internal Server Error".to_string(),
-                            message: format!("Failed to check if main profile exists: {}", err),
-                        }))
-                        .await;
-                    return Ok(());
-                }
-            };
-
-            println!(
-                "handle_registration_code_usage> main_profile_exists: {:?}",
-                main_profile_exists
-            );
-
             if main_profile_exists == false {
                 let code_type = RegistrationCodeType::Device("main".to_string());
                 let permissions = IdentityPermissions::Admin;
@@ -779,7 +773,6 @@ impl Node {
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
 
-        println!("handle_registration_code_usage> after use_registration_code");
         std::mem::drop(db);
 
         match result {
@@ -921,6 +914,11 @@ impl Node {
                         let mut identity_manager = self.identity_manager.lock().await;
                         match identity_manager.add_device_subidentity(device_identity).await {
                             Ok(_) => {
+                                if main_profile_exists == false && self.initial_agent.is_some() {
+                                    std::mem::drop(identity_manager);
+                                    self.internal_add_agent(self.initial_agent.clone().unwrap()).await?;
+                                }                                
+
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
                                     encryption_public_key: encryption_public_key_to_string(
