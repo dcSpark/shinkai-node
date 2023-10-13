@@ -9,6 +9,8 @@ fi
 # Activate your virtual environment
 source ./venv/bin/activate
 
+pip install maturin
+
 # Run maturin develop and capture its output
 output=$(maturin build -i python)
 
