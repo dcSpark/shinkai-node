@@ -53,7 +53,7 @@ impl AgentManager {
         // Automatically generate description if none is provided
         let mut desc = desc;
         if desc.is_none() {
-            let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, max_chunk_size as usize);
+            let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
             desc = Some(ParsingHelper::ending_stripper(
                 &self
                     .inference_agent_and_extract(agent.clone(), prompt, "answer")
