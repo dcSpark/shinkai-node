@@ -51,7 +51,7 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::FailedParsingUnstructedAPIJSON(ref s) => {
                 write!(f, "Failed to parse Unstructed API response json: {}", s)
             }
-            VectorResourceError::CouldNotDetectFileType(s) => {
+            VectorResourceError::CouldNotDetectFileType(ref s) => {
                 write!(f, "Could not detect file type from file name: {}", s)
             }
         }

@@ -6,7 +6,7 @@ use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::resources::bert_cpp::BertCPPProcess;
-use crate::resources::file_parsing::FileParser;
+use crate::resources::file_parsing::ParsingHelper;
 use crate::schemas::identity::Identity;
 use async_recursion::async_recursion;
 use blake3::Hasher;
@@ -497,7 +497,7 @@ impl AgentManager {
             eprintln!("Iterating over file: {}", filename);
             if filename.ends_with(".pdf") {
                 eprintln!("Processing PDF file: {}", filename);
-                let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
+                let pdf_overview = ParsingHelper::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
 
                 let agent_clone = agent.clone();
                 let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
@@ -517,7 +517,7 @@ impl AgentManager {
                     Some(pdf_overview.blake3_hash),
                 );
                 eprintln!("vrsource: {:?}", vrsource);
-                let doc = FileParser::parse_pdf(
+                let doc = ParsingHelper::parse_pdf(
                     &content,
                     150,
                     &*generator,

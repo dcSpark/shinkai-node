@@ -1,6 +1,7 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::JobPromptGenerator;
+use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::AgentManager;
 use async_recursion::async_recursion;
@@ -63,7 +64,7 @@ impl AgentManager {
         // is finished and so just return the answer response as a cleaned String
         let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
         if let Ok(answer_str) = self.extract_inference_json_response(response_json.clone(), "answer") {
-            let cleaned_answer = Self::ending_stripper(&answer_str);
+            let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
             println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
         }
@@ -80,7 +81,7 @@ impl AgentManager {
                 let summary_str = response_json
                     .get("summary")
                     .and_then(|s| s.as_str())
-                    .map(|s| Self::ending_stripper(s));
+                    .map(|s| ParsingHelper::ending_stripper(s));
                 (search_str, summary_str)
             }
             Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
@@ -116,39 +117,5 @@ impl AgentManager {
             max_iterations,
         )
         .await
-    }
-
-    /// Removes last sentence from an answer string if it contains any of the unwanted phrases.
-    /// This is used because the LLM sometimes answers properly, but then adds useless last sentence such as
-    /// "However, specific details are not provided in the content." at the end.
-    pub fn ending_stripper(string: &str) -> String {
-        let mut sentences: Vec<&str> = string.split('.').collect();
-
-        let unwanted_phrases = [
-            "however,",
-            "unfortunately",
-            "additional research",
-            "futher research",
-            "may be required",
-            "i do not",
-            "further information",
-            "specific details",
-            "provided content",
-            "more information",
-            "not available",
-        ];
-
-        while let Some(last_sentence) = sentences.pop() {
-            if last_sentence.trim().is_empty() {
-                continue;
-            }
-            let sentence = last_sentence.trim_start().to_lowercase();
-            if !unwanted_phrases.iter().any(|&phrase| sentence.contains(phrase)) {
-                sentences.push(last_sentence);
-            }
-            break;
-        }
-
-        sentences.join(".")
     }
 }

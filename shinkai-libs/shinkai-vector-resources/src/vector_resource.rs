@@ -151,7 +151,6 @@ pub trait VectorResource {
         resources_only: bool,
     ) {
         let data_chunks = self.get_data_chunks_exhaustive(starting_path, resources_only);
-        println!("Total Chunks (Including Resources) #: {}", data_chunks.len());
         for chunk in data_chunks {
             let path = chunk.retrieval_path.format_to_string();
             let data = match &chunk.chunk.data {

@@ -1,7 +1,7 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::resources::bert_cpp::BertCPPProcess;
-use shinkai_node::resources::file_parsing::FileParser;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
@@ -29,7 +29,7 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
 
     // Generate DocumentVectorResource
     let desc = "An initial introduction to the Shinkai Network.";
-    let doc = FileParser::parse_pdf(
+    let doc = ParsingHelper::parse_pdf(
         &buffer,
         100,
         generator,

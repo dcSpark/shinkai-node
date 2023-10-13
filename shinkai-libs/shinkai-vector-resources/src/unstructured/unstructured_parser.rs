@@ -110,10 +110,10 @@ impl UnstructuredParser {
         for grouped_text in &text_groups {
             // If the grouped_text has at least 1 sub group, recurse
             if !grouped_text.sub_groups.is_empty() {
-                println!(
-                    "Processing groupd text `{}`\nCreating New Vector Resource",
-                    grouped_text.text
-                );
+                // println!(
+                //     "Processing grouped text `{}`\nCreating New Vector Resource",
+                //     grouped_text.text
+                // );
                 let new_name = &grouped_text.text;
                 let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
                 let new_doc = Self::process_new_doc_resource(
@@ -129,11 +129,11 @@ impl UnstructuredParser {
                 metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
                 doc.append_vector_resource(new_doc, Some(metadata));
             } else {
-                println!(
-                    "Processing groupd text `{}`\nAdding to doc: `{}`",
-                    grouped_text.text,
-                    doc.name()
-                );
+                // println!(
+                //     "Processing groupd text `{}`\nAdding to doc: `{}`",
+                //     grouped_text.text,
+                //     doc.name()
+                // );
                 // Skip creating DataChunks for no/very little text
                 if grouped_text.text.len() < 6 {
                     continue;

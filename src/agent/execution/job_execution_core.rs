@@ -1,11 +1,11 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
+use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::AgentManager;
 use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
-use crate::resources::file_parsing::FileParser;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::{
@@ -15,7 +15,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType};
+use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -201,7 +201,6 @@ impl AgentManager {
         Ok(())
     }
 
-    // TODO: refactor so it's decomposed
     /// Processes the files in a given file inbox by generating VectorResources + job `ScopeEntry`s.
     /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
@@ -233,59 +232,40 @@ impl AgentManager {
 
         // Start processing the files
         for (filename, content) in files.into_iter() {
-            eprintln!("Iterating over file: {}", filename);
-            if filename.ends_with(".pdf") {
-                eprintln!("Processing PDF file: {}", filename);
-                // Prepare description
-                let pdf_overview = FileParser::parse_pdf_for_keywords_and_description(&content, 3, 200)?;
-                let grouped_text_list_clone = pdf_overview.grouped_text_list.clone();
-                let prompt = JobPromptGenerator::simple_doc_description(grouped_text_list_clone);
-                let description_response = Self::ending_stripper(
-                    &self
-                        .inference_agent_and_extract(agent.clone(), prompt, "answer")
-                        .await?,
-                );
-
-                let vrsource = Self::create_vrsource(
-                    &filename,
-                    SourceFileType::Document(SourceDocumentType::Pdf),
-                    Some(pdf_overview.blake3_hash),
-                );
-                let doc = FileParser::parse_pdf(
-                    &content,
-                    150,
+            eprintln!("Processing file: {}", filename);
+            let resource = self
+                .parse_file_into_resource(
+                    content.clone(),
                     &*generator,
-                    &filename,
-                    Some(&description_response),
-                    vrsource.clone(),
+                    filename.clone(),
+                    None,
                     &vec![],
-                )?;
+                    agent.clone(),
+                    400,
+                )
+                .await?;
 
-                // TODO: Maybe add: "\nKeywords: keywords_generated_by_RAKE"?
-                eprintln!("description_response: {:?}", description_response);
+            // Now create Local/DBScopeEntry depending on setting
+            if save_to_db_directly {
+                let pointer = resource.as_trait_object().get_resource_pointer();
+                shinkai_db.init_profile_resource_router(&profile)?;
+                shinkai_db.save_resource(resource, &profile).unwrap();
 
-                // Now create Local/DBScopeEntry
-                let resource = BaseVectorResource::from(doc.clone());
-                if save_to_db_directly {
-                    shinkai_db.init_profile_resource_router(&profile)?;
-                    shinkai_db.save_resource(resource, &profile).unwrap();
-
-                    let db_scope_entry = DBScopeEntry {
-                        resource_pointer: doc.get_resource_pointer(),
-                        source: vrsource,
-                    };
-                    files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
-                } else {
-                    let local_scope_entry = LocalScopeEntry {
-                        resource: BaseVectorResource::from(doc.clone()),
-                        source: SourceFile::new(
-                            filename.clone(),
-                            SourceFileType::Document(SourceDocumentType::Pdf),
-                            content,
-                        ),
-                    };
-                    files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
-                }
+                let db_scope_entry = DBScopeEntry {
+                    resource_pointer: pointer,
+                    source: VRSource::from_file(&filename, &content)?,
+                };
+                files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
+            } else {
+                let local_scope_entry = LocalScopeEntry {
+                    resource: resource,
+                    source: SourceFile::new(
+                        filename.clone(),
+                        SourceFileType::Document(SourceDocumentType::Pdf),
+                        content,
+                    ),
+                };
+                files_map.insert(filename, ScopeEntry::Local(local_scope_entry));
             }
         }
 
