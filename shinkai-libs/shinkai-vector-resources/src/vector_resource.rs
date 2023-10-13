@@ -123,10 +123,21 @@ pub trait VectorResource {
 
     /// Returns every single data chunk at any level in the whole Vector Resource, including sub Vector Resources
     /// and the DataChunks they hold. If a starting_path is provided then fetches all data chunks from there,
-    /// else starts at root.
-    fn get_data_chunks_exhaustive(&self, starting_path: Option<VRPath>) -> Vec<RetrievedDataChunk> {
+    /// else starts at root. If resources_only is true, only Vector Resources are returned.
+    fn get_data_chunks_exhaustive(
+        &self,
+        starting_path: Option<VRPath>,
+        resources_only: bool,
+    ) -> Vec<RetrievedDataChunk> {
         let empty_embedding = Embedding::new("", vec![]);
-        self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path)
+        let mut data_chunks =
+            self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path);
+
+        if resources_only {
+            data_chunks.retain(|chunk| matches!(chunk.chunk.data, DataContent::Resource(_)));
+        }
+
+        data_chunks
     }
 
     /// Prints all data chunks and their paths to easily/quickly examine a Vector Resource.
@@ -139,15 +150,13 @@ pub trait VectorResource {
         shorten_data: bool,
         resources_only: bool,
     ) {
-        let data_chunks = self.get_data_chunks_exhaustive(starting_path);
+        let data_chunks = self.get_data_chunks_exhaustive(starting_path, resources_only);
         println!("Total Chunks (Including Resources) #: {}", data_chunks.len());
         for chunk in data_chunks {
             let path = chunk.retrieval_path.format_to_string();
             let data = match &chunk.chunk.data {
                 DataContent::Data(s) => {
-                    if resources_only {
-                        continue;
-                    } else if shorten_data && s.chars().count() > 25 {
+                    if shorten_data && s.chars().count() > 25 {
                         s.chars().take(25).collect::<String>() + "..."
                     } else {
                         s.to_string()

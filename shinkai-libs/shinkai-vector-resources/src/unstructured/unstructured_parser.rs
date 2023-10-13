@@ -59,16 +59,24 @@ impl UnstructuredParser {
     pub fn process_elements_into_resource(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
+        name: String,
+        desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: &str,
+        resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        Self::process_new_doc_resource(text_groups, generator, name, desc, source, parsing_tags, resource_id)
+        Self::process_new_doc_resource(
+            text_groups,
+            generator,
+            &name,
+            desc.as_deref(),
+            source,
+            parsing_tags,
+            &resource_id,
+        )
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources

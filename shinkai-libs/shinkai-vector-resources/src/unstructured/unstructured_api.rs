@@ -30,22 +30,22 @@ impl UnstructuredAPI {
         }
     }
 
-    /// Makes a blocking request to process a file in a buffer to Unstructured,
+    /// Makes a blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: For the time being the file name must include the extension ie. `*.pdf`
+    /// Note: For the time being the name must include the extension ie. `*.pdf`
     pub fn process_file(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
+        name: String,
+        desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let elements = self.file_request_blocking(file_buffer, name)?;
+        let elements = self.file_request_blocking(file_buffer, &name)?;
 
         UnstructuredParser::process_elements_into_resource(
             elements,
@@ -54,27 +54,27 @@ impl UnstructuredAPI {
             desc,
             source,
             parsing_tags,
-            &resource_id,
+            resource_id,
             max_chunk_size,
         )
     }
 
-    /// Makes an async request to process a file in a buffer to Unstructured,
+    /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: For the time being the file name must include the extension ie. `*.pdf`
     pub async fn process_file_async(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: &str,
-        desc: Option<&str>,
+        name: String,
+        desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let elements = self.file_request_async(file_buffer, name).await?;
+        let elements = self.file_request_async(file_buffer, &name).await?;
 
         UnstructuredParser::process_elements_into_resource(
             elements,
@@ -83,14 +83,14 @@ impl UnstructuredAPI {
             desc,
             source,
             parsing_tags,
-            &resource_id,
+            resource_id,
             max_chunk_size,
         )
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
-    fn file_request_blocking(
+    pub fn file_request_blocking(
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,
@@ -124,7 +124,7 @@ impl UnstructuredAPI {
 
     /// Makes an async request to process a file in a buffer into a list of
     /// UnstructuredElements
-    async fn file_request_async(
+    pub async fn file_request_async(
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,

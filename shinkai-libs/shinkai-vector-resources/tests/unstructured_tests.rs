@@ -70,7 +70,15 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
 
     let resource = api
-        .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 500)
+        .process_file(
+            file_buffer,
+            &generator,
+            file_name.to_string(),
+            None,
+            VRSource::None,
+            &vec![],
+            500,
+        )
         .unwrap();
 
     resource
