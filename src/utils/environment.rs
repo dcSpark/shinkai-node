@@ -1,5 +1,9 @@
 use std::env;
 use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr;
+
+use shinkai_message_primitives::schemas::agents::serialized_agent::{SerializedAgent, AgentLLMInterface};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone)]
 pub struct NodeEnvironment {
@@ -10,6 +14,55 @@ pub struct NodeEnvironment {
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
+}
+
+pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
+    // Agent
+    let initial_agent_name: String = env::var("INITIAL_AGENT_NAME")
+        .unwrap_or_else(|_| "".to_string())
+        .parse()
+        .expect("Failed to parse agent name");
+
+    let initial_agent_api_key: String = env::var("INITIAL_AGENT_API_KEY")
+        .unwrap_or_else(|_| "".to_string())
+        .parse()
+        .expect("Failed to parse agent api key");
+
+    let initial_agent_url: String = env::var("INITIAL_AGENT_URL")
+        .unwrap_or_else(|_| "".to_string())
+        .parse()
+        .expect("Failed to parse agent url e.g. https://api.openai.com");
+
+    let initial_agent_model: String = env::var("INITIAL_AGENT_MODEL")
+        .unwrap_or_else(|_| "".to_string())
+        .parse()
+        .expect("Failed to parse agent model e.g. openai:chatgpt3-turbo");
+
+    if initial_agent_name.is_empty()
+    || initial_agent_api_key.is_empty()
+    || initial_agent_url.is_empty()
+    || initial_agent_model.is_empty() {
+        return None;
+    }
+
+    let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_model);
+    let agent = SerializedAgent {
+        id: initial_agent_name.clone(),
+        full_identity_name: ShinkaiName::new(format!(
+            "{}/main/agent/{}",
+            global_identity, initial_agent_name
+        ))
+        .unwrap(),
+        perform_locally: false,
+        external_url: Some(initial_agent_url),
+        api_key: Some(initial_agent_api_key),
+        model: model.expect("Failed to parse agent model"),
+        toolkit_permissions: vec![],
+        storage_bucket_permissions: vec![],
+        allowed_message_senders: vec![],
+    };
+
+    Some(agent)
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {

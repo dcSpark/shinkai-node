@@ -3,7 +3,7 @@ use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
-use crate::utils::environment::fetch_node_environment;
+use crate::utils::environment::{fetch_node_environment, fetch_agent_env};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
@@ -13,6 +13,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{Ident
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -50,26 +51,43 @@ fn main() {
     let args = parse_args();
 
     // Create Tokio runtime
-    let mut rt = initialize_runtime();
+    let mut _rt = initialize_runtime();
     let node_keys = generate_or_load_keys();
     let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key);
+    let initial_agent = fetch_agent_env(global_identity_name.clone());
+
+    shinkai_log(
+        ShinkaiLogOption::Node,
+        ShinkaiLogLevel::Info,
+        format!("Initial Agent: {:?}", initial_agent).as_str(),
+    );
 
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
 
     // Log the address, port, and public_key
-    println!(
-        "Starting node with address: {}, db path: {}",
-        node_env.api_listen_address, db_path
+    shinkai_log(
+        ShinkaiLogOption::Node,
+        ShinkaiLogLevel::Info,
+        format!(
+            "Starting node with address: {}, db path: {}",
+            node_env.api_listen_address, db_path
+        )
+        .as_str(),
     );
-    println!(
-        "identity sk: {} pk: {} encryption sk: {} pk: {}",
-        identity_secret_key_string,
-        identity_public_key_string,
-        encryption_secret_key_to_string(node_keys.encryption_secret_key.clone()),
-        encryption_public_key_to_string(node_keys.encryption_public_key.clone())
+    shinkai_log(
+        ShinkaiLogOption::Node,
+        ShinkaiLogLevel::Info,
+        format!(
+            "identity sk: {} pk: {} encryption sk: {} pk: {}",
+            identity_secret_key_string,
+            identity_public_key_string,
+            encryption_secret_key_to_string(node_keys.encryption_secret_key.clone()),
+            encryption_public_key_to_string(node_keys.encryption_public_key.clone())
+        )
+        .as_str(),
     );
 
     // CLI
@@ -92,14 +110,14 @@ fn main() {
                 node_env.ping_interval,
                 node_commands_receiver,
                 db_path,
-                node_env.first_device_needs_registration_code
+                node_env.first_device_needs_registration_code,
+                initial_agent
             )
             .await
         }),
     ));
 
     // Clone the Arc<Mutex<Node>> for use in each task
-    let connect_node = Arc::clone(&node);
     let start_node = Arc::clone(&node);
 
     // Create a new Tokio runtime

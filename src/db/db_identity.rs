@@ -142,9 +142,9 @@ impl ShinkaiDB {
     pub fn get_all_profiles_and_devices(&self, my_node_identity: ShinkaiName) -> Result<Vec<Identity>, ShinkaiDBError> {
         let my_node_identity_name = my_node_identity.get_node_name();
         let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
-        let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
-        let cf_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
-        let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?;
+        // let cf_encryption = self.cf_handle(Topic::ProfilesEncryptionKey.as_str())?;
+        // let cf_type = self.cf_handle(Topic::ProfilesIdentityType.as_str())?;
+        // let cf_permission = self.cf_handle(Topic::ProfilesPermission.as_str())?;
         let cf_device = self.cf_handle(Topic::DevicesIdentityKey.as_str())?;
 
         let (node_encryption_public_key, node_signature_public_key) =
@@ -202,7 +202,6 @@ impl ShinkaiDB {
     }
 
     pub fn insert_profile(&self, identity: StandardIdentity) -> Result<(), ShinkaiDBError> {
-        println!("identity.full_identity_name: {}", identity.full_identity_name);
         let profile_name =
             identity
                 .full_identity_name

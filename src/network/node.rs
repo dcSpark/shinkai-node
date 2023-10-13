@@ -249,6 +249,8 @@ pub struct Node {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
+    // Initial Agent to auto-add on first registration
+    pub initial_agent: Option<SerializedAgent>,
 }
 
 impl Node {
@@ -263,6 +265,7 @@ impl Node {
         commands: Receiver<NodeCommand>,
         db_path: String,
         first_device_needs_registration_code: bool,
+        initial_agent: Option<SerializedAgent>
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -310,6 +313,7 @@ impl Node {
             db: db_arc,
             job_manager: None,
             first_device_needs_registration_code,
+            initial_agent
         }
     }
 
