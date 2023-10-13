@@ -59,7 +59,8 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let file_name = "shinkai_intro.pdf";
+    // let file_name = "shinkai_intro.pdf";
+    let file_name = "Zeko_Mina_Rollup.pdf";
     let file_path = "../../files/".to_string() + file_name;
 
     // Read the file into a byte vector
@@ -72,7 +73,9 @@ fn test_unstructured_parse_pdf_vector_resource() {
         .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 500)
         .unwrap();
 
-    resource.as_trait_object().print_all_data_chunks_exhaustive(None, true);
+    resource
+        .as_trait_object()
+        .print_all_data_chunks_exhaustive(None, true, false);
 
     // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
     let query_string = "Who are the authors?";

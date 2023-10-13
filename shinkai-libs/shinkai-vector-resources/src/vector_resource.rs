@@ -130,27 +130,37 @@ pub trait VectorResource {
     }
 
     /// Prints all data chunks and their paths to easily/quickly examine a Vector Resource.
-    /// This is exhaustive and can begin from any starting_path. Shorten_data cuts the string
-    /// content short to improve readability.
-    fn print_all_data_chunks_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool) {
-        println!("Chunks 1st level #: {}", self.chunk_embeddings().len());
+    /// This is exhaustive and can begin from any starting_path.
+    /// `shorten_data` - Cuts the string content short to improve readability.
+    /// `resources_only` - Only prints Vector Resources
+    fn print_all_data_chunks_exhaustive(
+        &self,
+        starting_path: Option<VRPath>,
+        shorten_data: bool,
+        resources_only: bool,
+    ) {
         let data_chunks = self.get_data_chunks_exhaustive(starting_path);
-        println!("Found Chunks #: {}", data_chunks.len());
+        println!("Total Chunks (Including Resources) #: {}", data_chunks.len());
         for chunk in data_chunks {
             let path = chunk.retrieval_path.format_to_string();
             let data = match &chunk.chunk.data {
                 DataContent::Data(s) => {
-                    if shorten_data && s.len() > 20 {
-                        s[..20].to_string()
+                    if resources_only {
+                        continue;
+                    } else if shorten_data && s.chars().count() > 25 {
+                        s.chars().take(25).collect::<String>() + "..."
                     } else {
                         s.to_string()
                     }
                 }
-                DataContent::Resource(resource) => format!(
-                    "<{}> - {} Chunks Held Inside",
-                    resource.as_trait_object().name(),
-                    resource.as_trait_object().chunk_embeddings().len()
-                ),
+                DataContent::Resource(resource) => {
+                    println!("");
+                    format!(
+                        "<{}> - {} Chunks Held Inside",
+                        resource.as_trait_object().name(),
+                        resource.as_trait_object().chunk_embeddings().len()
+                    )
+                }
             };
             println!("{}: {}", path, data);
         }

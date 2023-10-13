@@ -267,9 +267,21 @@ impl UnstructuredParser {
             // If the current element type is Title,
             // push the current title group to groups and start a new title group
             if element.element_type == ElementType::Title {
+                // Add the current group to the existing title group only if it contains more than the title text
+                if !current_group.text.is_empty() && current_group.text != element_text {
+                    Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
+                } else if let Some(title_group) = current_title_group.as_mut() {
+                    // If the current group only contains the title text, add an empty GroupedText to the sub-groups
+                    title_group.sub_groups.push(GroupedText::new());
+                }
+                current_group = GroupedText::new();
+
+                // Push the existing title group to groups
                 if let Some(title_group) = current_title_group.take() {
                     groups.push(title_group);
                 }
+
+                // Start a new title group
                 current_title_group = Some(GroupedText::new());
                 if let Some(title_group) = current_title_group.as_mut() {
                     title_group.push_data(&element_text, element.metadata.page_number);
