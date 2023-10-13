@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
@@ -21,6 +22,7 @@ pub struct JobForProcessing {
 pub struct JobQueueManager<T> {
     queues: HashMap<String, MutexQueue<T>>,
     subscribers: HashMap<String, Vec<Subscriber<T>>>,
+    all_subscribers: Vec<Subscriber<T>>,
     db: Arc<Mutex<ShinkaiDB>>,
 }
 
@@ -42,6 +44,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T
                 Ok(JobQueueManager {
                     queues: manager_queues,
                     subscribers: HashMap::new(),
+                    all_subscribers: Vec::new(),
                     db: Arc::clone(&db),
                 })
             }
@@ -73,6 +76,10 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T
                 let _ = sub.send(value.clone()).await;
             }
         }
+        // Notify subscribers to all keys
+        for sub in self.all_subscribers.iter() {
+            let _ = sub.send(value.clone()).await;
+        }
         Ok(())
     }
 
@@ -98,12 +105,46 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize> JobQueueManager<T
         Ok(result)
     }
 
+    pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
+        let db_lock = self.db.lock().await;
+        let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>()?;
+    
+        // Sort the keys
+        let mut keys: Vec<_> = db_queues.keys().cloned().collect();
+        keys.sort();
+    
+        let mut all_elements = Vec::new();
+        let mut indices: Vec<_> = vec![0; keys.len()];
+        let mut added = true;
+    
+        while added {
+            added = false;
+            for (key, index) in keys.iter().zip(indices.iter_mut()) {
+                if let Some(queue) = db_queues.get_mut(key) {
+                    if let Some(element) = queue.get(*index) {
+                        all_elements.push(element.clone());
+                        *index += 1;
+                        added = true;
+                    }
+                }
+            }
+        }
+    
+        Ok(all_elements)
+    }
+
     pub fn subscribe(&mut self, key: &str) -> mpsc::Receiver<T> {
         let (tx, rx) = mpsc::channel(100);
         self.subscribers
             .entry(key.to_string())
             .or_insert_with(Vec::new)
             .push(tx);
+        rx
+    }
+
+    pub fn subscribe_to_all(&mut self) -> mpsc::Receiver<T> {
+        let (tx, rx) = mpsc::channel(100);
+        self.all_subscribers.push(tx);
         rx
     }
 }
@@ -113,6 +154,7 @@ impl<T: Clone + Send + 'static> Clone for JobQueueManager<T> {
         JobQueueManager {
             queues: self.queues.clone(),
             subscribers: self.subscribers.clone(),
+            all_subscribers: self.all_subscribers.clone(),
             db: Arc::clone(&self.db),
         }
     }
@@ -140,7 +182,7 @@ mod tests {
         let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
-        let receiver = manager.subscribe("my_queue");
+        let mut receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
@@ -177,7 +219,7 @@ mod tests {
         manager.push("my_queue", job.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        tokio::time::sleep(std::time::Duration::from_millis(500));
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         handle.await.unwrap();
     }
@@ -247,10 +289,12 @@ mod tests {
     async fn test_queue_manager_with_jsonvalue() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
-        let mut manager = JobQueueManager::<Result<JsonValue, JobQueueManagerError>>::new(db).await.unwrap();
+        let mut manager = JobQueueManager::<Result<JsonValue, JobQueueManagerError>>::new(db)
+            .await
+            .unwrap();
 
         // Subscribe to notifications from "my_queue"
-        let receiver = manager.subscribe("my_queue");
+        let mut receiver = manager.subscribe("my_queue");
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
@@ -280,7 +324,78 @@ mod tests {
         manager.push("my_queue", job.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
-        tokio::time::sleep(std::time::Duration::from_millis(500));
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_get_all_elements_interleave() {
+        setup();
+        let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
+
+        // Create jobs
+        let job_a1 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::a1::false".to_string(),
+                content: "content a1".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+        let job_a2 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::a2::false".to_string(),
+                content: "content a2".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+        let job_a3 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::a3::false".to_string(),
+                content: "content a3".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+        let job_b1 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::b1::false".to_string(),
+                content: "content b1".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+        let job_c1 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::c1::false".to_string(),
+                content: "content c1".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+        let job_c2 = JobForProcessing {
+            job_message: JobMessage {
+                job_id: "job_id::c2::false".to_string(),
+                content: "content c2".to_string(),
+                files_inbox: "".to_string(),
+            },
+            profile: ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
+        };
+
+        // Push jobs to queues
+        manager.push("job_a", job_a1.clone()).await.unwrap();
+        manager.push("job_a", job_a2.clone()).await.unwrap();
+        manager.push("job_a", job_a3.clone()).await.unwrap();
+        manager.push("job_b", job_b1.clone()).await.unwrap();
+        manager.push("job_c", job_c1.clone()).await.unwrap();
+        manager.push("job_c", job_c2.clone()).await.unwrap();
+
+        // Get all elements interleaved
+        let all_elements = manager.get_all_elements_interleave().await.unwrap();
+
+        // Check if the elements are in the correct order
+        assert_eq!(all_elements, vec![job_a1, job_b1, job_c1, job_a2, job_c2, job_a3]);
     }
 }

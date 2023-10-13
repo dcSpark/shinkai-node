@@ -6,6 +6,7 @@ use crate::agent::job::{Job, JobId, JobLike};
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
     shinkai_message::{
@@ -16,7 +17,7 @@ use shinkai_message_primitives::{
 };
 use std::result::Result::Ok;
 use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{mpsc, Mutex, Semaphore};
 
 const NUM_THREADS: usize = 2;
 
@@ -24,13 +25,17 @@ pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
-    pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
-    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
     pub agents: Vec<Arc<Mutex<Agent>>>,
     pub identity_secret_key: SignatureStaticKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
+
+    // Experimental
     pub thread_pool: rayon::ThreadPool,
+
+    // TODO: remove them
+    pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
+    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
 }
 
 // TODO: Maybe remove this altogether?
@@ -72,19 +77,78 @@ impl JobManager {
 
         let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
 
-        let job_manager = Self {
+        let mut job_manager = Self {
             db,
             job_manager_receiver: Arc::new(Mutex::new(job_manager_receiver)),
             job_manager_sender: job_manager_sender.clone(),
             identity_secret_key,
             node_profile_name,
             thread_pool,
+            // job_task_senders: Arc::new(Mutex::new(HashMap::new())),
+            // semaphore: Arc::new(Semaphore::new(NUM_THREADS)),
             jobs: jobs_map,
             identity_manager,
             agents,
             job_queue_manager: Arc::new(Mutex::new(job_queue)),
         };
+        // Start processing the job queue
+        job_manager.process_job_queue().await;
         job_manager
+    }
+
+    pub async fn process_job_queue(&mut self) {
+        let job_queue_manager = Arc::clone(&self.job_queue_manager);
+        let mut receiver = job_queue_manager.lock().await.subscribe_to_all();
+
+        tokio::spawn(async move {
+            eprintln!("Starting job queue processing loop");
+
+            let mut upcoming_jobs: Vec<String> = job_queue_manager
+                .lock()
+                .await
+                .get_all_elements_interleave()
+                .await
+                .unwrap_or(Vec::new())
+                .into_iter()
+                .map(|job| job.job_message.job_id.clone().to_string())
+                .collect();
+
+            loop {
+                // Check if there are jobs in the queue and process them
+                while let Some(job_id) = upcoming_jobs.first().cloned() {
+                    let job_queue_manager = Arc::clone(&job_queue_manager);
+                    tokio::spawn(async move {
+                        let mut job_queue_manager = job_queue_manager.lock().await;
+                        match job_queue_manager.dequeue(&job_id).await {
+                            Ok(Some(job)) => {
+                                // Process the job
+                                eprintln!("Processing job {:?}", job);
+                                JobManager::process_job_message_queued(job).await;
+                            }
+                            Ok(None) => {
+                                // Nothing to do
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Error while processing job queue: {:?}", e).as_str(),
+                                );
+                            }
+                        }
+                    })
+                    .await
+                    .unwrap();
+                    upcoming_jobs.remove(0);
+                }
+
+                // Receive new jobs
+                if let Some(job) = receiver.recv().await {
+                    let job_id = job.job_message.job_id.clone().to_string();
+                    upcoming_jobs.push(job_id.clone());
+                }
+            }
+        });
     }
 
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
@@ -190,17 +254,32 @@ impl JobManager {
         }
     }
 
-    /// Adds pre-message to job inbox
-    pub async fn handle_pre_message_schema(
+    pub async fn add_to_job_processing_queue(
         &mut self,
-        pre_message: JobPreMessage,
-        job_id: String,
-        shinkai_message: ShinkaiMessage,
+        message: ShinkaiMessage,
+        job_message: JobMessage,
     ) -> Result<String, AgentError> {
-        self.db
-            .lock()
-            .await
-            .add_message_to_job_inbox(job_id.as_str(), &shinkai_message)?;
-        Ok(String::new())
+        // TODO: save to the queue
+        // Verify identity/profile match
+        let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
+        let sender_subidentity = match sender_subidentity_result {
+            Ok(subidentity) => subidentity,
+            Err(e) => return Err(AgentError::InvalidSubidentity(e)),
+        };
+        let profile_result = sender_subidentity.extract_profile();
+        let profile = match profile_result {
+            Ok(profile) => profile,
+            Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
+        };
+
+        let job_for_processing = JobForProcessing {
+            job_message: job_message.clone(),
+            profile: profile.clone(),
+        };
+
+        let mut job_queue_manager = self.job_queue_manager.lock().await;
+        let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
+
+        Ok(job_message.job_id.clone().to_string())
     }
 }

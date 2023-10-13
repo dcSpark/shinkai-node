@@ -26,79 +26,53 @@ use tokio::sync::Mutex;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    pub async fn add_to_job_processing_queue(
-        &mut self,
-        message: ShinkaiMessage,
-        job_message: JobMessage,
-    ) -> Result<String, AgentError> {
-        // TODO: save to the queue
-        // Verify identity/profile match
-        let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
-        let sender_subidentity = match sender_subidentity_result {
-            Ok(subidentity) => subidentity,
-            Err(e) => return Err(AgentError::InvalidSubidentity(e)),
-        };
-        let profile_result = sender_subidentity.extract_profile();
-        let profile = match profile_result {
-            Ok(profile) => profile,
-            Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
-        };
+    pub async fn process_job_message_queued(
+        job_message: JobForProcessing
+    ) {
+        eprintln!("inside process_job_message_queued> Processing job: {:?}", job_message);
+        // // if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
+        //     // Basic setup
+        //     let job = job.clone();
+        //     let job_id = job.job_id().to_string();
+        //     let mut shinkai_db = self.db.lock().await;
+        //     shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+        //     println!("process_job_step> job_message: {:?}", job_message);
 
-        let job_for_processing = JobForProcessing {
-            job_message: job_message.clone(),
-            profile: profile.clone(),
-        };
+        //     // TODO: Implement unprocessed messages/queuing logic
+        //     // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
+        //     // However if unprocessed message count  == 0, then:
+        //     // 0. You add the unprocessed message to the list in the DB
+        //     // 1. Start a while loop where every time you fetch the unprocessed messages for the job from the DB and check if there's >= 1
+        //     // 2. You read the first/front unprocessed message (not pop from the back)
+        //     // 3. You start analysis phase to generate the execution plan.
+        //     // 4. You then take the execution plan and process the execution phase.
+        //     // 5. Once execution phase succeeds, you then delete the message from the unprocessed list in the DB
+        //     //    and take the result and append it both to the Job inbox and step history
+        //     // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially
 
-        let mut job_queue_manager = self.job_queue_manager.lock().await;
-        let _ = job_queue_manager.push(&job_message.job_id, job_for_processing).await;
+        //     // let current_unprocessed_message_count = ...
+        //     shinkai_db.add_to_unprocessed_messages_list(job.job_id().to_string(), job_message.content.clone())?;
 
-        Ok(job_message.job_id.clone().to_string())
+        //     std::mem::drop(shinkai_db); // require to avoid deadlock
+
+        //     // Fetch data we need to execute job step
+        //     let (mut full_job, agent_found, profile_name, user_profile) =
+        //         self.fetch_relevant_job_data(job.job_id()).await?;
+
+        //     // Processes any files which were sent with the job message
+        //     self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile, false)
+        //         .await?;
+
+        //     // TODO(Nico): move this to a parallel thread that runs in the background
+        //     let _ = self
+        //         .process_inference_chain(job_message, full_job, agent_found.clone(), profile_name, user_profile)
+        //         .await?;
+
+        //     return Ok(job_id.clone());
+        // // } else {
+        // //     return Err(AgentError::JobNotFound);
+        // // }
     }
-
-    // fn tmp() {
-    //     if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
-    //         // Basic setup
-    //         let job = job.clone();
-    //         let job_id = job.job_id().to_string();
-    //         let mut shinkai_db = self.db.lock().await;
-    //         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
-    //         println!("process_job_step> job_message: {:?}", job_message);
-
-    //         // TODO: Implement unprocessed messages/queuing logic
-    //         // If current unprocessed message count >= 1, then simply add unprocessed message and return success.
-    //         // However if unprocessed message count  == 0, then:
-    //         // 0. You add the unprocessed message to the list in the DB
-    //         // 1. Start a while loop where every time you fetch the unprocessed messages for the job from the DB and check if there's >= 1
-    //         // 2. You read the first/front unprocessed message (not pop from the back)
-    //         // 3. You start analysis phase to generate the execution plan.
-    //         // 4. You then take the execution plan and process the execution phase.
-    //         // 5. Once execution phase succeeds, you then delete the message from the unprocessed list in the DB
-    //         //    and take the result and append it both to the Job inbox and step history
-    //         // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially
-
-    //         // let current_unprocessed_message_count = ...
-    //         shinkai_db.add_to_unprocessed_messages_list(job.job_id().to_string(), job_message.content.clone())?;
-
-    //         std::mem::drop(shinkai_db); // require to avoid deadlock
-
-    //         // Fetch data we need to execute job step
-    //         let (mut full_job, agent_found, profile_name, user_profile) =
-    //             self.fetch_relevant_job_data(job.job_id()).await?;
-
-    //         // Processes any files which were sent with the job message
-    //         self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile, false)
-    //             .await?;
-
-    //         // TODO(Nico): move this to a parallel thread that runs in the background
-    //         let _ = self
-    //             .process_inference_chain(job_message, full_job, agent_found.clone(), profile_name, user_profile)
-    //             .await?;
-
-    //         return Ok(job_id.clone());
-    //     } else {
-    //         return Err(AgentError::JobNotFound);
-    //     }
-    // }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
