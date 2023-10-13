@@ -32,7 +32,7 @@ impl UnstructuredAPI {
 
     /// Makes a blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: For the time being the name must include the extension ie. `*.pdf`
+    /// Note: Requires name to include the extension ie. `*.pdf`
     pub fn process_file(
         &self,
         file_buffer: Vec<u8>,
@@ -61,7 +61,7 @@ impl UnstructuredAPI {
 
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: For the time being the file name must include the extension ie. `*.pdf`
+    /// Note: Requires name to include the extension ie. `*.pdf`
     pub async fn process_file_async(
         &self,
         file_buffer: Vec<u8>,

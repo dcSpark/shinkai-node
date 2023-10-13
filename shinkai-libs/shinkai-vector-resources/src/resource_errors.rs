@@ -21,6 +21,7 @@ pub enum VectorResourceError {
     DataIsNonMatchingType,
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
+    CouldNotDetectFileType(String),
 }
 
 impl fmt::Display for VectorResourceError {
@@ -49,6 +50,9 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
             VectorResourceError::FailedParsingUnstructedAPIJSON(ref s) => {
                 write!(f, "Failed to parse Unstructed API response json: {}", s)
+            }
+            VectorResourceError::CouldNotDetectFileType(s) => {
+                write!(f, "Could not detect file type from file name: {}", s)
             }
         }
     }
