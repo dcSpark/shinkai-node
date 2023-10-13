@@ -233,10 +233,10 @@ impl UnstructuredParser {
         let mut current_group = GroupedText::new();
         let mut current_title_group: Option<GroupedText> = None;
 
-        // Remove duplicate titles to cleanup elements
+        // Step 1: Remove duplicate titles to cleanup elements
         let elements = Self::remove_duplicate_title_elements(elements);
 
-        // Pre-processing step: handle the first sequence of consecutive titles
+        // Step 2: Concatenate the first sequence of consecutive titles (useful for pdfs)
         let mut elements_iter = elements.iter().peekable();
         while let Some(element) = elements_iter.peek() {
             if element.element_type == ElementType::Title {
@@ -247,7 +247,7 @@ impl UnstructuredParser {
             }
         }
 
-        // Main loop: process the remaining elements
+        // Step 3: Main loop: process the remaining elements
         for element in elements_iter {
             let element_text = element.text.clone();
 
