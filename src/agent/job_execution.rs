@@ -283,7 +283,7 @@ impl JobManager {
         let prev_execution_context = full_job.execution_context.clone();
         let analysis_context = HashMap::new();
         let start = Instant::now();
-        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        // let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
 
         let duration = start.elapsed();
@@ -336,7 +336,7 @@ impl JobManager {
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
 
-        std::mem::drop(bert_process);
+        // std::mem::drop(bert_process);
 
         Ok(())
     }
@@ -478,7 +478,7 @@ impl JobManager {
         files_inbox: String,
         profile: ShinkaiName,
     ) -> Result<HashMap<String, LocalScopeEntry>, AgentError> {
-        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        // let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
 

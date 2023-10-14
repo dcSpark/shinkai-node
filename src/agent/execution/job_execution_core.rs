@@ -7,6 +7,7 @@ use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
+use ed25519_dalek::SecretKey as SignatureStaticKey;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
@@ -23,14 +24,13 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
-use ed25519_dalek::SecretKey as SignatureStaticKey;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey 
+        identity_secret_key: SignatureStaticKey,
     ) -> Result<String, AgentError> {
         eprintln!("inside process_job_message_queued> Processing job: {:?}", job_message);
         // if let Some(job) = self.jobs.lock().await.get(&job_message.job_message.job_id) {
@@ -53,11 +53,9 @@ impl JobManager {
         //     //    and take the result and append it both to the Job inbox and step history
         //     // 6. As we're in a while loop, go back to 1, meaning any new unprocessed messages added while the step was happening are now processed sequentially
 
-        //     // let current_unprocessed_message_count = ...
-        //     shinkai_db.add_to_unprocessed_messages_list(job.job_id().to_string(), job_message.content.clone())?;
-
         //     std::mem::drop(shinkai_db); // require to avoid deadlock
 
+        let job_id = job_message.job_message.job_id.clone();
         // Fetch data we need to execute job step
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
@@ -74,16 +72,15 @@ impl JobManager {
         .await?;
 
         //     // TODO(Nico): move this to a parallel thread that runs in the background
-        //     let _ = self
-        //         .process_inference_chain(job_message, full_job, agent_found.clone(), profile_name, user_profile)
-        //         .await?;
+        let _ = JobManager::process_inference_chain(db, identity_secret_key, job_message.job_message, full_job, agent_found.clone(), profile_name, user_profile)
+            .await?;
 
-        //     return Ok(job_id.clone());
-        // // } else {
-        // //     return Err(AgentError::JobNotFound);
+        return Ok(job_id.clone());
+        // } else {
+        //     return Err(AgentError::JobNotFound);
         // }
 
-        Ok("hey".to_string())
+        // Ok("hey".to_string())
     }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
@@ -102,7 +99,7 @@ impl JobManager {
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
-        let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        // let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 
@@ -137,7 +134,7 @@ impl JobManager {
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
         shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
-        std::mem::drop(bert_process);
+        // std::mem::drop(bert_process);
 
         Ok(())
     }
@@ -217,7 +214,7 @@ impl JobManager {
             None => return Err(AgentError::AgentNotFound),
         };
 
-        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+        // let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
         // Check if there was an error getting the files

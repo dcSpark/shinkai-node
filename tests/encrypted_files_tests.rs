@@ -38,7 +38,6 @@ use crate::utils::node_test_api::{
     api_agent_registration, api_create_job, api_get_all_inboxes_from_profile,
     api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
 };
-use crate::utils::node_test_local::local_registration_profile_node;
 use mockito::Server;
 
 #[test]
@@ -377,6 +376,34 @@ fn sandwich_messages_with_files_test() {
 
                 let duration = start.elapsed(); // Get the time elapsed since the start of the timer
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
+            }
+            {
+                eprintln!("Waiting for the Job to finish");
+                for _ in 0..90 {
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::FetchLastMessages {
+                            limit: 2,
+                            res: res1_sender,
+                        })
+                        .await
+                        .unwrap();
+                    let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
+
+                    match node1_last_messages[0].get_message_content() {
+                        Ok(message) => {
+                            // if message == message_content {
+                            //     break;
+                            // }
+                        }
+                        Err(_) => {
+                            // nothing
+                        }
+                    }
+
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
             }
         })
     });

@@ -5,6 +5,7 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
+use crate::resources::bert_cpp::BertCPPProcess;
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -31,6 +32,9 @@ impl JobManager {
         max_iterations: u64,
     ) -> Result<String, AgentError> {
         println!("start_qa_inference_chain>  message: {:?}", job_task);
+
+        // Note(Nico): is this correct here?
+        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());

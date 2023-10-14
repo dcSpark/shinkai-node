@@ -137,7 +137,8 @@ impl JobManager {
                         match job_queue_manager.dequeue(&job_id).await {
                             Ok(Some(job)) => {
                                 eprintln!("Processing job {:?}", job);
-                                JobManager::process_job_message_queued(job, db_clone_2, identity_sk_clone).await;
+                                let _ = JobManager::process_job_message_queued(job, db_clone_2, identity_sk_clone).await;
+                                // TODO: catch error and log it
                             }
                             Ok(None) => {}
                             Err(e) => {
@@ -266,7 +267,6 @@ impl JobManager {
         message: ShinkaiMessage,
         job_message: JobMessage,
     ) -> Result<String, AgentError> {
-        // TODO: save to the queue
         // Verify identity/profile match
         let sender_subidentity_result = ShinkaiName::from_shinkai_message_using_sender_subidentity(&message.clone());
         let sender_subidentity = match sender_subidentity_result {
@@ -279,6 +279,10 @@ impl JobManager {
             Err(e) => return Err(AgentError::InvalidProfileSubidentity(e.to_string())),
         };
 
+        let mut shinkai_db = self.db.lock().await;
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+        std::mem::drop(shinkai_db);
+        
         let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone());
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;

@@ -1,11 +1,12 @@
-use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
-use crate::db::ShinkaiDB;
+use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
+use crate::db::ShinkaiDB;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::source::{SourceFileType, VRSource};
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -41,22 +42,22 @@ impl JobManager {
 
     /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent(
-        agent: SerializedAgent,
-        filled_prompt: Prompt,
-    ) -> Result<JsonValue, AgentError> {
+    pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
             let mut agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference(filled_prompt).await
         })
         .await?;
-        println!("inference_agent> response: {:?}", response);
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("inference_agent> response: {:?}", response).as_str(),
+        );
 
         // Validates that the response is a proper JSON object, else inferences again to get the
         // LLM to parse the previous response into proper JSON
-        JobManager::extract_json_value_from_inference_response(response, agent.clone())
-            .await
+        JobManager::extract_json_value_from_inference_response(response, agent.clone()).await
     }
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
@@ -93,7 +94,7 @@ impl JobManager {
     /// Fetches boilerplate/relevant data required for a job to process a step
     pub async fn fetch_relevant_job_data(
         job_id: &str,
-        db: Arc<Mutex<ShinkaiDB>>
+        db: Arc<Mutex<ShinkaiDB>>,
     ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), AgentError> {
         // Fetch the job
         let full_job = { db.lock().await.get_job(job_id)? };
@@ -116,9 +117,7 @@ impl JobManager {
         Ok((full_job, agent_found, profile_name, user_profile))
     }
 
-    pub async fn get_all_agents(
-        db: Arc<Mutex<ShinkaiDB>> 
-    ) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+    pub async fn get_all_agents(db: Arc<Mutex<ShinkaiDB>>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         let db = db.lock().await;
         db.get_all_agents()
     }

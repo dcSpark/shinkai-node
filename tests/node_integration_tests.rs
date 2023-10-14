@@ -328,7 +328,7 @@ fn subidentity_registration() {
                 );
 
                 {
-                    println!("Checking that the message has the right sender {:?}", message_to_check);
+                    eprintln!("Checking that the message has the right sender {:?}", message_to_check);
                     assert_eq!(
                         message_to_check.get_sender_subidentity().unwrap(),
                         node2_profile_name.to_string(),
