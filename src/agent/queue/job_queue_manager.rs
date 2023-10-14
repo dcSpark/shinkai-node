@@ -167,6 +167,7 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
+        eprintln!("keys: {:?}", keys);
         keys.sort_by(|a, b| {
             let a_first = db_queues.get(a).and_then(|q| q.first());
             let b_first = db_queues.get(b).and_then(|q| q.first());

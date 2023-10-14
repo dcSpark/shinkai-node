@@ -26,16 +26,14 @@ use tokio::sync::Mutex;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    pub async fn process_job_message_queued(
-        job_message: JobForProcessing
-    ) {
+    pub async fn process_job_message_queued(job_message: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>) {
         eprintln!("inside process_job_message_queued> Processing job: {:?}", job_message);
-        // // if let Some(job) = self.jobs.lock().await.get(&job_message.job_id) {
+        // if let Some(job) = self.jobs.lock().await.get(&job_message.job_message.job_id) {
         //     // Basic setup
         //     let job = job.clone();
         //     let job_id = job.job_id().to_string();
-        //     let mut shinkai_db = self.db.lock().await;
-        //     shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+        let mut shinkai_db = db.lock().await;
+        // shinkai_db.add_message_to_job_inbox(&job_message.job_message.job_id.clone(), &job_message.job_message)?;
         //     println!("process_job_step> job_message: {:?}", job_message);
 
         //     // TODO: Implement unprocessed messages/queuing logic
@@ -55,11 +53,11 @@ impl JobManager {
 
         //     std::mem::drop(shinkai_db); // require to avoid deadlock
 
-        //     // Fetch data we need to execute job step
-        //     let (mut full_job, agent_found, profile_name, user_profile) =
-        //         self.fetch_relevant_job_data(job.job_id()).await?;
+        // Fetch data we need to execute job step
+        let (mut full_job, agent_found, profile_name, user_profile) =
+            self.fetch_relevant_job_data(job.job_id()).await?;
 
-        //     // Processes any files which were sent with the job message
+        // Processes any files which were sent with the job message
         //     self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile, false)
         //         .await?;
 
@@ -71,7 +69,7 @@ impl JobManager {
         //     return Ok(job_id.clone());
         // // } else {
         // //     return Err(AgentError::JobNotFound);
-        // // }
+        // }
     }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
