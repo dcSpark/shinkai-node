@@ -8,7 +8,6 @@ use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 use blake3::Hasher;
 use keyphrases::KeyPhraseExtractor;
-#[cfg(feature = "native-http")]
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
