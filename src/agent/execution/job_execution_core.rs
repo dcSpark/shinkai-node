@@ -23,12 +23,14 @@ use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use ed25519_dalek::SecretKey as SignatureStaticKey;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Arc<Mutex<ShinkaiDB>>,
+        identity_secret_key: SignatureStaticKey 
     ) -> Result<String, AgentError> {
         eprintln!("inside process_job_message_queued> Processing job: {:?}", job_message);
         // if let Some(job) = self.jobs.lock().await.get(&job_message.job_message.job_id) {
@@ -61,7 +63,15 @@ impl JobManager {
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
 
         // Processes any files which were sent with the job message
-        JobManager::process_job_message_files(db.clone(), &job_message.job_message, agent_found.clone(), &mut full_job, job_message.profile, false).await?;
+        JobManager::process_job_message_files(
+            db.clone(),
+            &job_message.job_message,
+            agent_found.clone(),
+            &mut full_job,
+            job_message.profile,
+            false,
+        )
+        .await?;
 
         //     // TODO(Nico): move this to a parallel thread that runs in the background
         //     let _ = self
@@ -79,10 +89,11 @@ impl JobManager {
     /// Processes the provided message & job data, routes them to a specific inference chain,
     /// and then parses + saves the output result to the DB.
     pub async fn process_inference_chain(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
+        identity_secret_key: SignatureStaticKey,
         job_message: JobMessage,
         full_job: Job,
-        agent_found: Option<Arc<Mutex<Agent>>>,
+        agent_found: Option<SerializedAgent>,
         profile_name: String,
         user_profile: Option<ShinkaiName>,
     ) -> Result<(), AgentError> {
@@ -96,21 +107,21 @@ impl JobManager {
         let start = Instant::now();
 
         // Call the inference chain router to choose which chain to use, and call it
-        let (inference_response_content, new_execution_context) = self
-            .inference_chain_router(
-                agent_found,
-                full_job,
-                job_message.clone(),
-                prev_execution_context,
-                &generator,
-                user_profile,
-            )
-            .await?;
+        let (inference_response_content, new_execution_context) = JobManager::inference_chain_router(
+            db.clone(),
+            agent_found,
+            full_job,
+            job_message.clone(),
+            prev_execution_context,
+            &generator,
+            user_profile,
+        )
+        .await?;
         let duration = start.elapsed();
         println!("Time elapsed for inference chain processing is: {:?}", duration);
 
         // Prepare data to save inference response to the DB
-        let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
+        let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.to_string(),
             inference_response_content.to_string(),
@@ -120,7 +131,7 @@ impl JobManager {
         )
         .unwrap();
         // Save response data to DB
-        let mut shinkai_db = self.db.lock().await;
+        let mut shinkai_db = db.lock().await;
         shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
@@ -148,13 +159,13 @@ impl JobManager {
             );
             // TODO: later we should able to grab errors and return them to the user
             let new_scope_entries = JobManager::process_files_inbox(
-                    db.clone(),
-                    agent_found,
-                    job_message.files_inbox.clone(),
-                    profile,
-                    save_to_db_directly,
-                )
-                .await?;
+                db.clone(),
+                agent_found,
+                job_message.files_inbox.clone(),
+                profile,
+                save_to_db_directly,
+            )
+            .await?;
             eprintln!(">>> new_scope_entries: {:?}", new_scope_entries.keys());
 
             for (_, value) in new_scope_entries {
@@ -223,15 +234,15 @@ impl JobManager {
             eprintln!("Processing file: {}", filename);
             let resource = JobManager::parse_file_into_resource(
                 db.clone(),
-                    content.clone(),
-                    &*generator,
-                    filename.clone(),
-                    None,
-                    &vec![],
-                    agent.clone(),
-                    400,
-                )
-                .await?;
+                content.clone(),
+                &*generator,
+                filename.clone(),
+                None,
+                &vec![],
+                agent.clone(),
+                400,
+            )
+            .await?;
 
             // Now create Local/DBScopeEntry depending on setting
             if save_to_db_directly {

@@ -89,6 +89,7 @@ impl JobManager {
         let job_queue_manager = Arc::clone(&self.job_queue_manager);
         let mut receiver = job_queue_manager.lock().await.subscribe_to_all();
         let db_clone = self.db.clone();
+        let identity_sk = clone_signature_secret_key(&self.identity_secret_key);
 
         let processing_jobs = Arc::new(Mutex::new(HashSet::new()));
         let semaphore = Arc::new(Semaphore::new(max_parallel_jobs));
@@ -128,6 +129,7 @@ impl JobManager {
                     let processing_jobs = Arc::clone(&processing_jobs);
                     let semaphore = Arc::clone(&semaphore);
                     let db_clone_2 = db_clone.clone();
+                    let identity_sk_clone = clone_signature_secret_key(&identity_sk);
 
                     tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -135,7 +137,7 @@ impl JobManager {
                         match job_queue_manager.dequeue(&job_id).await {
                             Ok(Some(job)) => {
                                 eprintln!("Processing job {:?}", job);
-                                JobManager::process_job_message_queued(job, db_clone_2).await;
+                                JobManager::process_job_message_queued(job, db_clone_2, identity_sk_clone).await;
                             }
                             Ok(None) => {}
                             Err(e) => {

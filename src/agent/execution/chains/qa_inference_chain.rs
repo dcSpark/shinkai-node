@@ -4,6 +4,7 @@ use crate::agent::execution::job_prompts::JobPromptGenerator;
 use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
+use crate::db::ShinkaiDB;
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -17,6 +18,7 @@ impl JobManager {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     pub async fn start_qa_inference_chain(
+        db: Arc<Mutex<ShinkaiDB>>,
         full_job: Job,
         job_task: String,
         agent: SerializedAgent,
@@ -34,7 +36,7 @@ impl JobManager {
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();
         let ret_data_chunks =
-            JobManager::job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
+            JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
                 .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
@@ -104,7 +106,8 @@ impl JobManager {
         }
 
         // Recurse with the new search/summary text and increment iteration_count
-        self.start_qa_inference_chain(
+        JobManager::start_qa_inference_chain(
+            db,
             full_job,
             job_task.to_string(),
             agent,
