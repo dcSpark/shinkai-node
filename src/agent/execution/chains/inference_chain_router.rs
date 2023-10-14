@@ -37,8 +37,7 @@ impl JobManager {
         match chosen_chain {
             InferenceChain::QAChain => {
                 if let Some(agent) = agent_found {
-                    inference_response_content = self
-                        .start_qa_inference_chain(
+                    inference_response_content = JobManager::start_qa_inference_chain(
                             full_job,
                             job_message.content.clone(),
                             agent,

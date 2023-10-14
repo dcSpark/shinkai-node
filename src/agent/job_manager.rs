@@ -31,9 +31,6 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
 
-    // Experimental
-    pub thread_pool: rayon::ThreadPool,
-
     // TODO: remove them
     pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
     pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
@@ -65,16 +62,10 @@ impl JobManager {
             let identity_manager = identity_manager.lock().await;
             let serialized_agents = identity_manager.get_all_agents().await.unwrap();
             for serialized_agent in serialized_agents {
-                let agent = Agent::from_serialized_agent(serialized_agent, job_manager_sender.clone());
+                let agent = Agent::from_serialized_agent(serialized_agent);
                 agents.push(Arc::new(Mutex::new(agent)));
             }
         }
-
-        // NUM_THREADS is an arbitrary number, we can change it whenever we have a better sense on how to set it up
-        let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(NUM_THREADS)
-            .build()
-            .unwrap();
 
         let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
 
@@ -84,9 +75,6 @@ impl JobManager {
             job_manager_sender: job_manager_sender.clone(),
             identity_secret_key,
             node_profile_name,
-            thread_pool,
-            // job_task_senders: Arc::new(Mutex::new(HashMap::new())),
-            // semaphore: Arc::new(Semaphore::new(NUM_THREADS)),
             jobs: jobs_map,
             identity_manager,
             agents,
@@ -205,7 +193,7 @@ impl JobManager {
         }
     }
 
-    // From AgentManager
+    // From JobManager
     /// Checks that the provided ShinkaiMessage is an unencrypted job message
     pub fn is_job_message(&mut self, message: ShinkaiMessage) -> bool {
         match &message.body {
@@ -251,7 +239,7 @@ impl JobManager {
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
                         if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id).await {
-                            let agent = Agent::from_serialized_agent(serialized_agent, self.job_manager_sender.clone());
+                            let agent = Agent::from_serialized_agent(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             self.agents.push(agent_found.clone().unwrap());
                         }

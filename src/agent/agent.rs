@@ -17,8 +17,6 @@ use tokio::sync::{mpsc, Mutex};
 pub struct Agent {
     pub id: String,
     pub full_identity_name: ShinkaiName,
-    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
-    pub agent_receiver: Arc<Mutex<mpsc::Receiver<String>>>,
     pub client: Client,
     pub perform_locally: bool,        // Todo: Remove as not used anymore
     pub external_url: Option<String>, // external API URL
@@ -33,7 +31,6 @@ impl Agent {
     pub fn new(
         id: String,
         full_identity_name: ShinkaiName,
-        job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
         perform_locally: bool,
         external_url: Option<String>,
         api_key: Option<String>,
@@ -43,13 +40,9 @@ impl Agent {
         allowed_message_senders: Vec<String>,
     ) -> Self {
         let client = Client::new();
-        let (_, agent_receiver) = mpsc::channel(1); // TODO: I think we can remove this altogether
-        let agent_receiver = Arc::new(Mutex::new(agent_receiver)); // wrap the receiver
         Self {
             id,
             full_identity_name,
-            job_manager_sender,
-            agent_receiver,
             client,
             perform_locally,
             external_url,
@@ -101,12 +94,10 @@ impl Agent {
 impl Agent {
     pub fn from_serialized_agent(
         serialized_agent: SerializedAgent,
-        sender: mpsc::Sender<(Vec<JobPreMessage>, String)>,
     ) -> Self {
         Self::new(
             serialized_agent.id,
             serialized_agent.full_identity_name,
-            sender,
             serialized_agent.perform_locally,
             serialized_agent.external_url,
             serialized_agent.api_key,

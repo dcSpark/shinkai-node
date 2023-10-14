@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use mupdf::pdf::PdfDocument;
 use regex::Regex;
 use sha2::{Digest, Sha256};
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
@@ -21,27 +22,29 @@ use std::sync::Arc;
 use std::{io::Cursor, vec};
 use tokio::sync::Mutex;
 
+use crate::db::ShinkaiDB;
+
 use super::agent::Agent;
 use super::error::AgentError;
 use super::execution::job_prompts::{JobPromptGenerator, Prompt};
-use super::job_manager::AgentManager;
+use super::job_manager::JobManager;
 
 lazy_static! {
     pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
 }
 
-impl AgentManager {
+impl JobManager {
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: The file name must include the extension ie. `*.pdf`
     pub async fn parse_file_into_resource(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
         name: String,
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
-        agent: Arc<Mutex<Agent>>,
+        agent: SerializedAgent,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
         // Parse file into needed data
@@ -55,9 +58,7 @@ impl AgentManager {
         if desc.is_none() {
             let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
             desc = Some(ParsingHelper::ending_stripper(
-                &self
-                    .inference_agent_and_extract(agent.clone(), prompt, "answer")
-                    .await?,
+                &JobManager::inference_agent_and_extract(agent.clone(), prompt, "answer").await?,
             ));
             eprintln!("LLM Generated File Description: {:?}", desc);
         }

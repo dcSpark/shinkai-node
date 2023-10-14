@@ -8,7 +8,7 @@ use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::resources::bert_cpp::BertCPPProcess;
 use serde_json::Value as JsonValue;
-use crate::resources::file_parsing::FileParser;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -26,13 +26,16 @@ use tokio::sync::Mutex;
 
 impl JobManager {
     /// Processes a job message which will trigger a job step
-    pub async fn process_job_message_queued(job_message: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>) {
+    pub async fn process_job_message_queued(
+        job_message: JobForProcessing,
+        db: Arc<Mutex<ShinkaiDB>>,
+    ) -> Result<String, AgentError> {
         eprintln!("inside process_job_message_queued> Processing job: {:?}", job_message);
         // if let Some(job) = self.jobs.lock().await.get(&job_message.job_message.job_id) {
         //     // Basic setup
         //     let job = job.clone();
         //     let job_id = job.job_id().to_string();
-        let mut shinkai_db = db.lock().await;
+        // let mut shinkai_db = db.lock().await;
         // shinkai_db.add_message_to_job_inbox(&job_message.job_message.job_id.clone(), &job_message.job_message)?;
         //     println!("process_job_step> job_message: {:?}", job_message);
 
@@ -55,11 +58,10 @@ impl JobManager {
 
         // Fetch data we need to execute job step
         let (mut full_job, agent_found, profile_name, user_profile) =
-            self.fetch_relevant_job_data(job.job_id()).await?;
+            JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
 
         // Processes any files which were sent with the job message
-        //     self.process_job_message_files(&job_message, agent_found.clone(), &mut full_job, profile, false)
-        //         .await?;
+        JobManager::process_job_message_files(db.clone(), &job_message.job_message, agent_found.clone(), &mut full_job, job_message.profile, false).await?;
 
         //     // TODO(Nico): move this to a parallel thread that runs in the background
         //     let _ = self
@@ -70,6 +72,8 @@ impl JobManager {
         // // } else {
         // //     return Err(AgentError::JobNotFound);
         // }
+
+        Ok("hey".to_string())
     }
 
     /// Processes the provided message & job data, routes them to a specific inference chain,
@@ -130,9 +134,9 @@ impl JobManager {
     /// Processes the files sent together with the current job_message into Vector Resources,
     /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.
     pub async fn process_job_message_files(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         job_message: &JobMessage,
-        agent_found: Option<Arc<Mutex<Agent>>>,
+        agent_found: Option<SerializedAgent>,
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_db_directly: bool,
@@ -143,9 +147,8 @@ impl JobManager {
                 job_message.files_inbox.len()
             );
             // TODO: later we should able to grab errors and return them to the user
-            let new_scope_entries = self
-                .process_files_inbox(
-                    self.db.clone(),
+            let new_scope_entries = JobManager::process_files_inbox(
+                    db.clone(),
                     agent_found,
                     job_message.files_inbox.clone(),
                     profile,
@@ -173,13 +176,13 @@ impl JobManager {
                 }
             }
             {
-                let mut shinkai_db = self.db.lock().await;
+                let mut shinkai_db = db.lock().await;
                 shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
                 eprintln!(">>> job_scope updated");
             }
         } else {
             // TODO: move this somewhere else
-            let mut shinkai_db = self.db.lock().await;
+            let mut shinkai_db = db.lock().await;
             shinkai_db.init_profile_resource_router(&profile)?;
             std::mem::drop(shinkai_db); // required to avoid deadlock
         }
@@ -191,9 +194,8 @@ impl JobManager {
     /// If save_to_db_directly == true, the files will save to the DB and be returned as `DBScopeEntry`s.
     /// Else, the files will be returned as `LocalScopeEntry`s and thus held inside.
     pub async fn process_files_inbox(
-        &self,
         db: Arc<Mutex<ShinkaiDB>>,
-        agent: Option<Arc<Mutex<Agent>>>,
+        agent: Option<SerializedAgent>,
         files_inbox: String,
         profile: ShinkaiName,
         save_to_db_directly: bool,
@@ -219,8 +221,8 @@ impl JobManager {
         // Start processing the files
         for (filename, content) in files.into_iter() {
             eprintln!("Processing file: {}", filename);
-            let resource = self
-                .parse_file_into_resource(
+            let resource = JobManager::parse_file_into_resource(
+                db.clone(),
                     content.clone(),
                     &*generator,
                     filename.clone(),

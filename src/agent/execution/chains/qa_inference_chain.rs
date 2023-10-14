@@ -5,6 +5,7 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use async_recursion::async_recursion;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use std::result::Result::Ok;
@@ -16,10 +17,9 @@ impl JobManager {
     /// in the JobScope to find relevant content for the LLM to use at each step.
     #[async_recursion]
     pub async fn start_qa_inference_chain(
-        &self,
         full_job: Job,
         job_task: String,
-        agent: Arc<Mutex<Agent>>,
+        agent: SerializedAgent,
         execution_context: HashMap<String, String>,
         generator: &dyn EmbeddingGenerator,
         user_profile: Option<ShinkaiName>,
@@ -33,9 +33,9 @@ impl JobManager {
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();
-        let ret_data_chunks = self
-            .job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
-            .await?;
+        let ret_data_chunks =
+            JobManager::job_scope_vector_search(full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
+                .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < max_iterations {
@@ -62,8 +62,8 @@ impl JobManager {
 
         // Inference the agent's LLM with the prompt. If it has an answer, the chain
         // is finished and so just return the answer response as a cleaned String
-        let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
-        if let Ok(answer_str) = self.extract_inference_json_response(response_json.clone(), "answer") {
+        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             let cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
             println!("QA Chain Final Answer: {:?}", cleaned_answer);
             return Ok(cleaned_answer);
@@ -75,17 +75,17 @@ impl JobManager {
 
         // If not an answer, then the LLM must respond with a search/summary, so we parse them
         // to use for the next recursive call
-        let (mut new_search_text, summary) = match self.extract_inference_json_response(response_json.clone(), "search")
-        {
-            Ok(search_str) => {
-                let summary_str = response_json
-                    .get("summary")
-                    .and_then(|s| s.as_str())
-                    .map(|s| ParsingHelper::ending_stripper(s));
-                (search_str, summary_str)
-            }
-            Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
-        };
+        let (mut new_search_text, summary) =
+            match JobManager::extract_inference_json_response(response_json.clone(), "search") {
+                Ok(search_str) => {
+                    let summary_str = response_json
+                        .get("summary")
+                        .and_then(|s| s.as_str())
+                        .map(|s| ParsingHelper::ending_stripper(s));
+                    (search_str, summary_str)
+                }
+                Err(_) => return Err(AgentError::InferenceJSONResponseMissingField("search".to_string())),
+            };
 
         // If the new search text is the same as the previous one, prompt the agent for a new search term
         if Some(new_search_text.clone()) == search_text {
@@ -93,8 +93,8 @@ impl JobManager {
                 new_search_text.clone(),
                 summary.clone().unwrap_or_default(),
             );
-            let response_json = self.inference_agent(agent.clone(), retry_prompt).await?;
-            match self.extract_inference_json_response(response_json, "search") {
+            let response_json = JobManager::inference_agent(agent.clone(), retry_prompt).await?;
+            match JobManager::extract_inference_json_response(response_json, "search") {
                 Ok(search_str) => {
                     println!("QA Chain New Search Retry Term: {:?}", search_str);
                     new_search_text = search_str;

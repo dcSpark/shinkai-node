@@ -1,7 +1,7 @@
 use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::{Job, JobId, JobLike};
-use crate::agent::job_manager::{AgentManager, JobManager};
+use crate::agent::job_manager::JobManager;
 use crate::agent::job_prompts::JobPromptGenerator;
 use crate::agent::plan_executor::PlanExecutor;
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
@@ -208,7 +208,7 @@ impl JobManager {
                 // TODO: later we should able to grab errors and return them to the user
                 let new_scope_entries = match agent_found.clone() {
                     Some(agent) => {
-                        let resp = AgentManager::process_message_multifiles(
+                        let resp = JobManager::process_message_multifiles(
                             self.db.clone(),
                             agent,
                             job_message.files_inbox.clone(),
