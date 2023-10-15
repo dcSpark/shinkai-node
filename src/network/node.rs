@@ -225,8 +225,17 @@ pub enum NodeCommand {
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 
+pub struct ProxyMode {
+    // If it should be strict to the given identities
+    pub strict: bool,
+    // Starting node identities
+    pub proxy_node_identities: Vec<String>
+}
+
 // The `Node` struct represents a single node in the network.
 pub struct Node {
+    // Is the node in proxy mode?
+    pub proxy_mode: Option<ProxyMode>,
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -269,7 +278,8 @@ impl Node {
         commands: Receiver<NodeCommand>,
         db_path: String,
         first_device_needs_registration_code: bool,
-        initial_agent: Option<SerializedAgent>
+        initial_agent: Option<SerializedAgent>,
+        proxy_mode: Option<ProxyMode>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -317,7 +327,8 @@ impl Node {
             db: db_arc,
             job_manager: None,
             first_device_needs_registration_code,
-            initial_agent
+            initial_agent,
+            proxy_mode,
         }
     }
 
