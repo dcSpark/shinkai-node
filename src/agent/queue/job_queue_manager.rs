@@ -8,6 +8,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -75,14 +76,14 @@ impl PartialEq for OrdJsonValue {
 }
 
 #[derive(Debug)]
-pub struct JobQueueManager<T> {
-    queues: HashMap<String, MutexQueue<T>>,
-    subscribers: HashMap<String, Vec<Subscriber<T>>>,
-    all_subscribers: Vec<Subscriber<T>>,
+pub struct JobQueueManager<T: Debug> {
+    queues: Arc<Mutex<HashMap<String, MutexQueue<T>>>>,
+    subscribers: Arc<Mutex<HashMap<String, Vec<Subscriber<T>>>>>,
+    all_subscribers: Arc<Mutex<Vec<Subscriber<T>>>>,
     db: Arc<Mutex<ShinkaiDB>>,
 }
 
-impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueManager<T> {
+impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> JobQueueManager<T> {
     pub async fn new(db: Arc<Mutex<ShinkaiDB>>) -> Result<Self, ShinkaiDBError> {
         // Lock the db for safe access
         let db_lock = db.lock().await;
@@ -98,9 +99,9 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
 
                 // Return a new SharedJobQueueManager with the loaded queue data
                 Ok(JobQueueManager {
-                    queues: manager_queues,
-                    subscribers: HashMap::new(),
-                    all_subscribers: Vec::new(),
+                    queues: Arc::new(Mutex::new(manager_queues)),
+                    subscribers: Arc::new(Mutex::new(HashMap::new())),
+                    all_subscribers: Arc::new(Mutex::new(Vec::new())),
                     db: Arc::clone(&db),
                 })
             }
@@ -114,8 +115,11 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
     }
 
     pub async fn push(&mut self, key: &str, value: T) -> Result<(), ShinkaiDBError> {
-        let queue = self
-            .queues
+        // Lock the Mutex to get mutable access to the HashMap
+        let mut queues = self.queues.lock().await;
+
+        // Ensure the specified key exists in the queues hashmap, initializing it with an empty queue if necessary
+        let queue = queues
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(Vec::new())));
 
@@ -127,24 +131,30 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
         db.persist_queue(key, &guarded_queue)?;
 
         // Notify subscribers
-        if let Some(subs) = self.subscribers.get(key) {
+        let subscribers = self.subscribers.lock().await;
+        if let Some(subs) = subscribers.get(key) {
             for sub in subs.iter() {
                 let _ = sub.send(value.clone()).await;
             }
         }
+
         // Notify subscribers to all keys
-        for sub in self.all_subscribers.iter() {
+        let all_subscribers = self.all_subscribers.lock().await;
+        for sub in all_subscribers.iter() {
             let _ = sub.send(value.clone()).await;
         }
         Ok(())
     }
 
     pub async fn dequeue(&mut self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
+        // Lock the Mutex to get mutable access to the HashMap
+        let mut queues = self.queues.lock().await;
+
         // Ensure the specified key exists in the queues hashmap, initializing it with an empty queue if necessary
-        let queue = self
-            .queues
+        let queue = queues
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(Vec::new())));
+
         let mut guarded_queue = queue.lock().await;
 
         // Check if there's an element to dequeue, and remove it if so
@@ -167,7 +177,6 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
 
         // Sort the keys based on the first element in each queue, falling back to key names
         let mut keys: Vec<_> = db_queues.keys().cloned().collect();
-        eprintln!("keys: {:?}", keys);
         keys.sort_by(|a, b| {
             let a_first = db_queues.get(a).and_then(|q| q.first());
             let b_first = db_queues.get(b).and_then(|q| q.first());
@@ -197,28 +206,27 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord> JobQueueMan
         Ok(all_elements)
     }
 
-    pub fn subscribe(&mut self, key: &str) -> mpsc::Receiver<T> {
+    pub async fn subscribe(&self, key: &str) -> mpsc::Receiver<T> {
         let (tx, rx) = mpsc::channel(100);
-        self.subscribers
-            .entry(key.to_string())
-            .or_insert_with(Vec::new)
-            .push(tx);
+        let mut subscribers = self.subscribers.lock().await;
+        subscribers.entry(key.to_string()).or_insert_with(Vec::new).push(tx);
         rx
     }
 
-    pub fn subscribe_to_all(&mut self) -> mpsc::Receiver<T> {
+    pub async fn subscribe_to_all(&self) -> mpsc::Receiver<T> {
         let (tx, rx) = mpsc::channel(100);
-        self.all_subscribers.push(tx);
+        let mut all_subscribers = self.all_subscribers.lock().await;
+        all_subscribers.push(tx);
         rx
     }
 }
 
-impl<T: Clone + Send + 'static> Clone for JobQueueManager<T> {
+impl<T: Clone + Send + 'static + Debug> Clone for JobQueueManager<T> {
     fn clone(&self) -> Self {
         JobQueueManager {
-            queues: self.queues.clone(),
-            subscribers: self.subscribers.clone(),
-            all_subscribers: self.all_subscribers.clone(),
+            queues: Arc::clone(&self.queues),
+            subscribers: Arc::clone(&self.subscribers),
+            all_subscribers: Arc::clone(&self.all_subscribers),
             db: Arc::clone(&self.db),
         }
     }
@@ -246,14 +254,17 @@ mod tests {
         let mut manager = JobQueueManager::<JobForProcessing>::new(db).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
-        let mut receiver = manager.subscribe("my_queue");
+        let mut receiver = manager.subscribe("job_id::123::false").await;
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
                 println!("Received (from subscriber): {:?}", msg);
 
+                let results = manager_clone.get_all_elements_interleave().await.unwrap();
+                eprintln!("All elements: {:?}", results);
+
                 // Dequeue from the queue inside the subscriber thread
-                if let Ok(Some(message)) = manager_clone.dequeue("my_queue").await {
+                if let Ok(Some(message)) = manager_clone.dequeue("job_id::123::false").await {
                     println!("Dequeued (from subscriber): {:?}", message);
 
                     // Assert that the subscriber dequeued the correct message
@@ -262,7 +273,7 @@ mod tests {
 
                 eprintln!("Dequeued (from subscriber): {:?}", msg);
                 // Assert that the queue is now empty
-                match manager_clone.dequeue("my_queue").await {
+                match manager_clone.dequeue("job_id::123::false").await {
                     Ok(None) => (),
                     Ok(Some(_)) => panic!("Queue is not empty!"),
                     Err(e) => panic!("Failed to dequeue from queue: {:?}", e),
@@ -280,7 +291,7 @@ mod tests {
             },
             ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap(),
         );
-        manager.push("my_queue", job.clone()).await.unwrap();
+        manager.push("job_id::123::false", job.clone()).await.unwrap();
 
         // Sleep to allow subscriber to process the message (just for this example)
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -356,7 +367,7 @@ mod tests {
         let mut manager = JobQueueManager::<OrdJsonValue>::new(db).await.unwrap();
 
         // Subscribe to notifications from "my_queue"
-        let mut receiver = manager.subscribe("my_queue");
+        let mut receiver = manager.subscribe("my_queue").await;
         let mut manager_clone = manager.clone();
         let handle = tokio::spawn(async move {
             while let Some(msg) = receiver.recv().await {
