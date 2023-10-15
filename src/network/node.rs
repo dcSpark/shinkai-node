@@ -220,6 +220,13 @@ pub enum NodeCommand {
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 
+pub struct ProxyMode {
+    // If it should be strict to the given identities
+    pub strict: bool,
+    // Starting node identities
+    pub proxy_node_identities: Vec<String>
+}
+
 // The `Node` struct represents a single node in the network.
 pub struct Node {
     // The mode of the node
