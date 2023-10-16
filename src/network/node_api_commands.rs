@@ -1721,6 +1721,91 @@ impl Node {
         }
     }
 
+    // TODO: move to new file node_proxy.rs
+    pub async fn handle_send_message(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        match &self.proxy_mode {
+            NodeProxyMode::IsProxied(_) => {
+                // I received the message! so we are already good
+                self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
+                    .await
+            }
+            NodeProxyMode::IsProxy(_) => {
+                // send_msg_handler API -> Node
+                // Check who is the receiver
+                // Check that the receiver is part of the identities
+                // Send the message to the receiver using our stored Addr
+                let recipient_node = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(
+                    &potentially_encrypted_msg.clone(),
+                );
+                match recipient_node {
+                    Ok(recipient_node_name) => {
+                        let result = self.db.lock().await.get_proxied_identity(&recipient_node_name);
+                        match result {
+                            Ok(Some(proxied_identity)) => {
+                                let api_peer = proxied_identity.api_peer;
+                                let client = reqwest::Client::new();
+                                let res = client
+                                    .post(format!("http://{}:{}/v1/send", api_peer.ip(), api_peer.port()))
+                                    .json(&potentially_encrypted_msg)
+                                    .send()
+                                    .await;
+                                match res {
+                                    Ok(response) => {
+                                        if response.status().is_success() {
+                                            Ok(())
+                                        } else {
+                                            Err(NodeError {
+                                                message: format!(
+                                                    "Failed to send message to peer: {}",
+                                                    response.status()
+                                                ),
+                                            })
+                                        }
+                                    }
+                                    Err(err) => Err(NodeError {
+                                        message: format!("Failed to send message to peer: {}", err),
+                                    }),
+                                }
+                            }
+                            Ok(None) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Debug,
+                                    format!("No proxied identity found for node: {}", recipient_node_name).as_str(),
+                                );
+                                Ok(())
+                            }
+                            Err(err) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Error getting proxied identity: {}", err).as_str(),
+                                );
+                                Ok(())
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            "Error getting recipient node name from message",
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+            NodeProxyMode::NoProxy => {
+                self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
+                    .await
+            }
+        }
+    }
+
     pub async fn api_handle_send_onionized_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,

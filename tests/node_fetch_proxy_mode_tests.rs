@@ -5,10 +5,7 @@ use shinkai_node::{utils::environment::fetch_node_proxy_mode};
 mod tests {
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_node::network::node_proxy::NodeProxyMode;
-
     use super::*;
-    use std::env;
-
     #[test]
     fn test_fetch_node_proxy_mode() {
         // Set the environment variables
