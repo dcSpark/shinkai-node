@@ -171,6 +171,17 @@ impl<T: Clone + Send + 'static + DeserializeOwned + Serialize + Ord + Debug> Job
         Ok(result)
     }
 
+    pub async fn peek(&self, key: &str) -> Result<Option<T>, ShinkaiDBError> {
+        let queues = self.queues.lock().await;
+        if let Some(queue) = queues.get(key) {
+            let guarded_queue = queue.lock().await;
+            if let Some(first) = guarded_queue.first() {
+                return Ok(Some(first.clone()));
+            }
+        }
+        Ok(None)
+    }
+
     pub async fn get_all_elements_interleave(&self) -> Result<Vec<T>, ShinkaiDBError> {
         let db_lock = self.db.lock().await;
         let mut db_queues: HashMap<_, _> = db_lock.get_all_queues::<T>()?;

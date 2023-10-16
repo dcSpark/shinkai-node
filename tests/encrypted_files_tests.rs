@@ -21,6 +21,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
+use shinkai_node::agent::error::AgentError;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
@@ -355,10 +356,11 @@ fn sandwich_messages_with_files_test() {
             //         )
             //         .create();
             // }
+
+            let job_message_content = "What's Zeko?".to_string();
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for the Job");
-                let message = "What's Zeko?".to_string();
                 let start = Instant::now();
                 api_message_job(
                     node1_commands_sender.clone(),
@@ -369,7 +371,7 @@ fn sandwich_messages_with_files_test() {
                     node1_profile_name.clone().as_str(),
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
-                    &message,
+                    &job_message_content,
                     &hash_of_aes_encryption_key_hex(symmetrical_sk),
                 )
                 .await;
@@ -377,37 +379,45 @@ fn sandwich_messages_with_files_test() {
                 let duration = start.elapsed(); // Get the time elapsed since the start of the timer
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
-            {
-                tokio::time::sleep(Duration::from_millis(10000)).await;
-            }
             // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     for _ in 0..90 {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 2,
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-            //         match node1_last_messages[0].get_message_content() {
-            //             Ok(message) => {
-            //                 // if message == message_content {
-            //                 //     break;
-            //                 // }
-            //             }
-            //             Err(_) => {
-            //                 // nothing
-            //             }
-            //         }
-
-            //         tokio::time::sleep(Duration::from_millis(1000)).await;
-            //     }
+            //     tokio::time::sleep(Duration::from_secs(1000)).await;
             // }
+            {
+                eprintln!("Waiting for the Job to finish");
+                for _ in 0..50 {
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::FetchLastMessages {
+                            limit: 2,
+                            res: res1_sender,
+                        })
+                        .await
+                        .unwrap();
+                    let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
+
+                    match node1_last_messages[0].get_message_content() {
+                        Ok(message_content) => {
+                            match serde_json::from_str::<JobMessage>(&message_content) {
+                                Ok(job_message) => {
+                                    eprintln!("message_content: {}", message_content);
+                                    if job_message.content != job_message_content {
+                                        assert!(true);
+                                        break;
+                                    }
+                                }
+                                Err(_) => {
+                                    eprintln!("error: message_content: {}", message_content);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            // nothing
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                }
+            }
         })
     });
 }
