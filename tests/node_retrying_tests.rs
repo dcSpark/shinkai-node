@@ -12,7 +12,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node::{NodeCommand, NodeProxyMode};
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
@@ -92,7 +92,7 @@ fn node_retrying_test() {
             node1_db_path,
             true,
             None,
-            None
+            NodeProxyMode::NoProxy
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
@@ -106,7 +106,7 @@ fn node_retrying_test() {
             node2_db_path,
             true,
             None,
-            None
+            NodeProxyMode::NoProxy
         );
 
         eprintln!("Starting nodes");

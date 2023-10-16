@@ -3,7 +3,7 @@ use std::{convert::TryInto, sync::Arc};
 use super::{
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
-    Node,
+    Node, node_proxy::NodeProxyMode,
 };
 use crate::{
     db::db_errors::ShinkaiDBError,
@@ -44,7 +44,8 @@ use shinkai_message_primitives::{
             clone_static_secret_key, decrypt_with_chacha20poly1305, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
-        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
 use std::pin::Pin;
@@ -715,7 +716,11 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("registration code usage> first device needs registration code?: {:?}", self.first_device_needs_registration_code).as_str(),
+            format!(
+                "registration code usage> first device needs registration code?: {:?}",
+                self.first_device_needs_registration_code
+            )
+            .as_str(),
         );
 
         let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
@@ -735,7 +740,11 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
-            format!("registration code usage> main_profile_exists: {:?}", main_profile_exists).as_str(),
+            format!(
+                "registration code usage> main_profile_exists: {:?}",
+                main_profile_exists
+            )
+            .as_str(),
         );
 
         if self.first_device_needs_registration_code == false {
@@ -917,7 +926,7 @@ impl Node {
                                 if main_profile_exists == false && self.initial_agent.is_some() {
                                     std::mem::drop(identity_manager);
                                     self.internal_add_agent(self.initial_agent.clone().unwrap()).await?;
-                                }                                
+                                }
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
@@ -1682,8 +1691,11 @@ impl Node {
             ShinkaiLogLevel::Debug,
             format!(
                 "api_add_file_to_inbox_with_symmetric_key> filename: {}, hex_blake3_hash: {}, decrypted_file.len(): {}",
-                filename, hex_blake3_hash, decrypted_file.len()
-            ).as_str()
+                filename,
+                hex_blake3_hash,
+                decrypted_file.len()
+            )
+            .as_str(),
         );
 
         match self
@@ -1705,6 +1717,91 @@ impl Node {
                     }))
                     .await;
                 Ok(())
+            }
+        }
+    }
+
+    // TODO: move to new file node_proxy.rs
+    pub async fn handle_send_message(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        match &self.proxy_mode {
+            NodeProxyMode::IsProxied(_) => {
+                // I received the message! so we are already good
+                self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
+                    .await
+            }
+            NodeProxyMode::IsProxy(_) => {
+                // send_msg_handler API -> Node
+                // Check who is the receiver
+                // Check that the receiver is part of the identities
+                // Send the message to the receiver using our stored Addr
+                let recipient_node = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(
+                    &potentially_encrypted_msg.clone(),
+                );
+                match recipient_node {
+                    Ok(recipient_node_name) => {
+                        let result = self.db.lock().await.get_proxied_identity(&recipient_node_name);
+                        match result {
+                            Ok(Some(proxied_identity)) => {
+                                let api_peer = proxied_identity.api_peer;
+                                let client = reqwest::Client::new();
+                                let res = client
+                                    .post(format!("http://{}:{}/v1/send", api_peer.ip(), api_peer.port()))
+                                    .json(&potentially_encrypted_msg)
+                                    .send()
+                                    .await;
+                                match res {
+                                    Ok(response) => {
+                                        if response.status().is_success() {
+                                            Ok(())
+                                        } else {
+                                            Err(NodeError {
+                                                message: format!(
+                                                    "Failed to send message to peer: {}",
+                                                    response.status()
+                                                ),
+                                            })
+                                        }
+                                    }
+                                    Err(err) => Err(NodeError {
+                                        message: format!("Failed to send message to peer: {}", err),
+                                    }),
+                                }
+                            }
+                            Ok(None) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Debug,
+                                    format!("No proxied identity found for node: {}", recipient_node_name).as_str(),
+                                );
+                                Ok(())
+                            }
+                            Err(err) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::Node,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Error getting proxied identity: {}", err).as_str(),
+                                );
+                                Ok(())
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        shinkai_log(
+                            ShinkaiLogOption::Node,
+                            ShinkaiLogLevel::Error,
+                            "Error getting recipient node name from message",
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+            NodeProxyMode::NoProxy => {
+                self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
+                    .await
             }
         }
     }

@@ -9,6 +9,7 @@ use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use network::Node;
+use network::node::NodeProxyMode;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -112,7 +113,7 @@ fn main() {
                 db_path,
                 node_env.first_device_needs_registration_code,
                 initial_agent,
-                None // TODO: Add a way to pass proxy settings from env
+                NodeProxyMode::NoProxy // TODO: Add a way to pass proxy settings from env
             )
             .await
         }),

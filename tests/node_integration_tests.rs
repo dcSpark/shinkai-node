@@ -17,7 +17,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node::{NodeCommand, NodeProxyMode};
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
@@ -98,7 +98,7 @@ fn subidentity_registration() {
             node1_db_path,
             true,
             None,
-            None
+            NodeProxyMode::NoProxy
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
@@ -112,7 +112,7 @@ fn subidentity_registration() {
             node2_db_path,
             true,
             None,
-            None
+            NodeProxyMode::NoProxy
         );
 
         // Printing

@@ -5,6 +5,7 @@ use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::inbox_name::InboxNameError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -41,6 +42,7 @@ use crate::schemas::smart_inbox::SmartInbox;
 
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
 use super::node_error::NodeError;
+use super::node_proxy::NodeProxyMode;
 
 pub enum NodeCommand {
     Shutdown,
@@ -225,36 +227,6 @@ pub enum NodeCommand {
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
-
-pub enum NodeProxyMode {
-    // Node acts as a proxy, holds identities it proxies for
-    // and a flag indicating if it allows new identities
-    // if the flag is also then it will also clean up saved identities
-    IsProxy(ProxyMode),
-    // Node is being proxied, holds its proxy's identity
-    IsProxied(ProxyIdentity),
-    // Node is not using a proxy
-    NoProxy,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProxyMode {
-    // Flag indicating if new identities can be added
-    pub allow_new_identities: bool,
-    // Starting node identities
-    pub proxy_node_identities: HashMap<String, ProxyIdentity>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProxyIdentity {
-    // Address of the API proxy
-    pub api_peer: SocketAddr,
-    // Address of the TCP proxy
-    pub tcp_peer: SocketAddr,
-    // Name of the proxied node
-    // Or the name of my identity proxied
-    pub shinkai_name: ShinkaiName,
-}
 
 // The `Node` struct represents a single node in the network.
 pub struct Node {
@@ -804,13 +776,13 @@ impl Node {
         );
 
         // Extract sender's public keys and verify the signature
-        let sender_profile_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
+        let sender_node_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
             .unwrap()
             .get_node_name();
         let sender_identity = maybe_identity_manager
             .lock()
             .await
-            .external_profile_to_global_identity(&sender_profile_name_string)
+            .external_profile_to_global_identity(&sender_node_name_string)
             .await
             .unwrap();
 
@@ -821,7 +793,7 @@ impl Node {
             ShinkaiLogLevel::Debug,
             &format!(
                 "{} > Sender Profile Name: {:?}",
-                receiver_address, sender_profile_name_string
+                receiver_address, sender_node_name_string
             ),
         );
         shinkai_log(
@@ -841,8 +813,24 @@ impl Node {
         );
 
         // TODO(Nico): split this part depending on Proxy Mode
-        
-        // Save to db
+        // If we are a proxy, we need to check if the message is for one of our proxied identities
+
+        // TODO: add handle_based_on_message_content_and_encryption back 
+        Ok(())
+    }
+
+    pub async fn handle_message_no_proxy(
+        message: ShinkaiMessage,
+        sender_node_name_string: String,
+        // sender_identity: GlobalIdentity,
+        my_encryption_secret_key: EncryptionStaticKey,
+        my_signature_secret_key: SignatureStaticKey,
+        my_node_profile_name: String,
+        maybe_db: Arc<Mutex<ShinkaiDB>>,
+        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
+        receiver_address: SocketAddr,
+        unsafe_sender_address: SocketAddr,
+    ) -> Result<(), NodeError> {
         {
             Node::save_to_db(
                 false,
@@ -858,7 +846,7 @@ impl Node {
             message.clone(),
             sender_identity.node_encryption_public_key,
             sender_identity.addr.clone().unwrap(),
-            sender_profile_name_string,
+            sender_node_name_string,
             &my_encryption_secret_key,
             &my_signature_secret_key,
             &my_node_profile_name,
@@ -868,5 +856,17 @@ impl Node {
             unsafe_sender_address,
         )
         .await
+    }
+
+    pub async fn proxied_handle_message(
+        message: ShinkaiMessage,
+        sender_node_name_string: String,
+        maybe_db: Arc<Mutex<ShinkaiDB>>,
+        unsafe_sender_address: SocketAddr,
+    ) -> Result<(), NodeError> {
+        // check if the message is for one of our proxied identities
+        // if so then send it to the proxied identity
+        //
+        Ok(())
     }
 }

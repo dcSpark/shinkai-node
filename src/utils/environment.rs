@@ -1,9 +1,14 @@
+use std::collections::HashMap;
 use std::env;
+use std::fs::File;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_message_primitives::schemas::agents::serialized_agent::{SerializedAgent, AgentLLMInterface};
+use csv::ReaderBuilder;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, SerializedAgent};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+
+use crate::network::node::{IsProxyConf, NodeProxyMode, ProxyIdentity};
 
 #[derive(Debug, Clone)]
 pub struct NodeEnvironment {
@@ -14,6 +19,75 @@ pub struct NodeEnvironment {
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
+}
+
+pub fn fetch_node_proxy_mode() -> NodeProxyMode {
+    let proxy_mode: String = env::var("NODE_PROXY_MODE").unwrap_or_else(|_| "NoProxy".to_string());
+
+    match proxy_mode.as_str() {
+        "IsProxy" => {
+            let allow_new_identities: bool = env::var("ALLOW_NEW_IDENTITIES")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse()
+                .expect("Failed to parse allow new identities flag");
+
+                let mut proxy_node_identities: HashMap<String, ProxyIdentity> = HashMap::new();
+
+                // Get the path of the CSV file from the environment variable
+                let csv_file_path: String = env::var("PROXY_IDENTITIES_CSV_PATH")
+                    .unwrap_or_else(|_| "proxy_identities.csv".to_string());
+    
+                // Read the CSV file
+                let file = File::open(&csv_file_path)
+                    .expect(&format!("Could not open {} with content: identity, address_tcp, address_api", csv_file_path));
+                let mut reader = ReaderBuilder::new().has_headers(false).from_reader(file);
+    
+
+            // Parse the identities from the CSV file
+            for result in reader.records() {
+                let record = result.expect("Failed to read record");
+                let identity = record[0].to_string();
+                let tcp_peer: SocketAddr = record[1].parse().expect("Failed to parse TCP peer address");
+                let api_peer: SocketAddr = record[2].parse().expect("Failed to parse API peer address");
+                let shinkai_name = ShinkaiName::new(identity.clone()).expect("Failed to parse Shinkai name");
+
+                proxy_node_identities.insert(
+                    identity,
+                    ProxyIdentity {
+                        api_peer,
+                        tcp_peer,
+                        shinkai_name,
+                    },
+                );
+            }
+
+            NodeProxyMode::IsProxy(IsProxyConf {
+                allow_new_identities,
+                proxy_node_identities,
+            })
+        }
+        "IsProxied" => {
+            let api_peer: SocketAddr = env::var("PROXY_API_PEER")
+                .unwrap_or_else(|_| "0.0.0.0:9550".to_string())
+                .parse()
+                .expect("Failed to parse API peer address");
+
+            let tcp_peer: SocketAddr = env::var("PROXY_TCP_PEER")
+                .unwrap_or_else(|_| "0.0.0.0:9552".to_string())
+                .parse()
+                .expect("Failed to parse TCP peer address");
+
+            let shinkai_name: ShinkaiName =
+                ShinkaiName::new(env::var("GLOBAL_IDENTITY_NAME").unwrap()).expect("Failed to parse Shinkai name");
+
+            NodeProxyMode::IsProxied(ProxyIdentity {
+                api_peer,
+                tcp_peer,
+                shinkai_name,
+            })
+        }
+        _ => NodeProxyMode::NoProxy,
+    }
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
@@ -39,20 +113,17 @@ pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
         .expect("Failed to parse agent model e.g. openai:gpt-3.5-turbo");
 
     if initial_agent_name.is_empty()
-    || initial_agent_api_key.is_empty()
-    || initial_agent_url.is_empty()
-    || initial_agent_model.is_empty() {
+        || initial_agent_api_key.is_empty()
+        || initial_agent_url.is_empty()
+        || initial_agent_model.is_empty()
+    {
         return None;
     }
 
     let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_model);
     let agent = SerializedAgent {
         id: initial_agent_name.clone(),
-        full_identity_name: ShinkaiName::new(format!(
-            "{}/main/agent/{}",
-            global_identity, initial_agent_name
-        ))
-        .unwrap(),
+        full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_name)).unwrap(),
         perform_locally: false,
         external_url: Some(initial_agent_url),
         api_key: Some(initial_agent_api_key),

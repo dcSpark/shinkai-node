@@ -14,7 +14,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
-use shinkai_node::network::node::NodeCommand;
+use shinkai_node::network::node::{NodeCommand, NodeProxyMode};
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
@@ -133,7 +133,7 @@ fn node_agent_registration() {
             node1_db_path,
             true,
             Some(agent),
-            None,
+            NodeProxyMode::NoProxy,
         );
 
         let node1_handler = tokio::spawn(async move {

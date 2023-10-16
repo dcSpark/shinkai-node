@@ -13,3 +13,4 @@ pub mod db_utils;
 pub mod db_retry;
 pub mod db_files_transmission;
 pub mod db_job_queue;
+pub mod db_proxy;
