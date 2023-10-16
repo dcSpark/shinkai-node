@@ -1,9 +1,12 @@
-use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
-use crate::agent::job_manager::AgentManager;
+use crate::agent::{agent::Agent, job_manager::JobManager};
+use crate::db::db_errors::ShinkaiDBError;
+use crate::db::ShinkaiDB;
 use serde_json::Value as JsonValue;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::source::{SourceFileType, VRSource};
 use std::result::Result::Ok;
 use std::sync::Arc;
@@ -11,10 +14,10 @@ use tokio::sync::Mutex;
 
 use super::job_prompts::{JobPromptGenerator, Prompt};
 
-impl AgentManager {
+impl JobManager {
     /// Extracts a String using the provided key in the JSON response
     /// Errors if the key is not present.
-    pub fn extract_inference_json_response(&self, response_json: JsonValue, key: &str) -> Result<String, AgentError> {
+    pub fn extract_inference_json_response(response_json: JsonValue, key: &str) -> Result<String, AgentError> {
         if let Some(value) = response_json.get(key) {
             let value_str = value
                 .as_str()
@@ -29,48 +32,45 @@ impl AgentManager {
     /// a valid JSON object/retrying if it isn't, and finally attempt to extract the provided key
     /// from the JSON object. Errors if the key is not found.
     pub async fn inference_agent_and_extract(
-        &self,
-        agent: Arc<Mutex<Agent>>,
+        agent: SerializedAgent,
         filled_prompt: Prompt,
         key: &str,
     ) -> Result<String, AgentError> {
-        let response_json = self.inference_agent(agent.clone(), filled_prompt).await?;
-        self.extract_inference_json_response(response_json, key)
+        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        JobManager::extract_inference_json_response(response_json, key)
     }
 
     /// Inferences the Agent's LLM with the given prompt. Automatically validates the response is
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
-    pub async fn inference_agent(
-        &self,
-        agent: Arc<Mutex<Agent>>,
-        filled_prompt: Prompt,
-    ) -> Result<JsonValue, AgentError> {
+    pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
         let response = tokio::spawn(async move {
-            let mut agent = agent_cloned.lock().await;
+            let mut agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference(filled_prompt).await
         })
         .await?;
-        println!("inference_agent> response: {:?}", response);
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("inference_agent> response: {:?}", response).as_str(),
+        );
 
         // Validates that the response is a proper JSON object, else inferences again to get the
         // LLM to parse the previous response into proper JSON
-        self.extract_json_value_from_inference_response(response, agent.clone())
-            .await
+        JobManager::extract_json_value_from_inference_response(response, agent.clone()).await
     }
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
     /// then inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object.
     async fn extract_json_value_from_inference_response(
-        &self,
         response: Result<JsonValue, AgentError>,
-        agent: Arc<Mutex<Agent>>,
+        agent: SerializedAgent,
     ) -> Result<JsonValue, AgentError> {
         match response {
             Ok(json) => Ok(json),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
                 eprintln!("Retrying inference with new prompt");
-                match self.json_not_found_retry(agent.clone(), text.clone()).await {
+                match JobManager::json_not_found_retry(agent.clone(), text.clone()).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
                 }
@@ -81,9 +81,9 @@ impl AgentManager {
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
     /// that we can parse.
-    async fn json_not_found_retry(&self, agent: Arc<Mutex<Agent>>, text: String) -> Result<JsonValue, AgentError> {
+    async fn json_not_found_retry(agent: SerializedAgent, text: String) -> Result<JsonValue, AgentError> {
         let response = tokio::spawn(async move {
-            let mut agent = agent.lock().await;
+            let mut agent = Agent::from_serialized_agent(agent);
             let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);
             agent.inference(prompt).await
         })
@@ -93,27 +93,32 @@ impl AgentManager {
 
     /// Fetches boilerplate/relevant data required for a job to process a step
     pub async fn fetch_relevant_job_data(
-        &self,
         job_id: &str,
-    ) -> Result<(Job, Option<Arc<Mutex<Agent>>>, String, Option<ShinkaiName>), AgentError> {
+        db: Arc<Mutex<ShinkaiDB>>,
+    ) -> Result<(Job, Option<SerializedAgent>, String, Option<ShinkaiName>), AgentError> {
         // Fetch the job
-        let full_job = { self.db.lock().await.get_job(job_id)? };
+        let full_job = { db.lock().await.get_job(job_id)? };
 
         // Acquire Agent
         let agent_id = full_job.parent_agent_id.clone();
         let mut agent_found = None;
         let mut profile_name = String::new();
         let mut user_profile: Option<ShinkaiName> = None;
-        for agent in &self.agents {
-            let locked_agent = agent.lock().await;
-            if locked_agent.id == agent_id {
+        let agents = JobManager::get_all_agents(db).await.unwrap_or(vec![]);
+        for agent in agents {
+            if agent.id == agent_id {
                 agent_found = Some(agent.clone());
-                profile_name = locked_agent.full_identity_name.full_name.clone();
-                user_profile = Some(locked_agent.full_identity_name.extract_profile().unwrap());
+                profile_name = agent.full_identity_name.full_name.clone();
+                user_profile = Some(agent.full_identity_name.extract_profile().unwrap());
                 break;
             }
         }
 
         Ok((full_job, agent_found, profile_name, user_profile))
+    }
+
+    pub async fn get_all_agents(db: Arc<Mutex<ShinkaiDB>>) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
+        let db = db.lock().await;
+        db.get_all_agents()
     }
 }

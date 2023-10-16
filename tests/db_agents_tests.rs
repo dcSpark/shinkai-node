@@ -220,14 +220,12 @@ mod tests {
             )
             .create();
 
-        let (tx, _rx) = mpsc::channel(1);
         let openai = OpenAI {
             model_type: "gpt-3.5-turbo".to_string(),
         };
         let agent = Agent::new(
             "1".to_string(),
             ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap(),
-            tx,
             false,
             Some(server.url()), // use the url of the mock server
             Some("mockapikey".to_string()),

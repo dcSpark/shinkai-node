@@ -1,6 +1,6 @@
-use crate::agent::job_manager::AgentManager;
+use crate::agent::job_manager::JobManager;
 
-impl AgentManager {
+impl JobManager {
     pub fn start_tool_execution_inference_chain(&self) -> () {
         self.analysis_phase();
 

@@ -1,17 +1,20 @@
-use crate::agent::job_manager::AgentManager;
+use crate::agent::job_manager::JobManager;
+use crate::db::ShinkaiDB;
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::vector_resource_types::{DataChunk, RetrievedDataChunk, VectorResourcePointer};
+use tokio::sync::Mutex;
 use std::result::Result::Ok;
+use std::sync::Arc;
 
-impl AgentManager {
+impl JobManager {
     /// Helper method which fetches all local & DB-held Vector Resources specified in the given JobScope
     /// and returns all of them in a single list ready to be used.
     pub async fn fetch_job_scope_resources(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         job_scope: &JobScope,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
@@ -23,7 +26,7 @@ impl AgentManager {
         }
 
         // Fetch DB resources and add them to the list
-        let db = self.db.lock().await;
+        let db = db.lock().await;
         for db_entry in &job_scope.database {
             let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
             resources.push(resource);
@@ -38,14 +41,14 @@ impl AgentManager {
     /// If include_description is true then adds the description of the Vector Resource as an auto-included
     /// RetrievedDataChunk at the front of the returned list.
     pub async fn job_scope_vector_search(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         job_scope: &JobScope,
         query: Embedding,
         num_of_results: u64,
         profile: &ShinkaiName,
         include_description: bool,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
+        let resources = JobManager::fetch_job_scope_resources(db, job_scope, profile).await?;
         println!("Num of resources fetched: {}", resources.len());
 
         // Perform vector search on all resources
@@ -59,8 +62,7 @@ impl AgentManager {
 
         // Sort the retrieved chunks by score before returning
         let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-        let updated_chunks = self
-            .include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
+        let updated_chunks = JobManager::include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
             .await;
 
         Ok(updated_chunks)
@@ -70,7 +72,7 @@ impl AgentManager {
     /// If include_description is true then adds the description of the Vector Resource as an auto-included
     /// RetrievedDataChunk at the front of the returned list.
     pub async fn job_scope_syntactic_vector_search(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         job_scope: &JobScope,
         query: Embedding,
         num_of_results: u64,
@@ -78,7 +80,7 @@ impl AgentManager {
         data_tag_names: &Vec<String>,
         include_description: bool,
     ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let resources = self.fetch_job_scope_resources(job_scope, profile).await?;
+        let resources = JobManager::fetch_job_scope_resources(db, job_scope, profile).await?;
 
         // Perform syntactic vector search on all resources
         let mut retrieved_chunks = Vec::new();
@@ -92,8 +94,7 @@ impl AgentManager {
 
         // Sort the retrieved chunks by score before returning
         let sorted_retrieved_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results);
-        let updated_chunks = self
-            .include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
+        let updated_chunks = JobManager::include_description_retrieved_chunk(include_description, sorted_retrieved_chunks, &resources)
             .await;
 
         Ok(updated_chunks)
@@ -103,7 +104,6 @@ impl AgentManager {
     /// that the top scored retrieved chunk is from, by prepending a fake RetrievedDataChunk
     /// with the description inside. Removes the lowest scored chunk to preserve list length.
     async fn include_description_retrieved_chunk(
-        &self,
         include_description: bool,
         sorted_retrieved_chunks: Vec<RetrievedDataChunk>,
         resources: &[BaseVectorResource],

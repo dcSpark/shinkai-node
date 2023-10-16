@@ -100,9 +100,12 @@ impl UnstructuredParser {
 
         // Extract keywords from the elements
         let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+        eprintln!("Keywords: {:?}", keywords);
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
+
+        eprintln!("Processing doc: `{}`", doc.name());
 
         // Add each text group as either Vector Resource DataChunks,
         // or data-holding DataChunks depending on if each has any sub-groups
@@ -151,6 +154,7 @@ impl UnstructuredParser {
             }
         }
 
+        eprintln!("Finished processing doc: `{}`", doc.name());
         Ok(BaseVectorResource::Document(doc))
     }
 
