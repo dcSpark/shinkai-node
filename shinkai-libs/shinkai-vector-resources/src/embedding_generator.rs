@@ -1,5 +1,5 @@
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, OpenAI, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
@@ -15,6 +15,7 @@ use std::net::TcpStream;
 
 lazy_static! {
     pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
+    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/openai";
 }
 const N_EMBD: usize = 384;
 
@@ -91,6 +92,10 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
                 id: id.to_string(),
             });
         }
+        // We're using hugging face TextEmbeddingsInference
+        if let EmbeddingModelType::TextEmbeddingsInference(_) = self.model_type {
+            return self.generate_embedding_open_ai(input_string, id);
+        }
         // Else we're using OpenAI API
         else {
             return self.generate_embedding_open_ai(input_string, id);
@@ -120,10 +125,9 @@ impl RemoteEmbeddingGenerator {
     /// Expected to have downloaded & be using the AllMiniLML6v2 model.
     pub fn new_default() -> RemoteEmbeddingGenerator {
         let model_architecture = EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
-        let url = format!("localhost:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
         RemoteEmbeddingGenerator {
             model_type: model_architecture,
-            api_url: url,
+            api_url: DEFAULT_EMBEDDINGS_SERVER_URL.to_string(),
             api_key: None,
         }
     }
@@ -188,7 +192,7 @@ impl RemoteEmbeddingGenerator {
 
         // Build the request
         let request = client
-            .post(&format!("{}/v1/embeddings", self.api_url))
+            .post(&format!("{}", self.api_url))
             .header("Content-Type", "application/json")
             .json(&request_body);
 

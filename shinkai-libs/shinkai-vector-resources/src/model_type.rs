@@ -46,10 +46,10 @@ pub enum OpenAI {
 impl fmt::Display for TextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TextEmbeddingsInference::AllMiniLML6v2 => write!(f, "all-MiniLM-L6-v2"),
-            TextEmbeddingsInference::AllMiniLML12v2 => write!(f, "all-MiniLM-L12-v2"),
-            TextEmbeddingsInference::MultiQAMiniLML6 => write!(f, "multi-qa-MiniLM-L6-cos-v1"),
-            TextEmbeddingsInference::Other(name) => write!(f, "{}", name),
+            TextEmbeddingsInference::AllMiniLML6v2 => write!(f, "sentence-transformers/all-MiniLM-L6-v2"),
+            TextEmbeddingsInference::AllMiniLML12v2 => write!(f, "sentence-transformers/all-MiniLM-L12-v2"),
+            TextEmbeddingsInference::MultiQAMiniLML6 => write!(f, "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"),
+            TextEmbeddingsInference::Other(name) => write!(f, "sentence-transformers/{}", name),
         }
     }
 }
