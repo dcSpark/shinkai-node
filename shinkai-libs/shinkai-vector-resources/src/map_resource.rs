@@ -1,7 +1,7 @@
 use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, RemoteModel};
+use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VRPath, VectorResource};
@@ -136,7 +136,7 @@ impl MapVectorResource {
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),
-            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2),
+            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
         )
     }
 

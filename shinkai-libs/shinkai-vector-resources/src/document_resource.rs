@@ -1,7 +1,7 @@
 use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, RemoteModel};
+use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VRPath, VectorResource};
@@ -139,7 +139,7 @@ impl DocumentVectorResource {
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),
-            EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2),
+            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
         )
     }
 

@@ -1,5 +1,5 @@
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, LocalModel, RemoteModel};
+use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
@@ -84,10 +84,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     /// Generate an Embedding for an input string by using the external API.
     fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         // If we're using a Bert model with a Bert-CPP server
-        if self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
-            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
-            || self.model_type == EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2)
-        {
+        if let EmbeddingModelType::BertCPP(_) = self.model_type {
             let vector = self.generate_embedding_bert_cpp(input_string)?;
             return Ok(Embedding {
                 vector,
@@ -122,7 +119,7 @@ impl RemoteEmbeddingGenerator {
     ///
     /// Expected to have downloaded & be using the AllMiniLML6v2 model.
     pub fn new_default() -> RemoteEmbeddingGenerator {
-        let model_architecture = EmbeddingModelType::RemoteModel(RemoteModel::AllMiniLML6v2);
+        let model_architecture = EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
         let url = format!("localhost:{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string());
         RemoteEmbeddingGenerator {
             model_type: model_architecture,

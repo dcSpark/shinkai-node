@@ -126,7 +126,7 @@ fn sandwich_messages_with_files_test() {
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
-                    api_key: Some("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".to_string()),
+                    api_key: Some("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".to_string()),
                     // api_key: Some("mockapikey".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     toolkit_permissions: vec![],
@@ -397,20 +397,18 @@ fn sandwich_messages_with_files_test() {
                     eprintln!("node1_last_messages: {:?}", node1_last_messages);
 
                     match node1_last_messages[0].get_message_content() {
-                        Ok(message_content) => {
-                            match serde_json::from_str::<JobMessage>(&message_content) {
-                                Ok(job_message) => {
-                                    eprintln!("message_content: {}", message_content);
-                                    if job_message.content != job_message_content {
-                                        assert!(true);
-                                        break;
-                                    }
-                                }
-                                Err(_) => {
-                                    eprintln!("error: message_content: {}", message_content);
+                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
+                            Ok(job_message) => {
+                                eprintln!("message_content: {}", message_content);
+                                if job_message.content != job_message_content {
+                                    assert!(true);
+                                    break;
                                 }
                             }
-                        }
+                            Err(_) => {
+                                eprintln!("error: message_content: {}", message_content);
+                            }
+                        },
                         Err(_) => {
                             // nothing
                         }
