@@ -91,6 +91,7 @@ fn node_retrying_test() {
             node1_commands_receiver,
             node1_db_path,
             true,
+            None,
             None
         );
 
@@ -104,6 +105,7 @@ fn node_retrying_test() {
             node2_commands_receiver,
             node2_db_path,
             true,
+            None,
             None
         );
 

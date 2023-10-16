@@ -111,7 +111,8 @@ fn main() {
                 node_commands_receiver,
                 db_path,
                 node_env.first_device_needs_registration_code,
-                initial_agent
+                initial_agent,
+                None // TODO: Add a way to pass proxy settings from env
             )
             .await
         }),

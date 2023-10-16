@@ -18,6 +18,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -225,17 +226,40 @@ pub enum NodeCommand {
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 
+pub enum NodeProxyMode {
+    // Node acts as a proxy, holds identities it proxies for
+    // and a flag indicating if it allows new identities
+    // if the flag is also then it will also clean up saved identities
+    IsProxy(ProxyMode),
+    // Node is being proxied, holds its proxy's identity
+    IsProxied(ProxyIdentity),
+    // Node is not using a proxy
+    NoProxy,
+}
+
+#[derive(Clone, Debug)]
 pub struct ProxyMode {
-    // If it should be strict to the given identities
-    pub strict: bool,
+    // Flag indicating if new identities can be added
+    pub allow_new_identities: bool,
     // Starting node identities
-    pub proxy_node_identities: Vec<String>
+    pub proxy_node_identities: HashMap<String, ProxyIdentity>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProxyIdentity {
+    // Address of the API proxy
+    pub api_peer: SocketAddr,
+    // Address of the TCP proxy
+    pub tcp_peer: SocketAddr,
+    // Name of the proxied node
+    // Or the name of my identity proxied
+    pub shinkai_name: ShinkaiName,
 }
 
 // The `Node` struct represents a single node in the network.
 pub struct Node {
-    // Is the node in proxy mode?
-    pub proxy_mode: Option<ProxyMode>,
+    // The mode of the node
+    pub proxy_mode: NodeProxyMode,
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
@@ -279,7 +303,7 @@ impl Node {
         db_path: String,
         first_device_needs_registration_code: bool,
         initial_agent: Option<SerializedAgent>,
-        proxy_mode: Option<ProxyMode>,
+        proxy_mode: NodeProxyMode,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -290,7 +314,11 @@ impl Node {
         let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
-            eprintln!("Error: {:?}", e);
+            shinkai_log(
+                ShinkaiLogOption::Node,
+                ShinkaiLogLevel::Error,
+                &format!("Failed to open database: {}", db_path).as_str(),
+            );
             panic!("Failed to open database: {}", db_path)
         });
         let db_arc = Arc::new(Mutex::new(db));
@@ -729,7 +757,8 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()));
+            &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
+        );
         let mut db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
@@ -758,13 +787,12 @@ impl Node {
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {
+        // TODO: it should check mode we are in and handle accordingly
+
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!(
-                "{} > Got message from {:?}",
-                receiver_address, unsafe_sender_address
-            ),
+            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
         );
 
         // Extract and validate the message
@@ -791,18 +819,29 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Sender Profile Name: {:?}", receiver_address, sender_profile_name_string),
+            &format!(
+                "{} > Sender Profile Name: {:?}",
+                receiver_address, sender_profile_name_string
+            ),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity));
+            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
+        );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
             &format!("{} > Verified message signature", receiver_address),
         );
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Debug,
+            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
+        );
 
+        // TODO(Nico): split this part depending on Proxy Mode
+        
         // Save to db
         {
             Node::save_to_db(
@@ -814,12 +853,6 @@ impl Node {
             )
             .await?;
         }
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
-        );
 
         handle_based_on_message_content_and_encryption(
             message.clone(),

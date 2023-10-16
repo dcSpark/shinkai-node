@@ -133,6 +133,7 @@ fn node_agent_registration() {
             node1_db_path,
             true,
             Some(agent),
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
