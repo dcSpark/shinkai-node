@@ -15,6 +15,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -219,13 +220,6 @@ pub enum NodeCommand {
 
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
-
-pub struct ProxyMode {
-    // If it should be strict to the given identities
-    pub strict: bool,
-    // Starting node identities
-    pub proxy_node_identities: Vec<String>
-}
 
 // The `Node` struct represents a single node in the network.
 pub struct Node {
