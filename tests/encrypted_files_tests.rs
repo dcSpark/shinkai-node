@@ -378,33 +378,36 @@ fn sandwich_messages_with_files_test() {
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
             {
-                eprintln!("Waiting for the Job to finish");
-                for _ in 0..90 {
-                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::FetchLastMessages {
-                            limit: 2,
-                            res: res1_sender,
-                        })
-                        .await
-                        .unwrap();
-                    let node1_last_messages = res1_receiver.recv().await.unwrap();
-                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-                    match node1_last_messages[0].get_message_content() {
-                        Ok(message) => {
-                            // if message == message_content {
-                            //     break;
-                            // }
-                        }
-                        Err(_) => {
-                            // nothing
-                        }
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
-                }
+                tokio::time::sleep(Duration::from_millis(10000)).await;
             }
+            // {
+            //     eprintln!("Waiting for the Job to finish");
+            //     for _ in 0..90 {
+            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
+            //         node1_commands_sender
+            //             .send(NodeCommand::FetchLastMessages {
+            //                 limit: 2,
+            //                 res: res1_sender,
+            //             })
+            //             .await
+            //             .unwrap();
+            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
+            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
+
+            //         match node1_last_messages[0].get_message_content() {
+            //             Ok(message) => {
+            //                 // if message == message_content {
+            //                 //     break;
+            //                 // }
+            //             }
+            //             Err(_) => {
+            //                 // nothing
+            //             }
+            //         }
+
+            //         tokio::time::sleep(Duration::from_millis(1000)).await;
+            //     }
+            // }
         })
     });
 }

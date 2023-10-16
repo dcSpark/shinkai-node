@@ -33,9 +33,6 @@ impl JobManager {
     ) -> Result<String, AgentError> {
         println!("start_qa_inference_chain>  message: {:?}", job_task);
 
-        // Note(Nico): is this correct here?
-        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
-
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).unwrap();

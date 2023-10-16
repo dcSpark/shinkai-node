@@ -40,7 +40,6 @@ pub struct JobManager {
     pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
 }
 
-// TODO: Maybe remove this altogether?
 impl JobManager {
     pub async fn new(
         db: Arc<Mutex<ShinkaiDB>>,
@@ -100,7 +99,6 @@ impl JobManager {
         job_manager
     }
 
-    // pub async fn process_job_queue(&mut self, max_parallel_jobs: usize) {
     pub async fn process_job_queue(
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Arc<Mutex<ShinkaiDB>>,
