@@ -15,7 +15,7 @@ use std::net::TcpStream;
 
 lazy_static! {
     pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
-    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/openai";
+    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/embed";
 }
 const N_EMBD: usize = 384;
 
@@ -51,27 +51,6 @@ pub trait EmbeddingGenerator: Sync {
     }
 }
 
-#[derive(Serialize)]
-struct EmbeddingRequestBody {
-    input: String,
-    model: String,
-}
-
-#[derive(Deserialize)]
-struct EmbeddingResponseData {
-    embedding: Vec<f32>,
-    index: usize,
-    object: String,
-}
-
-#[derive(Deserialize)]
-struct EmbeddingResponse {
-    object: String,
-    model: String,
-    data: Vec<EmbeddingResponseData>,
-    usage: serde_json::Value, // or define a separate struct for this if you need to use these values
-}
-
 #[derive(Debug, Clone, PartialEq)]
 #[cfg(feature = "native-http")]
 pub struct RemoteEmbeddingGenerator {
@@ -87,14 +66,18 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         // If we're using a Bert model with a Bert-CPP server
         if let EmbeddingModelType::BertCPP(_) = self.model_type {
             let vector = self.generate_embedding_bert_cpp(input_string)?;
-            return Ok(Embedding {
-                vector,
-                id: id.to_string(),
-            });
+            return Ok(Embedding::new(id, vector));
         }
         // We're using hugging face TextEmbeddingsInference
         if let EmbeddingModelType::TextEmbeddingsInference(_) = self.model_type {
-            return self.generate_embedding_open_ai(input_string, id);
+            let results = self
+                .generate_embedding_text_embeddings_inference(vec![input_string.to_string()], vec![id.to_string()])?;
+            if results.len() < 1 {
+                return Err(VectorResourceError::FailedEmbeddingGeneration(
+                    "No results returned from the embedding generation".to_string(),
+                ));
+            }
+            return Ok(results[0].clone());
         }
         // Else we're using OpenAI API
         else {
@@ -129,6 +112,73 @@ impl RemoteEmbeddingGenerator {
             model_type: model_architecture,
             api_url: DEFAULT_EMBEDDINGS_SERVER_URL.to_string(),
             api_key: None,
+        }
+    }
+
+    /// Generates embeddings using a Text Embeddings Inference server
+    #[cfg(feature = "native-http")]
+    fn generate_embedding_text_embeddings_inference(
+        &self,
+        input_strings: Vec<String>,
+        ids: Vec<String>,
+    ) -> Result<Vec<Embedding>, VectorResourceError> {
+        // Prepare the request body
+        let request_body = EmbeddingArrayRequestBody {
+            inputs: input_strings.iter().map(|s| s.to_string()).collect(),
+        };
+
+        // Create the HTTP client
+        let client = Client::new();
+
+        // Build the request
+        let mut request = client
+            .post(&format!("{}", self.api_url))
+            .header("Content-Type", "application/json")
+            .json(&request_body);
+
+        // Add the API key to the header if it's available
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        // Send the request and check for errors
+        let response = request.send().map_err(|err| {
+            // Handle any HTTP client errors here (e.g., request creation failure)
+            VectorResourceError::RequestFailed(format!("HTTP request failed: {}", err))
+        })?;
+
+        // Check if the response is successful
+        if response.status().is_success() {
+            // Read the response bytes
+            let bytes = response
+                .bytes()
+                .map_err(|err| VectorResourceError::RequestFailed(format!("Failed to read response bytes: {}", err)))?;
+            // Convert the bytes to a Vec<f32>
+            let embedding_response: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
+                .collect();
+
+            // Create a Vec<Embedding> by iterating over ids and embeddings
+            let embeddings: Result<Vec<Embedding>, _> = ids
+                .iter()
+                .zip(embedding_response.into_iter())
+                .map(|(id, embedding)| {
+                    Ok(Embedding {
+                        id: id.clone(),
+                        vector: vec![embedding], // Wrap the float in a Vec
+                    })
+                })
+                .collect();
+
+            // Return the embeddings
+            embeddings
+        } else {
+            // Handle non-successful HTTP responses (e.g., server error)
+            Err(VectorResourceError::RequestFailed(format!(
+                "HTTP request failed with status: {}",
+                response.status()
+            )))
         }
     }
 
@@ -177,7 +227,6 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    // TODO: Add authorization logic/flesh out to fully working
     /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     #[cfg(feature = "native-http")]
     fn generate_embedding_open_ai(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
@@ -191,10 +240,15 @@ impl RemoteEmbeddingGenerator {
         let client = Client::new();
 
         // Build the request
-        let request = client
+        let mut request = client
             .post(&format!("{}", self.api_url))
             .header("Content-Type", "application/json")
             .json(&request_body);
+
+        // Add the API key to the header if it's available
+        if let Some(api_key) = &self.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
 
         // Send the request and check for errors
         let response = request.send().map_err(|err| {
@@ -226,6 +280,32 @@ impl RemoteEmbeddingGenerator {
             )))
         }
     }
+}
+
+#[derive(Serialize)]
+struct EmbeddingRequestBody {
+    input: String,
+    model: String,
+}
+
+#[derive(Deserialize)]
+struct EmbeddingResponseData {
+    embedding: Vec<f32>,
+    index: usize,
+    object: String,
+}
+
+#[derive(Deserialize)]
+struct EmbeddingResponse {
+    object: String,
+    model: String,
+    data: Vec<EmbeddingResponseData>,
+    usage: serde_json::Value, // or define a separate struct for this if you need to use these values
+}
+
+#[derive(Serialize)]
+struct EmbeddingArrayRequestBody {
+    inputs: Vec<String>,
 }
 
 // /// An Embedding Generator for Local LLMs, such as LLama, Bloom, Pythia, etc.

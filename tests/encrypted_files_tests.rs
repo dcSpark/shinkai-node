@@ -126,7 +126,7 @@ fn sandwich_messages_with_files_test() {
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
-                    api_key: Some("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".to_string()),
+                    api_key: Some("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".to_string()),
                     // api_key: Some("mockapikey".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     toolkit_permissions: vec![],
