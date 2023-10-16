@@ -7,7 +7,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMe
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -62,6 +62,65 @@ fn node_agent_registration() {
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
 
+        // Agent pre-creation
+
+        let mut server = Server::new();
+        let _m = server
+            .mock("POST", "/v1/chat/completions")
+            .match_header("authorization", "Bearer mockapikey")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 9,
+                "completion_tokens": 12,
+                "total_tokens": 21
+            }
+        }"#,
+            )
+            .create();
+
+        let agent_name = ShinkaiName::new(
+            format!(
+                "{}/{}/agent/{}",
+                node1_identity_name.clone(),
+                node1_subidentity_name.clone(),
+                node1_agent.clone()
+            )
+            .to_string(),
+        )
+        .unwrap();
+
+        let open_ai = OpenAI {
+            model_type: "gpt-3.5-turbo".to_string(),
+        };
+
+        let agent = SerializedAgent {
+            id: node1_agent.clone().to_string(),
+            full_identity_name: agent_name,
+            perform_locally: false,
+            // external_url: Some("https://api.openai.com".to_string()),
+            external_url: Some(server.url()),
+            // api_key: Some("api_key".to_string()),
+            api_key: Some("mockapikey".to_string()),
+            model: AgentLLMInterface::OpenAI(open_ai),
+            toolkit_permissions: vec![],
+            storage_bucket_permissions: vec![],
+            allowed_message_senders: vec![],
+        };
+
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
         let mut node1 = Node::new(
@@ -73,13 +132,15 @@ fn node_agent_registration() {
             node1_commands_receiver,
             node1_db_path,
             true,
+            Some(agent),
         );
 
         let node1_handler = tokio::spawn(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
                 ShinkaiLogLevel::Debug,
-                &format!("Starting Node 1"));
+                &format!("Starting Node 1"),
+            );
             let _ = node1.await.start().await;
         });
 
@@ -87,7 +148,8 @@ fn node_agent_registration() {
             shinkai_log(
                 ShinkaiLogOption::Tests,
                 ShinkaiLogLevel::Debug,
-                &format!("\n\nRegistration of an Admin Profile"));
+                &format!("\n\nRegistration of an Admin Profile"),
+            );
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -105,80 +167,7 @@ fn node_agent_registration() {
                 )
                 .await;
             }
-
-            let mut server = Server::new();
-            {
-                // Register an Agent
-                shinkai_log(
-                    ShinkaiLogOption::Tests,
-                    ShinkaiLogLevel::Debug,
-                    &format!("\n\nRegister an Agent in Node1 and verify it"));
-                let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo".to_string(),
-                };
-                let agent_name = ShinkaiName::new(
-                    format!(
-                        "{}/{}/agent/{}",
-                        node1_identity_name.clone(),
-                        node1_subidentity_name.clone(),
-                        node1_agent.clone()
-                    )
-                    .to_string(),
-                )
-                .unwrap();
-
-                let _m = server
-                    .mock("POST", "/v1/chat/completions")
-                    .match_header("authorization", "Bearer mockapikey")
-                    .with_status(200)
-                    .with_header("content-type", "application/json")
-                    .with_body(
-                        r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
-                        "total_tokens": 21
-                    }
-                }"#,
-                    )
-                    .create();
-
-                let agent = SerializedAgent {
-                    id: node1_agent.clone().to_string(),
-                    full_identity_name: agent_name,
-                    perform_locally: false,
-                    // external_url: Some("https://api.openai.com".to_string()),
-                    external_url: Some(server.url()),
-                    // api_key: Some("api_key".to_string()),
-                    api_key: Some("mockapikey".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
-                    toolkit_permissions: vec![],
-                    storage_bucket_permissions: vec![],
-                    allowed_message_senders: vec![],
-                };
-                api_agent_registration(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone(),
-                    node1_subidentity_name.clone(),
-                    agent,
-                )
-                .await;
-            }
-
+            
             let mut job_id = "".to_string();
             let agent_subidentity =
                 format!("{}/agent/{}", node1_subidentity_name.clone(), node1_agent.clone()).to_string();
@@ -187,7 +176,8 @@ fn node_agent_registration() {
                 shinkai_log(
                     ShinkaiLogOption::Tests,
                     ShinkaiLogLevel::Debug,
-                    &format!("Creating a Job for Agent {}", agent_subidentity.clone()));
+                    &format!("Creating a Job for Agent {}", agent_subidentity.clone()),
+                );
                 job_id = api_create_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
@@ -204,7 +194,8 @@ fn node_agent_registration() {
                 shinkai_log(
                     ShinkaiLogOption::API,
                     ShinkaiLogLevel::Debug,
-                    &format!("Sending a message to Job {}", job_id.clone()));
+                    &format!("Sending a message to Job {}", job_id.clone()),
+                );
                 let message = "Tell me. Who are you?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),

@@ -97,6 +97,7 @@ fn subidentity_registration() {
             node1_commands_receiver,
             node1_db_path,
             true,
+            None
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
@@ -108,7 +109,8 @@ fn subidentity_registration() {
             0,
             node2_commands_receiver,
             node2_db_path,
-            true
+            true,
+            None
         );
 
         // Printing

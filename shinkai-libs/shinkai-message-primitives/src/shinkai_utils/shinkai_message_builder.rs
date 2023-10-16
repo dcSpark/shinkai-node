@@ -719,7 +719,6 @@ impl ShinkaiMessageBuilder {
         };
 
         let body = serde_json::to_string(&registration_code).map_err(|_| "Failed to serialize data to JSON")?;
-        let other = encryption_public_key_to_string(my_device_encryption_pk.clone());
 
         ShinkaiMessageBuilder::new(my_device_encryption_sk, my_device_signature_sk, my_device_encryption_pk)
             .message_raw_content(body)
