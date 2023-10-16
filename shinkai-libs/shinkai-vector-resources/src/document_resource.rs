@@ -96,7 +96,7 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Returns all data chunks in the MapVectorResource
-    fn get_all_data_chunks(&self) -> Vec<DataChunk> {
+    fn get_data_chunks(&self) -> Vec<DataChunk> {
         self.data_chunks.clone()
     }
 }

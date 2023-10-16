@@ -116,17 +116,4 @@ impl AgentManager {
 
         Ok((full_job, agent_found, profile_name, user_profile))
     }
-
-    /// Creates a VRSource using relevant data about a source file
-    pub fn create_vrsource(filename: &str, file_type: SourceFileType, content_hash: Option<String>) -> VRSource {
-        if filename.starts_with("http") {
-            let filename_without_extension = filename.trim_end_matches(".pdf");
-            VRSource::new_uri_ref(filename_without_extension)
-        } else if filename.starts_with("file") {
-            let filename_without_extension = filename.trim_start_matches("file://").trim_end_matches(".pdf");
-            VRSource::new_source_file_ref(filename_without_extension.to_string(), file_type, content_hash.unwrap())
-        } else {
-            VRSource::none()
-        }
-    }
 }

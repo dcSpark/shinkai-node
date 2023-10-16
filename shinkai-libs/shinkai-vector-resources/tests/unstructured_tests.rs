@@ -1,9 +1,12 @@
 use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
+use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::unstructured::*;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
+use shinkai_vector_resources::unstructured::unstructured_types::ElementType;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -57,6 +60,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let file_name = "shinkai_intro.pdf";
+    // let file_name = "Zeko_Mina_Rollup.pdf";
     let file_path = "../../files/".to_string() + file_name;
 
     // Read the file into a byte vector
@@ -66,8 +70,20 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
 
     let resource = api
-        .process_file(file_buffer, &generator, file_name, None, VRSource::None, &vec![], 500)
+        .process_file(
+            file_buffer,
+            &generator,
+            file_name.to_string(),
+            None,
+            VRSource::None,
+            &vec![],
+            500,
+        )
         .unwrap();
+
+    resource
+        .as_trait_object()
+        .print_all_data_chunks_exhaustive(None, true, false);
 
     // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
     let query_string = "Who are the authors?";

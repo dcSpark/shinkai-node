@@ -26,6 +26,10 @@ pub enum TraversalMethod {
     /// averaging out the score all the way to each final data chunk. In other words, the final score
     /// of each DataChunk weighs-in the scores of the Vector Resources that it was inside all the way up.
     HierarchicalAverage,
+    /// Iterates exhaustively going through all levels while doing absolutely no scoring/similarity checking,
+    /// returning every single data chunk at any level. Also returns the Vector Resources in addition to their
+    /// DataChunks they hold inside, thus providing all chunks that exist within the root Vector Resource.
+    UnscoredAllChunks,
 }
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
@@ -46,7 +50,8 @@ pub trait VectorResource {
     fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
     /// Retrieves a data chunk given its id, at the root level depth.
     fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
-    fn get_all_data_chunks(&self) -> Vec<DataChunk>;
+    /// Retrieves all data chunks at the root level of the Vector Resource
+    fn get_data_chunks(&self) -> Vec<DataChunk>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
@@ -116,6 +121,59 @@ pub trait VectorResource {
         VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
+    /// Returns every single data chunk at any level in the whole Vector Resource, including sub Vector Resources
+    /// and the DataChunks they hold. If a starting_path is provided then fetches all data chunks from there,
+    /// else starts at root. If resources_only is true, only Vector Resources are returned.
+    fn get_data_chunks_exhaustive(
+        &self,
+        starting_path: Option<VRPath>,
+        resources_only: bool,
+    ) -> Vec<RetrievedDataChunk> {
+        let empty_embedding = Embedding::new("", vec![]);
+        let mut data_chunks =
+            self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path);
+
+        if resources_only {
+            data_chunks.retain(|chunk| matches!(chunk.chunk.data, DataContent::Resource(_)));
+        }
+
+        data_chunks
+    }
+
+    /// Prints all data chunks and their paths to easily/quickly examine a Vector Resource.
+    /// This is exhaustive and can begin from any starting_path.
+    /// `shorten_data` - Cuts the string content short to improve readability.
+    /// `resources_only` - Only prints Vector Resources
+    fn print_all_data_chunks_exhaustive(
+        &self,
+        starting_path: Option<VRPath>,
+        shorten_data: bool,
+        resources_only: bool,
+    ) {
+        let data_chunks = self.get_data_chunks_exhaustive(starting_path, resources_only);
+        for chunk in data_chunks {
+            let path = chunk.retrieval_path.format_to_string();
+            let data = match &chunk.chunk.data {
+                DataContent::Data(s) => {
+                    if shorten_data && s.chars().count() > 25 {
+                        s.chars().take(25).collect::<String>() + "..."
+                    } else {
+                        s.to_string()
+                    }
+                }
+                DataContent::Resource(resource) => {
+                    println!("");
+                    format!(
+                        "<{}> - {} Chunks Held Inside",
+                        resource.as_trait_object().name(),
+                        resource.as_trait_object().chunk_embeddings().len()
+                    )
+                }
+            };
+            println!("{}: {}", path, data);
+        }
+    }
+
     /// Retrieves a data chunk, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
     fn get_data_chunk_with_path(&self, path: VRPath) -> Result<DataChunk, VectorResourceError> {
@@ -176,7 +234,9 @@ pub trait VectorResource {
         }
         let mut results =
             self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new());
-        results.truncate(num_of_results as usize);
+        if traversal != &TraversalMethod::UnscoredAllChunks {
+            results.truncate(num_of_results as usize);
+        }
         results
     }
 
@@ -191,11 +251,27 @@ pub trait VectorResource {
     ) -> Vec<RetrievedDataChunk> {
         // If exhaustive traversal, then score/return all
         let mut score_num_of_results = num_of_results;
-        if traversal == &TraversalMethod::Exhaustive || traversal == &TraversalMethod::HierarchicalAverage {
-            score_num_of_results = (&self.chunk_embeddings()).len() as u64;
+        let mut scores = vec![];
+        match traversal {
+            // Score all if exhaustive
+            &TraversalMethod::Exhaustive | &TraversalMethod::HierarchicalAverage => {
+                score_num_of_results = (&self.chunk_embeddings()).len() as u64;
+                scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
+            }
+            // Fake score all as 0 if unscored exhaustive
+            &TraversalMethod::UnscoredAllChunks => {
+                score_num_of_results = (&self.chunk_embeddings()).len() as u64;
+                scores = self
+                    .chunk_embeddings()
+                    .iter()
+                    .map(|embedding| (0.0, embedding.id.clone()))
+                    .collect();
+            }
+            // Else score as normal
+            _ => {
+                scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
+            }
         }
-        // Score the embeddings and return only score_num_of_results most similar
-        let scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
 
         self._order_vector_search_results(
             scores,
@@ -261,11 +337,12 @@ pub trait VectorResource {
             vec![],
             VRPath::new(),
         );
-        results.truncate(num_of_results as usize);
+        if traversal != &TraversalMethod::UnscoredAllChunks {
+            results.truncate(num_of_results as usize);
+        }
         results
     }
 
-    /// Internal method which is used to keep track of traversal info
     fn _syntactic_vector_search_with_options_core(
         &self,
         query: Embedding,
@@ -286,11 +363,25 @@ pub trait VectorResource {
 
         // If exhaustive traversal, then score/return all
         let mut score_num_of_results = num_of_results;
-        if traversal == &TraversalMethod::Exhaustive || traversal == &TraversalMethod::HierarchicalAverage {
-            score_num_of_results = matching_data_tag_embeddings.len() as u64;
+        let mut scores = vec![];
+        match traversal {
+            // Score all if exhaustive
+            &TraversalMethod::Exhaustive | &TraversalMethod::HierarchicalAverage => {
+                score_num_of_results = matching_data_tag_embeddings.len() as u64;
+                scores = query.score_similarities(&matching_data_tag_embeddings, score_num_of_results);
+            }
+            // Fake score all as 0 if unscored exhaustive
+            &TraversalMethod::UnscoredAllChunks => {
+                scores = matching_data_tag_embeddings
+                    .iter()
+                    .map(|embedding| (0.0, embedding.id.clone()))
+                    .collect();
+            }
+            // Else score as normal
+            _ => {
+                scores = query.score_similarities(&matching_data_tag_embeddings, score_num_of_results);
+            }
         }
-        // Score the embeddings and return only score_num_of_results most similar
-        let scores = query.score_similarities(&matching_data_tag_embeddings, score_num_of_results);
 
         self._order_vector_search_results(
             scores,
@@ -357,7 +448,7 @@ pub trait VectorResource {
 
         // If at least one vector resource exists in the DataChunks then re-sort
         // after fetching deeper level results to ensure ordering are correct
-        if vector_resource_count >= 1 {
+        if vector_resource_count >= 1 && traversal != &TraversalMethod::UnscoredAllChunks {
             return RetrievedDataChunk::sort_by_score(&current_level_results, num_of_results);
         }
         // Otherwise just return 1st level results
@@ -382,7 +473,7 @@ pub trait VectorResource {
         // Create a new traversal path with the chunk id
         let new_traversal_path = traversal_path.push_cloned(chunk.id.clone());
 
-        match chunk.data {
+        match &chunk.data {
             DataContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
@@ -391,7 +482,7 @@ pub trait VectorResource {
                         num_of_results,
                         traversal,
                         new_hierarchical_scores,
-                        new_traversal_path,
+                        new_traversal_path.clone(),
                     )
                 } else {
                     resource.as_trait_object()._syntactic_vector_search_with_options_core(
@@ -400,9 +491,22 @@ pub trait VectorResource {
                         data_tag_names,
                         traversal,
                         new_hierarchical_scores,
-                        new_traversal_path,
+                        new_traversal_path.clone(),
                     )
                 };
+
+                // If traversing with UnscoredAllChunks, include the Vector Resource
+                // chunks as well in the results, prepended before their data chunks
+                // held inside
+                if traversal == &TraversalMethod::UnscoredAllChunks {
+                    current_level_results.push(RetrievedDataChunk {
+                        chunk: chunk.clone(),
+                        score,
+                        resource_pointer: self.get_resource_pointer(),
+                        retrieval_path: new_traversal_path,
+                    });
+                }
+
                 current_level_results.extend(sub_results);
             }
             DataContent::Data(_) => {

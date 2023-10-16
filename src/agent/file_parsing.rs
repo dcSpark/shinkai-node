@@ -1,19 +1,86 @@
 use blake3::Hasher;
 use csv::Reader;
 use keyphrases::KeyPhraseExtractor;
+use lazy_static::lazy_static;
 use mupdf::pdf::PdfDocument;
 use regex::Regex;
 use sha2::{Digest, Sha256};
+use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::source::{SourceDocumentType, SourceFileType};
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
+use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
 use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
 use std::convert::TryInto;
 use std::fs;
+use std::sync::Arc;
 use std::{io::Cursor, vec};
+use tokio::sync::Mutex;
 
-pub struct FileParser {}
+use super::agent::Agent;
+use super::error::AgentError;
+use super::execution::job_prompts::{JobPromptGenerator, Prompt};
+use super::job_manager::AgentManager;
+
+lazy_static! {
+    pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
+}
+
+impl AgentManager {
+    /// Makes an async request to process a file in a buffer to Unstructured server,
+    /// and then processing the returned results into a BaseVectorResource
+    /// Note: The file name must include the extension ie. `*.pdf`
+    pub async fn parse_file_into_resource(
+        &self,
+        file_buffer: Vec<u8>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        parsing_tags: &Vec<DataTag>,
+        agent: Arc<Mutex<Agent>>,
+        max_chunk_size: u64,
+    ) -> Result<BaseVectorResource, AgentError> {
+        // Parse file into needed data
+        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+        let source = VRSource::from_file(&name, &file_buffer)?;
+        let elements = api.file_request_async(file_buffer, &name).await?;
+
+        // Automatically generate description if none is provided
+        let mut desc = desc;
+        if desc.is_none() {
+            let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
+            desc = Some(ParsingHelper::ending_stripper(
+                &self
+                    .inference_agent_and_extract(agent.clone(), prompt, "answer")
+                    .await?,
+            ));
+            eprintln!("LLM Generated File Description: {:?}", desc);
+        }
+
+        let resource = UnstructuredParser::process_elements_into_resource(
+            elements,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            resource_id,
+            max_chunk_size,
+        )?;
+        resource
+            .as_trait_object()
+            .print_all_data_chunks_exhaustive(None, true, false);
+
+        Ok(resource)
+    }
+}
+
+pub struct ParsingHelper {}
 
 pub struct SmartPdfOverview {
     pub keywords: Vec<String>,
@@ -22,7 +89,75 @@ pub struct SmartPdfOverview {
     pub grouped_text_list: Vec<String>,
 }
 
-impl FileParser {
+impl ParsingHelper {
+    /// Generates Blake3 hash of the input data.
+    fn generate_data_hash_blake3(content: &[u8]) -> String {
+        UnstructuredParser::generate_data_hash(content)
+    }
+
+    /// Takes the provided elements and creates a description prompt ready to be used
+    /// to inference with an LLM.
+    pub fn process_elements_into_description_prompt(elements: &Vec<UnstructuredElement>, max_size: usize) -> Prompt {
+        let max_chunk_size = 300;
+        let mut descriptions = Vec::new();
+        let mut description = String::new();
+        let mut total_size = 0;
+
+        for element in elements {
+            let element_text = &element.text;
+            if description.len() + element_text.len() > max_chunk_size {
+                descriptions.push(description.clone());
+                total_size += description.len();
+                description.clear();
+            }
+            if total_size + element_text.len() > max_size {
+                break;
+            }
+            description.push_str(element_text);
+            description.push(' ');
+        }
+        if !description.is_empty() {
+            descriptions.push(description);
+        }
+        JobPromptGenerator::simple_doc_description(descriptions)
+    }
+
+    /// Removes last sentence from a string if it contains any of the unwanted phrases.
+    /// This is used because the LLM sometimes answers properly, but then adds useless last sentence such as
+    /// "However, specific details are not provided in the content." at the end.
+    pub fn ending_stripper(string: &str) -> String {
+        let mut sentences: Vec<&str> = string.split('.').collect();
+
+        let unwanted_phrases = [
+            "however,",
+            "unfortunately",
+            "additional research",
+            "futher research",
+            "may be required",
+            "i do not",
+            "further information",
+            "specific details",
+            "provided content",
+            "more information",
+            "not available",
+        ];
+
+        while let Some(last_sentence) = sentences.pop() {
+            if last_sentence.trim().is_empty() {
+                continue;
+            }
+            let sentence = last_sentence.trim_start().to_lowercase();
+            if !unwanted_phrases.iter().any(|&phrase| sentence.contains(phrase)) {
+                sentences.push(last_sentence);
+            }
+            break;
+        }
+
+        sentences.join(".")
+    }
+}
+
+impl ParsingHelper {
     /// Parse CSV data from a buffer and attempt to automatically detect
     /// headers.
     pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VectorResourceError> {
@@ -96,9 +231,9 @@ impl FileParser {
         } else {
             average_group_size
         };
-        let text = FileParser::extract_text_from_pdf_buffer(buffer, None)
+        let text = ParsingHelper::extract_text_from_pdf_buffer(buffer, None)
             .map_err(|_| VectorResourceError::FailedPDFParsing)?;
-        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize)?;
+        let grouped_text_list = ParsingHelper::split_into_groups(&text, num_characters as usize)?;
 
         // TODO: remove this. only for testing purposes
         // Convert the Vec<String> into a single String with each element on a new line
@@ -123,7 +258,7 @@ impl FileParser {
         } else {
             average_group_size
         };
-        let grouped_text_list = FileParser::split_into_groups(&text, num_characters as usize)?;
+        let grouped_text_list = ParsingHelper::split_into_groups(&text, num_characters as usize)?;
 
         // TODO: remove this. only for testing purposes
         // Convert the Vec<String> into a single String with each element on a new line
@@ -151,14 +286,6 @@ impl FileParser {
         }
 
         Ok(text)
-    }
-
-    /// Generates Blake3 hash of the input data.
-    fn generate_data_blake3_hash(content: &[u8]) -> String {
-        let mut hasher = Hasher::new();
-        hasher.update(content);
-        let hash = hasher.finalize();
-        hash.to_hex().to_string()
     }
 
     /// Extracts the most important keywords from a given text,
@@ -276,8 +403,8 @@ impl FileParser {
     /// total length of the group exceeds the character minimum. Once the
     /// character minimum is exceeded, a new group is started.
     fn split_into_groups(text: &str, average_group_size: usize) -> Result<Vec<String>, VectorResourceError> {
-        let cleaned_text = FileParser::clean_text(text)?;
-        let sentences = FileParser::split_into_sentences(&cleaned_text);
+        let cleaned_text = ParsingHelper::clean_text(text)?;
+        let sentences = ParsingHelper::split_into_sentences(&cleaned_text);
         let mut groups = Vec::new();
         let mut current_group = Vec::new();
         let mut current_length = 0;
@@ -350,7 +477,7 @@ impl FileParser {
         doc.set_embedding_model_used(generator.model_type());
 
         // Parse the pdf into grouped text blocks
-        let keywords = FileParser::extract_keywords(&text_list.join(" "), 50);
+        let keywords = ParsingHelper::extract_keywords(&text_list.join(" "), 50);
 
         // Set the resource embedding, using the keywords + name + desc + source
         doc.update_resource_embedding(generator, keywords)?;
@@ -391,7 +518,7 @@ impl FileParser {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_to_string_list(buffer, average_chunk_size)?;
         eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
-        let resource_id = Self::generate_data_blake3_hash(buffer);
+        let resource_id = Self::generate_data_hash_blake3(buffer);
         eprintln!("Generated resource id: {}", resource_id);
         Self::parse_text(
             grouped_text_list,
@@ -411,13 +538,13 @@ impl FileParser {
         number_pages: i32,
         average_chunk_size: u64,
     ) -> Result<SmartPdfOverview, VectorResourceError> {
-        let shortened_text = match FileParser::extract_text_from_pdf_buffer(buffer, Some(number_pages)) {
+        let shortened_text = match ParsingHelper::extract_text_from_pdf_buffer(buffer, Some(number_pages)) {
             Ok(text) => text,
             Err(_) => return Err(VectorResourceError::FailedPDFParsing),
         };
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_text_to_string_list(shortened_text.clone(), average_chunk_size)?;
-        let resource_id = Self::generate_data_blake3_hash(buffer);
+        let resource_id = Self::generate_data_hash_blake3(buffer);
 
         // TODO: we don't need all of this
         Ok(SmartPdfOverview {

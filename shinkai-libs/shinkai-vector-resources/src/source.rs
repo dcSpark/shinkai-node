@@ -1,7 +1,10 @@
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 
 use crate::resource_errors::VectorResourceError;
+use crate::unstructured::unstructured_parser::UnstructuredParser;
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
 /// or a pointer to the source file (either external such as URL, or a FileRef)
@@ -52,6 +55,33 @@ impl VRSource {
     /// Deserializes a VRSource from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
         serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
+    }
+
+    /// Creates a VRSource using file_name/content to auto-detect and create an instance of Self.
+    /// Errors if can not detect matching extension in file_name.
+    pub fn from_file(file_name: &str, file_buffer: &Vec<u8>) -> Result<Self, VectorResourceError> {
+        let re = Regex::new(r"\.[^.]+$").unwrap();
+        let file_name_without_extension = re.replace(file_name, "");
+        let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
+        // Attempt to auto-detect, else assu
+        let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
+            f_type
+        } else {
+            return Err(VectorResourceError::CouldNotDetectFileType(file_name.to_string()));
+        };
+
+        if file_name.starts_with("http") {
+            Ok(VRSource::new_uri_ref(&file_name_without_extension))
+        } else if file_name.starts_with("file") {
+            let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
+            Ok(VRSource::new_source_file_ref(
+                file_name_without_extension.to_string(),
+                file_type,
+                content_hash,
+            ))
+        } else {
+            return Err(VectorResourceError::CouldNotDetectFileType(file_name.to_string()));
+        }
     }
 }
 
@@ -122,6 +152,25 @@ impl SourceFileReference {
 pub enum SourceFileType {
     Document(SourceDocumentType),
     Image(SourceImageType),
+}
+
+impl SourceFileType {
+    /// Given an input file_name with an extension,
+    /// outputs the correct SourceFileType
+    pub fn detect_file_type(file_name: &str) -> Option<Self> {
+        let re = Regex::new(r"\.([a-zA-Z0-9]+)$").unwrap();
+        let extension = re.captures(file_name)?.get(1)?.as_str();
+
+        if let Ok(img_type) = SourceImageType::from_str(extension) {
+            return Some(SourceFileType::Image(img_type));
+        }
+
+        if let Ok(doc_type) = SourceDocumentType::from_str(extension) {
+            return Some(SourceFileType::Document(doc_type));
+        }
+
+        None
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -202,5 +251,46 @@ impl fmt::Display for SourceDocumentType {
                 SourceDocumentType::Pptx => "pptx",
             }
         )
+    }
+}
+
+impl FromStr for SourceImageType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "png" => Ok(SourceImageType::Png),
+            "jpeg" => Ok(SourceImageType::Jpeg),
+            "gif" => Ok(SourceImageType::Gif),
+            "bmp" => Ok(SourceImageType::Bmp),
+            "tiff" => Ok(SourceImageType::Tiff),
+            "svg" => Ok(SourceImageType::Svg),
+            "webp" => Ok(SourceImageType::Webp),
+            _ => Err(()),
+        }
+    }
+}
+
+impl FromStr for SourceDocumentType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pdf" => Ok(SourceDocumentType::Pdf),
+            "md" => Ok(SourceDocumentType::Md),
+            "txt" => Ok(SourceDocumentType::Txt),
+            "epub" => Ok(SourceDocumentType::Epub),
+            "doc" => Ok(SourceDocumentType::Doc),
+            "docx" => Ok(SourceDocumentType::Docx),
+            "rtf" => Ok(SourceDocumentType::Rtf),
+            "odt" => Ok(SourceDocumentType::Odt),
+            "html" => Ok(SourceDocumentType::Html),
+            "csv" => Ok(SourceDocumentType::Csv),
+            "xls" => Ok(SourceDocumentType::Xls),
+            "xlsx" => Ok(SourceDocumentType::Xlsx),
+            "ppt" => Ok(SourceDocumentType::Ppt),
+            "pptx" => Ok(SourceDocumentType::Pptx),
+            _ => Err(()),
+        }
     }
 }
