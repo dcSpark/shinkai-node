@@ -1,6 +1,7 @@
 use crate::base_vector_resources::VectorResourceBaseType;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
+use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
@@ -172,6 +173,20 @@ pub trait VectorResource {
             };
             println!("{}: {}", path, data);
         }
+    }
+
+    /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
+    /// (targets the same model and interface for embedding generation).
+    fn initialize_compatible_embeddings_generator(
+        &self,
+        api_url: &str,
+        api_key: Option<&str>,
+    ) -> Box<dyn EmbeddingGenerator> {
+        Box::new(RemoteEmbeddingGenerator::new(
+            self.embedding_model_used(),
+            api_url,
+            api_key,
+        ))
     }
 
     /// Retrieves a data chunk, no matter its depth, given its path.
