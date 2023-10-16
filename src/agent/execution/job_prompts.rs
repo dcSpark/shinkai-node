@@ -151,7 +151,7 @@ impl JobPromptGenerator {
         if let Some(summary) = summary_text {
             prompt.add_content(
                 format!(
-                    "Here is the current summary of content another assistant found to answer the user's question: {}",
+                    "Here is the current content you found earlier to answer the user's question: `{}`",
                     summary
                 ),
                 SubPromptType::System,
@@ -193,15 +193,28 @@ impl JobPromptGenerator {
         prompt
     }
 
-    /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn basic_json_retry_response_prompt(non_json_answer: String) -> Prompt {
+    /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
+    /// that we can parse, according to one of the EBNFs from the original prompt.
+    pub fn basic_json_retry_response_prompt(non_json_answer: String, original_prompt: Prompt) -> Prompt {
         let mut prompt = Prompt::new();
+
+        // Iterate through the original prompt and only keep the EBNF subprompts
+        for sub_prompt in original_prompt.sub_prompts {
+            if let SubPrompt::EBNF(prompt_type, ebnf) = sub_prompt {
+                prompt.add_ebnf(ebnf, prompt_type);
+            }
+        }
+
         prompt.add_content(
-            "You are a very helpful assistant running in a system who only has access your own knowledge to answer any question the user provides. You need to return the content of the following message correctly formatted as json:\n".to_string(),
+            format!("Here is the answer to your request: `{}`", non_json_answer),
             SubPromptType::System,
         );
-        prompt.add_content(format!("{}", non_json_answer), SubPromptType::User);
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt.add_content(
+            String::from(
+                r#"No, I need it to be properly formatted as JSON. Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one. ```json"#,
+            ),
+            SubPromptType::User,
+        );
 
         prompt
     }
@@ -300,16 +313,19 @@ impl JobPromptGenerator {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum SubPromptType {
     User,
     System,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum SubPrompt {
     Content(SubPromptType, String),
     EBNF(SubPromptType, String),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Prompt {
     pub sub_prompts: Vec<SubPrompt>,
 }

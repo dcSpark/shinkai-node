@@ -3,6 +3,7 @@ use crate::agent::job::Job;
 use crate::agent::{agent::Agent, job_manager::JobManager};
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
+use async_std::println;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -44,9 +45,10 @@ impl JobManager {
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
     pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
+        let prompt_cloned = filled_prompt.clone();
         let response = tokio::spawn(async move {
-            let mut agent = Agent::from_serialized_agent(agent_cloned);
-            agent.inference(filled_prompt).await
+            let agent = Agent::from_serialized_agent(agent_cloned);
+            agent.inference(prompt_cloned).await
         })
         .await?;
         shinkai_log(
@@ -57,7 +59,7 @@ impl JobManager {
 
         // Validates that the response is a proper JSON object, else inferences again to get the
         // LLM to parse the previous response into proper JSON
-        JobManager::extract_json_value_from_inference_response(response, agent.clone()).await
+        JobManager::extract_json_value_from_inference_response(response, agent.clone(), filled_prompt).await
     }
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
@@ -65,12 +67,13 @@ impl JobManager {
     async fn extract_json_value_from_inference_response(
         response: Result<JsonValue, AgentError>,
         agent: SerializedAgent,
+        filled_prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         match response {
             Ok(json) => Ok(json),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
                 eprintln!("Retrying inference with new prompt");
-                match JobManager::json_not_found_retry(agent.clone(), text.clone()).await {
+                match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
                 }
@@ -81,10 +84,14 @@ impl JobManager {
 
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
     /// that we can parse.
-    async fn json_not_found_retry(agent: SerializedAgent, text: String) -> Result<JsonValue, AgentError> {
+    async fn json_not_found_retry(
+        agent: SerializedAgent,
+        text: String,
+        prompt: Prompt,
+    ) -> Result<JsonValue, AgentError> {
         let response = tokio::spawn(async move {
             let mut agent = Agent::from_serialized_agent(agent);
-            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);
+            let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text, prompt);
             agent.inference(prompt).await
         })
         .await?;
