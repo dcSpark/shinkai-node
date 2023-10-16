@@ -38,8 +38,6 @@ impl JobManager {
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
 
-        let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
-
         // Processes any files which were sent with the job message
         JobManager::process_job_message_files(
             db.clone(),
@@ -113,6 +111,12 @@ impl JobManager {
             profile_name.clone(),
         )
         .unwrap();
+
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
+        );
 
         // Save response data to DB
         let mut shinkai_db = db.lock().await;
