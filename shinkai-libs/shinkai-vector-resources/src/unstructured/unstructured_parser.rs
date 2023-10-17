@@ -3,6 +3,7 @@ use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
+use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
@@ -86,8 +87,19 @@ impl UnstructuredParser {
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        Self::process_new_doc_resource(text_groups, generator, &name, desc, source, parsing_tags, &resource_id).await
+        let mut text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+        Self::generate_text_group_embeddings(&mut text_groups, generator, 5, max_chunk_size).await?;
+        Self::process_new_doc_resource(
+            text_groups,
+            generator,
+            &name,
+            desc,
+            source,
+            parsing_tags,
+            &resource_id,
+            None,
+        )
+        .await
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources
@@ -101,13 +113,20 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
+        resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
-        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-        doc.update_resource_embedding(generator, keywords).await?;
+        match resource_embedding {
+            Some(embedding) => doc.set_resource_embedding(embedding),
+            None => {
+                println!("Generating embedding for resource: {:?}", &name);
+                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+                doc.update_resource_embedding_blocking(generator, keywords)?;
+            }
+        }
 
         for grouped_text in &text_groups {
             let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
@@ -120,6 +139,7 @@ impl UnstructuredParser {
                     source.clone(),
                     parsing_tags,
                     &new_resource_id,
+                    grouped_text.embedding.clone(),
                 )
                 .await?;
                 doc.append_vector_resource(new_doc, metadata);
@@ -127,9 +147,14 @@ impl UnstructuredParser {
                 if grouped_text.text.len() < 6 {
                     continue;
                 }
-                println!("Generating embedding for: {:?}", &grouped_text.text);
-                let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                if let Some(embedding) = &grouped_text.embedding {
+                    println!("Set already generated embedding");
+                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                } else {
+                    println!("Generating embedding for: {:?}", &grouped_text.text);
+                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
+                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                }
             }
         }
 
@@ -190,6 +215,81 @@ impl UnstructuredParser {
         }
     }
 
+    /// Recursive function to collect all texts from the text groups and their subgroups
+    /// TODO: Extract and add keywords if the text_group has sub-groups before adding the text (use max chunk size to limit how many get added).
+    fn collect_texts_and_indices(
+        text_groups: &[GroupedText],
+        texts: &mut Vec<String>,
+        indices: &mut Vec<(usize, Option<usize>)>,
+        max_chunk_size: u64,
+    ) {
+        for (i, text_group) in text_groups.iter().enumerate() {
+            println!("Processing text group at index {}", i);
+            texts.push(text_group.text.clone());
+            indices.push((i, None));
+            for (j, sub_group) in text_group.sub_groups.iter().enumerate() {
+                println!("Processing sub-group at index {} of text group at index {}", j, i);
+                texts.push(sub_group.text.clone());
+                indices.push((i, Some(j)));
+                Self::collect_texts_and_indices(&sub_group.sub_groups, texts, indices, max_chunk_size);
+            }
+        }
+    }
+
+    /// Recursive function to assign the generated embeddings back to the text groups and their subgroups
+    fn assign_embeddings(
+        text_groups: &mut [GroupedText],
+        embeddings: &mut Vec<Embedding>,
+        indices: &[(usize, Option<usize>)],
+    ) {
+        for (i, text_group) in text_groups.iter_mut().enumerate() {
+            if let Some((index, sub_index)) = indices.get(i) {
+                if let Some(embedding) = embeddings.get(*index) {
+                    match sub_index {
+                        Some(j) => text_group.sub_groups[*j].embedding = Some(embedding.clone()),
+                        None => text_group.embedding = Some(embedding.clone()),
+                    }
+                }
+            }
+            Self::assign_embeddings(&mut text_group.sub_groups, embeddings, indices);
+        }
+    }
+
+    /// Recursively goes through all of the text groups and batch generates embeddings
+    /// for all of them. Of note this is using a mutable reference, thus the text_groups are mutated
+    /// with the new embeddings just set directly.
+    pub async fn generate_text_group_embeddings(
+        text_groups: &mut Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        max_batch_size: u64,
+        max_chunk_size: u64,
+    ) -> Result<(), VectorResourceError> {
+        // Collect all texts from the text groups and their subgroups
+        let mut texts = Vec::new();
+        let mut indices = Vec::new();
+        Self::collect_texts_and_indices(text_groups, &mut texts, &mut indices, max_chunk_size);
+
+        // Generate embeddings for all texts in batches
+        let ids: Vec<String> = vec!["".to_string(); texts.len()];
+        let mut embeddings = Vec::new();
+        for batch in texts.chunks(max_batch_size as usize) {
+            let batch_ids = &ids[..batch.len()];
+            println!("Generating batched embeddings for {} text groups", batch_ids.len());
+            let batch_embeddings = generator
+                .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
+                .await?;
+
+            embeddings.extend(batch_embeddings);
+        }
+
+        println!("All embeddings generated. Total: {}", embeddings.len());
+        // Assign the generated embeddings back to the text groups and their subgroups
+        Self::assign_embeddings(text_groups, &mut embeddings, &indices);
+
+        println!("All embeddings set.");
+        Ok(())
+    }
+
     /// Helper method for processing a grouped text for process_new_doc_resource
     fn process_grouped_text(grouped_text: &GroupedText) -> (String, Option<HashMap<String, String>>, bool, String) {
         let has_sub_groups = !grouped_text.sub_groups.is_empty();
@@ -230,7 +330,9 @@ impl UnstructuredParser {
         // Step 2: Concatenate the first sequence of consecutive titles (useful for pdfs)
         let mut elements_iter = elements.iter().peekable();
         while let Some(element) = elements_iter.peek() {
-            if element.element_type == ElementType::Title {
+            if element.element_type == ElementType::Title
+                && current_group.text.len() + element.text.len() < max_chunk_size
+            {
                 current_group.push_data(&element.text, element.metadata.page_number);
                 elements_iter.next(); // advance the iterator
             } else {

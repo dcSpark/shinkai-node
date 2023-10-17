@@ -30,6 +30,34 @@ fn test_remote_embeddings_generation() {
     assert_ne!(dog_embeddings, cat_embeddings);
 }
 
+#[tokio::test]
+async fn test_remote_embeddings_generation_async_batched() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    let inputs = vec![
+        "dog", "cat", "lion", "tiger", "elephant", "giraffe", "zebra", "bear", "wolf", "fox",
+    ]
+    .into_iter()
+    .map(|s| s.to_string())
+    .collect::<Vec<_>>();
+    let ids = vec!["".to_string(); inputs.len()];
+    let embeddings = generator.generate_embeddings(&inputs, &ids).await.unwrap();
+
+    for (animal, embedding) in inputs.iter().zip(embeddings.iter()) {
+        println!("Embedding for {}: {:?}", animal, embedding);
+    }
+
+    assert_ne!(embeddings[0], embeddings[1]);
+    assert_ne!(embeddings[0], embeddings[2]);
+    assert_ne!(embeddings[0], embeddings[3]);
+    assert_ne!(embeddings[0], embeddings[4]);
+    assert_ne!(embeddings[0], embeddings[5]);
+    assert_ne!(embeddings[0], embeddings[6]);
+    assert_ne!(embeddings[0], embeddings[7]);
+    assert_ne!(embeddings[0], embeddings[8]);
+    assert_ne!(embeddings[0], embeddings[9]);
+}
+
 #[test]
 fn test_manual_resource_vector_search() {
     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope

@@ -1,12 +1,15 @@
 use serde::Deserialize;
 
+use crate::embeddings::Embedding;
+
 /// An intermediary type in between `UnstructuredElement`s and
 /// `Embedding`s/`DataChunk`s
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GroupedText {
     pub text: String,
     pub page_numbers: Vec<u32>,
     pub sub_groups: Vec<GroupedText>,
+    pub embedding: Option<Embedding>,
 }
 
 impl GroupedText {
@@ -15,6 +18,7 @@ impl GroupedText {
             text: String::new(),
             page_numbers: Vec::new(),
             sub_groups: Vec::new(),
+            embedding: None,
         }
     }
 
