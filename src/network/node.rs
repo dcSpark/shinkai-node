@@ -4,13 +4,9 @@ use chrono::Utc;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use log::{debug, error, info, trace, warn};
-use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::schemas::inbox_name::InboxNameError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
@@ -19,20 +15,16 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
-use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self};
 use crate::managers::IdentityManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -465,6 +457,7 @@ impl Node {
             let encryption_secret_key_clone = clone_static_secret_key(&self.encryption_secret_key);
             let identity_secret_key_clone = clone_signature_secret_key(&self.identity_secret_key);
             let node_profile_name_clone = self.node_profile_name.clone();
+            let node_proxy_mode = self.proxy_mode.clone();
 
             tokio::spawn(async move {
                 let mut buffer = Vec::new();
@@ -472,7 +465,7 @@ impl Node {
                 socket.read_to_end(&mut buffer).await.unwrap();
 
                 let destination_socket = socket.peer_addr().expect("Failed to get peer address");
-                let _ = Node::handle_message(
+                let _ = Node::handle_received_message(
                     addr,
                     destination_socket.clone(),
                     &buffer,
@@ -481,6 +474,7 @@ impl Node {
                     clone_signature_secret_key(&identity_secret_key_clone),
                     db.clone(),
                     identity_manager.clone(),
+                    node_proxy_mode,
                 )
                 .await;
                 if let Err(e) = socket.flush().await {
@@ -749,80 +743,10 @@ impl Node {
         Ok(())
     }
 
-    pub async fn handle_message(
-        receiver_address: SocketAddr,
-        unsafe_sender_address: SocketAddr,
-        bytes: &[u8],
-        my_node_profile_name: String,
-        my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
-        maybe_db: Arc<Mutex<ShinkaiDB>>,
-        maybe_identity_manager: Arc<Mutex<IdentityManager>>,
-    ) -> Result<(), NodeError> {
-        // TODO: it should check mode we are in and handle accordingly
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Info,
-            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
-        );
-
-        // Extract and validate the message
-        let message = extract_message(bytes, receiver_address)?;
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Decoded Message: {:?}", receiver_address, message),
-        );
-
-        // Extract sender's public keys and verify the signature
-        let sender_node_name_string = ShinkaiName::from_shinkai_message_only_using_sender_node_name(&message)
-            .unwrap()
-            .get_node_name();
-        let sender_identity = maybe_identity_manager
-            .lock()
-            .await
-            .external_profile_to_global_identity(&sender_node_name_string)
-            .await
-            .unwrap();
-
-        verify_message_signature(sender_identity.node_signature_public_key, &message)?;
-
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!(
-                "{} > Sender Profile Name: {:?}",
-                receiver_address, sender_node_name_string
-            ),
-        );
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
-        );
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Verified message signature", receiver_address),
-        );
-        shinkai_log(
-            ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
-            &format!("{} > Sender Identity: {}", receiver_address, sender_identity),
-        );
-
-        // TODO(Nico): split this part depending on Proxy Mode
-        // If we are a proxy, we need to check if the message is for one of our proxied identities
-
-        // TODO: add handle_based_on_message_content_and_encryption back 
-        Ok(())
-    }
-
     pub async fn handle_message_no_proxy(
         message: ShinkaiMessage,
         sender_node_name_string: String,
-        // sender_identity: GlobalIdentity,
+        sender_identity: StandardIdentity,
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
         my_node_profile_name: String,

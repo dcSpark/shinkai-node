@@ -9,7 +9,7 @@ use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use network::Node;
-use network::node::NodeProxyMode;
+use network::node_proxy::NodeProxyMode;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -19,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
+use utils::environment::fetch_node_proxy_mode;
 use std::env;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -57,6 +58,7 @@ fn main() {
     let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key);
     let initial_agent = fetch_agent_env(global_identity_name.clone());
+    let node_proxy_mode = fetch_node_proxy_mode();
 
     shinkai_log(
         ShinkaiLogOption::Node,
@@ -113,7 +115,7 @@ fn main() {
                 db_path,
                 node_env.first_device_needs_registration_code,
                 initial_agent,
-                NodeProxyMode::NoProxy // TODO: Add a way to pass proxy settings from env
+                node_proxy_mode
             )
             .await
         }),

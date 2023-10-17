@@ -8,7 +8,7 @@ use csv::ReaderBuilder;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, SerializedAgent};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use crate::network::node::{IsProxyConf, NodeProxyMode, ProxyIdentity};
+use crate::network::node_proxy::{NodeProxyMode, ProxyIdentity, IsProxyConf};
 
 #[derive(Debug, Clone)]
 pub struct NodeEnvironment {
