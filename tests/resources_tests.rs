@@ -123,7 +123,7 @@ fn test_multi_resource_db_vector_search() {
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding(
+    doc.update_resource_embedding_blocking(
         &generator,
         vec!["Dog".to_string(), "Camel".to_string(), "Seals".to_string()],
     )

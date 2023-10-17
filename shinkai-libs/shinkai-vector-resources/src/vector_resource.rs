@@ -8,6 +8,7 @@ use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
+use async_trait::async_trait;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
@@ -36,6 +37,7 @@ pub enum TraversalMethod {
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
+#[async_trait]
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
@@ -57,7 +59,19 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
     /// Regenerates and updates the resource's embedding.
-    fn update_resource_embedding(
+    async fn update_resource_embedding(
+        &mut self,
+        generator: &dyn EmbeddingGenerator,
+        keywords: Vec<String>,
+    ) -> Result<(), VectorResourceError> {
+        let formatted = self.format_embedding_string(keywords);
+        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
+        self.set_resource_embedding(new_embedding);
+        Ok(())
+    }
+
+    /// Regenerates and updates the resource's embedding.
+    fn update_resource_embedding_blocking(
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,

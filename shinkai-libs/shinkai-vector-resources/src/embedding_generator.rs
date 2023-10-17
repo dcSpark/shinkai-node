@@ -241,32 +241,30 @@ impl RemoteEmbeddingGenerator {
 
         // Check if the response is successful
         if response.status().is_success() {
-            // Read the response bytes
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|err| VectorResourceError::RequestFailed(format!("Failed to read response bytes: {}", err)))?;
+            let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>().await;
 
-            // Convert the bytes to a Vec<f32>
-            let embedding_response: Vec<f32> = bytes
-                .chunks_exact(4)
-                .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-                .collect();
+            match embedding_response {
+                Ok(embedding_response) => {
+                    // Create a Vec<Embedding> by iterating over ids and embeddings
+                    let embeddings: Result<Vec<Embedding>, _> = ids
+                        .iter()
+                        .zip(embedding_response.into_iter())
+                        .map(|(id, embedding)| {
+                            Ok(Embedding {
+                                id: id.clone(),
+                                vector: embedding,
+                            })
+                        })
+                        .collect();
 
-            // Create a Vec<Embedding> by iterating over ids and embeddings
-            let embeddings: Result<Vec<Embedding>, _> = ids
-                .iter()
-                .zip(embedding_response.into_iter())
-                .map(|(id, embedding)| {
-                    Ok(Embedding {
-                        id: id.clone(),
-                        vector: vec![embedding], // Wrap the float in a Vec
-                    })
-                })
-                .collect();
-
-            // Return the embeddings
-            embeddings
+                    // Return the embeddings
+                    embeddings
+                }
+                Err(err) => Err(VectorResourceError::RequestFailed(format!(
+                    "Failed to deserialize response JSON: {}",
+                    err
+                ))),
+            }
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
             Err(VectorResourceError::RequestFailed(format!(
@@ -310,23 +308,30 @@ impl RemoteEmbeddingGenerator {
 
         // Check if the response is successful
         if response.status().is_success() {
-            // TODO: better checks
-            let embedding_response: Vec<Vec<f32>> = response.json::<Vec<Vec<f32>>>().unwrap();
+            let embedding_response: Result<Vec<Vec<f32>>, _> = response.json::<Vec<Vec<f32>>>();
 
-            // Create a Vec<Embedding> by iterating over ids and embeddings
-            let embeddings: Result<Vec<Embedding>, _> = ids
-                .iter()
-                .zip(embedding_response.into_iter())
-                .map(|(id, embedding)| {
-                    Ok(Embedding {
-                        id: id.clone(),
-                        vector: embedding,
-                    })
-                })
-                .collect();
+            match embedding_response {
+                Ok(embedding_response) => {
+                    // Create a Vec<Embedding> by iterating over ids and embeddings
+                    let embeddings: Result<Vec<Embedding>, _> = ids
+                        .iter()
+                        .zip(embedding_response.into_iter())
+                        .map(|(id, embedding)| {
+                            Ok(Embedding {
+                                id: id.clone(),
+                                vector: embedding,
+                            })
+                        })
+                        .collect();
 
-            // Return the embeddings
-            embeddings
+                    // Return the embeddings
+                    embeddings
+                }
+                Err(err) => Err(VectorResourceError::RequestFailed(format!(
+                    "Failed to deserialize response JSON: {}",
+                    err
+                ))),
+            }
         } else {
             // Handle non-successful HTTP responses (e.g., server error)
             Err(VectorResourceError::RequestFailed(format!(

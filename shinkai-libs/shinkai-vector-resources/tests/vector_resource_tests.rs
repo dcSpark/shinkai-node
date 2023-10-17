@@ -46,7 +46,7 @@ fn test_manual_resource_vector_search() {
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
+    doc.update_resource_embedding_blocking(&generator, vec!["animal".to_string(), "wild life".to_string()])
         .unwrap();
 
     // Prepare embeddings + data, then add it to the doc
@@ -93,7 +93,7 @@ fn test_manual_resource_vector_search() {
 
     map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
     map_resource
-        .update_resource_embedding(&generator, vec!["technology".to_string(), "phones".to_string()])
+        .update_resource_embedding_blocking(&generator, vec!["technology".to_string(), "phones".to_string()])
         .unwrap();
 
     // Prepare embeddings + data, then add it to the map resource
@@ -222,7 +222,7 @@ fn test_manual_syntactic_vector_search() {
         "cv_data",
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
-    doc.update_resource_embedding(&generator, vec!["cv".to_string(), "email".to_string()])
+    doc.update_resource_embedding_blocking(&generator, vec!["cv".to_string(), "email".to_string()])
         .unwrap();
 
     // Manually create a few test tags

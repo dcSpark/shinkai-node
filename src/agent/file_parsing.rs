@@ -481,7 +481,7 @@ impl ParsingHelper {
         let keywords = ParsingHelper::extract_keywords(&text_list.join(" "), 50);
 
         // Set the resource embedding, using the keywords + name + desc + source
-        doc.update_resource_embedding(generator, keywords)?;
+        doc.update_resource_embedding_blocking(generator, keywords)?;
         // println!("Generated resource embedding");
 
         // Generate embeddings for each group of text

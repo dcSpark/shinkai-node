@@ -35,7 +35,7 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator.generate_embedding_default_blocking(&query_text).unwrap();
+        let query = generator.generate_embedding_default(&query_text).await.unwrap();
         let ret_data_chunks = JobManager::job_scope_vector_search(
             db.clone(),
             full_job.scope(),

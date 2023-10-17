@@ -3,6 +3,7 @@ use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
+use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
@@ -10,6 +11,8 @@ use blake3::Hasher;
 use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 
 /// Struct which contains several methods related to parsing output from Unstructured
 #[derive(Debug)]
@@ -79,7 +82,7 @@ impl UnstructuredParser {
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources
-    fn process_new_doc_resource(
+    async fn process_new_doc_resource_common<F, G>(
         text_groups: Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
@@ -87,7 +90,20 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+        update_embedding: F,
+        generate_embedding: G,
+    ) -> Result<BaseVectorResource, VectorResourceError>
+    where
+        F: Fn(
+            &mut DocumentVectorResource,
+            &dyn EmbeddingGenerator,
+            Vec<String>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), VectorResourceError>> + Send>>,
+        G: Fn(
+            &dyn EmbeddingGenerator,
+            &str,
+        ) -> Pin<Box<dyn Future<Output = Result<Embedding, VectorResourceError>> + Send>>,
+    {
         // If description is None, use the first text
         let mut resource_desc = desc;
         let desc_string = text_groups[0].text.to_string();
@@ -102,7 +118,7 @@ impl UnstructuredParser {
         let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
 
         // Set the resource embedding, using the keywords + name + desc + source
-        doc.update_resource_embedding(generator, keywords)?;
+        doc.update_resource_embedding_blocking(generator, keywords)?;
 
         // Add each text group as either Vector Resource DataChunks,
         // or data-holding DataChunks depending on if each has any sub-groups
@@ -115,7 +131,7 @@ impl UnstructuredParser {
                 // );
                 let new_name = &grouped_text.text;
                 let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
-                let new_doc = Self::process_new_doc_resource(
+                let new_doc = Self::process_new_doc_resource_common(
                     grouped_text.sub_groups.clone(),
                     generator,
                     new_name,
@@ -152,6 +168,53 @@ impl UnstructuredParser {
         }
 
         Ok(BaseVectorResource::Document(doc))
+    }
+
+    fn process_new_doc_resource_blocking(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(Self::process_new_doc_resource_common(
+                text_groups,
+                generator,
+                name,
+                desc,
+                source,
+                parsing_tags,
+                resource_id,
+                |doc, gen, keywords| Box::pin(async move { doc.update_resource_embedding_blocking(gen, keywords) }),
+                |gen, text| Box::pin(async move { gen.generate_embedding_default_blocking(text) }),
+            ))
+    }
+
+    async fn process_new_doc_resource(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<&str>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        Self::process_new_doc_resource_common(
+            text_groups,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            resource_id,
+            DocumentVectorResource::update_resource_embedding,
+            EmbeddingGenerator::generate_embedding_default,
+        )
+        .await
     }
 
     /// Given a list of `UnstructuredElement`s, groups their text together with some processing logic.
