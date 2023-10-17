@@ -47,7 +47,7 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_blocking(file_buffer, &name)?;
 
-        UnstructuredParser::process_elements_into_resource(
+        UnstructuredParser::process_elements_into_resource_blocking(
             elements,
             generator,
             name,
@@ -86,6 +86,7 @@ impl UnstructuredAPI {
             resource_id,
             max_chunk_size,
         )
+        .await
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of

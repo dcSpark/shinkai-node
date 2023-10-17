@@ -6,6 +6,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
+use async_recursion::async_recursion;
 use blake3::Hasher;
 use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
@@ -55,7 +56,8 @@ impl UnstructuredParser {
 
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource
-    pub fn process_elements_into_resource(
+    #[cfg(feature = "native-http")]
+    pub fn process_elements_into_resource_blocking(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
         name: String,
@@ -67,154 +69,136 @@ impl UnstructuredParser {
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        Self::process_new_doc_resource(
-            text_groups,
-            generator,
-            &name,
-            desc.as_deref(),
-            source,
-            parsing_tags,
-            &resource_id,
-        )
+        Self::process_new_doc_resource_blocking(text_groups, generator, &name, desc, source, parsing_tags, &resource_id)
+    }
+
+    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
+    /// a ready-to-go BaseVectorResource
+    #[cfg(feature = "native-http")]
+    pub async fn process_elements_into_resource(
+        elements: Vec<UnstructuredElement>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: String,
+        max_chunk_size: u64,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Group elements together before generating the doc
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+        Self::process_new_doc_resource(text_groups, generator, &name, desc, source, parsing_tags, &resource_id).await
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources
-    fn process_new_doc_resource(
+    #[async_recursion]
+    #[cfg(feature = "native-http")]
+    async fn process_new_doc_resource(
         text_groups: Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
         name: &str,
-        desc: Option<&str>,
+        desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
     ) -> Result<BaseVectorResource, VectorResourceError> {
-        // If description is None, use the first text
-        let mut resource_desc = desc;
-        let desc_string = text_groups[0].text.to_string();
-        if desc.is_none() && text_groups.len() > 0 {
-            resource_desc = Some(&desc_string);
-        }
-        // Create doc resource and initial setup
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc, source.clone(), &resource_id);
+        let resource_desc = Self::setup_resource_description(desc, &text_groups);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
-        // Extract keywords from the elements
         let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+        doc.update_resource_embedding(generator, keywords).await?;
 
-        // Set the resource embedding, using the keywords + name + desc + source
-        doc.update_resource_embedding(generator, keywords)?;
-
-        // Add each text group as either Vector Resource DataChunks,
-        // or data-holding DataChunks depending on if each has any sub-groups
         for grouped_text in &text_groups {
-            // If the grouped_text has at least 1 sub group, recurse
-            if !grouped_text.sub_groups.is_empty() {
-                // println!(
-                //     "Processing grouped text `{}`\nCreating New Vector Resource",
-                //     grouped_text.text
-                // );
-                let new_name = &grouped_text.text;
-                let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
+            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            if has_sub_groups {
                 let new_doc = Self::process_new_doc_resource(
                     grouped_text.sub_groups.clone(),
                     generator,
-                    new_name,
+                    &new_name,
                     None,
                     source.clone(),
                     parsing_tags,
                     &new_resource_id,
-                )?;
-                let mut metadata = HashMap::new();
-                metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
-                doc.append_vector_resource(new_doc, Some(metadata));
+                )
+                .await?;
+                doc.append_vector_resource(new_doc, metadata);
             } else {
-                // println!(
-                //     "Processing groupd text `{}`\nAdding to doc: `{}`",
-                //     grouped_text.text,
-                //     doc.name()
-                // );
-                // Skip creating DataChunks for no/very little text
                 if grouped_text.text.len() < 6 {
                     continue;
                 }
-                // Generate the embedding
-                let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-
-                // Add page numbers to metadata
-                let mut metadata = HashMap::new();
-                if !grouped_text.page_numbers.is_empty() {
-                    metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
-                }
-
-                // Append the data
-                doc.append_data(&grouped_text.text, Some(metadata), &embedding, parsing_tags);
+                println!("Generating embedding for: {:?}", &grouped_text.text);
+                let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
+                doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
             }
         }
 
         Ok(BaseVectorResource::Document(doc))
     }
 
-    /// Given a list of `UnstructuredElement`s, groups their text together with some processing logic.
-    /// Currently respects max_chunk_size, ensures splitting between narrative text/new title,
-    /// and skips over all uncategorized text.
-    pub fn flat_group_elements_text(elements: &Vec<UnstructuredElement>, max_chunk_size: u64) -> Vec<GroupedText> {
-        let max_chunk_size = max_chunk_size as usize;
-        let mut groups = Vec::new();
-        let mut current_group = GroupedText::new();
+    /// Recursively processes all text groups & their sub groups into DocumentResources
+    #[cfg(feature = "native-http")]
+    fn process_new_doc_resource_blocking(
+        text_groups: Vec<GroupedText>,
+        generator: &dyn EmbeddingGenerator,
+        name: &str,
+        desc: Option<String>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: &str,
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        let resource_desc = Self::setup_resource_description(desc, &text_groups);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
+        doc.set_embedding_model_used(generator.model_type());
 
-        for i in 0..elements.len() {
-            let element = &elements[i];
-            let element_text = element.text.clone();
+        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+        doc.update_resource_embedding_blocking(generator, keywords)?;
 
-            // Skip over any uncategorized text (usually filler like headers/footers)
-            if element.element_type == ElementType::UncategorizedText {
-                continue;
-            }
-
-            // If adding the current element text would exceed the max_chunk_size,
-            // push the current group to groups and start a new group
-            if current_group.text.len() + element_text.len() > max_chunk_size {
-                groups.push(current_group);
-                current_group = GroupedText::new();
-            }
-
-            // If the current element text is larger than max_chunk_size,
-            // split it into chunks and add them to groups
-            if element_text.len() > max_chunk_size {
-                let chunks = Self::split_into_chunks(&element_text, max_chunk_size);
-                for chunk in chunks {
-                    let mut new_group = GroupedText::new();
-                    new_group.push_data(&chunk, element.metadata.page_number);
-                    groups.push(new_group);
+        for grouped_text in &text_groups {
+            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            if has_sub_groups {
+                let new_doc = Self::process_new_doc_resource_blocking(
+                    grouped_text.sub_groups.clone(),
+                    generator,
+                    &new_name,
+                    None,
+                    source.clone(),
+                    parsing_tags,
+                    &new_resource_id,
+                )?;
+                doc.append_vector_resource(new_doc, metadata);
+            } else {
+                if grouped_text.text.len() < 6 {
+                    continue;
                 }
-                continue;
-            }
-
-            // Add the current element text to the current group
-            current_group.push_data(&element_text, element.metadata.page_number);
-
-            // If the current element type is NarrativeText and the next element's type is Title,
-            // push the current group to groups and start a new group
-            if element.element_type == ElementType::NarrativeText
-                && i + 1 < elements.len()
-                && elements[i + 1].element_type == ElementType::Title
-            {
-                groups.push(current_group);
-                current_group = GroupedText::new();
+                let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
+                doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
             }
         }
 
-        // Push the last group to groups
-        if !current_group.text.is_empty() {
-            groups.push(current_group);
-        }
-
-        // Filter out groups with a text of 15 characters or less
-        groups = groups.into_iter().filter(|group| group.text.len() > 15).collect();
-
-        groups
+        Ok(BaseVectorResource::Document(doc))
     }
 
+    /// Helper method for setting a description if none provided for process_new_doc_resource
+    fn setup_resource_description(desc: Option<String>, text_groups: &Vec<GroupedText>) -> Option<String> {
+        if let Some(description) = desc {
+            Some(description.to_string())
+        } else if !text_groups.is_empty() {
+            Some(text_groups[0].text.to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Helper method for processing a grouped text for process_new_doc_resource
+    fn process_grouped_text(grouped_text: &GroupedText) -> (String, Option<HashMap<String, String>>, bool, String) {
+        let has_sub_groups = !grouped_text.sub_groups.is_empty();
+        let new_name = grouped_text.text.clone();
+        let new_resource_id = Self::generate_data_hash(new_name.as_bytes());
+        let mut metadata = HashMap::new();
+        metadata.insert("page_numbers".to_string(), grouped_text.format_page_num_string());
+        (new_resource_id, Some(metadata), has_sub_groups, new_name)
+    }
     /// Internal method used to push into correct group for hierarchical grouping
     fn push_group_to_appropriate_parent(
         group: GroupedText,

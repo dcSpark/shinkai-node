@@ -72,7 +72,8 @@ impl JobManager {
             parsing_tags,
             resource_id,
             max_chunk_size,
-        )?;
+        )
+        .await?;
         resource
             .as_trait_object()
             .print_all_data_chunks_exhaustive(None, true, false);
