@@ -70,7 +70,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
 
     let resource = api
-        .process_file(
+        .process_file_blocking(
             file_buffer,
             &generator,
             file_name.to_string(),

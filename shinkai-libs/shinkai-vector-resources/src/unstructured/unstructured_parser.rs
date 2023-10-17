@@ -2,7 +2,7 @@ use super::unstructured_types::{ElementType, GroupedText, UnstructuredElement};
 use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
-use crate::embedding_generator::EmbeddingGenerator;
+use crate::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
@@ -87,10 +87,15 @@ impl UnstructuredParser {
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
-        let mut text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        Self::generate_text_group_embeddings(&mut text_groups, generator, 5, max_chunk_size).await?;
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+        let task = tokio::spawn(async move {
+            let generator = RemoteEmbeddingGenerator::new_default();
+            Self::generate_text_group_embeddings(&text_groups, &generator, 5, max_chunk_size).await
+        });
+        let new_text_groups = task.await??;
+
         Self::process_new_doc_resource(
-            text_groups,
+            new_text_groups,
             generator,
             &name,
             desc,
@@ -256,18 +261,22 @@ impl UnstructuredParser {
     }
 
     /// Recursively goes through all of the text groups and batch generates embeddings
-    /// for all of them. Of note this is using a mutable reference, thus the text_groups are mutated
-    /// with the new embeddings just set directly.
+    /// for all of them.
     pub async fn generate_text_group_embeddings(
-        text_groups: &mut Vec<GroupedText>,
+        text_groups: &Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
         max_batch_size: u64,
         max_chunk_size: u64,
-    ) -> Result<(), VectorResourceError> {
+    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+        // Clone the input text_groups
+        let mut text_groups = text_groups.clone();
+
         // Collect all texts from the text groups and their subgroups
         let mut texts = Vec::new();
         let mut indices = Vec::new();
-        Self::collect_texts_and_indices(text_groups, &mut texts, &mut indices, max_chunk_size);
+        Self::collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size);
+
+        let generator = RemoteEmbeddingGenerator::new_default();
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
@@ -284,10 +293,10 @@ impl UnstructuredParser {
 
         println!("All embeddings generated. Total: {}", embeddings.len());
         // Assign the generated embeddings back to the text groups and their subgroups
-        Self::assign_embeddings(text_groups, &mut embeddings, &indices);
+        Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
 
         println!("All embeddings set.");
-        Ok(())
+        Ok(text_groups)
     }
 
     /// Helper method for processing a grouped text for process_new_doc_resource

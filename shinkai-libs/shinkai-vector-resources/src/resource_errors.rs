@@ -1,6 +1,7 @@
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
+use tokio::task::JoinError;
 
 use crate::vector_resource::VRPath;
 
@@ -22,6 +23,7 @@ pub enum VectorResourceError {
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
+    TaskFailed(String),
 }
 
 impl fmt::Display for VectorResourceError {
@@ -54,11 +56,20 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::CouldNotDetectFileType(ref s) => {
                 write!(f, "Could not detect file type from file name: {}", s)
             }
+            VectorResourceError::TaskFailed(ref s) => {
+                write!(f, "Tokio task failed: {}", s)
+            }
         }
     }
 }
 
 impl Error for VectorResourceError {}
+
+impl From<JoinError> for VectorResourceError {
+    fn from(error: JoinError) -> Self {
+        VectorResourceError::TaskFailed(error.to_string())
+    }
+}
 
 impl From<regex::Error> for VectorResourceError {
     fn from(err: regex::Error) -> VectorResourceError {

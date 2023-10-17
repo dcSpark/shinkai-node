@@ -49,9 +49,9 @@ impl JobManager {
     ) -> Result<BaseVectorResource, AgentError> {
         // Parse file into needed data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+        let unstructured_api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
         let source = VRSource::from_file(&name, &file_buffer)?;
-        let elements = api.file_request_async(file_buffer, &name).await?;
+        let elements = unstructured_api.file_request(file_buffer, &name).await?;
 
         // Automatically generate description if none is provided
         let mut desc = desc;
