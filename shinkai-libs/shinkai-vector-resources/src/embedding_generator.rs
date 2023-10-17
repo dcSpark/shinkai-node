@@ -310,15 +310,8 @@ impl RemoteEmbeddingGenerator {
 
         // Check if the response is successful
         if response.status().is_success() {
-            // Read the response bytes
-            let bytes = response
-                .bytes()
-                .map_err(|err| VectorResourceError::RequestFailed(format!("Failed to read response bytes: {}", err)))?;
-            // Convert the bytes to a Vec<f32>
-            let embedding_response: Vec<f32> = bytes
-                .chunks_exact(4)
-                .map(|bytes| f32::from_le_bytes(bytes.try_into().unwrap()))
-                .collect();
+            // TODO: better checks
+            let embedding_response: Vec<Vec<f32>> = response.json::<Vec<Vec<f32>>>().unwrap();
 
             // Create a Vec<Embedding> by iterating over ids and embeddings
             let embeddings: Result<Vec<Embedding>, _> = ids
@@ -327,7 +320,7 @@ impl RemoteEmbeddingGenerator {
                 .map(|(id, embedding)| {
                     Ok(Embedding {
                         id: id.clone(),
-                        vector: vec![embedding], // Wrap the float in a Vec
+                        vector: embedding,
                     })
                 })
                 .collect();
