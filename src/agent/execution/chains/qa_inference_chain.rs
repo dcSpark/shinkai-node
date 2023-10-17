@@ -35,10 +35,16 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator.generate_embedding_default(&query_text).unwrap();
-        let ret_data_chunks =
-            JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
-                .await?;
+        let query = generator.generate_embedding_default_blocking(&query_text).unwrap();
+        let ret_data_chunks = JobManager::job_scope_vector_search(
+            db.clone(),
+            full_job.scope(),
+            query,
+            20,
+            &user_profile.clone().unwrap(),
+            true,
+        )
+        .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < max_iterations {

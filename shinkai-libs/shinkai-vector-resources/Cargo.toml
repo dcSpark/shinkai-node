@@ -14,6 +14,7 @@ byteorder = "1.4.3"
 ordered-float = "3.7.0"
 blake3 = "1.5.0"
 keyphrases = "0.3.2"
+async-trait = "0.1.74"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [dependencies.reqwest]

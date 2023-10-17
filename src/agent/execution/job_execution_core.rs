@@ -79,7 +79,6 @@ impl JobManager {
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
-        // let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 

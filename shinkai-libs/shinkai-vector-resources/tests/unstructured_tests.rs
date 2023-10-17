@@ -87,10 +87,14 @@ fn test_unstructured_parse_pdf_vector_resource() {
 
     // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
     let query_string = "Who are the authors?";
-    let query_embedding1 = generator.generate_embedding_default(query_string).unwrap();
-    let res = resource.as_trait_object().vector_search(query_embedding1.clone(), 5);
+    let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
+    let res = resource.as_trait_object().vector_search(query_embedding1.clone(), 50);
     for (i, result) in res.iter().enumerate() {
-        println!("Result {}: {}", result.score, result.chunk.get_data_string().unwrap());
+        println!(
+            "Score {} - Data: {}",
+            result.score,
+            result.chunk.get_data_string().unwrap()
+        );
     }
     assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].chunk.get_data_string().unwrap());
 }

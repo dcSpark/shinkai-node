@@ -489,7 +489,7 @@ impl ParsingHelper {
         let total_num_embeddings = text_list.len();
         let mut i = 0;
         for text in &text_list {
-            let embedding = generator.generate_embedding_default(text)?;
+            let embedding = generator.generate_embedding_default_blocking(text)?;
             embeddings.push(embedding);
 
             i += 1;

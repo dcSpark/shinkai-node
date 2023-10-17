@@ -138,7 +138,7 @@ impl UnstructuredParser {
                     continue;
                 }
                 // Generate the embedding
-                let embedding = generator.generate_embedding_default(&grouped_text.text)?;
+                let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
 
                 // Add page numbers to metadata
                 let mut metadata = HashMap::new();
