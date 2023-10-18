@@ -67,27 +67,8 @@ impl UnstructuredParser {
             .join(" ")
     }
 
-    // /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    // /// a ready-to-go BaseVectorResource
-    // #[cfg(feature = "native-http")]
-    // pub fn process_elements_into_resource_blocking(
-    //     elements: Vec<UnstructuredElement>,
-    //     generator: &dyn EmbeddingGenerator,
-    //     name: String,
-    //     desc: Option<String>,
-    //     source: VRSource,
-    //     parsing_tags: &Vec<DataTag>,
-    //     resource_id: String,
-    //     max_chunk_size: u64,
-    // ) -> Result<BaseVectorResource, VectorResourceError> {
-    //     // Group elements together before generating the doc
-    //     let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-    //     Self::process_new_doc_resource_blocking(text_groups, generator, &name, desc, source, parsing_tags, &resource_id)
-    // }
-
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource.
-    /// TODO: Remove using tokio runtime and properly implement this as blocking.
     #[cfg(feature = "native-http")]
     pub fn process_elements_into_resource_blocking(
         elements: Vec<UnstructuredElement>,
@@ -99,44 +80,20 @@ impl UnstructuredParser {
         resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
-        // Create a new Tokio runtime
-        let rt = Runtime::new().unwrap();
-
-        // Group elements together before generating the doc
-        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        let cloned_generator = generator.box_clone();
-
-        // Use block_on to run the async function
-        let new_text_groups = rt.block_on(async {
-            Self::generate_text_group_embeddings(
-                &text_groups,
-                cloned_generator,
-                31,
-                max_chunk_size,
-                Self::collect_texts_and_indices,
-            )
-            .await
-        })?;
-
-        // Use block_on again for the second async function
-        rt.block_on(async {
-            Self::process_new_doc_resource(
-                new_text_groups,
-                &*generator,
-                &name,
-                desc,
-                source,
-                parsing_tags,
-                &resource_id,
-                None,
-            )
-            .await
-        })
+        Self::process_elements_into_resource_blocking_with_custom_collection(
+            elements,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            resource_id,
+            max_chunk_size,
+            Self::collect_texts_and_indices,
+        )
     }
-
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource
-    /// Note: This is the async variant.
     #[cfg(feature = "native-http")]
     pub async fn process_elements_into_resource(
         elements: Vec<UnstructuredElement>,
@@ -148,6 +105,79 @@ impl UnstructuredParser {
         resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
+        Self::process_elements_into_resource_with_custom_collection(
+            elements,
+            generator,
+            name,
+            desc,
+            source,
+            parsing_tags,
+            resource_id,
+            max_chunk_size,
+            Self::collect_texts_and_indices,
+        )
+        .await
+    }
+
+    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
+    /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
+    #[cfg(feature = "native-http")]
+    pub fn process_elements_into_resource_blocking_with_custom_collection(
+        elements: Vec<UnstructuredElement>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: String,
+        max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+    ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Create a new Tokio runtime
+        let rt = Runtime::new().unwrap();
+
+        // Group elements together before generating the doc
+        let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+        let cloned_generator = generator.box_clone();
+
+        // Use block_on to run the async-based batched embedding generation logic
+        let new_text_groups = rt.block_on(async {
+            Self::generate_text_group_embeddings(
+                &text_groups,
+                cloned_generator,
+                31,
+                max_chunk_size,
+                collect_texts_and_indices,
+            )
+            .await
+        })?;
+
+        Self::process_new_doc_resource_blocking(
+            new_text_groups,
+            &*generator,
+            &name,
+            desc,
+            source,
+            parsing_tags,
+            &resource_id,
+            None,
+        )
+    }
+
+    /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
+    /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
+    #[cfg(feature = "native-http")]
+    pub async fn process_elements_into_resource_with_custom_collection(
+        elements: Vec<UnstructuredElement>,
+        generator: &dyn EmbeddingGenerator,
+        name: String,
+        desc: Option<String>,
+        source: VRSource,
+        parsing_tags: &Vec<DataTag>,
+        resource_id: String,
+        max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+    ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
         let cloned_generator = generator.box_clone();
@@ -157,7 +187,7 @@ impl UnstructuredParser {
                 cloned_generator,
                 31,
                 max_chunk_size,
-                Self::collect_texts_and_indices,
+                collect_texts_and_indices,
             )
             .await
         });
@@ -175,9 +205,7 @@ impl UnstructuredParser {
         )
         .await
     }
-
     /// Recursively processes all text groups & their sub groups into DocumentResources
-    /// Note: This is the async variant.
     #[async_recursion]
     #[cfg(feature = "native-http")]
     async fn process_new_doc_resource(
@@ -246,13 +274,21 @@ impl UnstructuredParser {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
+        resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VectorResourceError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
-        let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-        doc.update_resource_embedding_blocking(generator, keywords)?;
+        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
+        match resource_embedding {
+            Some(embedding) => doc.set_resource_embedding(embedding),
+            None => {
+                println!("Generating embedding for resource: {:?}", &name);
+                let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
+                doc.update_resource_embedding_blocking(generator, keywords)?;
+            }
+        }
 
         for grouped_text in &text_groups {
             let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
@@ -265,14 +301,20 @@ impl UnstructuredParser {
                     source.clone(),
                     parsing_tags,
                     &new_resource_id,
+                    grouped_text.embedding.clone(),
                 )?;
                 doc.append_vector_resource(new_doc, metadata);
             } else {
-                if grouped_text.text.len() < 6 {
+                if grouped_text.text.len() <= 2 {
                     continue;
                 }
-                let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-                doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                if let Some(embedding) = &grouped_text.embedding {
+                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                } else {
+                    println!("Generating embedding for: {:?}", &grouped_text.text);
+                    let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
+                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                }
             }
         }
 
@@ -291,7 +333,6 @@ impl UnstructuredParser {
     }
 
     /// Recursive function to collect all texts from the text groups and their subgroups
-    /// TODO: Extract and add keywords if the text_group has sub-groups before adding the text (use max chunk size to limit how many get added).
     fn collect_texts_and_indices(
         text_groups: &[GroupedText],
         texts: &mut Vec<String>,
