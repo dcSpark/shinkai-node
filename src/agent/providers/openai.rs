@@ -7,6 +7,7 @@ use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use tiktoken_rs::get_chat_completion_max_tokens;
 use tiktoken_rs::num_tokens_from_messages;
 
@@ -103,14 +104,21 @@ impl LLMProvider for OpenAI {
                     .send()
                     .await?;
 
-                eprintln!("Status: {}", res.status());
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Call API Status: {:?}", res.status()).as_str(),
+                );
+                
                 let response_text = res.text().await?;
-                //eprintln!("Response: {:?}", response_text);
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Call API Response Text: {:?}", response_text).as_str(),
+                );
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
-                //eprintln!("data_resp: {:?}", data_resp);
 
-                // let data_resp = res.json::<serde_json::Value>().await;
                 match data_resp {
                     Ok(value) => {
                         let data: Response = serde_json::from_value(value).map_err(AgentError::SerdeError)?;

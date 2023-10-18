@@ -18,7 +18,7 @@ mod tests {
             "false".to_string(),
             "http://example.com".to_string(),
             "123456".to_string(),
-            "openai:chatgpt3-turbo".to_string(),
+            "openai:gpt-3.5-turbo".to_string(),
             "permission1,permission2".to_string(),
             "bucket1,bucket2".to_string(),
             "sender1,sender2".to_string(),
