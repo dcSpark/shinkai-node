@@ -21,8 +21,9 @@ const N_EMBD: usize = 384;
 
 /// A trait for types that can generate embeddings from text.
 #[async_trait]
-pub trait EmbeddingGenerator: Sync {
+pub trait EmbeddingGenerator: Sync + Send {
     fn model_type(&self) -> EmbeddingModelType;
+    fn box_clone(&self) -> Box<dyn EmbeddingGenerator>;
 
     /// Generates an embedding from the given input string, and assigns the
     /// provided id. This is a blockng method (not async).
@@ -90,6 +91,11 @@ pub struct RemoteEmbeddingGenerator {
 #[cfg(feature = "native-http")]
 #[async_trait]
 impl EmbeddingGenerator for RemoteEmbeddingGenerator {
+    /// Clones self and wraps it in a Box
+    fn box_clone(&self) -> Box<dyn EmbeddingGenerator> {
+        Box::new(self.clone())
+    }
+
     /// Generate Embeddings for an input list of strings by using the external API.
     /// This method batch generates whenever possible to increase speed.
     /// Note this method is blocking.

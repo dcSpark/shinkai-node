@@ -89,16 +89,22 @@ impl UnstructuredParser {
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+        let cloned_generator = generator.box_clone();
         let task = tokio::spawn(async move {
-            let generator = RemoteEmbeddingGenerator::new_default();
-            Self::generate_text_group_embeddings(&text_groups, &generator, 31, max_chunk_size).await
+            Self::generate_text_group_embeddings(
+                &text_groups,
+                cloned_generator,
+                31,
+                max_chunk_size,
+                Self::collect_texts_and_indices,
+            )
+            .await
         });
         let new_text_groups = task.await??;
-        println!("New text groups: {:?}", new_text_groups);
 
         Self::process_new_doc_resource(
             new_text_groups,
-            generator,
+            &*generator,
             &name,
             desc,
             source,
@@ -138,7 +144,6 @@ impl UnstructuredParser {
         }
 
         for grouped_text in &text_groups {
-            println!("Processing group text for resource");
             let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
             if has_sub_groups {
                 let new_doc = Self::process_new_doc_resource(
@@ -158,7 +163,6 @@ impl UnstructuredParser {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    println!("Set already generated embedding");
                     doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
@@ -241,7 +245,6 @@ impl UnstructuredParser {
             current_path.push(i);
             indices.push((current_path.clone(), texts.len() - 1));
             for (j, sub_group) in text_group.sub_groups.iter().enumerate() {
-                println!("Processing sub-group at index {} of text group at index {}", j, i);
                 texts.push(sub_group.text.clone());
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
@@ -281,9 +284,10 @@ impl UnstructuredParser {
     #[async_recursion]
     pub async fn generate_text_group_embeddings(
         text_groups: &Vec<GroupedText>,
-        generator: &dyn EmbeddingGenerator,
+        generator: Box<dyn EmbeddingGenerator>,
         mut max_batch_size: u64,
         max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
     ) -> Result<Vec<GroupedText>, VectorResourceError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
@@ -291,7 +295,7 @@ impl UnstructuredParser {
         // Collect all texts from the text groups and their subgroups
         let mut texts = Vec::new();
         let mut indices = Vec::new();
-        Self::collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size, vec![]);
+        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size, vec![]);
 
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
@@ -315,6 +319,7 @@ impl UnstructuredParser {
                             generator,
                             max_batch_size,
                             max_chunk_size,
+                            collect_texts_and_indices,
                         )
                         .await;
                     } else {
@@ -324,14 +329,9 @@ impl UnstructuredParser {
             }
         }
 
-        println!("Number of texts: {}", texts.len());
-        println!("Number of indices: {}", indices.len());
-        println!("Number of embeddings: {}", embeddings.len());
-
         // Assign the generated embeddings back to the text groups and their subgroups
         Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
 
-        println!("Embeddings successfully assigned!");
         Ok(text_groups)
     }
 
