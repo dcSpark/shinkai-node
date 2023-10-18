@@ -145,42 +145,61 @@ impl JobManager {
                 format!("Processing files_map: ... files: {}", job_message.files_inbox.len()).as_str(),
             );
             // TODO: later we should able to grab errors and return them to the user
-            let new_scope_entries = JobManager::process_files_inbox(
+            let new_scope_entries_result = JobManager::process_files_inbox(
                 db.clone(),
                 agent_found,
                 job_message.files_inbox.clone(),
                 profile,
                 save_to_db_directly,
             )
-            .await?;
+            .await;
 
-            for (_, value) in new_scope_entries {
-                match value {
-                    ScopeEntry::Local(local_entry) => {
-                        if !full_job.scope.local.contains(&local_entry) {
-                            full_job.scope.local.push(local_entry);
-                        } else {
-                            println!("Duplicate LocalScopeEntry detected");
+            match new_scope_entries_result {
+                Ok(new_scope_entries) => {
+                    for (_, value) in new_scope_entries {
+                        match value {
+                            ScopeEntry::Local(local_entry) => {
+                                if !full_job.scope.local.contains(&local_entry) {
+                                    full_job.scope.local.push(local_entry);
+                                } else {
+                                    println!("Duplicate LocalScopeEntry detected");
+                                }
+                            }
+                            ScopeEntry::Database(db_entry) => {
+                                if !full_job.scope.database.contains(&db_entry) {
+                                    full_job.scope.database.push(db_entry);
+                                } else {
+                                    println!("Duplicate DBScopeEntry detected");
+                                }
+                            }
                         }
                     }
-                    ScopeEntry::Database(db_entry) => {
-                        if !full_job.scope.database.contains(&db_entry) {
-                            full_job.scope.database.push(db_entry);
-                        } else {
-                            println!("Duplicate DBScopeEntry detected");
-                        }
-                    }
+                    let mut shinkai_db = db.lock().await;
+                    shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
                 }
-            }
-            {
-                let mut shinkai_db = db.lock().await;
-                shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        format!("Error processing files: {}", e).as_str(),
+                    );
+                    return Err(e);
+                }
             }
         } else {
             // TODO: move this somewhere else
             let mut shinkai_db = db.lock().await;
-            shinkai_db.init_profile_resource_router(&profile)?;
-            std::mem::drop(shinkai_db); // required to avoid deadlock
+            match shinkai_db.init_profile_resource_router(&profile) {
+                Ok(_) => std::mem::drop(shinkai_db), // required to avoid deadlock
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        format!("Error initializing profile resource router: {}", e).as_str(),
+                    );
+                    return Err(AgentError::ShinkaiDB(e));
+                }
+            }
         }
 
         Ok(())

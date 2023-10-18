@@ -94,7 +94,12 @@ impl LLMProvider for OpenAI {
                 });
 
                 let body = serde_json::to_string(&payload)?;
-                eprintln!("body api chagpt: {}", body);
+                
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Call API Body: {:?}", body).as_str(),
+                );
 
                 let res = client
                     .post(url)
