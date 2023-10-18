@@ -12,6 +12,7 @@ use blake3::Hasher;
 use keyphrases::KeyPhraseExtractor;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use tokio::runtime::Runtime;
 
 /// Struct which contains several methods related to parsing output from Unstructured
 #[derive(Debug)]
@@ -35,15 +36,11 @@ impl UnstructuredParser {
         }
     }
 
-    /// Extracts the most important keywords from a given text,
+    /// Extracts the most important keywords from all Groups/Sub-groups
     /// using the RAKE algorithm.
-    pub fn extract_keywords(group: &Vec<GroupedText>, num: u64) -> Vec<String> {
-        // Extract all the text out of all the elements and combine them together into a single string
-        let text = group
-            .iter()
-            .map(|element| element.text.as_str())
-            .collect::<Vec<&str>>()
-            .join(" ");
+    pub fn extract_keywords(groups: &Vec<GroupedText>, num: u64) -> Vec<String> {
+        // Extract all the text out of all the GroupedText and its subgroups and combine them together into a single string
+        let text = Self::extract_all_text_from_groups(groups);
 
         // Create a new KeyPhraseExtractor with a maximum of num keywords
         let extractor = KeyPhraseExtractor::new(&text, num as usize);
@@ -55,8 +52,42 @@ impl UnstructuredParser {
         keywords.into_iter().map(|(_score, keyword)| keyword).collect()
     }
 
+    /// Extracts all  text from the list of groups and any sub-groups inside
+    fn extract_all_text_from_groups(group: &Vec<GroupedText>) -> String {
+        group
+            .iter()
+            .map(|element| {
+                let mut text = element.text.clone();
+                for sub_group in &element.sub_groups {
+                    text.push_str(&Self::extract_all_text_from_groups(&vec![sub_group.clone()]));
+                }
+                text
+            })
+            .collect::<Vec<String>>()
+            .join(" ")
+    }
+
+    // /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
+    // /// a ready-to-go BaseVectorResource
+    // #[cfg(feature = "native-http")]
+    // pub fn process_elements_into_resource_blocking(
+    //     elements: Vec<UnstructuredElement>,
+    //     generator: &dyn EmbeddingGenerator,
+    //     name: String,
+    //     desc: Option<String>,
+    //     source: VRSource,
+    //     parsing_tags: &Vec<DataTag>,
+    //     resource_id: String,
+    //     max_chunk_size: u64,
+    // ) -> Result<BaseVectorResource, VectorResourceError> {
+    //     // Group elements together before generating the doc
+    //     let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
+    //     Self::process_new_doc_resource_blocking(text_groups, generator, &name, desc, source, parsing_tags, &resource_id)
+    // }
+
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
-    /// a ready-to-go BaseVectorResource
+    /// a ready-to-go BaseVectorResource.
+    /// TODO: Remove using tokio runtime and properly implement this as blocking.
     #[cfg(feature = "native-http")]
     pub fn process_elements_into_resource_blocking(
         elements: Vec<UnstructuredElement>,
@@ -68,9 +99,39 @@ impl UnstructuredParser {
         resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VectorResourceError> {
+        // Create a new Tokio runtime
+        let rt = Runtime::new().unwrap();
+
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        Self::process_new_doc_resource_blocking(text_groups, generator, &name, desc, source, parsing_tags, &resource_id)
+        let cloned_generator = generator.box_clone();
+
+        // Use block_on to run the async function
+        let new_text_groups = rt.block_on(async {
+            Self::generate_text_group_embeddings(
+                &text_groups,
+                cloned_generator,
+                31,
+                max_chunk_size,
+                Self::collect_texts_and_indices,
+            )
+            .await
+        })?;
+
+        // Use block_on again for the second async function
+        rt.block_on(async {
+            Self::process_new_doc_resource(
+                new_text_groups,
+                &*generator,
+                &name,
+                desc,
+                source,
+                parsing_tags,
+                &resource_id,
+                None,
+            )
+            .await
+        })
     }
 
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
@@ -240,12 +301,12 @@ impl UnstructuredParser {
     ) {
         for (i, text_group) in text_groups.iter().enumerate() {
             println!("Processing text group at index {}", i);
-            texts.push(text_group.text.clone());
+            texts.push(text_group.format_text_for_embedding(max_chunk_size));
             let mut current_path = path.clone();
             current_path.push(i);
             indices.push((current_path.clone(), texts.len() - 1));
             for (j, sub_group) in text_group.sub_groups.iter().enumerate() {
-                texts.push(sub_group.text.clone());
+                texts.push(sub_group.format_text_for_embedding(max_chunk_size));
                 let mut sub_path = current_path.clone();
                 sub_path.push(j);
                 indices.push((sub_path, texts.len() - 1));
