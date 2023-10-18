@@ -63,7 +63,7 @@ impl VRSource {
         let re = Regex::new(r"\.[^.]+$").unwrap();
         let file_name_without_extension = re.replace(file_name, "");
         let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
-        // Attempt to auto-detect, else assu
+        // Attempt to auto-detect, else use file extension
         let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
             f_type
         } else {
@@ -72,15 +72,13 @@ impl VRSource {
 
         if file_name.starts_with("http") {
             Ok(VRSource::new_uri_ref(&file_name_without_extension))
-        } else if file_name.starts_with("file") {
+        } else {
             let file_name_without_extension = file_name_without_extension.trim_start_matches("file://");
             Ok(VRSource::new_source_file_ref(
                 file_name_without_extension.to_string(),
                 file_type,
                 content_hash,
             ))
-        } else {
-            return Err(VectorResourceError::CouldNotDetectFileType(file_name.to_string()));
         }
     }
 }

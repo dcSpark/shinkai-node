@@ -1,6 +1,6 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
-use crate::agent::error::AgentError;
+use crate::agent::error::{AgentError, self};
 use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
@@ -49,16 +49,49 @@ impl JobManager {
         )
         .await?;
 
-        let _ = JobManager::process_inference_chain(
-            db,
-            identity_secret_key,
+        match JobManager::process_inference_chain(
+            db.clone(),
+            clone_signature_secret_key(&identity_secret_key),
             job_message.job_message,
             full_job,
             agent_found.clone(),
-            profile_name,
+            profile_name.clone(),
             user_profile,
         )
-        .await?;
+        .await
+        {
+            Ok(_) => (),
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    &format!("Error processing inference chain: {}", e),
+                );
+
+                let error_for_user = format!("Error processing message. More info: {}", e);
+                
+                // Prepare data to save inference response to the DB
+                let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                    job_id.to_string(),
+                    error_for_user.to_string(),
+                    identity_secret_key_clone,
+                    profile_name.clone(),
+                    profile_name.clone(),
+                )
+                .unwrap();
+
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
+                );
+
+                // Save response data to DB
+                let mut shinkai_db = db.lock().await;
+                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
+            }
+        }
 
         return Ok(job_id.clone());
     }
@@ -75,7 +108,11 @@ impl JobManager {
         user_profile: Option<ShinkaiName>,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();
-        eprintln!("process_inference_chain> full_job: {:?}", full_job);
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Processing job: {}", job_id),
+        );
 
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
@@ -145,42 +182,61 @@ impl JobManager {
                 format!("Processing files_map: ... files: {}", job_message.files_inbox.len()).as_str(),
             );
             // TODO: later we should able to grab errors and return them to the user
-            let new_scope_entries = JobManager::process_files_inbox(
+            let new_scope_entries_result = JobManager::process_files_inbox(
                 db.clone(),
                 agent_found,
                 job_message.files_inbox.clone(),
                 profile,
                 save_to_db_directly,
             )
-            .await?;
+            .await;
 
-            for (_, value) in new_scope_entries {
-                match value {
-                    ScopeEntry::Local(local_entry) => {
-                        if !full_job.scope.local.contains(&local_entry) {
-                            full_job.scope.local.push(local_entry);
-                        } else {
-                            println!("Duplicate LocalScopeEntry detected");
+            match new_scope_entries_result {
+                Ok(new_scope_entries) => {
+                    for (_, value) in new_scope_entries {
+                        match value {
+                            ScopeEntry::Local(local_entry) => {
+                                if !full_job.scope.local.contains(&local_entry) {
+                                    full_job.scope.local.push(local_entry);
+                                } else {
+                                    println!("Duplicate LocalScopeEntry detected");
+                                }
+                            }
+                            ScopeEntry::Database(db_entry) => {
+                                if !full_job.scope.database.contains(&db_entry) {
+                                    full_job.scope.database.push(db_entry);
+                                } else {
+                                    println!("Duplicate DBScopeEntry detected");
+                                }
+                            }
                         }
                     }
-                    ScopeEntry::Database(db_entry) => {
-                        if !full_job.scope.database.contains(&db_entry) {
-                            full_job.scope.database.push(db_entry);
-                        } else {
-                            println!("Duplicate DBScopeEntry detected");
-                        }
-                    }
+                    let mut shinkai_db = db.lock().await;
+                    shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
                 }
-            }
-            {
-                let mut shinkai_db = db.lock().await;
-                shinkai_db.update_job_scope(full_job.job_id().to_string(), full_job.scope.clone())?;
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        format!("Error processing files: {}", e).as_str(),
+                    );
+                    return Err(e);
+                }
             }
         } else {
             // TODO: move this somewhere else
             let mut shinkai_db = db.lock().await;
-            shinkai_db.init_profile_resource_router(&profile)?;
-            std::mem::drop(shinkai_db); // required to avoid deadlock
+            match shinkai_db.init_profile_resource_router(&profile) {
+                Ok(_) => std::mem::drop(shinkai_db), // required to avoid deadlock
+                Err(e) => {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Error,
+                        format!("Error initializing profile resource router: {}", e).as_str(),
+                    );
+                    return Err(AgentError::ShinkaiDB(e));
+                }
+            }
         }
 
         Ok(())
