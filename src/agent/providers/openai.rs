@@ -130,7 +130,14 @@ impl LLMProvider for OpenAI {
                             .join(" ");
                         Self::extract_first_json_object(&response_string)
                     }
-                    Err(e) => Err(AgentError::SerdeError(e)),
+                    Err(e) => {
+                        shinkai_log(
+                            ShinkaiLogOption::JobExecution,
+                            ShinkaiLogLevel::Error,
+                            format!("Failed to parse response: {:?}", e).as_str(),
+                        );
+                        Err(AgentError::SerdeError(e))
+                    },
                 }
             } else {
                 Err(AgentError::ApiKeyNotSet)
