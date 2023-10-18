@@ -44,11 +44,17 @@ impl JobManager {
     /// a valid JSON object, and if it isn't re-inferences to ensure that it is returned as one.
     pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
-        let response = tokio::spawn(async move {
+        let response = match tokio::spawn(async move {
             let mut agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference(filled_prompt).await
         })
-        .await?;
+        .await {
+            Ok(res) => res?,
+            Err(e) => {
+                eprintln!("Task panicked with error: {:?}", e);
+                return Err(AgentError::FailedInferencingLocalLLM);
+            },
+        };
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -57,7 +63,7 @@ impl JobManager {
 
         // Validates that the response is a proper JSON object, else inferences again to get the
         // LLM to parse the previous response into proper JSON
-        JobManager::extract_json_value_from_inference_response(response, agent.clone()).await
+        JobManager::extract_json_value_from_inference_response(Ok(response), agent.clone()).await
     }
 
     /// Attempts to extract the JsonValue out of the LLM's response. If it is not proper JSON
@@ -82,13 +88,20 @@ impl JobManager {
     /// Inferences the LLM again asking it to take its previous answer and make sure it responds with a proper JSON object
     /// that we can parse.
     async fn json_not_found_retry(agent: SerializedAgent, text: String) -> Result<JsonValue, AgentError> {
-        let response = tokio::spawn(async move {
+        let response = match tokio::spawn(async move {
             let mut agent = Agent::from_serialized_agent(agent);
             let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text);
             agent.inference(prompt).await
         })
-        .await?;
-        Ok(response?)
+        .await {
+            Ok(res) => res?,
+            Err(e) => {
+                eprintln!("Task panicked with error: {:?}", e);
+                return Err(AgentError::FailedInferencingLocalLLM);
+            },
+        };
+
+        Ok(response)
     }
 
     /// Fetches boilerplate/relevant data required for a job to process a step
