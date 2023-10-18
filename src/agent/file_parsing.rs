@@ -74,6 +74,9 @@ impl JobManager {
             max_chunk_size,
         )
         .await?;
+
+        println!("Processed resource");
+
         resource
             .as_trait_object()
             .print_all_data_chunks_exhaustive(None, true, false);

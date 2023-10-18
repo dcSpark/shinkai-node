@@ -75,6 +75,7 @@ impl UnstructuredParser {
 
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource
+    /// Note: This is the async variant.
     #[cfg(feature = "native-http")]
     pub async fn process_elements_into_resource(
         elements: Vec<UnstructuredElement>,
@@ -93,6 +94,7 @@ impl UnstructuredParser {
             Self::generate_text_group_embeddings(&text_groups, &generator, 31, max_chunk_size).await
         });
         let new_text_groups = task.await??;
+        println!("New text groups: {:?}", new_text_groups);
 
         Self::process_new_doc_resource(
             new_text_groups,
@@ -108,6 +110,7 @@ impl UnstructuredParser {
     }
 
     /// Recursively processes all text groups & their sub groups into DocumentResources
+    /// Note: This is the async variant.
     #[async_recursion]
     #[cfg(feature = "native-http")]
     async fn process_new_doc_resource(
@@ -124,16 +127,18 @@ impl UnstructuredParser {
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
 
+        // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
         match resource_embedding {
             Some(embedding) => doc.set_resource_embedding(embedding),
             None => {
                 println!("Generating embedding for resource: {:?}", &name);
                 let keywords = UnstructuredParser::extract_keywords(&text_groups, 50);
-                doc.update_resource_embedding_blocking(generator, keywords)?;
+                doc.update_resource_embedding(generator, keywords).await?;
             }
         }
 
         for grouped_text in &text_groups {
+            println!("Processing group text for resource");
             let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
             if has_sub_groups {
                 let new_doc = Self::process_new_doc_resource(
@@ -149,7 +154,7 @@ impl UnstructuredParser {
                 .await?;
                 doc.append_vector_resource(new_doc, metadata);
             } else {
-                if grouped_text.text.len() < 6 {
+                if grouped_text.text.len() <= 2 {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
