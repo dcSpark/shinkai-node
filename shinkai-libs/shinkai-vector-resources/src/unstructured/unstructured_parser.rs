@@ -265,7 +265,7 @@ impl UnstructuredParser {
     pub async fn generate_text_group_embeddings(
         text_groups: &Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
-        max_batch_size: u64,
+        mut max_batch_size: u64,
         max_chunk_size: u64,
     ) -> Result<Vec<GroupedText>, VectorResourceError> {
         // Clone the input text_groups
@@ -276,19 +276,41 @@ impl UnstructuredParser {
         let mut indices = Vec::new();
         Self::collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size);
 
-        let generator = RemoteEmbeddingGenerator::new_default();
-
         // Generate embeddings for all texts in batches
         let ids: Vec<String> = vec!["".to_string(); texts.len()];
         let mut embeddings = Vec::new();
-        for batch in texts.chunks(max_batch_size as usize) {
-            let batch_ids = &ids[..batch.len()];
-            println!("Generating batched embeddings for {} text groups", batch_ids.len());
-            let batch_embeddings = generator
-                .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
-                .await?;
 
-            embeddings.extend(batch_embeddings);
+        let mut start = 0;
+        'outer: loop {
+            for batch in texts[start..].chunks(max_batch_size as usize) {
+                let batch_ids = &ids[start..start + batch.len()];
+                println!("Generating batched embeddings for {} text groups", batch_ids.len());
+
+                match generator
+                    .generate_embeddings(&batch.to_vec(), &batch_ids.to_vec())
+                    .await
+                {
+                    Ok(batch_embeddings) => {
+                        embeddings.extend(batch_embeddings);
+                        start += batch.len();
+                    }
+                    Err(e) => {
+                        println!("Generating batched embeddings failed for {:?}", batch);
+                        println!("Error generating embeddings: {:?}", e);
+                        if let VectorResourceError::RequestFailed(_) = e {
+                            if max_batch_size > 1 {
+                                max_batch_size -= 1;
+                                continue 'outer;
+                            } else {
+                                return Err(e);
+                            }
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+            break;
         }
 
         println!("All embeddings generated. Total: {}", embeddings.len());
@@ -314,6 +336,10 @@ impl UnstructuredParser {
         title_group: &mut Option<GroupedText>,
         groups: &mut Vec<GroupedText>,
     ) {
+        if group.text.len() <= 2 {
+            return;
+        }
+
         if let Some(title_group) = title_group.as_mut() {
             title_group.push_sub_group(group);
         } else {
@@ -341,8 +367,11 @@ impl UnstructuredParser {
         while let Some(element) = elements_iter.peek() {
             if element.element_type == ElementType::Title
                 && current_group.text.len() + element.text.len() < max_chunk_size
+                && element.text.len() > 2
             {
                 current_group.push_data(&element.text, element.metadata.page_number);
+                elements_iter.next(); // advance the iterator
+            } else if element.text.len() <= 2 {
                 elements_iter.next(); // advance the iterator
             } else {
                 break;
@@ -354,7 +383,8 @@ impl UnstructuredParser {
             let element_text = element.text.clone();
 
             // Skip over any uncategorized text (usually filler like headers/footers)
-            if element.element_type == ElementType::UncategorizedText {
+            // Or elements with no content
+            if element.element_type == ElementType::UncategorizedText || element.text.len() <= 2 {
                 continue;
             }
 
@@ -387,8 +417,12 @@ impl UnstructuredParser {
                 if !current_group.text.is_empty() && current_group.text != element_text {
                     Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
                 } else if let Some(title_group) = current_title_group.as_mut() {
-                    // If the current group only contains the title text, add an empty GroupedText to the sub-groups
-                    title_group.sub_groups.push(GroupedText::new());
+                    // If the current group only contains the title text, add a default GroupedText that holds the title's text
+                    // This both pre-populates the sub-group field, and allows for the title to be found in a search
+                    // as a RetrievedDataChunk to the LLM which can be useful in some content.
+                    let mut new_grouped_text = GroupedText::new();
+                    new_grouped_text.push_data(&title_group.text, None);
+                    title_group.sub_groups.push(new_grouped_text);
                 }
                 current_group = GroupedText::new();
 
@@ -407,10 +441,9 @@ impl UnstructuredParser {
         }
 
         // Push the last group to title group or groups
-        if !current_group.text.is_empty() {
+        if !current_group.text.len() < 2 {
             Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
         }
-
         // Push the last title group to groups
         if let Some(title_group) = current_title_group.take() {
             groups.push(title_group);
