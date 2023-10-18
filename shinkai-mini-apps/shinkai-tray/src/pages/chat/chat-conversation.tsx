@@ -8,7 +8,9 @@ import {
   calculateMessageHash,
   extractJobIdFromInbox,
   extractReceiverShinkaiName,
+  getMessageContent,
   isJobInbox,
+  isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -176,7 +178,7 @@ const ChatConversation = () => {
             {isFetchingPreviousPage || hasPreviousPage ? (
               <Loader className="flex animate-spin justify-center text-white" />
             ) : (
-              "All messages has been loaded 🎈 "
+              "All messages has been loaded ✅"
             )}
           </div>
         )}
@@ -203,10 +205,11 @@ const ChatConversation = () => {
                       </div>
                       <div className="flex flex-col gap-4">
                         {messages.map((message) => {
-                          // TODO: Fix this
-                          const isLocal =
-                            message.external_metadata?.sender ===
-                            auth?.shinkai_identity + "/" + auth?.profile;
+                          const isLocal = isLocalMessage(
+                            message,
+                            auth?.shinkai_identity ?? "",
+                            auth?.profile ?? ""
+                          );
 
                           return (
                             <div
@@ -236,14 +239,10 @@ const ChatConversation = () => {
                                     ? "rounded-tl-none border border-slate-800"
                                     : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
                                 )}
-                                source={
-                                  isJobInbox(inboxId)
-                                    ? getMessageFromJob(message)
-                                    : getMessageFromChat(message)
-                                }
                                 wrapperElement={{
                                   "data-color-mode": "dark",
                                 }}
+                                source={getMessageContent(message)}
                               />
                             </div>
                           );
