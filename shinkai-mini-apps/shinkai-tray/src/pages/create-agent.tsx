@@ -6,7 +6,6 @@ import { z } from "zod";
 
 import { useCreateAgent } from "../api/mutations/createAgent/useCreateAgent";
 import { Button } from "../components/ui/button";
-import { Checkbox } from "../components/ui/checkbox";
 import ErrorMessage from "../components/ui/error-message";
 import {
   Form,
@@ -121,18 +120,6 @@ const CreateAgentPage = () => {
               )}
               control={addAgentForm.control}
               name="externalUrl"
-            />
-            <FormField
-              render={({ field }) => (
-                <FormItem>
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <FormLabel className="ml-3">Perform Locally</FormLabel>
-                </FormItem>
-              )}
-              control={addAgentForm.control}
-              name="performLocally"
             />
             <FormField
               render={({ field }) => (
