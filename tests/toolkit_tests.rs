@@ -2,7 +2,6 @@ use reqwest::header;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_node::tools::router::ShinkaiTool;
@@ -124,7 +123,7 @@ fn test_toolkit_installation_and_retrieval() {
 #[test]
 fn test_tool_router_and_toolkit_flow() {
     setup();
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Load the toolkit
@@ -207,7 +206,7 @@ fn test_tool_router_and_toolkit_flow() {
 // #[test]
 // fn generate_rust_tool_embeddings() {
 //     setup();
-//     let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+//
 //     let generator = RemoteEmbeddingGenerator::new_default();
 
 //     for t in RUST_TOOLKIT.rust_tool_map.values() {

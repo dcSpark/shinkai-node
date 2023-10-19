@@ -56,7 +56,6 @@ fn test_unstructured_parse_response_json() {
 
 #[test]
 fn test_unstructured_parse_pdf_vector_resource() {
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let file_name = "shinkai_intro.pdf";
@@ -97,55 +96,4 @@ fn test_unstructured_parse_pdf_vector_resource() {
         );
     }
     assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].chunk.get_data_string().unwrap());
-}
-
-pub struct BertCPPProcess {
-    child: Child,
-}
-
-impl BertCPPProcess {
-    /// Starts the BertCPP process, which gets killed if the
-    /// the `BertCPPProcess` struct gets dropped.
-    pub fn start() -> io::Result<BertCPPProcess> {
-        let dev_null = if cfg!(windows) {
-            File::open("NUL").unwrap()
-        } else {
-            File::open("/dev/null").unwrap()
-        };
-
-        // Wait for for previous tests bert.cpp to close
-        let duration = Duration::from_millis(100);
-        thread::sleep(duration);
-
-        let child = Command::new("./bert-cpp-server")
-            .arg("--model")
-            .arg("models/all-MiniLM-L12-v2.bin")
-            .arg("--threads")
-            .arg("8")
-            .arg("--port")
-            .arg(format!("{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string()))
-            .stdout(Stdio::from(dev_null.try_clone().unwrap())) // Redirect stdout
-            .stderr(Stdio::from(dev_null)) // Redirect stderr
-            .spawn()?;
-
-        // Wait for for the BertCPP process to boot up/initialize its
-        // web server
-        let duration = Duration::from_millis(150);
-        thread::sleep(duration);
-
-        Ok(BertCPPProcess { child })
-    }
-}
-
-impl Drop for BertCPPProcess {
-    fn drop(&mut self) {
-        match self.child.kill() {
-            Ok(_) => {
-                let duration = Duration::from_millis(150);
-                thread::sleep(duration);
-                println!("Successfully killed the bert-cpp server process.")
-            }
-            Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
-        }
-    }
 }

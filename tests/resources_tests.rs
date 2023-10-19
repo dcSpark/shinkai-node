@@ -1,7 +1,6 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::resources::bert_cpp::BertCPPProcess;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
@@ -45,7 +44,6 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
 
 #[test]
 fn test_pdf_parsed_document_resource_vector_search() {
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let doc = get_shinkai_intro_doc(&generator, &vec![]);
@@ -84,7 +82,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
 #[test]
 fn test_pdf_resource_save_to_db() {
     setup();
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Read the pdf from file into a buffer
@@ -111,7 +109,7 @@ fn test_pdf_resource_save_to_db() {
 #[test]
 fn test_multi_resource_db_vector_search() {
     setup();
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Create a doc
@@ -211,7 +209,7 @@ fn test_multi_resource_db_vector_search() {
 #[test]
 fn test_db_syntactic_vector_search() {
     setup();
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
+
     let generator = RemoteEmbeddingGenerator::new_default();
 
     // Manually create a few test tags

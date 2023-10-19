@@ -19,7 +19,6 @@ lazy_static! {
 
 #[test]
 fn test_remote_embeddings_generation() {
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let dog_embeddings = generator.generate_embedding_default_blocking("dog").unwrap();
@@ -60,7 +59,6 @@ async fn test_remote_embeddings_generation_async_batched() {
 
 #[test]
 fn test_manual_resource_vector_search() {
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
     //
@@ -237,7 +235,6 @@ fn test_manual_resource_vector_search() {
 
 #[test]
 fn test_manual_syntactic_vector_search() {
-    let bert_process = BertCPPProcess::start(); // Gets killed if out of scope
     let generator = RemoteEmbeddingGenerator::new_default();
 
     //
@@ -324,55 +321,4 @@ fn test_manual_syntactic_vector_search() {
     let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
     let fetched_chunk = fetched_data.get(0).unwrap();
     assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
-}
-
-pub struct BertCPPProcess {
-    child: Child,
-}
-
-impl BertCPPProcess {
-    /// Starts the BertCPP process, which gets killed if the
-    /// the `BertCPPProcess` struct gets dropped.
-    pub fn start() -> io::Result<BertCPPProcess> {
-        let dev_null = if cfg!(windows) {
-            File::open("NUL").unwrap()
-        } else {
-            File::open("/dev/null").unwrap()
-        };
-
-        // Wait for for previous tests bert.cpp to close
-        let duration = Duration::from_millis(100);
-        thread::sleep(duration);
-
-        let child = Command::new("./bert-cpp-server")
-            .arg("--model")
-            .arg("models/all-MiniLM-L12-v2.bin")
-            .arg("--threads")
-            .arg("8")
-            .arg("--port")
-            .arg(format!("{}", DEFAULT_LOCAL_EMBEDDINGS_PORT.to_string()))
-            .stdout(Stdio::from(dev_null.try_clone().unwrap())) // Redirect stdout
-            .stderr(Stdio::from(dev_null)) // Redirect stderr
-            .spawn()?;
-
-        // Wait for for the BertCPP process to boot up/initialize its
-        // web server
-        let duration = Duration::from_millis(150);
-        thread::sleep(duration);
-
-        Ok(BertCPPProcess { child })
-    }
-}
-
-impl Drop for BertCPPProcess {
-    fn drop(&mut self) {
-        match self.child.kill() {
-            Ok(_) => {
-                let duration = Duration::from_millis(150);
-                thread::sleep(duration);
-                println!("Successfully killed the bert-cpp server process.")
-            }
-            Err(e) => println!("Failed to kill the bert-cpp server process: {}", e),
-        }
-    }
 }

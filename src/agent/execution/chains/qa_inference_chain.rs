@@ -5,7 +5,6 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
-use crate::resources::bert_cpp::BertCPPProcess;
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

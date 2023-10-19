@@ -5,7 +5,6 @@ pub use crate::agent::execution::job_execution_core::*;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::IdentityManager;
-use crate::resources::bert_cpp::BertCPPProcess;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use futures::Future;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -35,7 +34,6 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
-    _bert_process: BertCPPProcess,
 
     // TODO: remove them
     pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
@@ -75,7 +73,6 @@ impl JobManager {
         let job_queue = JobQueueManager::<JobForProcessing>::new(db.clone()).await.unwrap();
         let job_queue_manager = Arc::new(Mutex::new(job_queue));
 
-        let _bert_process = BertCPPProcess::start().unwrap(); // Gets killed if out of scope
         // Start processing the job queue
         let job_queue_handler = JobManager::process_job_queue(
             job_queue_manager.clone(),
@@ -97,7 +94,6 @@ impl JobManager {
             agents,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
-            _bert_process,
         };
 
         job_manager

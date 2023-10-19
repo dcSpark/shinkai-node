@@ -1,12 +1,11 @@
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
-use crate::agent::error::{AgentError, self};
+use crate::agent::error::{self, AgentError};
 use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
-use crate::resources::bert_cpp::BertCPPProcess;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -69,7 +68,7 @@ impl JobManager {
                 );
 
                 let error_for_user = format!("Error processing message. More info: {}", e);
-                
+
                 // Prepare data to save inference response to the DB
                 let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
@@ -257,7 +256,6 @@ impl JobManager {
             None => return Err(AgentError::AgentNotFound),
         };
 
-        // let _bert_process = BertCPPProcess::start(); // Gets killed if out of scope
         let mut shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
         // Check if there was an error getting the files
