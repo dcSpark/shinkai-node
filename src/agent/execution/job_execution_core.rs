@@ -256,7 +256,7 @@ impl JobManager {
             None => return Err(AgentError::AgentNotFound),
         };
 
-        let mut shinkai_db = db.lock().await;
+        let shinkai_db = db.lock().await;
         let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
         // Check if there was an error getting the files
         let files = match files_result {
@@ -274,12 +274,10 @@ impl JobManager {
                 ShinkaiLogLevel::Debug,
                 &format!("Processing file: {}", filename),
             );
-            let resource = JobManager::parse_file_into_resource(
-                db.clone(),
+            let resource = JobManager::parse_file_into_resource_gen_desc(
                 content.clone(),
                 &*generator,
                 filename.clone(),
-                None,
                 &vec![],
                 agent.clone(),
                 400,

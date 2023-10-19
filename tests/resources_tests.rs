@@ -10,6 +10,7 @@ use shinkai_vector_resources::source::{SourceReference, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::fs;
 use std::path::Path;
+use tokio::runtime::Runtime;
 
 fn setup() {
     let path = Path::new("db_tests/");
@@ -26,20 +27,26 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
         .map_err(|_| VectorResourceError::FailedPDFParsing)
         .unwrap();
 
-    // Generate DocumentVectorResource
-    let desc = "An initial introduction to the Shinkai Network.";
-    let doc = ParsingHelper::parse_pdf(
-        &buffer,
-        100,
-        generator,
-        "Shinkai Introduction",
-        Some(desc),
-        VRSource::new_uri_ref("http://shinkai.com"),
-        data_tags,
-    )
-    .unwrap();
+    // Create a new Tokio runtime
+    let rt = Runtime::new().unwrap();
 
-    doc
+    // Use block_on to run the async-based batched embedding generation logic
+    let resource = rt
+        .block_on(async {
+            let desc = "An initial introduction to the Shinkai Network.";
+            return ParsingHelper::parse_file_into_resource(
+                buffer,
+                generator,
+                "shinkai_intro.pdf".to_string(),
+                Some(desc.to_string()),
+                data_tags,
+                400,
+            )
+            .await;
+        })
+        .unwrap();
+
+    resource.as_document_resource().unwrap()
 }
 
 #[test]
