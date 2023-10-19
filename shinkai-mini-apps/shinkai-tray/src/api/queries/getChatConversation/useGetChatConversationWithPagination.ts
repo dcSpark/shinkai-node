@@ -36,6 +36,7 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
     getNextPageParam: () => {
       return { lastKey: null };
     },
+    refetchInterval: 5000,
   });
   return response;
 };
