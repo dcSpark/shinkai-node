@@ -72,5 +72,175 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         self.assertEqual(result_json["encryption"], "None")
         self.assertEqual(result_json["version"], "V1_0")
 
+    def test_job_creation(self):        
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        node = "@@node1.shinkai"
+
+        # job_scope
+        job_scope = shinkai_message_pyo3.PyJobScope()
+
+        # job_creation
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.job_creation( 
+            my_encryption_sk_string,  # device
+            my_identity_sk_string,  # device
+            my_encryption_sk_string,  # profile
+            job_scope, 
+            node,
+            "main",
+            node,
+            "main/agent/agent_1",
+        )
+
+        # print("Result:", result)
+
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_raw_content"], "{\"scope\":{\"local\":[],\"database\":[]}}")
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_content_schema"], "JobCreationSchema")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["sender_subidentity"], "main")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["recipient_subidentity"], "main/agent/agent_1")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["inbox"], "inbox::@@node1.shinkai/main::@@node1.shinkai/main/agent/agent_1::false")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["encryption"], "None")
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@node1.shinkai")
+        self.assertEqual(result_json["encryption"], "None")
+        self.assertEqual(result_json["version"], "V1_0")
+    
+    def test_job_message(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        node = "@@node1.shinkai"
+        job_id = "job1"
+        content = "Job content"
+
+        # job_message
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.job_message(
+            job_id,
+            content,
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            my_encryption_sk_string,
+            node,
+            node,
+            "main/agent/agent_1",
+        )
+
+        # print("Result:", result)
+
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_raw_content"], "{\"job_id\":\"job1\",\"content\":\"Job content\",\"files_inbox\":\"\"}")
+        self.assertEqual(result_json["body"]["unencrypted"]["message_data"]["unencrypted"]["message_content_schema"], "JobMessageSchema")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["sender_subidentity"], "")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["recipient_subidentity"], "main/agent/agent_1")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["inbox"], "job_inbox::job1::false")
+        self.assertEqual(result_json["body"]["unencrypted"]["internal_metadata"]["encryption"], "None")
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@node1.shinkai")
+        self.assertEqual(result_json["encryption"], "None")
+        self.assertEqual(result_json["version"], "V1_0")
+
+    def test_get_last_unread_messages_from_inbox(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        node = "@@node1.shinkai"
+        inbox = "job_inbox::job1::false"
+        count = 10
+        offset = None
+
+        # get_last_unread_messages_from_inbox
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.get_last_unread_messages_from_inbox(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            my_encryption_sk_string,
+            inbox,
+            count,
+            node,
+            "main",
+            node,
+            "main/agent/agent_1",
+            offset,
+        )
+        # print("Result:", result)
+
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["intra_sender"], "main")
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
+
+    def test_get_last_messages_from_inbox(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        node = "@@node1.shinkai"
+        inbox = "job_inbox::job1::false"
+        count = 10
+        offset = None
+
+        # get_last_messages_from_inbox
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.get_last_messages_from_inbox(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            my_encryption_sk_string,
+            inbox,
+            count,
+            node,
+            "main",
+            node,
+            "main/agent/agent_1",
+            offset,
+        )
+
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["intra_sender"], "main")
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
+
+    def test_request_add_agent(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        node = "@@node1.shinkai"
+        agent_json = '{"agent_id": "agent1", "agent_type": "type1"}'
+
+        # request_add_agent
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.request_add_agent(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            my_encryption_sk_string,
+            agent_json,
+            node,
+            "main",
+            node,
+            "main/agent/agent_1",
+        )
+
+        # Parse the result as a JSON object
+        result_json = json.loads(result)
+
+        # Add assertions to check the fields of the result
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["recipient"], "@@node1.shinkai")
+        self.assertEqual(result_json["external_metadata"]["intra_sender"], "main")
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
+    
+
 if __name__ == '__main__':
     unittest.main()

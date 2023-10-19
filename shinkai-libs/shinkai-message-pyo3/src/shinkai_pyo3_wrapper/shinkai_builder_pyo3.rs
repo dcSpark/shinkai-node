@@ -1,13 +1,16 @@
+use crate::shinkai_pyo3_utils::pyo3_job_scope::PyJobScope;
+
 use super::{
     encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
-    shinkai_message_pyo3::PyShinkaiMessage, shinkai_schema_pyo3::PyJobScope,
+    shinkai_message_pyo3::PyShinkaiMessage,
 };
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
     shinkai_message::shinkai_message_schemas::{
-        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions, JobCreationInfo, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType, JobMessage,
+        APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
+        JobCreationInfo, JobMessage, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
     },
     shinkai_utils::{
         encryption::{
@@ -194,7 +197,12 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_intra_sender(&mut self, recipient: String, sender: String, intra_sender: String) -> PyResult<()> {
+    fn external_metadata_with_intra_sender(
+        &mut self,
+        recipient: String,
+        sender: String,
+        intra_sender: String,
+    ) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.external_metadata_with_intra_sender(recipient, sender, intra_sender);
             self.inner = Some(new_inner);
@@ -214,7 +222,13 @@ impl PyShinkaiMessageBuilder {
         }
     }
 
-    fn external_metadata_with_other_and_intra_sender(&mut self, recipient: String, sender: String, other: String, intra_sender: String) -> PyResult<()> {
+    fn external_metadata_with_other_and_intra_sender(
+        &mut self,
+        recipient: String,
+        sender: String,
+        other: String,
+        intra_sender: String,
+    ) -> PyResult<()> {
         if let Some(inner) = self.inner.take() {
             let new_inner = inner.external_metadata_with_other_and_intra_sender(recipient, sender, other, intra_sender);
             self.inner = Some(new_inner);
@@ -331,7 +345,12 @@ impl PyShinkaiMessageBuilder {
                         Err(e) => return Err(e),
                     }
 
-                    match builder.external_metadata_with_other_and_intra_sender(recipient, sender, other, sender_subidentity.clone()) {
+                    match builder.external_metadata_with_other_and_intra_sender(
+                        recipient,
+                        sender,
+                        other,
+                        sender_subidentity.clone(),
+                    ) {
                         Ok(_) => (),
                         Err(e) => return Err(e),
                     }
@@ -648,11 +667,8 @@ impl PyShinkaiMessageBuilder {
                 }
             };
 
-            let builder_result = PyShinkaiMessageBuilder::new(
-                my_device_encryption_sk,
-                my_device_signature_sk,
-                other.clone(),
-            );
+            let builder_result =
+                PyShinkaiMessageBuilder::new(my_device_encryption_sk, my_device_signature_sk, other.clone());
 
             match builder_result {
                 Ok(mut builder) => {
@@ -679,7 +695,12 @@ impl PyShinkaiMessageBuilder {
                         Err(e) => return Err(e),
                     }
 
-                    match builder.external_metadata_with_other_and_intra_sender(recipient, sender, other, sender_subidentity.clone()) {
+                    match builder.external_metadata_with_other_and_intra_sender(
+                        recipient,
+                        sender,
+                        other,
+                        sender_subidentity.clone(),
+                    ) {
                         Ok(_) => (),
                         Err(e) => return Err(e),
                     }
@@ -751,8 +772,8 @@ impl PyShinkaiMessageBuilder {
                 body,
                 sender,
                 sender_subidentity,
-                recipient.clone(),
                 recipient,
+                recipient_subidentity,
                 "".to_string(),
                 schema,
             )
@@ -808,8 +829,8 @@ impl PyShinkaiMessageBuilder {
                 body,
                 sender,
                 sender_subidentity,
-                recipient.clone(),
                 recipient,
+                recipient_subidentity,
                 "".to_string(),
                 schema,
             )
@@ -960,10 +981,11 @@ impl PyShinkaiMessageBuilder {
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
-        scope: Py<PyAny>,
+        scope: Py<PyJobScope>,
         sender: String,
-        receiver: String,
-        receiver_subidentity: String,
+        sender_subidentity: String,
+        node_receiver: String,
+        node_receiver_subidentity: String,
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let scope: PyJobScope = match scope.extract(py) {
@@ -974,8 +996,8 @@ impl PyShinkaiMessageBuilder {
                     ))
                 }
             };
+            let job_creation = JobCreationInfo { scope: scope.inner.clone() };
 
-            let job_creation = JobCreationInfo { scope: scope.inner };
             let body = match serde_json::to_string(&job_creation) {
                 Ok(body) => body,
                 Err(e) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string().clone())),
@@ -1010,14 +1032,14 @@ impl PyShinkaiMessageBuilder {
 
             let _ = builder.message_raw_content(body);
             let _ = builder.internal_metadata_with_schema(
-                "".to_string(),
-                receiver_subidentity.clone(),
+                sender_subidentity.clone(),
+                node_receiver_subidentity.clone(),
                 "".to_string(),
                 message_schema,
                 encryption,
             );
             let _ = builder.no_body_encryption();
-            let _ = builder.external_metadata(receiver, sender);
+            let _ = builder.external_metadata_with_intra_sender(node_receiver, sender, sender_subidentity);
 
             builder.build_to_string()
         })
@@ -1036,7 +1058,11 @@ impl PyShinkaiMessageBuilder {
     ) -> PyResult<String> {
         Python::with_gil(|py| {
             let job_id_clone = job_id.clone();
-            let job_message = JobMessage { job_id, content, files_inbox: "".to_string() };
+            let job_message = JobMessage {
+                job_id,
+                content,
+                files_inbox: "".to_string(),
+            };
 
             let body = match serde_json::to_string(&job_message) {
                 Ok(body) => body,
@@ -1096,57 +1122,57 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
-pub fn terminate_message(
-    my_encryption_secret_key: String,
-    my_signature_secret_key: String,
-    receiver_public_key: String,
-    sender: String,
-    receiver: String,
-) -> PyResult<String> {
-    Python::with_gil(|py| {
-        let mut builder = match PyShinkaiMessageBuilder::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            receiver_public_key,
-        ) {
-            Ok(builder) => builder,
-            Err(e) => return Err(e),
-        };
+    pub fn terminate_message(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        receiver: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let mut builder = match PyShinkaiMessageBuilder::new(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+            ) {
+                Ok(builder) => builder,
+                Err(e) => return Err(e),
+            };
 
-        let _ = builder.message_raw_content("terminate".to_string());
-        let _ = builder.empty_non_encrypted_internal_metadata();
-        let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+            let _ = builder.message_raw_content("terminate".to_string());
+            let _ = builder.empty_non_encrypted_internal_metadata();
+            let _ = builder.no_body_encryption();
+            let _ = builder.external_metadata(receiver, sender);
 
-        builder.build_to_string()
-    })
-}
+            builder.build_to_string()
+        })
+    }
 
-#[staticmethod]
-pub fn error_message(
-    my_encryption_secret_key: String,
-    my_signature_secret_key: String,
-    receiver_public_key: String,
-    sender: String,
-    receiver: String,
-    error_msg: String,
-) -> PyResult<String> {
-    Python::with_gil(|py| {
-        let mut builder = match PyShinkaiMessageBuilder::new(
-            my_encryption_secret_key,
-            my_signature_secret_key,
-            receiver_public_key,
-        ) {
-            Ok(builder) => builder,
-            Err(e) => return Err(e),
-        };
+    #[staticmethod]
+    pub fn error_message(
+        my_encryption_secret_key: String,
+        my_signature_secret_key: String,
+        receiver_public_key: String,
+        sender: String,
+        receiver: String,
+        error_msg: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let mut builder = match PyShinkaiMessageBuilder::new(
+                my_encryption_secret_key,
+                my_signature_secret_key,
+                receiver_public_key,
+            ) {
+                Ok(builder) => builder,
+                Err(e) => return Err(e),
+            };
 
-        let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg));
-        let _ = builder.empty_encrypted_internal_metadata();
-        let _ = builder.no_body_encryption();
-        let _ = builder.external_metadata(receiver, sender);
+            let _ = builder.message_raw_content(format!("{{error: \"{}\"}}", error_msg));
+            let _ = builder.empty_encrypted_internal_metadata();
+            let _ = builder.no_body_encryption();
+            let _ = builder.external_metadata(receiver, sender);
 
-        builder.build_to_string()
-    })
-}
+            builder.build_to_string()
+        })
+    }
 }
