@@ -884,8 +884,8 @@ impl PyShinkaiMessageBuilder {
                 body,
                 sender,
                 sender_subidentity,
-                recipient.clone(),
                 recipient,
+                recipient_subidentity,
                 "".to_string(),
                 schema,
             )

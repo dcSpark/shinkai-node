@@ -80,6 +80,7 @@ impl PySerializedAgent {
         id: String,
         external_url: String,
         model: String,
+        api_key: Option<String>,
     ) -> PyResult<Self> {
         let full_identity_name = ShinkaiName::new(full_identity_name).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
         let model = AgentLLMInterface::from_str(&model).map_err(|_| PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid model"))?;
@@ -90,7 +91,7 @@ impl PySerializedAgent {
                 full_identity_name,
                 perform_locally: false,
                 external_url: Some(external_url),
-                api_key: None,
+                api_key,
                 model,
                 toolkit_permissions: Vec::new(),
                 storage_bucket_permissions: Vec::new(),

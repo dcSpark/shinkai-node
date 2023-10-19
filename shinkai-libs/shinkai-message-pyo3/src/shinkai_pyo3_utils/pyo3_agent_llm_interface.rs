@@ -25,7 +25,7 @@ impl PyAgentLLMInterface {
             })
         }
     }
-    
+
     #[staticmethod]
     pub fn new_openai(model_type: String) -> Self {
         let open_ai = OpenAI {
@@ -40,6 +40,13 @@ impl PyAgentLLMInterface {
     pub fn new_localllm() -> Self {
         Self {
             inner: AgentLLMInterface::LocalLLM(LocalLLM {}),
+        }
+    }
+
+    pub fn get_model(&self) -> PyResult<String> {
+        match &self.inner {
+            AgentLLMInterface::OpenAI(open_ai) => Ok(format!("openai:{}", open_ai.model_type)),
+            AgentLLMInterface::LocalLLM(_) => Ok("LocalLLM".to_string()),
         }
     }
 }

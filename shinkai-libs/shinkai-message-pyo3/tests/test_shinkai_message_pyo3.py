@@ -2,6 +2,26 @@ import unittest
 import shinkai_message_pyo3
 import json
 
+class TestPyAgentLLMInterface(unittest.TestCase):
+    def test_new_openai(self):
+        model_type = "gpt-3.5-turbo"
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_openai(model_type)
+        self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
+
+    def test_new_localllm(self):
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_localllm()
+        self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
+
+    def test_new_with_openai_prefix(self):
+        model_type = "gpt-3.5-turbo"
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("openai:" + model_type)
+        self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
+
+    def test_new_without_openai_prefix(self):
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("not_openai")
+        self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
+
+
 class TestShinkaiMessagePyO3(unittest.TestCase):
     def test_ack_message(self):
         my_encryption_secret_key = "d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159"
@@ -216,7 +236,16 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
         my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
         node = "@@node1.shinkai"
-        agent_json = '{"agent_id": "agent1", "agent_type": "type1"}'
+        agent = shinkai_message_pyo3.PySerializedAgent.new_with_defaults(
+            full_identity_name="@@node1.shinkai",
+            id="agent1",
+            external_url="http://example.com",
+            model="openai:gpt-3.5-turbo",
+            api_key="your_api_key_here",
+        )
+
+        # Serialize the agent to a JSON string
+        agent_json = agent.to_json_str()
 
         # request_add_agent
         result = shinkai_message_pyo3.PyShinkaiMessageBuilder.request_add_agent(

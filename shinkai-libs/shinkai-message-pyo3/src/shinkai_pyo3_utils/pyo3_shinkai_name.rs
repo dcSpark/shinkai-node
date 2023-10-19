@@ -54,7 +54,7 @@ impl PyShinkaiName {
 
     #[getter]
     pub fn get_subidentity_type(&self) -> PyResult<Option<String>> {
-        Ok(self.inner.subidentity_type.map(|t| t.to_string()))
+        Ok(self.inner.subidentity_type.clone().map(|t| t.to_string()))
     }
 
     #[getter]
