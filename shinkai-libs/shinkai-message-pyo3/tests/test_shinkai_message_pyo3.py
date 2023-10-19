@@ -144,6 +144,7 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
             my_identity_sk_string,
             my_encryption_sk_string,
             node,
+            '',
             node,
             "main/agent/agent_1",
         )
