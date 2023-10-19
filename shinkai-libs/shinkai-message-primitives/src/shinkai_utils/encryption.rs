@@ -68,7 +68,6 @@ pub fn encryption_public_key_to_string_ref(public_key: &PublicKey) -> String {
 }
 
 pub fn string_to_encryption_static_key(encoded_key: &str) -> Result<StaticSecret, &'static str> {
-    println!("encoded_key: {}", encoded_key);
     match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == 32 {

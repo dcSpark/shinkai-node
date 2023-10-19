@@ -522,9 +522,7 @@ impl ParsingHelper {
     ) -> Result<DocumentVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let grouped_text_list = Self::parse_pdf_to_string_list(buffer, average_chunk_size)?;
-        eprintln!("Parsed pdf into {} groups", grouped_text_list.len());
         let resource_id = Self::generate_data_hash_blake3(buffer);
-        eprintln!("Generated resource id: {}", resource_id);
         Self::parse_text(
             grouped_text_list,
             generator,

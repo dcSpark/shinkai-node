@@ -9,6 +9,9 @@ fi
 # Activate your virtual environment
 source ./venv/bin/activate
 
+# Delete the existing .whl file
+rm ./target/wheels/shinkai_message_pyo3*.whl
+
 # Run maturin develop and capture its output
 output=$(maturin build -i python)
 
@@ -18,7 +21,7 @@ if [ $? -eq 0 ]; then
     wheel_file=$(find ./target/wheels/ -name 'shinkai_message_pyo3*.whl' -print -quit)
      
     # Update the installed package using the built wheel file
-    pip install --upgrade "$wheel_file"
+    pip install --upgrade --force-reinstall "$wheel_file"
     
     # Run the tests
     python3 -m unittest tests.test_shinkai_message_pyo3

@@ -201,6 +201,8 @@ impl UnstructuredParser {
             }
         }
 
+        // Add each text group as either Vector Resource DataChunks,
+        // or data-holding DataChunks depending on if each has any sub-groups
         for grouped_text in &text_groups {
             let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
             if has_sub_groups {

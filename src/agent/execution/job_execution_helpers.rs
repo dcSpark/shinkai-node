@@ -50,7 +50,13 @@ impl JobManager {
             let agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference(prompt_cloned).await
         })
-        .await?;
+        .await {
+            Ok(res) => res?,
+            Err(e) => {
+                eprintln!("Task panicked with error: {:?}", e);
+                return Err(AgentError::FailedInferencingLocalLLM);
+            },
+        };
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -94,8 +100,15 @@ impl JobManager {
             let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text, prompt);
             agent.inference(prompt).await
         })
-        .await?;
-        Ok(response?)
+        .await {
+            Ok(res) => res?,
+            Err(e) => {
+                eprintln!("Task panicked with error: {:?}", e);
+                return Err(AgentError::FailedInferencingLocalLLM);
+            },
+        };
+
+        Ok(response)
     }
 
     /// Fetches boilerplate/relevant data required for a job to process a step
