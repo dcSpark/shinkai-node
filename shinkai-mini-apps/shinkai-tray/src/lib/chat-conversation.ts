@@ -11,17 +11,3 @@ export const groupMessagesByDate = (messages: ShinkaiMessage[]) => {
   }
   return groupedMessages;
 };
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const getMessageFromJob = (message: any) => {
-  if ("unencrypted" in message.body) {
-    return JSON.parse(
-      message.body.unencrypted.message_data.unencrypted.message_raw_content
-    ).content;
-  }
-  return message.body.unencrypted.message_data.encrypted.content;
-};
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const getMessageFromChat = (message: any) => {
-  return message.body.unencrypted.message_data.unencrypted.message_raw_content;
-};
