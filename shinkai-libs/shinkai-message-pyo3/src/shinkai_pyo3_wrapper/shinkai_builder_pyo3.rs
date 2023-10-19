@@ -1203,6 +1203,7 @@ impl PyShinkaiMessageBuilder {
         my_signature_secret_key: String,
         receiver_public_key: String,
         sender: String,
+        sender_subidentity: String,
         receiver: String,
         receiver_subidentity: String,
     ) -> PyResult<String> {
@@ -1258,7 +1259,7 @@ impl PyShinkaiMessageBuilder {
 
             let _ = builder.message_raw_content(body);
             let _ = builder.internal_metadata_with_schema(
-                "".to_string(),
+                sender_subidentity.to_string(),
                 receiver_subidentity.clone(),
                 inbox,
                 message_schema,
