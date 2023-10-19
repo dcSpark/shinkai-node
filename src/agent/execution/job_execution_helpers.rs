@@ -46,17 +46,20 @@ impl JobManager {
     pub async fn inference_agent(agent: SerializedAgent, filled_prompt: Prompt) -> Result<JsonValue, AgentError> {
         let agent_cloned = agent.clone();
         let prompt_cloned = filled_prompt.clone();
-        let response = tokio::spawn(async move {
+        let task_response = tokio::spawn(async move {
             let agent = Agent::from_serialized_agent(agent_cloned);
             agent.inference(prompt_cloned).await
         })
-        .await {
-            Ok(res) => res?,
+        .await;
+
+        let response = match task_response {
+            Ok(res) => res,
             Err(e) => {
                 eprintln!("Task panicked with error: {:?}", e);
                 return Err(AgentError::FailedInferencingLocalLLM);
-            },
+            }
         };
+
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
@@ -96,16 +99,17 @@ impl JobManager {
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         let response = tokio::spawn(async move {
-            let mut agent = Agent::from_serialized_agent(agent);
+            let agent = Agent::from_serialized_agent(agent);
             let prompt = JobPromptGenerator::basic_json_retry_response_prompt(text, prompt);
             agent.inference(prompt).await
         })
-        .await {
+        .await;
+        let response = match response {
             Ok(res) => res?,
             Err(e) => {
                 eprintln!("Task panicked with error: {:?}", e);
                 return Err(AgentError::FailedInferencingLocalLLM);
-            },
+            }
         };
 
         Ok(response)
