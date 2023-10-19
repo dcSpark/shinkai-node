@@ -7,7 +7,7 @@ CONTAINER_NAME="shinkai_build_container"
 sudo docker run -it -d --name $CONTAINER_NAME -v /home/nico/ai-dcspark/development/shinkai-node/shinkai-libs:/project pyo3-maturin:latest /bin/bash
 
 # Run the commands inside the Docker container to generate the file
-sudo docker exec -it $CONTAINER_NAME bash -c "cd shinkai-message-pyo3 && maturin build -i python"
+sudo docker exec -it $CONTAINER_NAME bash -c "cd shinkai-message-pyo3 && rm -rf target && maturin build -i python"
 
 # Check for the existence of the file every 10 seconds, but timeout after 10 minutes
 timeout=$((10*60)) # 10 minutes in seconds
