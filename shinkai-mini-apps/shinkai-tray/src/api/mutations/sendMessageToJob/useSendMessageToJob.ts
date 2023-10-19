@@ -8,7 +8,6 @@ export const useSendMessageToJob = () => {
     mutationFn: sendMessageToJob,
     onSuccess: () => {
       queryClient.invalidateQueries([FunctionKey.GET_CHAT_CONVERSATION_PAGINATION]);
-      queryClient.invalidateQueries([FunctionKey.GET_UNREAD_CHAT_CONVERSATION]);
     },
   });
 };

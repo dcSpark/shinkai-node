@@ -94,14 +94,14 @@ const ChatConversation = () => {
     if (!auth) return;
     fromPreviousMessagesRef.current = false;
     if (isJobInbox(inboxId)) {
-      const sender = `${auth.shinkai_identity}/${auth.profile}`;
+      console.log(data, "submit-job");
       const jobId = extractJobIdFromInbox(inboxId);
       sendMessageToJob({
-        jobId,
+        jobId: jobId,
         message: data.message,
-        sender,
         files_inbox: "",
         shinkaiIdentity: auth.shinkai_identity,
+        profile: auth.profile,
         my_device_encryption_sk: auth.my_device_encryption_sk,
         my_device_identity_sk: auth.my_device_identity_sk,
         node_encryption_pk: auth.node_encryption_pk,
@@ -109,15 +109,17 @@ const ChatConversation = () => {
         profile_identity_sk: auth.profile_identity_sk,
       });
     } else {
+      console.log(data, "submit-chat");
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
       sendMessageToInbox({
-        sender,
+        sender: auth.shinkai_identity,
+        sender_subidentity: `${auth.profile}/device/${auth.registration_name}`,
         receiver,
         message: data.message,
-        inboxId: inboxId as string,
-        my_device_encryption_sk: auth.profile_encryption_sk,
-        my_device_identity_sk: auth.profile_identity_sk,
+        inboxId: inboxId,
+        my_device_encryption_sk: auth.my_device_encryption_sk,
+        my_device_identity_sk: auth.my_device_identity_sk,
         node_encryption_pk: auth.node_encryption_pk,
         profile_encryption_sk: auth.profile_encryption_sk,
         profile_identity_sk: auth.profile_identity_sk,

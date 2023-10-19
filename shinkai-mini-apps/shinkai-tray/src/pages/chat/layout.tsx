@@ -1,6 +1,7 @@
 import { Link, Outlet, useMatch, useResolvedPath } from "react-router-dom";
 
-import { MessageCircleIcon } from "lucide-react";
+import { isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
+import { MessageCircleIcon, Workflow } from "lucide-react";
 
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
 import { ScrollArea } from "../../components/ui/scroll-area";
@@ -21,7 +22,11 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
       key={inboxId}
       to={to}
     >
-      <MessageCircleIcon className="h-4 w-4 shrink-0" />
+      {isJobInbox(decodeURIComponent(inboxId)) ? (
+        <Workflow className="mr-2 h-4 w-4 shrink-0" />
+      ) : (
+        <MessageCircleIcon className="mr-2 h-4 w-4 shrink-0" />
+      )}
       <span className="line-clamp-1 text-left text-xs">
         {decodeURIComponent(inboxId)}
       </span>
