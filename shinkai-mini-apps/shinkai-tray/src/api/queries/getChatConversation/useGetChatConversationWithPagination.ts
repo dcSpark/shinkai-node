@@ -21,6 +21,7 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
       // return timeKey ?? false;
       return allPages[0]?.length > CONVERSATION_PAGINATION_LIMIT - 2;
     },
+    refetchInterval: 5000,
   });
   return response;
 };

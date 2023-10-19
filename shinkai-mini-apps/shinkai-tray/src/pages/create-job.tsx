@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { PlusIcon } from "lucide-react";
 import { z } from "zod";
 
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { ADD_AGENT_PATH } from "../routes/name";
 import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
 
@@ -89,11 +91,23 @@ const CreateJobPage = () => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {agents?.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.id}>
-                          <span>{agent.id} </span>
-                        </SelectItem>
-                      ))}
+                      {agents?.length ? (
+                        agents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            <span>{agent.id} </span>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            navigate(ADD_AGENT_PATH);
+                          }}
+                          variant="ghost"
+                        >
+                          <PlusIcon className="mr-2" />
+                          Add Agents
+                        </Button>
+                      )}
                     </SelectContent>
                   </Select>
                 </FormItem>
