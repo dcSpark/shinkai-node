@@ -166,6 +166,10 @@ const ChatConversation = () => {
     }
 
     if (isJobInbox(inboxId)) {
+<<<<<<< HEAD
+=======
+      console.log(data, "submit-job");
+>>>>>>> 9206b32 (fix chat and jobs conversations)
       const jobId = extractJobIdFromInbox(inboxId);
       sendMessageToJob({
         jobId: jobId,
@@ -180,6 +184,7 @@ const ChatConversation = () => {
         profile_identity_sk: auth.profile_identity_sk,
       });
     } else {
+      console.log(data, "submit-chat");
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
       sendMessageToInbox({
