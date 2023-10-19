@@ -177,6 +177,7 @@ const ChatConversation = () => {
         profile_encryption_sk: auth.profile_encryption_sk,
         profile_identity_sk: auth.profile_identity_sk,
       });
+      chatForm.reset();
       return;
     }
 
