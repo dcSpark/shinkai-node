@@ -269,6 +269,66 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         self.assertEqual(result_json["external_metadata"]["intra_sender"], "main")
         self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
         self.assertEqual(result_json["version"], "V1_0")
+
+    def test_create_files_inbox_with_sym_key(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        receiver_public_key = '798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679'
+        inbox = "inbox::@@receiver.shinkai::@@sender.shinkai::false"
+        symmetric_key_sk = "symmetric_key"
+        sender_subidentity = "main"
+        sender = "@@sender.shinkai"
+        receiver = "@@receiver.shinkai"
+
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.create_files_inbox_with_sym_key(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key,
+            inbox,
+            symmetric_key_sk,
+            sender_subidentity,
+            sender,
+            receiver
+        )
+
+        # print("Result:", result)
+
+        result_json = json.loads(result)
+
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], sender)
+        self.assertEqual(result_json["external_metadata"]["recipient"], receiver)
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
+
+    def test_get_all_inboxes_for_profile(self):
+        my_encryption_sk_string = '7008829b80ae4350cf049e48d8bce4714e216b674fff0bf34f97f7b98d928d3f'
+        my_identity_sk_string = 'b6baf0fa268f993c57223d5db96e5e1de776fcb0195ee6137f33de9d8d9dd749'
+        receiver_public_key = '798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679'
+        full_profile = "full_profile"
+        sender_subidentity = "main"
+        sender = "@@sender.shinkai"
+        receiver = "@@receiver.shinkai"
+
+        result = shinkai_message_pyo3.PyShinkaiMessageBuilder.get_all_inboxes_for_profile(
+            my_encryption_sk_string,
+            my_identity_sk_string,
+            receiver_public_key,
+            full_profile,
+            sender,
+            sender_subidentity,
+            receiver
+        )
+
+        # print("Result:", result)
+
+        result_json = json.loads(result)
+
+        self.assertTrue("encrypted" in result_json["body"])
+        self.assertEqual(result_json["external_metadata"]["sender"], sender)
+        self.assertEqual(result_json["external_metadata"]["recipient"], receiver)
+        self.assertEqual(result_json["encryption"], "DiffieHellmanChaChaPoly1305")
+        self.assertEqual(result_json["version"], "V1_0")
     
 
 if __name__ == '__main__':

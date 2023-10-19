@@ -945,6 +945,154 @@ impl PyShinkaiMessageBuilder {
     }
 
     #[staticmethod]
+    pub fn create_files_inbox_with_sym_key(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        inbox: String,
+        symmetric_key_sk: String,
+        sender_subidentity: String,
+        sender: String,
+        receiver: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let mut builder = match PyShinkaiMessageBuilder::new(
+                my_subidentity_encryption_sk,
+                my_subidentity_signature_sk,
+                receiver_public_key,
+            ) {
+                Ok(builder) => builder,
+                Err(e) => return Err(e),
+            };
+
+            let outer_encryption = match Py::new(
+                py,
+                PyEncryptionMethod {
+                    inner: EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                },
+            ) {
+                Ok(encryption) => encryption,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create encryption method",
+                    ))
+                }
+            };
+
+            let inner_encryption = match Py::new(
+                py,
+                PyEncryptionMethod {
+                    inner: EncryptionMethod::None,
+                },
+            ) {
+                Ok(encryption) => encryption,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create encryption method",
+                    ))
+                }
+            };
+
+            let schema = MessageSchemaType::SymmetricKeyExchange.to_str();
+            let message_schema = match Py::new(py, PyMessageSchemaType::new(schema.to_string())?) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            let _ = builder.message_raw_content(symmetric_key_sk);
+            let _ = builder.body_encryption(outer_encryption);
+            let _ = builder.internal_metadata_with_schema(
+                sender_subidentity.clone(),
+                "".to_string(),
+                inbox.to_string(),
+                message_schema,
+                inner_encryption,
+            );
+            let _ = builder.external_metadata_with_intra_sender(receiver.clone(), sender, sender_subidentity);
+
+            builder.build_to_string()
+        })
+    }
+
+    #[staticmethod]
+    pub fn get_all_inboxes_for_profile(
+        my_subidentity_encryption_sk: String,
+        my_subidentity_signature_sk: String,
+        receiver_public_key: String,
+        full_profile: String,
+        sender: String,
+        sender_subidentity: String,
+        receiver: String,
+    ) -> PyResult<String> {
+        Python::with_gil(|py| {
+            let mut builder = match PyShinkaiMessageBuilder::new(
+                my_subidentity_encryption_sk,
+                my_subidentity_signature_sk,
+                receiver_public_key,
+            ) {
+                Ok(builder) => builder,
+                Err(e) => return Err(e),
+            };
+
+            let _ = builder.message_raw_content(full_profile);
+
+            let inner_encryption = match Py::new(
+                py,
+                PyEncryptionMethod {
+                    inner: EncryptionMethod::None,
+                },
+            ) {
+                Ok(encryption) => encryption,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create encryption method",
+                    ))
+                }
+            };
+
+            let schema = MessageSchemaType::TextContent.to_str();
+            let message_schema = match Py::new(py, PyMessageSchemaType::new(schema.to_string())?) {
+                Ok(schema) => schema,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create message schema",
+                    ))
+                }
+            };
+
+            let _ = builder.internal_metadata_with_schema(
+                sender_subidentity.clone(),
+                "".to_string(),
+                "".to_string(),
+                message_schema,
+                inner_encryption,
+            );
+
+            let outer_encryption = match Py::new(
+                py,
+                PyEncryptionMethod {
+                    inner: EncryptionMethod::DiffieHellmanChaChaPoly1305,
+                },
+            ) {
+                Ok(encryption) => encryption,
+                Err(_) => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Failed to create encryption method",
+                    ))
+                }
+            };
+
+            let _ = builder.body_encryption(outer_encryption);
+            let _ = builder.external_metadata_with_intra_sender(receiver.clone(), sender, sender_subidentity);
+            builder.build_to_string()
+        })
+    }
+
+    #[staticmethod]
     fn ping_pong_message(
         message: String,
         my_encryption_secret_key: String,
@@ -996,7 +1144,9 @@ impl PyShinkaiMessageBuilder {
                     ))
                 }
             };
-            let job_creation = JobCreationInfo { scope: scope.inner.clone() };
+            let job_creation = JobCreationInfo {
+                scope: scope.inner.clone(),
+            };
 
             let body = match serde_json::to_string(&job_creation) {
                 Ok(body) => body,
