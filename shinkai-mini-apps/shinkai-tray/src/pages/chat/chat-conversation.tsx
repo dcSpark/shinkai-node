@@ -166,10 +166,6 @@ const ChatConversation = () => {
     }
 
     if (isJobInbox(inboxId)) {
-<<<<<<< HEAD
-=======
-      console.log(data, "submit-job");
->>>>>>> 9206b32 (fix chat and jobs conversations)
       const jobId = extractJobIdFromInbox(inboxId);
       sendMessageToJob({
         jobId: jobId,
