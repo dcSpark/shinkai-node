@@ -40,7 +40,7 @@ import {
 } from "../../components/ui/form";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
-import { groupMessagesByDate } from "../../lib/chat-conversation";
+import { formatDate, groupMessagesByDate } from "../../lib/chat-conversation";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
@@ -291,8 +291,8 @@ const ChatConversation = () => {
                           true && "sticky top-5"
                         )}
                       >
-                        <span className="px-2.5 py-2 text-sm text-foreground">
-                          {date}
+                        <span className="px-2.5 py-2 text-sm capitalize text-foreground">
+                          {formatDate(new Date(date))}
                         </span>
                       </div>
                       <div className="flex flex-col gap-4">
@@ -368,7 +368,9 @@ const ChatConversation = () => {
                 ),
               })}
             >
-              <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
+              {!file && (
+                <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
+              )}
               <input
                 {...chatForm.register("file")}
                 {...getInputFileProps({
@@ -387,12 +389,11 @@ const ChatConversation = () => {
               {file != null && (
                 <button
                   className={cn(
-                    "absolute -right-1 -top-1 cursor-pointer rounded-full hover:bg-slate-700",
+                    "absolute -right-1 -top-1 cursor-pointer rounded-full bg-slate-700 hover:bg-slate-900",
                     file ? "block" : "hidden"
                   )}
                   onClick={(event) => {
                     event.stopPropagation();
-
                     chatForm.setValue("file", undefined, { shouldValidate: true });
                   }}
                 >

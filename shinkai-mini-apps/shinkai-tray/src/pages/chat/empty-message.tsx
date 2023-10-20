@@ -11,14 +11,15 @@ const EmptyMessage = () => {
 
   const { agents } = useAgents({
     sender: auth?.shinkai_identity ?? "",
-    senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
+    senderSubidentity: `${auth?.profile}`,
     shinkaiIdentity: auth?.shinkai_identity ?? "",
-    my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
-    my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+    my_device_encryption_sk: auth?.profile_encryption_sk ?? "",
+    my_device_identity_sk: auth?.profile_identity_sk ?? "",
     node_encryption_pk: auth?.node_encryption_pk ?? "",
     profile_encryption_sk: auth?.profile_encryption_sk ?? "",
     profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
+
   return (
     <div className="flex w-full items-center justify-center p-6">
       <div className="flex max-w-lg flex-col items-center gap-4 text-center">

@@ -11,3 +11,16 @@ export const groupMessagesByDate = (messages: ShinkaiMessage[]) => {
   }
   return groupedMessages;
 };
+
+export const formatDate = (date: Date): string => {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) {
+    return "today";
+  }
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "yesterday";
+  }
+  return date.toDateString();
+};
