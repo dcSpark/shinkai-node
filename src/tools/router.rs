@@ -295,7 +295,7 @@ impl ToolRouter {
     pub fn get_tool_embedding(&self, shinkai_tool: &ShinkaiTool) -> Result<Embedding, ToolError> {
         Ok(self
             .routing_resource
-            .get_node_embedding(shinkai_tool.tool_router_key().to_string())?)
+            .get_embedding(shinkai_tool.tool_router_key().to_string())?)
     }
 
     pub fn from_json(json: &str) -> Result<Self, ToolError> {

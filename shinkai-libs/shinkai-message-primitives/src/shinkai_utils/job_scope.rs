@@ -3,7 +3,7 @@ use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::{
     base_vector_resources::BaseVectorResource,
     source::{SourceFile, VRSource},
-    vector_resource_types::VRPointer,
+    vector_resource_types::VRHeader,
 };
 use std::fmt;
 
@@ -61,7 +61,7 @@ impl fmt::Debug for JobScope {
         let db_ids: Vec<String> = self
             .database
             .iter()
-            .map(|entry| entry.resource_pointer.reference_string())
+            .map(|entry| entry.resource_header.reference_string())
             .collect();
 
         f.debug_struct("JobScope")
@@ -89,6 +89,6 @@ pub struct LocalScopeEntry {
 /// A Scope Entry for a file/vector resource that is saved in the DB
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DBScopeEntry {
-    pub resource_pointer: VRPointer,
+    pub resource_header: VRHeader,
     pub source: VRSource,
 }

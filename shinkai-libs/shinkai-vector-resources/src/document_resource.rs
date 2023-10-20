@@ -20,7 +20,7 @@ pub struct DocumentVectorResource {
     resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
     resource_base_type: VRBaseType,
-    node_embeddings: Vec<Embedding>,
+    get_embeddings: Vec<Embedding>,
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
@@ -59,8 +59,8 @@ impl VectorResource for DocumentVectorResource {
         self.resource_base_type.clone()
     }
 
-    fn node_embeddings(&self) -> Vec<Embedding> {
-        self.node_embeddings.clone()
+    fn get_embeddings(&self) -> Vec<Embedding> {
+        self.get_embeddings.clone()
     }
 
     fn to_json(&self) -> Result<String, VRError> {
@@ -76,13 +76,13 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
-    fn get_node_embedding(&self, id: String) -> Result<Embedding, VRError> {
+    fn get_embedding(&self, id: String) -> Result<Embedding, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId);
         }
         let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
-        Ok(self.node_embeddings[index].clone())
+        Ok(self.get_embeddings[index].clone())
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
@@ -110,7 +110,7 @@ impl DocumentVectorResource {
         source: VRSource,
         resource_id: &str,
         resource_embedding: Embedding,
-        node_embeddings: Vec<Embedding>,
+        get_embeddings: Vec<Embedding>,
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -120,7 +120,7 @@ impl DocumentVectorResource {
             source: source,
             resource_id: String::from(resource_id),
             resource_embedding,
-            node_embeddings,
+            get_embeddings,
             node_count: nodes.len() as u64,
             nodes: nodes,
             embedding_model_used,
@@ -184,7 +184,7 @@ impl DocumentVectorResource {
                 nodes.push(RetrievedNode {
                     node: node.clone(),
                     score: 0.00,
-                    resource_pointer: self.get_resource_pointer(),
+                    resource_header: self.generate_resource_header(),
                     retrieval_path: VRPath::new(),
                 });
             }
@@ -204,7 +204,7 @@ impl DocumentVectorResource {
                     .push(RetrievedNode {
                         node: node.clone(),
                         score: 0.00,
-                        resource_pointer: self.get_resource_pointer(),
+                        resource_header: self.generate_resource_header(),
                         retrieval_path: VRPath::new(),
                     }),
                 _ => (),
@@ -268,7 +268,7 @@ impl DocumentVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.append_node(node);
-        self.node_embeddings.push(embedding);
+        self.get_embeddings.push(embedding);
     }
 
     /// Replaces an existing node and associated embedding in the Document resource
@@ -316,7 +316,7 @@ impl DocumentVectorResource {
     /// and updates the data tags index.
     pub fn pop_data(&mut self) -> Result<(Node, Embedding), VRError> {
         let popped_node = self.nodes.pop();
-        let popped_embedding = self.node_embeddings.pop();
+        let popped_embedding = self.get_embeddings.pop();
 
         match (popped_node, popped_embedding) {
             (Some(node), Some(embedding)) => {
@@ -363,7 +363,7 @@ impl DocumentVectorResource {
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        self.node_embeddings[index] = embedding;
+        self.get_embeddings[index] = embedding;
 
         Ok(old_node)
     }
@@ -375,11 +375,11 @@ impl DocumentVectorResource {
         self.data_tag_index.remove_node(&deleted_node);
 
         let index = (id - 1) as usize;
-        let deleted_embedding = self.node_embeddings.remove(index);
+        let deleted_embedding = self.get_embeddings.remove(index);
 
         // Adjust the ids of the remaining embeddings
-        for i in index..self.node_embeddings.len() {
-            self.node_embeddings[i].set_id_with_integer((i + 1) as u64);
+        for i in index..self.get_embeddings.len() {
+            self.get_embeddings[i].set_id_with_integer((i + 1) as u64);
         }
 
         Ok((deleted_node, deleted_embedding))

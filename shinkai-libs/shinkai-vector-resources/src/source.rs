@@ -6,7 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
-/// or a pointer to the source file (either external such as URL, or a FileRef)
+/// or a reference to the source file (either external such as URL, or a FileRef)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum VRSource {
     Reference(SourceReference),
@@ -17,7 +17,7 @@ impl VRSource {
     /// Formats a printable string based on the source
     pub fn format_source_string(&self) -> String {
         match self {
-            VRSource::Reference(pointer) => pointer.format_source_string(),
+            VRSource::Reference(reference) => reference.format_source_string(),
             VRSource::None => String::from("None"),
         }
     }
@@ -120,7 +120,7 @@ pub enum SourceReference {
 impl SourceReference {
     pub fn format_source_string(&self) -> String {
         match self {
-            SourceReference::FileRef(pointer) => pointer.format_source_string(),
+            SourceReference::FileRef(reference) => reference.format_source_string(),
             SourceReference::ExternalURI(uri) => uri.clone(),
             SourceReference::Other(s) => s.clone(),
         }

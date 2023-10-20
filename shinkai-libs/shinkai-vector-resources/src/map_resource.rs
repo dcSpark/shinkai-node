@@ -19,7 +19,7 @@ pub struct MapVectorResource {
     resource_embedding: Embedding,
     resource_base_type: VRBaseType,
     embedding_model_used: EmbeddingModelType,
-    node_embeddings: HashMap<String, Embedding>,
+    get_embeddings: HashMap<String, Embedding>,
     node_count: u64,
     nodes: HashMap<String, Node>,
     data_tag_index: DataTagIndex,
@@ -58,8 +58,8 @@ impl VectorResource for MapVectorResource {
         self.resource_base_type.clone()
     }
 
-    fn node_embeddings(&self) -> Vec<Embedding> {
-        self.node_embeddings.values().cloned().collect()
+    fn get_embeddings(&self) -> Vec<Embedding> {
+        self.get_embeddings.values().cloned().collect()
     }
 
     fn to_json(&self) -> Result<String, VRError> {
@@ -75,8 +75,8 @@ impl VectorResource for MapVectorResource {
     }
 
     /// Retrieves a node's embedding given its key (id)
-    fn get_node_embedding(&self, key: String) -> Result<Embedding, VRError> {
-        Ok(self.node_embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
+    fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
+        Ok(self.get_embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
     }
 
     /// Retrieves a node given its key (id)
@@ -99,7 +99,7 @@ impl MapVectorResource {
         source: VRSource,
         resource_id: &str,
         resource_embedding: Embedding,
-        node_embeddings: HashMap<String, Embedding>,
+        get_embeddings: HashMap<String, Embedding>,
         nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -109,7 +109,7 @@ impl MapVectorResource {
             source: source,
             resource_id: String::from(resource_id),
             resource_embedding,
-            node_embeddings,
+            get_embeddings,
             node_count: nodes.len() as u64,
             resource_base_type: VRBaseType::Map,
             nodes,
@@ -143,7 +143,7 @@ impl MapVectorResource {
                     .push(RetrievedNode {
                         node: node.clone(),
                         score: 0.00,
-                        resource_pointer: self.get_resource_pointer(),
+                        resource_header: self.generate_resource_header(),
                         retrieval_path: VRPath::new(),
                     }),
                 _ => (),
@@ -211,7 +211,7 @@ impl MapVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
         self.insert_node(node.clone());
-        self.node_embeddings.insert(node.id.clone(), embedding);
+        self.get_embeddings.insert(node.id.clone(), embedding);
     }
 
     /// Replaces an existing node (based on key) and associated embeddings in the Map resource
@@ -286,7 +286,7 @@ impl MapVectorResource {
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
-        self.node_embeddings.insert(key.to_string(), embedding);
+        self.get_embeddings.insert(key.to_string(), embedding);
 
         Ok(old_node)
     }
@@ -296,7 +296,7 @@ impl MapVectorResource {
     pub fn delete_kv(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self.delete_node(key)?;
         self.data_tag_index.remove_node(&deleted_node);
-        let deleted_embedding = self.node_embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
+        let deleted_embedding = self.get_embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
 
         Ok((deleted_node, deleted_embedding))
     }

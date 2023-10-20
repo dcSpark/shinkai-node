@@ -5,7 +5,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource_types::{Node, RetrievedNode, VRPointer};
+use shinkai_vector_resources::vector_resource_types::{Node, RetrievedNode, VRHeader};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -28,7 +28,7 @@ impl JobManager {
         // Fetch DB resources and add them to the list
         let db = db.lock().await;
         for db_entry in &job_scope.database {
-            let resource = db.get_resource_by_pointer(&db_entry.resource_pointer, profile)?;
+            let resource = db.get_resource_by_header(&db_entry.resource_header, profile)?;
             resources.push(resource);
         }
 
@@ -113,16 +113,16 @@ impl JobManager {
         let mut new_nodes = sorted_retrieved_nodes.clone();
 
         if include_description && !sorted_retrieved_nodes.is_empty() {
-            let pointer = sorted_retrieved_nodes[0].resource_pointer.clone();
+            let resource_header = sorted_retrieved_nodes[0].resource_header.clone();
 
-            // Iterate through resources until we find one with a matching resource pointer
+            // Iterate through resources until we find one with a matching resource resource_header
             for resource in resources {
-                if resource.as_trait_object().get_resource_pointer() == pointer {
+                if resource.as_trait_object().generate_resource_header() == resource_header {
                     if let Some(description) = resource.as_trait_object().description() {
                         let description_node = RetrievedNode::new(
                             Node::new(String::new(), &description, None, &vec![]),
                             1.0 as f32,
-                            pointer,
+                            resource_header,
                             sorted_retrieved_nodes[0].retrieval_path.clone(),
                         );
                         new_nodes.insert(0, description_node);

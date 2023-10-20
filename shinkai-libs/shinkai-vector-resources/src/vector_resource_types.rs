@@ -9,24 +9,24 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// A node that was retrieved from a search.
-/// Includes extra data like the resource_pointer of the resource it was from
-/// and the similarity score from the vector search. Resource pointer is especially
+/// Includes extra data like the resource_header of the resource it was from
+/// and the similarity score from the vector search. Resource header is especially
 /// helpful when you have multiple layers of VectorResources inside of each other.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetrievedNode {
     pub node: Node,
     pub score: f32,
-    pub resource_pointer: VRPointer,
+    pub resource_header: VRHeader,
     pub retrieval_path: VRPath,
 }
 
 impl RetrievedNode {
     /// Create a new RetrievedNode
-    pub fn new(node: Node, score: f32, resource_pointer: VRPointer, retrieval_path: VRPath) -> Self {
+    pub fn new(node: Node, score: f32, resource_header: VRHeader, retrieval_path: VRPath) -> Self {
         Self {
             node,
             score,
-            resource_pointer,
+            resource_header,
             retrieval_path,
         }
     }
@@ -43,7 +43,7 @@ impl RetrievedNode {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|node| {
-                let ref_key = node.resource_pointer.reference_string().clone();
+                let ref_key = node.resource_header.reference_string().clone();
                 let id_ref_key = format!("{}-{}", node.node.id.clone(), ref_key);
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
@@ -101,7 +101,7 @@ impl RetrievedNode {
     /// to be included as part of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
     pub fn format_for_prompt(&self, max_characters: usize) -> Option<String> {
-        let source_string = self.resource_pointer.resource_source.format_source_string();
+        let source_string = self.resource_header.resource_source.format_source_string();
         let metadata_string = self.format_metadata_string();
 
         let base_length = source_string.len() + metadata_string.len() + 20; // 20 chars of actual content as a minimum amount to bother including
@@ -228,9 +228,9 @@ pub enum NodeContent {
     Resource(BaseVectorResource),
 }
 
-/// Struct which holds reference information about a given Vector Resource.
+/// Struct which holds descriptive information about a given Vector Resource.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VRPointer {
+pub struct VRHeader {
     /// The identifier
     pub resource_name: String,
     pub resource_id: String,
@@ -241,8 +241,8 @@ pub struct VRPointer {
     // pub metadata: HashMap<String, String>,
 }
 
-impl VRPointer {
-    /// Create a new VRPointer
+impl VRHeader {
+    /// Create a new VRHeader
     pub fn new(
         resource_name: &str,
         resource_id: &str,
@@ -261,7 +261,7 @@ impl VRPointer {
         }
     }
 
-    /// Create a new VRPointer using a reference_string instead of the name/id directly
+    /// Create a new VRHeader using a reference_string instead of the name/id directly
     pub fn new_with_reference_string(
         reference_string: String,
         resource_base_type: VRBaseType,
@@ -301,9 +301,9 @@ impl VRPointer {
     }
 }
 
-impl From<Box<dyn VectorResource>> for VRPointer {
+impl From<Box<dyn VectorResource>> for VRHeader {
     fn from(resource: Box<dyn VectorResource>) -> Self {
-        resource.get_resource_pointer()
+        resource.generate_resource_header()
     }
 }
 

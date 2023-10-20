@@ -51,10 +51,10 @@ pub trait VectorResource {
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn data_tag_index(&self) -> &DataTagIndex;
-    /// Retrieves all Embeddings at the root level depth of the Vector Resource.
-    fn node_embeddings(&self) -> Vec<Embedding>;
     /// Retrieves an Embedding given its id, at the root level depth.
-    fn get_node_embedding(&self, id: String) -> Result<Embedding, VRError>;
+    fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
+    /// Retrieves all Embeddings at the root level depth of the Vector Resource.
+    fn get_embeddings(&self) -> Vec<Embedding>;
     /// Retrieves a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves all Nodes at the root level of the Vector Resource
@@ -63,7 +63,8 @@ pub trait VectorResource {
     fn to_json(&self) -> Result<String, VRError>;
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding.
+    /// Regenerates and updates the resource's embedding using the name/description/source
+    /// and the provided keywords.
     async fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -76,7 +77,8 @@ pub trait VectorResource {
     }
 
     #[cfg(feature = "native-http")]
-    /// Regenerates and updates the resource's embedding.
+    /// Regenerates and updates the resource's embedding using the name/description/source
+    /// and the provided keywords.
     fn update_resource_embedding_blocking(
         &mut self,
         generator: &dyn EmbeddingGenerator,
@@ -90,7 +92,8 @@ pub trait VectorResource {
 
     #[cfg(feature = "native-http")]
     /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
-    /// (targets the same model and interface for embedding generation).
+    /// (targets the same model and interface for embedding generation). Of note, you need
+    /// to make sure the api_url/api_key match for the model used.
     fn initialize_compatible_embeddings_generator(
         &self,
         api_url: &str,
@@ -103,8 +106,8 @@ pub trait VectorResource {
         ))
     }
 
-    /// Generates a formatted string that represents the data to be used for the
-    /// resource embedding.
+    /// Generates a formatted string that represents the text to be used for
+    /// generating the resource embedding.
     fn format_embedding_string(&self, keywords: Vec<String>) -> String {
         let name = format!("Name: {}", self.name());
         let desc = self
@@ -129,16 +132,16 @@ pub trait VectorResource {
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     fn reference_string(&self) -> String {
-        VRPointer::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
+        VRHeader::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
     }
 
-    /// Generates a VRPointer out of the VectorResource
-    fn get_resource_pointer(&self) -> VRPointer {
+    /// Generates a VRHeader out of the VectorResource
+    fn generate_resource_header(&self) -> VRHeader {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
 
-        VRPointer::new(
+        VRHeader::new(
             self.name(),
             self.resource_id(),
             self.resource_base_type(),
@@ -189,7 +192,7 @@ pub trait VectorResource {
                     format!(
                         "<{}> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
-                        resource.as_trait_object().node_embeddings().len()
+                        resource.as_trait_object().get_embeddings().len()
                     )
                 }
             };
@@ -278,21 +281,21 @@ pub trait VectorResource {
         match traversal {
             // Score all if exhaustive
             &TraversalMethod::Exhaustive | &TraversalMethod::HierarchicalAverage => {
-                score_num_of_results = (&self.node_embeddings()).len() as u64;
-                scores = query.score_similarities(&self.node_embeddings(), score_num_of_results);
+                score_num_of_results = (&self.get_embeddings()).len() as u64;
+                scores = query.score_similarities(&self.get_embeddings(), score_num_of_results);
             }
             // Fake score all as 0 if unscored exhaustive
             &TraversalMethod::UnscoredAllNodes => {
-                score_num_of_results = (&self.node_embeddings()).len() as u64;
+                score_num_of_results = (&self.get_embeddings()).len() as u64;
                 scores = self
-                    .node_embeddings()
+                    .get_embeddings()
                     .iter()
                     .map(|embedding| (0.0, embedding.id.clone()))
                     .collect();
             }
             // Else score as normal
             _ => {
-                scores = query.score_similarities(&self.node_embeddings(), score_num_of_results);
+                scores = query.score_similarities(&self.get_embeddings(), score_num_of_results);
             }
         }
 
@@ -379,7 +382,7 @@ pub trait VectorResource {
         let mut matching_data_tag_embeddings = vec![];
         let ids = self._syntactic_search_id_fetch(data_tag_names);
         for id in ids {
-            if let Ok(embedding) = self.get_node_embedding(id) {
+            if let Ok(embedding) = self.get_embedding(id) {
                 matching_data_tag_embeddings.push(embedding);
             }
         }
@@ -446,7 +449,7 @@ pub trait VectorResource {
                             let ret_node = RetrievedNode {
                                 node: node.clone(),
                                 score,
-                                resource_pointer: self.get_resource_pointer(),
+                                resource_header: self.generate_resource_header(),
                                 retrieval_path: traversal_path.clone(),
                             };
                             current_level_results.push(ret_node);
@@ -525,7 +528,7 @@ pub trait VectorResource {
                     current_level_results.push(RetrievedNode {
                         node: node.clone(),
                         score,
-                        resource_pointer: self.get_resource_pointer(),
+                        resource_header: self.generate_resource_header(),
                         retrieval_path: new_traversal_path,
                     });
                 }
@@ -542,7 +545,7 @@ pub trait VectorResource {
                 current_level_results.push(RetrievedNode {
                     node: node.clone(),
                     score,
-                    resource_pointer: self.get_resource_pointer(),
+                    resource_header: self.generate_resource_header(),
                     retrieval_path: new_traversal_path,
                 });
             }
@@ -603,11 +606,11 @@ pub trait VectorResource {
                         matching_nodes.extend(sub_results);
                     }
                     NodeContent::Text(_) => {
-                        let resource_pointer = self.get_resource_pointer();
+                        let resource_header = self.generate_resource_header();
                         let retrieved_node = RetrievedNode {
                             node: node,
                             score: 0.0,
-                            resource_pointer,
+                            resource_header,
                             retrieval_path: VRPath::new(),
                         };
                         matching_nodes.push(retrieved_node);
