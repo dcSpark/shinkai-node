@@ -175,6 +175,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIGetFilenamesInInbox {
+        msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    },
     APIAddFileToInboxWithSymmetricKey {
         filename: String,
         file: Vec<u8>,
@@ -406,6 +410,7 @@ impl Node {
                             Some(NodeCommand::APIJobMessage { msg, res }) => self.api_job_message(msg, res).await?,
                             Some(NodeCommand::APIAvailableAgents { msg, res }) => self.api_available_agents(msg, res).await?,
                             Some(NodeCommand::APICreateFilesInboxWithSymmetricKey { msg, res }) => self.api_create_files_inbox_with_symmetric_key(msg, res).await?,
+                            Some(NodeCommand::APIGetFilenamesInInbox { msg, res }) => self.api_get_filenames_in_inbox(msg, res).await?,
                             Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
                             Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,

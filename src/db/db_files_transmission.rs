@@ -157,6 +157,40 @@ impl ShinkaiDB {
         files.map_err(|_| ShinkaiDBError::FailedFetchingValue)
     }
 
+    pub fn get_all_filenames_from_inbox(&self, hex_blake3_hash: String) -> Result<Vec<String>, ShinkaiDBError> {
+        // Get the name of the encrypted inbox from the 'inbox' topic
+        let cf_inbox = self
+            .db
+            .cf_handle(Topic::TempFilesInbox.as_str())
+            .expect("to be able to access Topic::TempFilesInbox");
+        let cf_name_encrypted_inbox = self
+            .db
+            .get_cf(cf_inbox, &hex_blake3_hash)?
+            .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
+    
+        // Check if the column family exists
+        let cf_name_encrypted_inbox_str =
+            std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
+    
+        if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
+            return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
+        }
+    
+        // Get an iterator over the column family
+        let cf_encrypted_inbox = self
+            .db
+            .cf_handle(&cf_name_encrypted_inbox_str)
+            .ok_or(ShinkaiDBError::FailedFetchingCF)?;
+        let iter = self.db.iterator_cf(cf_encrypted_inbox, IteratorMode::Start);
+    
+        // Collect all keys (filenames) in the column family
+        let filenames: Result<Vec<String>, _> = iter
+            .map(|res| res.map(|(key, _)| String::from_utf8(key.to_vec()).unwrap()))
+            .collect();
+    
+        filenames.map_err(|_| ShinkaiDBError::FailedFetchingValue)
+    }
+
     pub fn get_file_from_inbox(&self, hex_blake3_hash: String, file_name: String) -> Result<Vec<u8>, ShinkaiDBError> {
         // Get the name of the encrypted inbox from the 'inbox' topic
         let cf_inbox = self

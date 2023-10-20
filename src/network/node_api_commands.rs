@@ -1587,6 +1587,47 @@ impl Node {
         }
     }
 
+    pub async fn api_get_filenames_in_inbox(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<Vec<String>, APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let msg = match validation_result {
+            Ok((msg, _)) => msg,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+    
+        // Decrypt the message
+        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+    
+        // Extract the content of the message
+        let hex_blake3_hash = decrypted_msg.get_message_content()?;
+    
+        match self.db.lock().await.get_all_filenames_from_inbox(hex_blake3_hash) {
+            Ok(filenames) => {
+                let _ = res.send(Ok(filenames)).await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn api_add_file_to_inbox_with_symmetric_key(
         &self,
         filename: String,

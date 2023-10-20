@@ -326,7 +326,44 @@ fn sandwich_messages_with_files_test() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("response: {}", response);
             }
+            {
+                // Get filenames in inbox
+                let message_content = hash_of_aes_encryption_key_hex(symmetrical_sk);
+                let msg = ShinkaiMessageBuilder::new(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node1_profile_name.to_string().clone(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_intra_sender(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
 
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIGetFilenamesInInbox {
+                        msg,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                assert_eq!(response, vec!["files/Zeko_Mina_Rollup.pdf"]);
+            }
             // {
             //     let _m = server
             //         .mock("POST", "/v1/chat/completions")
