@@ -1,6 +1,6 @@
 import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
 
-import { Fragment, useCallback, useEffect, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
@@ -142,7 +142,7 @@ const ChatConversation = () => {
     mutateAsync: sendTextMessageWithFilesForInbox,
     isPending: isSendingTextMessageWithFilesForInbox,
   } = useSendMessageWithFilesToInbox();
-
+  console.log(data?.pages, "data");
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
     if (!auth) return;
     fromPreviousMessagesRef.current = false;
@@ -180,7 +180,6 @@ const ChatConversation = () => {
         profile_identity_sk: auth.profile_identity_sk,
       });
     } else {
-      console.log(data, "submit-chat");
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
       sendMessageToInbox({
@@ -199,15 +198,28 @@ const ChatConversation = () => {
     chatForm.reset();
   };
 
-  const isLoading = isSendingMessageToJob || isSendingMessageToInbox;
+  const isLoading = useMemo(() => {
+    if (isSendingMessageToJob || isSendingMessageToInbox) return true;
+    const lastMessage = data?.pages?.at(-1)?.at(-1);
+    if (!lastMessage) return false;
+    const isLocal = isLocalMessage(
+      lastMessage,
+      auth?.shinkai_identity ?? "",
+      auth?.profile ?? ""
+    );
+    if (isJobInbox(inboxId) && isLocal) return true;
+    return false;
+  }, [
+    isSendingMessageToJob,
+    isSendingMessageToInbox,
+    data?.pages,
+    auth?.shinkai_identity,
+    auth?.profile,
+    inboxId,
+  ]);
 
   const fetchPreviousMessages = useCallback(async () => {
-    // const firstMessage = data?.pages?.[0]?.[0];
     fromPreviousMessagesRef.current = true;
-    // if (!firstMessage) return;
-    // const timeKey = firstMessage?.external_metadata?.scheduled_time;
-    // const hashKey = calculateMessageHash(firstMessage);
-    // const firstMessageKey = `${timeKey}:::${hashKey}`;
     await fetchPreviousPage();
   }, [fetchPreviousPage]);
 
@@ -348,7 +360,8 @@ const ChatConversation = () => {
               {...getRootFileProps({
                 className: cn(
                   "dropzone group relative relative flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
-                  file && "border-0"
+                  file && "border-0",
+                  isLoading && "hidden"
                 ),
               })}
             >
