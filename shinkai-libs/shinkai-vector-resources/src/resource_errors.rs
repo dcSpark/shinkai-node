@@ -1,8 +1,7 @@
+use crate::vector_resource::VRPath;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
-
-use crate::vector_resource::VRPath;
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {
@@ -22,7 +21,7 @@ pub enum VRError {
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
-    TaskFailed(String),
+    InvalidReferenceString(String),
 }
 
 impl fmt::Display for VRError {
@@ -54,8 +53,8 @@ impl fmt::Display for VRError {
             VRError::CouldNotDetectFileType(ref s) => {
                 write!(f, "Could not detect file type from file name: {}", s)
             }
-            VRError::TaskFailed(ref s) => {
-                write!(f, "Tokio task failed: {}", s)
+            VRError::InvalidReferenceString(ref s) => {
+                write!(f, "Vector Resource reference string is invalid: {}", s)
             }
         }
     }

@@ -61,7 +61,7 @@ impl fmt::Debug for JobScope {
         let db_ids: Vec<String> = self
             .database
             .iter()
-            .map(|entry| entry.resource_pointer.reference.clone())
+            .map(|entry| entry.resource_pointer.reference_string())
             .collect();
 
         f.debug_struct("JobScope")

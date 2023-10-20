@@ -43,7 +43,7 @@ impl RetrievedNode {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|node| {
-                let ref_key = node.resource_pointer.reference.clone();
+                let ref_key = node.resource_pointer.reference_string().clone();
                 let id_ref_key = format!("{}-{}", node.node.id.clone(), ref_key);
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
@@ -63,8 +63,7 @@ impl RetrievedNode {
     }
 
     /// Formats the retrieval path to a string, adding a trailing `/`
-    /// to denote that the retrieval path are the Vector Resources
-    /// leading to this RetrievedNode
+    /// if the node at the path is a Vector Resource
     pub fn format_path_to_string(&self) -> String {
         let mut path_string = self.retrieval_path.format_to_string();
         if let NodeContent::Resource(_) = self.node.content {
@@ -145,7 +144,7 @@ impl RetrievedNode {
     }
 }
 
-/// Represents a node with an id, data, and optional metadata.
+/// Represents a node with an id, content, validated data_tag_names, and optional metadata.
 /// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
 /// data tag names instead in the Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -157,7 +156,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// Create a new String-holding Node with a provided String id
+    /// Create a new text-holding Node with a provided String id
     pub fn new(
         id: String,
         data: &str,
@@ -172,7 +171,7 @@ impl Node {
         }
     }
 
-    /// Create a new String-holding Node with a provided u64 id, which gets converted to string internally
+    /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_with_integer_id(
         id: u64,
         data: &str,
@@ -235,25 +234,29 @@ pub enum NodeContent {
 /// the pointer was created out of.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPointer {
-    pub reference: String,
+    /// The identifier
+    pub resource_name: String,
+    pub resource_id: String,
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSource,
-    pub data_tag_names: Vec<String>,
     pub resource_embedding: Option<Embedding>,
+    pub data_tag_names: Vec<String>,
     // pub metadata: HashMap<String, String>,
 }
 
 impl VRPointer {
     /// Create a new VRPointer
     pub fn new(
-        reference: &str,
+        resource_name: &str,
+        resource_id: &str,
         resource_base_type: VRBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
     ) -> Self {
         Self {
-            reference: reference.to_string(),
+            resource_name: resource_name.to_string(),
+            resource_id: resource_id.to_string(),
             resource_base_type,
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
@@ -261,13 +264,44 @@ impl VRPointer {
         }
     }
 
-    /// Returns the name of the referenced resource, which is the part of the reference before the first ':'.
-    /// If no ':' is found, the whole reference is returned.
-    pub fn name(&self) -> String {
-        match self.reference.find(':') {
-            Some(index) => self.reference[..index].to_string(),
-            None => self.reference.clone(),
+    /// Create a new VRPointer using a reference_string instead of
+    /// the name/id directly
+    pub fn new_with_reference_string(
+        reference_string: String,
+        resource_base_type: VRBaseType,
+        resource_embedding: Option<Embedding>,
+        data_tag_names: Vec<String>,
+        resource_source: VRSource,
+    ) -> Result<Self, VRError> {
+        let parts: Vec<&str> = reference_string.split(":::").collect();
+        if parts.len() != 2 {
+            return Err(VRError::InvalidReferenceString(reference_string.clone()));
         }
+        let resource_name = parts[0].to_string();
+        let resource_id = parts[1].to_string();
+
+        Ok(Self {
+            resource_name,
+            resource_id,
+            resource_base_type,
+            resource_embedding: resource_embedding.clone(),
+            data_tag_names: data_tag_names,
+            resource_source,
+        })
+    }
+
+    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
+    pub fn reference_string(&self) -> String {
+        Self::generate_resource_reference_string(self.resource_name.clone(), self.resource_id.clone())
+    }
+
+    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
+    pub fn generate_resource_reference_string(name: String, resource_id: String) -> String {
+        let name = name.replace(" ", "_").replace(":", "_");
+        let resource_id = resource_id.replace(" ", "_").replace(":", "_");
+        format!("{}:::{}", name, resource_id)
     }
 }
 

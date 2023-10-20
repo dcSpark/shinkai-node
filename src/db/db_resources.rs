@@ -128,7 +128,7 @@ impl ShinkaiDB {
         resource_pointer: &VRPointer,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
-        self.get_resource(&resource_pointer.reference.clone(), profile)
+        self.get_resource(&resource_pointer.reference_string(), profile)
     }
 
     /// Fetches the BaseVectorResource from the DB
@@ -274,7 +274,7 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
         for doc in &docs {
-            if doc.reference_string() == top_node.resource_pointer.reference {
+            if doc.reference_string() == top_node.resource_pointer.reference_string() {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
@@ -296,7 +296,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.reference, profile)?);
+            resources.push(self.get_resource(&res_pointer.reference_string(), profile)?);
         }
 
         Ok(resources)
@@ -332,7 +332,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.reference, profile)?);
+            resources.push(self.get_resource(&res_pointer.reference_string(), profile)?);
         }
 
         Ok(resources)
@@ -353,7 +353,7 @@ impl ShinkaiDB {
         for res_pointer in resource_pointers {
             if res_pointer.resource_base_type == VRBaseType::Document {
                 if (resources.len() as u64) < num_of_docs {
-                    resources.push(self.get_resource(&res_pointer.reference, profile)?);
+                    resources.push(self.get_resource(&res_pointer.reference_string(), profile)?);
                 }
             }
         }

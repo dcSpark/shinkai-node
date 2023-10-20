@@ -85,7 +85,7 @@ impl VectorResourceRouter {
     fn ret_nodes_to_pointers(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<VRPointer> {
         let mut resource_pointers = vec![];
         for ret_node in ret_nodes {
-            // Ignore resources added to the router with invalid resource types
+            // Ignore resources added to the router with invalid resource types/reference_strings
             if let NodeContent::Text(data) = &ret_node.node.content {
                 if let Ok(resource_base_type) = VRBaseType::from_str(data).map_err(|_| VRError::InvalidVRBaseType) {
                     let id = &ret_node.node.id;
@@ -100,14 +100,17 @@ impl VectorResourceRouter {
                         .and_then(|source_json| VRSource::from_json(source_json).ok())
                         .unwrap_or(VRSource::None);
 
-                    let resource_pointer = VRPointer::new(
-                        &id,
+                    // Attempt to generate VRPointer using the reference string(shinkai db key) from the i.
+                    let resource_pointer = VRPointer::new_with_reference_string(
+                        id.to_string(),
                         resource_base_type,
                         embedding,
                         ret_node.node.data_tag_names.clone(),
                         source,
                     );
-                    resource_pointers.push(resource_pointer);
+                    if let Ok(pointer) = resource_pointer {
+                        resource_pointers.push(pointer);
+                    }
                 }
             }
         }
@@ -124,7 +127,7 @@ impl VectorResourceRouter {
             .resource_embedding
             .clone()
             .ok_or(VRError::NoEmbeddingProvided)?;
-        let shinkai_db_key = resource_pointer.reference.to_string();
+        let shinkai_db_key = resource_pointer.reference_string();
         let metadata = match resource_pointer.resource_source.to_json() {
             Ok(source_json) => {
                 let mut metadata_map = HashMap::new();
@@ -206,7 +209,7 @@ impl VectorResourceRouter {
             Ok(embedding)
         } else {
             self.routing_resource
-                .get_node_embedding(resource_pointer.reference.to_string())
+                .get_node_embedding(resource_pointer.reference_string())
         }
     }
 

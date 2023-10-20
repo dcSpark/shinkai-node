@@ -123,15 +123,10 @@ pub trait VectorResource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
     }
 
-    /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.
-    /// This uniquely identifies the given VectorResource, and is used in VRPointer to
-    /// make it easy to know what resource a RetrievedNode is from (more informative than bare resource_id).
-    ///
-    /// This is also used in the Shinkai Node for the key where the VectorResource will be stored in the DB.
+    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     fn reference_string(&self) -> String {
-        let name = self.name().replace(" ", "_").replace(":", "_");
-        let resource_id = self.resource_id().replace(" ", "_").replace(":", "_");
-        format!("{}:::{}", name, resource_id)
+        VRPointer::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
     }
 
     /// Generates a VRPointer out of the VectorResource
@@ -141,7 +136,8 @@ pub trait VectorResource {
         let embedding = self.resource_embedding().clone();
 
         VRPointer::new(
-            &self.reference_string(),
+            self.name(),
+            self.resource_id(),
             self.resource_base_type(),
             Some(embedding),
             tag_names,
