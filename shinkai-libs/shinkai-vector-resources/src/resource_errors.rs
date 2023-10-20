@@ -17,7 +17,7 @@ pub enum VRError {
     RegexError(regex::Error),
     RequestFailed(String),
     NoEmbeddingProvided,
-    DataIsNonMatchingType,
+    ContentIsNonMatchingType,
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
@@ -43,8 +43,8 @@ impl fmt::Display for VRError {
             }
             VRError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VRError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
-            VRError::DataIsNonMatchingType => {
-                write!(f, "Data inside of the Node is of a different type than requested.")
+            VRError::ContentIsNonMatchingType => {
+                write!(f, "Content inside of the Node is of a different type than requested.")
             }
             VRError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
             VRError::FailedParsingUnstructedAPIJSON(ref s) => {

@@ -90,8 +90,8 @@ fn test_unstructured_parse_pdf_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.node.get_data_string().unwrap()
+            result.node.get_text_content().unwrap()
         );
     }
-    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].node.get_data_string().unwrap());
+    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].node.get_text_content().unwrap());
 }

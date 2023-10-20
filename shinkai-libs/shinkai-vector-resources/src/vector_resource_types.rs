@@ -110,7 +110,7 @@ impl RetrievedNode {
             return None;
         }
 
-        let data_string = self.node.get_data_string().ok()?;
+        let data_string = self.node.get_text_content().ok()?;
         let data_length = max_characters - base_length;
 
         let data_string = if data_string.len() > data_length {
@@ -159,13 +159,13 @@ impl Node {
     /// Create a new text-holding Node with a provided String id
     pub fn new(
         id: String,
-        data: &str,
+        text: &str,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
         Self {
             id,
-            content: NodeContent::Text(data.to_string()),
+            content: NodeContent::Text(text.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
         }
@@ -174,11 +174,11 @@ impl Node {
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_with_integer_id(
         id: u64,
-        data: &str,
+        text: &str,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
-        Self::new(id.to_string(), data, metadata, data_tag_names)
+        Self::new(id.to_string(), text, metadata, data_tag_names)
     }
 
     /// Create a new BaseVectorResource-holding Node with a provided String id
@@ -204,25 +204,24 @@ impl Node {
         Self::new_vector_resource(id.to_string(), vector_resource, metadata)
     }
 
-    /// Attempts to read the data String from the Node. Errors if data is a VectorResource
-    pub fn get_data_string(&self) -> Result<String, VRError> {
+    /// Attempts to return the text content from the Node. Errors if content is a BaseVectorResource
+    pub fn get_text_content(&self) -> Result<String, VRError> {
         match &self.content {
             NodeContent::Text(s) => Ok(s.clone()),
-            NodeContent::Resource(_) => Err(VRError::DataIsNonMatchingType),
+            NodeContent::Resource(_) => Err(VRError::ContentIsNonMatchingType),
         }
     }
 
-    /// Attempts to read the BaseVectorResource from the Node. Errors if data is an actual String
-    pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VRError> {
+    /// Attempts to return the BaseVectorResource from the Node. Errors if content is text
+    pub fn get_vector_resource_content(&self) -> Result<BaseVectorResource, VRError> {
         match &self.content {
-            NodeContent::Text(_) => Err(VRError::DataIsNonMatchingType),
+            NodeContent::Text(_) => Err(VRError::ContentIsNonMatchingType),
             NodeContent::Resource(resource) => Ok(resource.clone()),
         }
     }
 }
 
-/// Contents of a Node. Either the String text itself, or
-/// another VectorResource
+/// Contents of a Node. Either the String text itself, or another VectorResource
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeContent {
     Text(String),
@@ -230,8 +229,6 @@ pub enum NodeContent {
 }
 
 /// Struct which holds reference information about a given Vector Resource.
-/// `reference` holds a string which points back to the original resource that
-/// the pointer was created out of.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPointer {
     /// The identifier
@@ -264,8 +261,7 @@ impl VRPointer {
         }
     }
 
-    /// Create a new VRPointer using a reference_string instead of
-    /// the name/id directly
+    /// Create a new VRPointer using a reference_string instead of the name/id directly
     pub fn new_with_reference_string(
         reference_string: String,
         resource_base_type: VRBaseType,
@@ -290,13 +286,13 @@ impl VRPointer {
         })
     }
 
-    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     pub fn reference_string(&self) -> String {
         Self::generate_resource_reference_string(self.resource_name.clone(), self.resource_id.clone())
     }
 
-    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     pub fn generate_resource_reference_string(name: String, resource_id: String) -> String {
         let name = name.replace(" ", "_").replace(":", "_");
@@ -311,8 +307,7 @@ impl From<Box<dyn VectorResource>> for VRPointer {
     }
 }
 
-/// A path inside of a Vector Resource to an internal Node.
-/// Internally it is made up of an ordered list of node ids.
+/// A path inside of a Vector Resource to an internal Node. Internally it is made up of an ordered list of node ids.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,

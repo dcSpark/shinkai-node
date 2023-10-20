@@ -21,17 +21,18 @@ pub enum TraversalMethod {
     Efficient,
     /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
     /// Will return BaseVectorResource Nodes if they are the highest scored at the specified depth.
-    /// Top level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
+    /// Top/root level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
     UntilDepth(u64),
-    /// Does not skip over any Nodes, traverses through all levels.
+    /// Does not skip over any Nodes, traverses through all levels of depth and scores all Text-holding nodes.
     Exhaustive,
     /// Performs an exhaustive search by traversing all levels and ranking all nodes, iteratively
     /// averaging out the score all the way to each final node. In other words, the final score
-    /// of each Node weighs-in the scores of the Vector Resources that it was inside all the way up.
+    /// of each Node weighs-in the scores of the Vector Resources that it was inside all the way up to the root.
     HierarchicalAverage,
     /// Iterates exhaustively going through all levels while doing absolutely no scoring/similarity checking,
-    /// returning every single node at any level. Also returns the Vector Resources in addition to their
+    /// returning every single Node at any level. Also returns the Vector Resources in addition to their
     /// Nodes they hold inside, thus providing all nodes that exist within the root Vector Resource.
+    /// Note: This is not for vector searching, but for retrieving all possible Nodes.
     UnscoredAllNodes,
 }
 
@@ -49,12 +50,14 @@ pub trait VectorResource {
     fn resource_base_type(&self) -> VRBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
-    fn node_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
+    /// Retrieves all Embeddings at the root level depth of the Vector Resource.
+    fn node_embeddings(&self) -> Vec<Embedding>;
+    /// Retrieves an Embedding given its id, at the root level depth.
     fn get_node_embedding(&self, id: String) -> Result<Embedding, VRError>;
-    /// Retrieves a node given its id, at the root level depth.
+    /// Retrieves a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
-    /// Retrieves all nodes at the root level of the Vector Resource
+    /// Retrieves all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
@@ -123,7 +126,7 @@ pub trait VectorResource {
         format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
     }
 
-    /// Returns a "reference string" that uniquely identifies a VectorResource (formatted as: `{name}:::{resource_id}`).
+    /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
     /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
     fn reference_string(&self) -> String {
         VRPointer::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
