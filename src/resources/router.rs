@@ -4,9 +4,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{
-    NodeContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
-};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource, VectorResourcePointer};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 use std::convert::From;
@@ -46,58 +44,58 @@ impl VectorResourceRouter {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<VectorResourcePointer> {
-        let chunks = self
+        let nodes = self
             .routing_resource
             .syntactic_vector_search(query, num_of_results, data_tag_names);
-        self.ret_data_chunks_to_pointers(&chunks)
+        self.ret_nodes_to_pointers(&nodes)
     }
 
     /// Returns a list of VectorResourcePointers of the most similar resources.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<VectorResourcePointer> {
-        let chunks = self.routing_resource.vector_search(query, num_of_results);
-        self.ret_data_chunks_to_pointers(&chunks)
+        let nodes = self.routing_resource.vector_search(query, num_of_results);
+        self.ret_nodes_to_pointers(&nodes)
     }
 
     /// Returns all VectorResourcePointers in the Resource Router
     pub fn get_all_resource_pointers(&self) -> Vec<VectorResourcePointer> {
-        let data_chunks = self.routing_resource.get_data_chunks();
+        let nodes = self.routing_resource.get_nodes();
         let map_resource_pointer = self.routing_resource.get_resource_pointer();
         let mut resource_pointers = vec![];
 
-        for chunk in data_chunks {
-            let retrieved_data_chunk = RetrievedDataChunk {
-                chunk: chunk.clone(),
+        for node in nodes {
+            let retrieved_node = RetrievedNode {
+                node: node.clone(),
                 score: 0.0,
                 resource_pointer: map_resource_pointer.clone(),
                 retrieval_path: VRPath::new(),
             };
 
-            let pointers = self.ret_data_chunks_to_pointers(&vec![retrieved_data_chunk]);
+            let pointers = self.ret_nodes_to_pointers(&vec![retrieved_node]);
             resource_pointers.extend(pointers);
         }
 
         resource_pointers
     }
 
-    /// Takes a list of RetrievedDataChunks and outputs a list of VectorResourcePointers
+    /// Takes a list of RetrievedNodes and outputs a list of VectorResourcePointers
     /// that point to the real resource (not the resource router).
     ///
-    /// Of note, if a chunk holds an invalid VectorResourceBaseType string then the chunk
+    /// Of note, if a node holds an invalid VectorResourceBaseType string then the node
     /// is ignored.
-    fn ret_data_chunks_to_pointers(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<VectorResourcePointer> {
+    fn ret_nodes_to_pointers(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<VectorResourcePointer> {
         let mut resource_pointers = vec![];
-        for ret_chunk in ret_chunks {
+        for ret_node in ret_nodes {
             // Ignore resources added to the router with invalid resource types
-            if let NodeContent::Text(data) = &ret_chunk.chunk.content {
+            if let NodeContent::Text(data) = &ret_node.node.content {
                 if let Ok(resource_base_type) = VectorResourceBaseType::from_str(data)
                     .map_err(|_| VectorResourceError::InvalidVectorResourceBaseType)
                 {
-                    let id = &ret_chunk.chunk.id;
-                    let embedding = self.routing_resource.get_chunk_embedding(id.to_string()).ok();
+                    let id = &ret_node.node.id;
+                    let embedding = self.routing_resource.get_node_embedding(id.to_string()).ok();
 
                     // Extract the "source" field from the metadata
-                    let source = ret_chunk
-                        .chunk
+                    let source = ret_node
+                        .node
                         .metadata
                         .as_ref()
                         .and_then(|metadata| metadata.get("source"))
@@ -108,7 +106,7 @@ impl VectorResourceRouter {
                         &id,
                         resource_base_type,
                         embedding,
-                        ret_chunk.chunk.data_tag_names.clone(),
+                        ret_node.node.data_tag_names.clone(),
                         source,
                     );
                     resource_pointers.push(resource_pointer);
@@ -118,7 +116,7 @@ impl VectorResourceRouter {
         resource_pointers
     }
 
-    /// Extracts necessary data from a VectorResourcePointer to create a DataChunk
+    /// Extracts necessary data from a VectorResourcePointer to create a Node
     fn extract_pointer_data(
         &self,
         resource_pointer: &VectorResourcePointer,
@@ -149,7 +147,7 @@ impl VectorResourceRouter {
     /// the old pointer will be replaced.
     ///
     /// Of note, in this implementation we store the resource type in the `data`
-    /// of the chunk and the shinkai db key (pointer reference) as the id of the data chunk.
+    /// of the node and the shinkai db key (pointer reference) as the id of the node.
     pub fn add_resource_pointer(
         &mut self,
         resource_pointer: &VectorResourcePointer,
@@ -157,11 +155,11 @@ impl VectorResourceRouter {
         let (shinkai_db_key, data, embedding, metadata) = self.extract_pointer_data(resource_pointer)?;
         let shinkai_db_key_clone = shinkai_db_key.clone();
 
-        match self.routing_resource.get_data_chunk(shinkai_db_key_clone) {
-            Ok(old_chunk) => {
+        match self.routing_resource.get_node(shinkai_db_key_clone) {
+            Ok(old_node) => {
                 // If a resource pointer with matching shinkai_db_key is found,
                 // replace the existing resource pointer with the new one.
-                self.replace_resource_pointer(&old_chunk.id, resource_pointer)?;
+                self.replace_resource_pointer(&old_node.id, resource_pointer)?;
             }
             Err(_) => {
                 // If no resource pointer with matching shinkai_db_key is found,
@@ -216,7 +214,7 @@ impl VectorResourceRouter {
             Ok(embedding)
         } else {
             self.routing_resource
-                .get_chunk_embedding(resource_pointer.reference.to_string())
+                .get_node_embedding(resource_pointer.reference.to_string())
         }
     }
 

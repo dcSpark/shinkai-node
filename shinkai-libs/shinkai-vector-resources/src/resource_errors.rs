@@ -6,10 +6,10 @@ use crate::vector_resource::VRPath;
 
 #[derive(Debug, PartialEq)]
 pub enum VectorResourceError {
-    InvalidChunkId,
+    InvalidNodeId,
     VectorResourceEmpty,
     FailedEmbeddingGeneration(String),
-    NoChunkFound,
+    NoNodeFound,
     InvalidModelArchitecture,
     FailedJSONParsing,
     FailedCSVParsing,
@@ -28,10 +28,10 @@ pub enum VectorResourceError {
 impl fmt::Display for VectorResourceError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            VectorResourceError::InvalidChunkId => write!(f, "Invalid chunk id"),
+            VectorResourceError::InvalidNodeId => write!(f, "Invalid node id"),
             VectorResourceError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
             VectorResourceError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
-            VectorResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
+            VectorResourceError::NoNodeFound => write!(f, "No matching node found"),
             VectorResourceError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
             }
@@ -46,7 +46,7 @@ impl fmt::Display for VectorResourceError {
             VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
             VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
             VectorResourceError::DataIsNonMatchingType => {
-                write!(f, "Data inside of the DataChunk is of a different type than requested.")
+                write!(f, "Data inside of the Node is of a different type than requested.")
             }
             VectorResourceError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
             VectorResourceError::FailedParsingUnstructedAPIJSON(ref s) => {

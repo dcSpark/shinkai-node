@@ -8,55 +8,55 @@ use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;
 
-/// A data chunk that was retrieved from a search.
+/// A node that was retrieved from a search.
 /// Includes extra data like the resource_pointer of the resource it was from
 /// and the similarity score from the vector search. Resource pointer is especially
 /// helpful when you have multiple layers of VectorResources inside of each other.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct RetrievedDataChunk {
-    pub chunk: DataChunk,
+pub struct RetrievedNode {
+    pub node: Node,
     pub score: f32,
     pub resource_pointer: VectorResourcePointer,
     pub retrieval_path: VRPath,
 }
 
-impl RetrievedDataChunk {
-    /// Create a new RetrievedDataChunk
-    pub fn new(chunk: DataChunk, score: f32, resource_pointer: VectorResourcePointer, retrieval_path: VRPath) -> Self {
+impl RetrievedNode {
+    /// Create a new RetrievedNode
+    pub fn new(node: Node, score: f32, resource_pointer: VectorResourcePointer, retrieval_path: VRPath) -> Self {
         Self {
-            chunk,
+            node,
             score,
             resource_pointer,
             retrieval_path,
         }
     }
 
-    /// Sorts the list of RetrievedDataChunks based on their scores.
+    /// Sorts the list of RetrievedNodes based on their scores.
     /// Uses a binary heap for efficiency, returns num_results of highest scored.
-    pub fn sort_by_score(retrieved_data: &Vec<RetrievedDataChunk>, num_results: u64) -> Vec<RetrievedDataChunk> {
-        // Create a HashMap to store the RetrievedDataChunk instances for post-scoring retrieval
-        let mut data_chunks: HashMap<String, RetrievedDataChunk> = HashMap::new();
+    pub fn sort_by_score(retrieved_data: &Vec<RetrievedNode>, num_results: u64) -> Vec<RetrievedNode> {
+        // Create a HashMap to store the RetrievedNode instances for post-scoring retrieval
+        let mut nodes: HashMap<String, RetrievedNode> = HashMap::new();
 
         // Map the retrieved_data to a vector of tuples (NotNan<f32>, id_ref_key)
-        // We create id_ref_key to support sorting RetrievedDataChunks from
-        // different Resources together and avoid chunk id collision problems.
+        // We create id_ref_key to support sorting RetrievedNodes from
+        // different Resources together and avoid node id collision problems.
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
-            .map(|data_chunk| {
-                let ref_key = data_chunk.resource_pointer.reference.clone();
-                let id_ref_key = format!("{}-{}", data_chunk.chunk.id.clone(), ref_key);
-                data_chunks.insert(id_ref_key.clone(), data_chunk.clone());
-                (NotNan::new(data_chunks[&id_ref_key].score).unwrap(), id_ref_key)
+            .map(|node| {
+                let ref_key = node.resource_pointer.reference.clone();
+                let id_ref_key = format!("{}-{}", node.node.id.clone(), ref_key);
+                nodes.insert(id_ref_key.clone(), node.clone());
+                (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
             })
             .collect();
 
         // Use the bin_heap_order_scores function to sort the scores
         let sorted_scores = Embedding::bin_heap_order_scores(scores, num_results as usize);
 
-        // Map the sorted_scores back to a vector of RetrievedDataChunk
-        let sorted_data: Vec<RetrievedDataChunk> = sorted_scores
+        // Map the sorted_scores back to a vector of RetrievedNode
+        let sorted_data: Vec<RetrievedNode> = sorted_scores
             .into_iter()
-            .map(|(_, id_db_key)| data_chunks[&id_db_key].clone())
+            .map(|(_, id_db_key)| nodes[&id_db_key].clone())
             .collect();
 
         sorted_data
@@ -64,34 +64,34 @@ impl RetrievedDataChunk {
 
     /// Formats the retrieval path to a string, adding a trailing `/`
     /// to denote that the retrieval path are the Vector Resources
-    /// leading to this RetrievedDataChunk
+    /// leading to this RetrievedNode
     pub fn format_path_to_string(&self) -> String {
         let mut path_string = self.retrieval_path.format_to_string();
-        if let NodeContent::Resource(_) = self.chunk.content {
+        if let NodeContent::Resource(_) = self.node.content {
             path_string.push('/');
         }
         path_string
     }
 
-    /// Formats the data, source, and metadata of all provided `RetrievedDataChunk`s into a bullet-point
+    /// Formats the data, source, and metadata of all provided `RetrievedNode`s into a bullet-point
     /// list as a single string. This is to be included inside of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
-    pub fn format_ret_chunks_for_prompt(ret_data_chunks: Vec<RetrievedDataChunk>, max_characters: usize) -> String {
-        if ret_data_chunks.is_empty() {
+    pub fn format_ret_nodes_for_prompt(ret_nodes: Vec<RetrievedNode>, max_characters: usize) -> String {
+        if ret_nodes.is_empty() {
             return String::new();
         }
 
         let mut result = String::new();
         let mut remaining_chars = max_characters;
 
-        for ret_chunk in ret_data_chunks {
-            if let Some(formatted_chunk) = ret_chunk.format_for_prompt(remaining_chars) {
-                if formatted_chunk.len() > remaining_chars {
+        for ret_node in ret_nodes {
+            if let Some(formatted_node) = ret_node.format_for_prompt(remaining_chars) {
+                if formatted_node.len() > remaining_chars {
                     break;
                 }
-                result.push_str(&formatted_chunk);
+                result.push_str(&formatted_node);
                 result.push_str("\n\n ");
-                remaining_chars -= formatted_chunk.len();
+                remaining_chars -= formatted_node.len();
             }
         }
 
@@ -111,7 +111,7 @@ impl RetrievedDataChunk {
             return None;
         }
 
-        let data_string = self.chunk.get_data_string().ok()?;
+        let data_string = self.node.get_data_string().ok()?;
         let data_length = max_characters - base_length;
 
         let data_string = if data_string.len() > data_length {
@@ -129,10 +129,10 @@ impl RetrievedDataChunk {
         Some(formatted_string)
     }
 
-    /// Parses the metdata of the data chunk, and outputs a readable string which includes
-    /// any metadata relevant to provide to an LLM as context about the retrieved chunk.
+    /// Parses the metdata of the node, and outputs a readable string which includes
+    /// any metadata relevant to provide to an LLM as context about the retrieved node.
     pub fn format_metadata_string(&self) -> String {
-        match &self.chunk.metadata {
+        match &self.node.metadata {
             Some(metadata) => {
                 if let Some(page_numbers) = metadata.get("page_numbers") {
                     format!("Pgs: {}", page_numbers)
@@ -145,19 +145,19 @@ impl RetrievedDataChunk {
     }
 }
 
-/// Represents a data chunk with an id, data, and optional metadata.
+/// Represents a node with an id, data, and optional metadata.
 /// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
-/// data tag names instead in the DataChunk.
+/// data tag names instead in the Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DataChunk {
+pub struct Node {
     pub id: String,
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
 }
 
-impl DataChunk {
-    /// Create a new String-holding DataChunk with a provided String id
+impl Node {
+    /// Create a new String-holding Node with a provided String id
     pub fn new(
         id: String,
         data: &str,
@@ -172,7 +172,7 @@ impl DataChunk {
         }
     }
 
-    /// Create a new String-holding DataChunk with a provided u64 id, which gets converted to string internally
+    /// Create a new String-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_with_integer_id(
         id: u64,
         data: &str,
@@ -182,13 +182,13 @@ impl DataChunk {
         Self::new(id.to_string(), data, metadata, data_tag_names)
     }
 
-    /// Create a new BaseVectorResource-holding DataChunk with a provided String id
+    /// Create a new BaseVectorResource-holding Node with a provided String id
     pub fn new_vector_resource(
         id: String,
         vector_resource: &BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
-        DataChunk {
+        Node {
             id: id,
             content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
@@ -196,7 +196,7 @@ impl DataChunk {
         }
     }
 
-    /// Create a new BaseVectorResource-holding DataChunk with a provided u64 id, which gets converted to string internally
+    /// Create a new BaseVectorResource-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_vector_resource_with_integer_id(
         id: u64,
         vector_resource: &BaseVectorResource,
@@ -205,7 +205,7 @@ impl DataChunk {
         Self::new_vector_resource(id.to_string(), vector_resource, metadata)
     }
 
-    /// Attempts to read the data String from the DataChunk. Errors if data is a VectorResource
+    /// Attempts to read the data String from the Node. Errors if data is a VectorResource
     pub fn get_data_string(&self) -> Result<String, VectorResourceError> {
         match &self.content {
             NodeContent::Text(s) => Ok(s.clone()),
@@ -213,7 +213,7 @@ impl DataChunk {
         }
     }
 
-    /// Attempts to read the BaseVectorResource from the DataChunk. Errors if data is an actual String
+    /// Attempts to read the BaseVectorResource from the Node. Errors if data is an actual String
     pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VectorResourceError> {
         match &self.content {
             NodeContent::Text(_) => Err(VectorResourceError::DataIsNonMatchingType),
@@ -222,7 +222,7 @@ impl DataChunk {
     }
 }
 
-/// Contents of a DataChunk. Either the String text itself, or
+/// Contents of a Node. Either the String text itself, or
 /// another VectorResource
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeContent {
@@ -230,7 +230,7 @@ pub enum NodeContent {
     Resource(BaseVectorResource),
 }
 
-/// Type which holds referential data about a given resource.
+/// Struct which holds reference information about a given Vector Resource.
 /// `reference` holds a string which points back to the original resource that
 /// the pointer was created out of.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -277,8 +277,8 @@ impl From<Box<dyn VectorResource>> for VectorResourcePointer {
     }
 }
 
-/// A path inside of a Vector Resource to an internal DataChunk.
-/// Internally it is made up of an ordered list of data chunk ids.
+/// A path inside of a Vector Resource to an internal Node.
+/// Internally it is made up of an ordered list of node ids.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,

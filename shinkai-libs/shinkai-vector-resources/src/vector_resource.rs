@@ -13,26 +13,26 @@ use async_trait::async_trait;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
-/// choose how the searching algorithm decides to include/ignore DataChunks.
+/// choose how the searching algorithm decides to include/ignore Nodes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalMethod {
-    /// Efficiently only goes deeper into Vector Resources if they are the highest scored DataChunks at their level.
+    /// Efficiently only goes deeper into Vector Resources if they are the highest scored Nodes at their level.
     /// Will go infinitely deep until hitting a level where no BaseVectorResources are part of the highest scored.
     Efficient,
     /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
-    /// Will return BaseVectorResource DataChunks if they are the highest scored at the specified depth.
+    /// Will return BaseVectorResource Nodes if they are the highest scored at the specified depth.
     /// Top level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
     UntilDepth(u64),
-    /// Does not skip over any DataChunks, traverses through all levels.
+    /// Does not skip over any Nodes, traverses through all levels.
     Exhaustive,
-    /// Performs an exhaustive search by traversing all levels and ranking all data chunks, iteratively
-    /// averaging out the score all the way to each final data chunk. In other words, the final score
-    /// of each DataChunk weighs-in the scores of the Vector Resources that it was inside all the way up.
+    /// Performs an exhaustive search by traversing all levels and ranking all nodes, iteratively
+    /// averaging out the score all the way to each final node. In other words, the final score
+    /// of each Node weighs-in the scores of the Vector Resources that it was inside all the way up.
     HierarchicalAverage,
     /// Iterates exhaustively going through all levels while doing absolutely no scoring/similarity checking,
-    /// returning every single data chunk at any level. Also returns the Vector Resources in addition to their
-    /// DataChunks they hold inside, thus providing all chunks that exist within the root Vector Resource.
-    UnscoredAllChunks,
+    /// returning every single node at any level. Also returns the Vector Resources in addition to their
+    /// Nodes they hold inside, thus providing all nodes that exist within the root Vector Resource.
+    UnscoredAllNodes,
 }
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
@@ -49,13 +49,13 @@ pub trait VectorResource {
     fn resource_base_type(&self) -> VectorResourceBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
-    fn chunk_embeddings(&self) -> Vec<Embedding>;
+    fn node_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
-    fn get_chunk_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
-    /// Retrieves a data chunk given its id, at the root level depth.
-    fn get_data_chunk(&self, id: String) -> Result<DataChunk, VectorResourceError>;
-    /// Retrieves all data chunks at the root level of the Vector Resource
-    fn get_data_chunks(&self) -> Vec<DataChunk>;
+    fn get_node_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
+    /// Retrieves a node given its id, at the root level depth.
+    fn get_node(&self, id: String) -> Result<Node, VectorResourceError>;
+    /// Retrieves all nodes at the root level of the Vector Resource
+    fn get_nodes(&self) -> Vec<Node>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
@@ -125,7 +125,7 @@ pub trait VectorResource {
 
     /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.
     /// This uniquely identifies the given VectorResource, and is used in VectorResourcePointer to
-    /// make it easy to know what resource a RetrievedDataChunk is from (more informative than bare resource_id).
+    /// make it easy to know what resource a RetrievedNode is from (more informative than bare resource_id).
     ///
     /// This is also used in the Shinkai Node for the key where the VectorResource will be stored in the DB.
     fn reference_string(&self) -> String {
@@ -154,39 +154,30 @@ pub trait VectorResource {
         VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
-    /// Returns every single data chunk at any level in the whole Vector Resource, including sub Vector Resources
-    /// and the DataChunks they hold. If a starting_path is provided then fetches all data chunks from there,
+    /// Returns every single node at any level in the whole Vector Resource, including sub Vector Resources
+    /// and the Nodes they hold. If a starting_path is provided then fetches all nodes from there,
     /// else starts at root. If resources_only is true, only Vector Resources are returned.
-    fn get_data_chunks_exhaustive(
-        &self,
-        starting_path: Option<VRPath>,
-        resources_only: bool,
-    ) -> Vec<RetrievedDataChunk> {
+    fn get_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new("", vec![]);
-        let mut data_chunks =
-            self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path);
+        let mut nodes =
+            self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllNodes, starting_path);
 
         if resources_only {
-            data_chunks.retain(|chunk| matches!(chunk.chunk.content, NodeContent::Resource(_)));
+            nodes.retain(|node| matches!(node.node.content, NodeContent::Resource(_)));
         }
 
-        data_chunks
+        nodes
     }
 
-    /// Prints all data chunks and their paths to easily/quickly examine a Vector Resource.
+    /// Prints all nodes and their paths to easily/quickly examine a Vector Resource.
     /// This is exhaustive and can begin from any starting_path.
     /// `shorten_data` - Cuts the string content short to improve readability.
     /// `resources_only` - Only prints Vector Resources
-    fn print_all_data_chunks_exhaustive(
-        &self,
-        starting_path: Option<VRPath>,
-        shorten_data: bool,
-        resources_only: bool,
-    ) {
-        let data_chunks = self.get_data_chunks_exhaustive(starting_path, resources_only);
-        for chunk in data_chunks {
-            let path = chunk.retrieval_path.format_to_string();
-            let data = match &chunk.chunk.content {
+    fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
+        let nodes = self.get_nodes_exhaustive(starting_path, resources_only);
+        for node in nodes {
+            let path = node.retrieval_path.format_to_string();
+            let data = match &node.node.content {
                 NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
                         s.chars().take(25).collect::<String>() + "..."
@@ -197,9 +188,9 @@ pub trait VectorResource {
                 NodeContent::Resource(resource) => {
                     println!("");
                     format!(
-                        "<{}> - {} Chunks Held Inside",
+                        "<{}> - {} Nodes Held Inside",
                         resource.as_trait_object().name(),
-                        resource.as_trait_object().chunk_embeddings().len()
+                        resource.as_trait_object().node_embeddings().len()
                     )
                 }
             };
@@ -207,19 +198,19 @@ pub trait VectorResource {
         }
     }
 
-    /// Retrieves a data chunk, no matter its depth, given its path.
+    /// Retrieves a node, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
-    fn get_data_chunk_with_path(&self, path: VRPath) -> Result<DataChunk, VectorResourceError> {
+    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VectorResourceError> {
         if path.path_ids.is_empty() {
             return Err(VectorResourceError::InvalidVRPath(path.clone()));
         }
 
-        // Fetch the first data chunk directly, then iterate through the rest
-        let mut data_chunk = self.get_data_chunk(path.path_ids[0].clone())?;
+        // Fetch the first node directly, then iterate through the rest
+        let mut node = self.get_node(path.path_ids[0].clone())?;
         for id in path.path_ids.iter().skip(1) {
-            match data_chunk.content {
+            match node.content {
                 NodeContent::Resource(ref resource) => {
-                    data_chunk = resource.as_trait_object().get_data_chunk(id.clone())?;
+                    node = resource.as_trait_object().get_node(id.clone())?;
                 }
                 NodeContent::Text(_) => {
                     if let Some(last) = path.path_ids.last() {
@@ -230,15 +221,15 @@ pub trait VectorResource {
                 }
             }
         }
-        Ok(data_chunk)
+        Ok(node)
     }
 
-    /// Performs a vector search that returns the most similar data chunks based on the query.
-    fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedDataChunk> {
+    /// Performs a vector search that returns the most similar nodes based on the query.
+    fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
         self.vector_search_with_options(query, num_of_results, &TraversalMethod::HierarchicalAverage, None)
     }
 
-    /// Performs a vector search that returns the most similar data chunks based on the query.
+    /// Performs a vector search that returns the most similar nodes based on the query.
     /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
     /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
     /// held internally at a specific path.
@@ -248,11 +239,11 @@ pub trait VectorResource {
         num_of_results: u64,
         traversal: &TraversalMethod,
         starting_path: Option<VRPath>,
-    ) -> Vec<RetrievedDataChunk> {
+    ) -> Vec<RetrievedNode> {
         if let Some(path) = starting_path {
-            match self.get_data_chunk_with_path(path.clone()) {
-                Ok(chunk) => {
-                    if let NodeContent::Resource(resource) = chunk.content {
+            match self.get_node_with_path(path.clone()) {
+                Ok(node) => {
+                    if let NodeContent::Resource(resource) = node.content {
                         return resource.as_trait_object()._vector_search_with_options_core(
                             query,
                             num_of_results,
@@ -267,7 +258,7 @@ pub trait VectorResource {
         }
         let mut results =
             self._vector_search_with_options_core(query, num_of_results, traversal, vec![], VRPath::new());
-        if traversal != &TraversalMethod::UnscoredAllChunks {
+        if traversal != &TraversalMethod::UnscoredAllNodes {
             results.truncate(num_of_results as usize);
         }
         results
@@ -281,28 +272,28 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
-    ) -> Vec<RetrievedDataChunk> {
+    ) -> Vec<RetrievedNode> {
         // If exhaustive traversal, then score/return all
         let mut score_num_of_results = num_of_results;
         let mut scores = vec![];
         match traversal {
             // Score all if exhaustive
             &TraversalMethod::Exhaustive | &TraversalMethod::HierarchicalAverage => {
-                score_num_of_results = (&self.chunk_embeddings()).len() as u64;
-                scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
+                score_num_of_results = (&self.node_embeddings()).len() as u64;
+                scores = query.score_similarities(&self.node_embeddings(), score_num_of_results);
             }
             // Fake score all as 0 if unscored exhaustive
-            &TraversalMethod::UnscoredAllChunks => {
-                score_num_of_results = (&self.chunk_embeddings()).len() as u64;
+            &TraversalMethod::UnscoredAllNodes => {
+                score_num_of_results = (&self.node_embeddings()).len() as u64;
                 scores = self
-                    .chunk_embeddings()
+                    .node_embeddings()
                     .iter()
                     .map(|embedding| (0.0, embedding.id.clone()))
                     .collect();
             }
             // Else score as normal
             _ => {
-                scores = query.score_similarities(&self.chunk_embeddings(), score_num_of_results);
+                scores = query.score_similarities(&self.node_embeddings(), score_num_of_results);
             }
         }
 
@@ -317,13 +308,13 @@ pub trait VectorResource {
         )
     }
 
-    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
+    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through Nodes matching the list of data tag names.
     fn syntactic_vector_search(
         &self,
         query: Embedding,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
-    ) -> Vec<RetrievedDataChunk> {
+    ) -> Vec<RetrievedNode> {
         self.syntactic_vector_search_with_options(
             query,
             num_of_results,
@@ -333,7 +324,7 @@ pub trait VectorResource {
         )
     }
 
-    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through DataChunks matching the list of data tag names.
+    /// Performs a syntactic vector search, aka efficiently pre-filtering to only search through Nodes matching the list of data tag names.
     /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
     /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
     /// held internally at a specific path.
@@ -344,11 +335,11 @@ pub trait VectorResource {
         data_tag_names: &Vec<String>,
         traversal: &TraversalMethod,
         starting_path: Option<VRPath>,
-    ) -> Vec<RetrievedDataChunk> {
+    ) -> Vec<RetrievedNode> {
         if let Some(path) = starting_path {
-            match self.get_data_chunk_with_path(path.clone()) {
-                Ok(chunk) => {
-                    if let NodeContent::Resource(resource) = chunk.content {
+            match self.get_node_with_path(path.clone()) {
+                Ok(node) => {
+                    if let NodeContent::Resource(resource) = node.content {
                         return resource.as_trait_object()._syntactic_vector_search_with_options_core(
                             query,
                             num_of_results,
@@ -370,7 +361,7 @@ pub trait VectorResource {
             vec![],
             VRPath::new(),
         );
-        if traversal != &TraversalMethod::UnscoredAllChunks {
+        if traversal != &TraversalMethod::UnscoredAllNodes {
             results.truncate(num_of_results as usize);
         }
         results
@@ -384,12 +375,12 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
-    ) -> Vec<RetrievedDataChunk> {
-        // Fetch all data chunks with matching data tags
+    ) -> Vec<RetrievedNode> {
+        // Fetch all nodes with matching data tags
         let mut matching_data_tag_embeddings = vec![];
         let ids = self._syntactic_search_id_fetch(data_tag_names);
         for id in ids {
-            if let Ok(embedding) = self.get_chunk_embedding(id) {
+            if let Ok(embedding) = self.get_node_embedding(id) {
                 matching_data_tag_embeddings.push(embedding);
             }
         }
@@ -404,7 +395,7 @@ pub trait VectorResource {
                 scores = query.score_similarities(&matching_data_tag_embeddings, score_num_of_results);
             }
             // Fake score all as 0 if unscored exhaustive
-            &TraversalMethod::UnscoredAllChunks => {
+            &TraversalMethod::UnscoredAllNodes => {
                 scores = matching_data_tag_embeddings
                     .iter()
                     .map(|embedding| (0.0, embedding.id.clone()))
@@ -429,7 +420,7 @@ pub trait VectorResource {
 
     /// Internal method shared by vector_search() and syntactic_vector_search() that
     /// orders all scores, and importantly resolves any BaseVectorResources which were
-    /// in the DataChunks of the most similar results.
+    /// in the Nodes of the most similar results.
     fn _order_vector_search_results(
         &self,
         scores: Vec<(f32, String)>,
@@ -439,34 +430,34 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
-    ) -> Vec<RetrievedDataChunk> {
-        let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
+    ) -> Vec<RetrievedNode> {
+        let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
         for (score, id) in scores {
-            if let Ok(chunk) = self.get_data_chunk(id) {
+            if let Ok(node) = self.get_node(id) {
                 // Check if it's a resource
-                if let NodeContent::Resource(_) = chunk.content {
+                if let NodeContent::Resource(_) = node.content {
                     // Keep track for later sorting efficiency
                     vector_resource_count += 1;
 
                     // If traversal method is UntilDepth and we've reached the right level
-                    // Don't recurse any deeper, just return current DataChunk with BaseVectorResource
+                    // Don't recurse any deeper, just return current Node with BaseVectorResource
                     if let TraversalMethod::UntilDepth(d) = traversal {
                         if d == &traversal_path.depth_inclusive() {
-                            let ret_chunk = RetrievedDataChunk {
-                                chunk: chunk.clone(),
+                            let ret_node = RetrievedNode {
+                                node: node.clone(),
                                 score,
                                 resource_pointer: self.get_resource_pointer(),
                                 retrieval_path: traversal_path.clone(),
                             };
-                            current_level_results.push(ret_chunk);
+                            current_level_results.push(ret_node);
                             continue;
                         }
                     }
                 }
 
                 let results = self._recursive_data_extraction(
-                    chunk,
+                    node,
                     score,
                     query.clone(),
                     num_of_results,
@@ -479,10 +470,10 @@ pub trait VectorResource {
             }
         }
 
-        // If at least one vector resource exists in the DataChunks then re-sort
+        // If at least one vector resource exists in the Nodes then re-sort
         // after fetching deeper level results to ensure ordering are correct
-        if vector_resource_count >= 1 && traversal != &TraversalMethod::UnscoredAllChunks {
-            return RetrievedDataChunk::sort_by_score(&current_level_results, num_of_results);
+        if vector_resource_count >= 1 && traversal != &TraversalMethod::UnscoredAllNodes {
+            return RetrievedNode::sort_by_score(&current_level_results, num_of_results);
         }
         // Otherwise just return 1st level results
         current_level_results
@@ -491,7 +482,7 @@ pub trait VectorResource {
     /// Internal method for recursing into deeper levels of Vector Resources
     fn _recursive_data_extraction(
         &self,
-        chunk: DataChunk,
+        node: Node,
         score: f32,
         query: Embedding,
         num_of_results: u64,
@@ -499,14 +490,14 @@ pub trait VectorResource {
         traversal: &TraversalMethod,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
-    ) -> Vec<RetrievedDataChunk> {
-        let mut current_level_results: Vec<RetrievedDataChunk> = vec![];
+    ) -> Vec<RetrievedNode> {
+        let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
         let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
-        // Create a new traversal path with the chunk id
-        let new_traversal_path = traversal_path.push_cloned(chunk.id.clone());
+        // Create a new traversal path with the node id
+        let new_traversal_path = traversal_path.push_cloned(node.id.clone());
 
-        match &chunk.content {
+        match &node.content {
             NodeContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
@@ -528,12 +519,12 @@ pub trait VectorResource {
                     )
                 };
 
-                // If traversing with UnscoredAllChunks, include the Vector Resource
-                // chunks as well in the results, prepended before their data chunks
+                // If traversing with UnscoredAllNodes, include the Vector Resource
+                // nodes as well in the results, prepended before their nodes
                 // held inside
-                if traversal == &TraversalMethod::UnscoredAllChunks {
-                    current_level_results.push(RetrievedDataChunk {
-                        chunk: chunk.clone(),
+                if traversal == &TraversalMethod::UnscoredAllNodes {
+                    current_level_results.push(RetrievedNode {
+                        node: node.clone(),
                         score,
                         resource_pointer: self.get_resource_pointer(),
                         retrieval_path: new_traversal_path,
@@ -549,8 +540,8 @@ pub trait VectorResource {
                     }
                     _ => score,
                 };
-                current_level_results.push(RetrievedDataChunk {
-                    chunk: chunk.clone(),
+                current_level_results.push(RetrievedNode {
+                    node: node.clone(),
                     score,
                     resource_pointer: self.get_resource_pointer(),
                     retrieval_path: new_traversal_path,
@@ -563,19 +554,19 @@ pub trait VectorResource {
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
     ///   of the highest score.
-    fn vector_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedDataChunk> {
+    fn vector_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedNode> {
         // Get top 100 results
         let results = self.vector_search(query.clone(), 100);
 
         // Calculate the top similarity score
-        let top_similarity_score = results.first().map_or(0.0, |ret_chunk| ret_chunk.score);
+        let top_similarity_score = results.first().map_or(0.0, |ret_node| ret_node.score);
 
         // Find the range of acceptable similarity scores
         self._vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
     }
 
     /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks within a specific range of the provided top similarity score.
+    /// the most similar nodes within a specific range of the provided top similarity score.
     ///
     /// * `top_similarity_score` - A float that represents the top similarity score.
     fn _vector_search_tolerance_ranged_score(
@@ -583,7 +574,7 @@ pub trait VectorResource {
         query: Embedding,
         tolerance_range: f32,
         top_similarity_score: f32,
-    ) -> Vec<RetrievedDataChunk> {
+    ) -> Vec<RetrievedNode> {
         // Clamp the tolerance_range to be between 0 and 1
         let tolerance_range = tolerance_range.max(0.0).min(1.0);
 
@@ -593,48 +584,48 @@ pub trait VectorResource {
         let lower_bound = top_similarity_score * (1.0 - tolerance_range);
 
         // Filter the results to only include those within the range of the top similarity score
-        results.retain(|ret_chunk| ret_chunk.score >= lower_bound && ret_chunk.score <= top_similarity_score);
+        results.retain(|ret_node| ret_node.score >= lower_bound && ret_node.score <= top_similarity_score);
 
         results
     }
 
-    /// Fetches all data chunks which contain tags matching the input name list
+    /// Fetches all nodes which contain tags matching the input name list
     /// (including fetching inside all depths of Vector Resources exhaustively)
     /// TODO: Fix the retrieval path/depth to be proper on retrieved nodes
-    fn get_all_syntactic_matches(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedDataChunk> {
-        // Fetch all data chunks with matching data tags
-        let mut matching_data_chunks = vec![];
+    fn get_all_syntactic_matches(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedNode> {
+        // Fetch all nodes with matching data tags
+        let mut matching_nodes = vec![];
         let ids = self._syntactic_search_id_fetch(data_tag_names);
         for id in ids {
-            if let Ok(data_chunk) = self.get_data_chunk(id.clone()) {
-                match data_chunk.content {
+            if let Ok(node) = self.get_node(id.clone()) {
+                match node.content {
                     NodeContent::Resource(resource) => {
                         let sub_results = resource.as_trait_object().get_all_syntactic_matches(data_tag_names);
-                        matching_data_chunks.extend(sub_results);
+                        matching_nodes.extend(sub_results);
                     }
                     NodeContent::Text(_) => {
                         let resource_pointer = self.get_resource_pointer();
-                        let retrieved_data_chunk = RetrievedDataChunk {
-                            chunk: data_chunk,
+                        let retrieved_node = RetrievedNode {
+                            node: node,
                             score: 0.0,
                             resource_pointer,
                             retrieval_path: VRPath::new(),
                         };
-                        matching_data_chunks.push(retrieved_data_chunk);
+                        matching_nodes.push(retrieved_node);
                     }
                 }
             }
         }
 
-        matching_data_chunks
+        matching_nodes
     }
 
-    /// Internal method to fetch all chunk ids for syntactic searches
+    /// Internal method to fetch all node ids for syntactic searches
     fn _syntactic_search_id_fetch(&self, data_tag_names: &Vec<String>) -> Vec<String> {
         let mut ids = vec![];
         for name in data_tag_names {
-            if let Some(chunk_ids) = self.data_tag_index().get_chunk_ids(&name) {
-                ids.extend(chunk_ids.iter().map(|id| id.to_string()));
+            if let Some(node_ids) = self.data_tag_index().get_node_ids(&name) {
+                ids.extend(node_ids.iter().map(|id| id.to_string()));
             }
         }
         ids

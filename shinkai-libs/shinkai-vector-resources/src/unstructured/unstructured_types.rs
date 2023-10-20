@@ -5,7 +5,7 @@ use crate::embeddings::Embedding;
 use super::unstructured_parser::UnstructuredParser;
 
 /// An intermediary type in between `UnstructuredElement`s and
-/// `Embedding`s/`DataChunk`s
+/// `Embedding`s/`Node`s
 #[derive(Debug, Clone, PartialEq)]
 pub struct GroupedText {
     pub text: String,

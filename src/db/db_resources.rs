@@ -6,7 +6,7 @@ use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, Vector
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::vector_resource::{RetrievedDataChunk, VectorResource, VectorResourcePointer};
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VectorResource, VectorResourcePointer};
 
 use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
@@ -158,7 +158,7 @@ impl ShinkaiDB {
 
     /// Performs a 2-tier syntactic vector search across all resources.
     /// Only resources with matching data tags will be considered at all,
-    /// and likewise only data chunks with matching data tags inside of said
+    /// and likewise only nodes with matching data tags inside of said
     /// resources will be scored and potentially returned.
     pub fn syntactic_vector_search(
         &self,
@@ -167,48 +167,48 @@ impl ShinkaiDB {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let resources =
             self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names, profile)?;
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for resource in resources {
             println!("VectorResource: {}", resource.as_trait_object().name());
             let results =
                 resource
                     .as_trait_object()
                     .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
+        Ok(RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding.
     ///
     /// From there a vector search is performed on each resource with the query embedding,
     /// and the results from all resources are then collected, sorted, and the top num_of_results
-    /// RetriedDataChunks based on similarity score are returned.
+    /// RetriedNodes based on similarity score are returned.
     pub fn vector_search(
         &self,
         query: Embedding,
         num_of_resources: u64,
         num_of_results: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for resource in resources {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
+        Ok(RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding,
-    /// returning retrieved data chunks that are within a tolerance range of similarity.
+    /// returning retrieved nodes that are within a tolerance range of similarity.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
@@ -219,32 +219,32 @@ impl ShinkaiDB {
         num_of_resources: u64,
         tolerance_range: f32,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let retrieved_chunks = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
-        if retrieved_chunks.is_empty() {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
+        let retrieved_nodes = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
+        if retrieved_nodes.is_empty() {
             return Ok(Vec::new());
         }
-        let top_chunk = &retrieved_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
+        let top_node = &retrieved_nodes.get(0).ok_or(ShinkaiDBError::VectorResourceError(
             VectorResourceError::VectorResourceEmpty,
         ))?;
 
-        // Fetch the chunks that fit in the tolerance range
+        // Fetch the nodes that fit in the tolerance range
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
-        let mut final_chunks = Vec::new();
+        let mut final_nodes = Vec::new();
         for resource in resources {
             let results = resource.as_trait_object()._vector_search_tolerance_ranged_score(
                 query.clone(),
                 tolerance_range,
-                top_chunk.score,
+                top_node.score,
             );
-            final_chunks.extend(results);
+            final_nodes.extend(results);
         }
 
-        Ok(final_chunks)
+        Ok(final_nodes)
     }
 
     /// Performs a 2-tier vector search using a query embedding across all DocumentVectorResources
-    /// and fetches the most similar data chunk + proximity_window number of chunks around it.
+    /// and fetches the most similar node + proximity_window number of nodes around it.
     ///
     /// Note: This only searches DocumentVectorResources in Topic::VectorResources, not all resources. This is
     /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
@@ -254,7 +254,7 @@ impl ShinkaiDB {
         num_of_docs: u64,
         proximity_window: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let mut docs: Vec<DocumentVectorResource> = Vec::new();
         for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
             if let Ok(document_resource) = doc.as_document_resource() {
@@ -262,19 +262,19 @@ impl ShinkaiDB {
             }
         }
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for doc in &docs {
             let results = doc.vector_search(query.clone(), 1);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        let top_ret_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, 1);
-        let top_chunk = top_ret_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
+        let top_ret_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, 1);
+        let top_node = top_ret_nodes.get(0).ok_or(ShinkaiDBError::VectorResourceError(
             VectorResourceError::VectorResourceEmpty,
         ))?;
 
         for doc in &docs {
-            if doc.reference_string() == top_chunk.resource_pointer.reference {
+            if doc.reference_string() == top_node.resource_pointer.reference {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }

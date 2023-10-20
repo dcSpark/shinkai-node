@@ -66,7 +66,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction",
-            res[0].chunk.get_data_string().unwrap()
+            res[0].node.get_data_string().unwrap()
         );
 
     let query_string = "What about up-front costs?";
@@ -74,7 +74,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "No longer will we need heavy up-front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user’s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].chunk.get_data_string().unwrap()
+            res[0].node.get_data_string().unwrap()
         );
 
     let query_string = "Does this relate to crypto?";
@@ -82,7 +82,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            res[0].chunk.get_data_string().unwrap()
+            res[0].node.get_data_string().unwrap()
         );
 }
 
@@ -171,46 +171,46 @@ fn test_multi_resource_db_vector_search() {
     let fetched_doc = fetched_resources.get(0).unwrap();
     assert_eq!(&doc2.resource_id(), &fetched_doc.as_trait_object().resource_id());
 
-    // Camel DataChunk vector search
+    // Camel Node vector search
     let query = generator.generate_embedding_default_blocking("Camels").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
-    let ret_data_chunk = ret_data_chunks.get(0).unwrap();
-    assert_eq!(fact2, &ret_data_chunk.chunk.get_data_string().unwrap());
+    let ret_nodes = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
+    let ret_node = ret_nodes.get(0).unwrap();
+    assert_eq!(fact2, &ret_node.node.get_data_string().unwrap());
 
-    // Camel DataChunk vector search
+    // Camel Node vector search
     let query = generator
         .generate_embedding_default_blocking("Does this relate to crypto?")
         .unwrap();
-    let ret_data_chunks = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
-    let ret_data_chunk = ret_data_chunks.get(0).unwrap();
+    let ret_nodes = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
+    let ret_node = ret_nodes.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            &ret_data_chunk.chunk.get_data_string().unwrap()
+            &ret_node.node.get_data_string().unwrap()
         );
 
-    // Camel DataChunk proximity vector search
+    // Camel Node proximity vector search
     let query = generator.generate_embedding_default_blocking("Camel").unwrap();
-    let ret_data_chunks = shinkai_db.vector_search_proximity(query, 10, 2, &profile).unwrap();
-    let ret_data_chunk = ret_data_chunks.get(0).unwrap();
-    let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
-    let ret_data_chunk3 = ret_data_chunks.get(2).unwrap();
-    assert_eq!(fact1, &ret_data_chunk.chunk.get_data_string().unwrap());
-    assert_eq!(fact2, &ret_data_chunk2.chunk.get_data_string().unwrap());
-    assert_eq!(fact3, &ret_data_chunk3.chunk.get_data_string().unwrap());
+    let ret_nodes = shinkai_db.vector_search_proximity(query, 10, 2, &profile).unwrap();
+    let ret_node = ret_nodes.get(0).unwrap();
+    let ret_node2 = ret_nodes.get(1).unwrap();
+    let ret_node3 = ret_nodes.get(2).unwrap();
+    assert_eq!(fact1, &ret_node.node.get_data_string().unwrap());
+    assert_eq!(fact2, &ret_node2.node.get_data_string().unwrap());
+    assert_eq!(fact3, &ret_node3.node.get_data_string().unwrap());
 
     // Animal tolerance range vector search
     let query = generator
         .generate_embedding_default_blocking("Animals that perform actions")
         .unwrap();
-    let ret_data_chunks = shinkai_db
+    let ret_nodes = shinkai_db
         .vector_search_tolerance_ranged(query, 10, 0.4, &profile)
         .unwrap();
 
-    let ret_data_chunk = ret_data_chunks.get(0).unwrap();
-    let ret_data_chunk2 = ret_data_chunks.get(1).unwrap();
+    let ret_node = ret_nodes.get(0).unwrap();
+    let ret_node2 = ret_nodes.get(1).unwrap();
 
-    assert_eq!(fact1, &ret_data_chunk.chunk.get_data_string().unwrap());
-    assert_eq!(fact2, &ret_data_chunk2.chunk.get_data_string().unwrap());
+    assert_eq!(fact1, &ret_node.node.get_data_string().unwrap());
+    assert_eq!(fact2, &ret_node2.node.get_data_string().unwrap());
 }
 
 #[test]
@@ -266,8 +266,8 @@ fn test_db_syntactic_vector_search() {
     let fetched_data = shinkai_db
         .syntactic_vector_search(query, 1, 10, &vec![email_tag.name.clone()], &profile)
         .unwrap();
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!("1", &fetched_chunk.chunk.id);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!("1", &fetched_node.node.id);
     assert!(fetched_data.len() == 1);
 
     // Multiplier syntactic vector search
@@ -277,7 +277,7 @@ fn test_db_syntactic_vector_search() {
     let fetched_data = shinkai_db
         .syntactic_vector_search(query, 1, 10, &vec![multiplier_tag.name.clone()], &profile)
         .unwrap();
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!("12", &fetched_chunk.chunk.id);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!("12", &fetched_node.node.id);
     assert!(fetched_data.len() == 1);
 }

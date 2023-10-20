@@ -8,7 +8,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedDataChunk, VectorResource};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -207,12 +207,12 @@ impl ToolRouter {
         "js".to_string()
     }
 
-    /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal DataChunk
+    /// Fetches the ShinkaiTool from the ToolRouter by parsing the internal Node
     /// within the ToolRouter.
     pub fn get_shinkai_tool(&self, tool_name: &str, toolkit_name: &str) -> Result<ShinkaiTool, ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        let data_chunk = self.routing_resource.get_data_chunk(key)?;
-        Ok(ShinkaiTool::from_json(&data_chunk.get_data_string()?)?)
+        let node = self.routing_resource.get_node(key)?;
+        Ok(ShinkaiTool::from_json(&node.get_data_string()?)?)
     }
 
     /// A hard-coded DB key for the profile-wide Tool Router in Topic::Tools.
@@ -230,24 +230,24 @@ impl ToolRouter {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<ShinkaiTool> {
-        let chunks = self
+        let nodes = self
             .routing_resource
             .syntactic_vector_search(query, num_of_results, data_tag_names);
-        self.ret_data_chunks_to_tools(&chunks)
+        self.ret_nodes_to_tools(&nodes)
     }
 
     /// Returns a list of ShinkaiTools of the most similar.
     pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<ShinkaiTool> {
-        let chunks = self.routing_resource.vector_search(query, num_of_results);
-        self.ret_data_chunks_to_tools(&chunks)
+        let nodes = self.routing_resource.vector_search(query, num_of_results);
+        self.ret_nodes_to_tools(&nodes)
     }
 
-    /// Takes a list of RetrievedDataChunks and outputs a list of ShinkaiTools
-    fn ret_data_chunks_to_tools(&self, ret_chunks: &Vec<RetrievedDataChunk>) -> Vec<ShinkaiTool> {
+    /// Takes a list of RetrievedNodes and outputs a list of ShinkaiTools
+    fn ret_nodes_to_tools(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<ShinkaiTool> {
         let mut shinkai_tools = vec![];
-        for ret_chunk in ret_chunks {
+        for ret_node in ret_nodes {
             // Ignores tools added to the router which are invalid by matching on the Ok()
-            if let Ok(data_string) = ret_chunk.chunk.get_data_string() {
+            if let Ok(data_string) = ret_node.node.get_data_string() {
                 if let Ok(shinkai_tool) = ShinkaiTool::from_json(&data_string) {
                     shinkai_tools.push(shinkai_tool);
                 }
@@ -264,7 +264,7 @@ impl ToolRouter {
 
         // Setup the metadata based on tool type
 
-        match self.routing_resource.get_data_chunk(router_key.clone()) {
+        match self.routing_resource.get_node(router_key.clone()) {
             Ok(_) => {
                 // If a Shinkai tool with same key is already found, error
                 return Err(ToolError::ToolAlreadyInstalled(data.to_string()));
@@ -295,7 +295,7 @@ impl ToolRouter {
     pub fn get_tool_embedding(&self, shinkai_tool: &ShinkaiTool) -> Result<Embedding, ToolError> {
         Ok(self
             .routing_resource
-            .get_chunk_embedding(shinkai_tool.tool_router_key().to_string())?)
+            .get_node_embedding(shinkai_tool.tool_router_key().to_string())?)
     }
 
     pub fn from_json(json: &str) -> Result<Self, ToolError> {
