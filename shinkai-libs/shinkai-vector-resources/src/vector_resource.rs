@@ -1,6 +1,7 @@
 use crate::base_vector_resources::VectorResourceBaseType;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
+#[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
@@ -191,6 +192,7 @@ pub trait VectorResource {
 
     /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
     /// (targets the same model and interface for embedding generation).
+    #[cfg(feature = "native-http")]
     fn initialize_compatible_embeddings_generator(
         &self,
         api_url: &str,
