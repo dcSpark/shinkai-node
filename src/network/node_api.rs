@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::encryption_public_key_to_string;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -245,6 +245,15 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             .and_then(move |message: ShinkaiMessage| job_message_handler(node_commands_sender.clone(), message))
     };
 
+    // POST v1/get_filenames_for_file_inbox
+    let get_filenames = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "get_filenames_for_file_inbox")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| get_filenames_message_handler(node_commands_sender.clone(), message))
+    };
+
     // POST v1/mark_as_read_up_to
     let mark_as_read_up_to = {
         let node_commands_sender = node_commands_sender.clone();
@@ -336,6 +345,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(shinkai_health)
         .or(create_files_inbox_with_symmetric_key)
         .or(add_file_to_inbox_with_symmetric_key)
+        .or(get_filenames)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -345,7 +355,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     shinkai_log(
         ShinkaiLogOption::API,
         ShinkaiLogLevel::Info,
-        &format!("Server successfully started at: {}", &address)
+        &format!("Server successfully started at: {}", &address),
     );
 }
 
@@ -367,7 +377,10 @@ where
     let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
 
     match result {
-        Ok(message) => Ok(warp::reply::with_status(warp::reply::json(&json!({"status": "success", "data": message})), StatusCode::OK)),
+        Ok(message) => Ok(warp::reply::with_status(
+            warp::reply::json(&json!({"status": "success", "data": message})),
+            StatusCode::OK,
+        )),
         Err(error) => Ok(warp::reply::with_status(
             warp::reply::json(&json!({"status": "error", "error": error})),
             StatusCode::from_u16(error.code).unwrap(),
@@ -664,6 +677,21 @@ async fn job_message_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APIJobMessage {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn get_filenames_message_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIGetFilenamesInInbox {
             msg: message,
             res: res_sender,
         },

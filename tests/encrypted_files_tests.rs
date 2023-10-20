@@ -326,7 +326,44 @@ fn sandwich_messages_with_files_test() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("response: {}", response);
             }
+            {
+                // Get filenames in inbox
+                let message_content = hash_of_aes_encryption_key_hex(symmetrical_sk);
+                let msg = ShinkaiMessageBuilder::new(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node1_profile_name.to_string().clone(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_intra_sender(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
 
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIGetFilenamesInInbox {
+                        msg,
+                        res: res_sender,
+                    })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                assert_eq!(response, vec!["files/Zeko_Mina_Rollup.pdf"]);
+            }
             // {
             //     let _m = server
             //         .mock("POST", "/v1/chat/completions")
@@ -356,65 +393,65 @@ fn sandwich_messages_with_files_test() {
             //         .create();
             // }
 
-            let job_message_content = "What's Zeko?".to_string();
-            {
-                // Send a Message to the Job for processing
-                eprintln!("\n\nSend a message for the Job");
-                let start = Instant::now();
-                api_message_job(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
-                    &job_id.clone().to_string(),
-                    &job_message_content,
-                    &hash_of_aes_encryption_key_hex(symmetrical_sk),
-                )
-                .await;
-
-                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            }
+            // let job_message_content = "What's Zeko?".to_string();
             // {
-            //     tokio::time::sleep(Duration::from_secs(1000)).await;
-            // }
-            {
-                eprintln!("Waiting for the Job to finish");
-                for _ in 0..50 {
-                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::FetchLastMessages {
-                            limit: 2,
-                            res: res1_sender,
-                        })
-                        .await
-                        .unwrap();
-                    let node1_last_messages = res1_receiver.recv().await.unwrap();
-                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
+            //     // Send a Message to the Job for processing
+            //     eprintln!("\n\nSend a message for the Job");
+            //     let start = Instant::now();
+            //     api_message_job(
+            //         node1_commands_sender.clone(),
+            //         clone_static_secret_key(&node1_profile_encryption_sk),
+            //         node1_encryption_pk.clone(),
+            //         clone_signature_secret_key(&node1_profile_identity_sk),
+            //         node1_identity_name.clone().as_str(),
+            //         node1_profile_name.clone().as_str(),
+            //         &agent_subidentity.clone(),
+            //         &job_id.clone().to_string(),
+            //         &job_message_content,
+            //         &hash_of_aes_encryption_key_hex(symmetrical_sk),
+            //     )
+            //     .await;
 
-                    match node1_last_messages[0].get_message_content() {
-                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-                            Ok(job_message) => {
-                                eprintln!("message_content: {}", message_content);
-                                if job_message.content != job_message_content {
-                                    assert!(true);
-                                    break;
-                                }
-                            }
-                            Err(_) => {
-                                eprintln!("error: message_content: {}", message_content);
-                            }
-                        },
-                        Err(_) => {
-                            // nothing
-                        }
-                    }
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                }
-            }
+            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
+            // }
+            // // {
+            // //     tokio::time::sleep(Duration::from_secs(1000)).await;
+            // // }
+            // {
+            //     eprintln!("Waiting for the Job to finish");
+            //     for _ in 0..50 {
+            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
+            //         node1_commands_sender
+            //             .send(NodeCommand::FetchLastMessages {
+            //                 limit: 2,
+            //                 res: res1_sender,
+            //             })
+            //             .await
+            //             .unwrap();
+            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
+            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
+
+            //         match node1_last_messages[0].get_message_content() {
+            //             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
+            //                 Ok(job_message) => {
+            //                     eprintln!("message_content: {}", message_content);
+            //                     if job_message.content != job_message_content {
+            //                         assert!(true);
+            //                         break;
+            //                     }
+            //                 }
+            //                 Err(_) => {
+            //                     eprintln!("error: message_content: {}", message_content);
+            //                 }
+            //             },
+            //             Err(_) => {
+            //                 // nothing
+            //             }
+            //         }
+            //         tokio::time::sleep(Duration::from_secs(10)).await;
+            //     }
+            // }
         })
     });
 }
