@@ -196,7 +196,12 @@ const ChatConversation = () => {
   };
 
   const isLoading = useMemo(() => {
-    if (isSendingMessageToJob || isSendingMessageToInbox) return true;
+    if (
+      isSendingMessageToJob ||
+      isSendingMessageToInbox ||
+      isSendingTextMessageWithFilesForInbox
+    )
+      return true;
     const lastMessage = data?.pages?.at(-1)?.at(-1);
     if (!lastMessage) return false;
     const isLocal = isLocalMessage(
@@ -209,6 +214,7 @@ const ChatConversation = () => {
   }, [
     isSendingMessageToJob,
     isSendingMessageToInbox,
+    isSendingTextMessageWithFilesForInbox,
     data?.pages,
     auth?.shinkai_identity,
     auth?.profile,
