@@ -1,8 +1,6 @@
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
-#[cfg(feature = "native-http")]
-use tokio::task::JoinError;
 
 use crate::vector_resource::VRPath;
 
@@ -65,13 +63,6 @@ impl fmt::Display for VectorResourceError {
 }
 
 impl Error for VectorResourceError {}
-
-#[cfg(feature = "native-http")]
-impl From<JoinError> for VectorResourceError {
-    fn from(error: JoinError) -> Self {
-        VectorResourceError::TaskFailed(error.to_string())
-    }
-}
 
 impl From<regex::Error> for VectorResourceError {
     fn from(err: regex::Error) -> VectorResourceError {

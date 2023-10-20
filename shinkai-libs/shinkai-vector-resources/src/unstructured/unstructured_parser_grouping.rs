@@ -115,6 +115,58 @@ impl UnstructuredParser {
         Ok(text_groups)
     }
 
+    #[cfg(feature = "native-http")]
+    /// Recursively goes through all of the text groups and batch generates embeddings
+    /// for all of them.
+    pub fn generate_text_group_embeddings_blocking(
+        text_groups: &Vec<GroupedText>,
+        generator: Box<dyn EmbeddingGenerator>,
+        mut max_batch_size: u64,
+        max_chunk_size: u64,
+        collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
+    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+        // Clone the input text_groups
+        let mut text_groups = text_groups.clone();
+
+        // Collect all texts from the text groups and their subgroups
+        let mut texts = Vec::new();
+        let mut indices = Vec::new();
+        collect_texts_and_indices(&text_groups, &mut texts, &mut indices, max_chunk_size, vec![]);
+
+        // Generate embeddings for all texts in batches
+        let ids: Vec<String> = vec!["".to_string(); texts.len()];
+        let mut embeddings = Vec::new();
+        for batch in texts.chunks(max_batch_size as usize) {
+            let batch_ids = &ids[..batch.len()];
+            println!("Generating batched embeddings for {} text groups", batch_ids.len());
+            match generator.generate_embeddings_blocking(&batch.to_vec(), &batch_ids.to_vec()) {
+                Ok(batch_embeddings) => {
+                    embeddings.extend(batch_embeddings);
+                }
+                Err(e) => {
+                    println!("Error generating embeddings: {:?}", e);
+                    if max_batch_size > 5 {
+                        max_batch_size -= 5;
+                        return Self::generate_text_group_embeddings_blocking(
+                            &text_groups,
+                            generator,
+                            max_batch_size,
+                            max_chunk_size,
+                            collect_texts_and_indices,
+                        );
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // Assign the generated embeddings back to the text groups and their subgroups
+        Self::assign_embeddings(&mut text_groups, &mut embeddings, &indices);
+
+        Ok(text_groups)
+    }
+
     /// Helper method for processing a grouped text for process_new_doc_resource
     pub fn process_grouped_text(grouped_text: &GroupedText) -> (String, Option<HashMap<String, String>>, bool, String) {
         let has_sub_groups = !grouped_text.sub_groups.is_empty();

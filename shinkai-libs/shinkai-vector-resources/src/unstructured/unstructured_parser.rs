@@ -11,8 +11,6 @@ use crate::vector_resource::VectorResource;
 use async_recursion::async_recursion;
 use blake3::Hasher;
 use serde_json::Value as JsonValue;
-#[cfg(feature = "native-http")]
-use tokio::runtime::Runtime;
 
 /// Struct which contains several methods related to parsing output from Unstructured
 #[derive(Debug)]
@@ -105,18 +103,14 @@ impl UnstructuredParser {
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
-        let cloned_generator = generator.box_clone();
-        let task = tokio::spawn(async move {
-            Self::generate_text_group_embeddings(
-                &text_groups,
-                cloned_generator,
-                31,
-                max_chunk_size,
-                collect_texts_and_indices,
-            )
-            .await
-        });
-        let new_text_groups = task.await??;
+        let new_text_groups = Self::generate_text_group_embeddings(
+            &text_groups,
+            generator.box_clone(),
+            31,
+            max_chunk_size,
+            collect_texts_and_indices,
+        )
+        .await?;
 
         Self::process_new_doc_resource(
             new_text_groups,
@@ -145,24 +139,18 @@ impl UnstructuredParser {
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
     ) -> Result<BaseVectorResource, VectorResourceError> {
-        // Create a new Tokio runtime
-        let rt = Runtime::new().unwrap();
-
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
         let cloned_generator = generator.box_clone();
 
         // Use block_on to run the async-based batched embedding generation logic
-        let new_text_groups = rt.block_on(async {
-            Self::generate_text_group_embeddings(
-                &text_groups,
-                cloned_generator,
-                31,
-                max_chunk_size,
-                collect_texts_and_indices,
-            )
-            .await
-        })?;
+        let new_text_groups = Self::generate_text_group_embeddings_blocking(
+            &text_groups,
+            cloned_generator,
+            31,
+            max_chunk_size,
+            collect_texts_and_indices,
+        )?;
 
         Self::process_new_doc_resource_blocking(
             new_text_groups,
