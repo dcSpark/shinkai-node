@@ -76,7 +76,7 @@ const OnboardingPage = () => {
   });
 
   const {
-    isLoading,
+    isPending,
     isError,
     error,
     mutateAsync: submitRegistration,
@@ -169,8 +169,8 @@ const OnboardingPage = () => {
           {isError && <ErrorMessage message={error.message} />}
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
             variant="default"
           >

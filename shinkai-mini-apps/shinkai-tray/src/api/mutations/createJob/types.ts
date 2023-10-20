@@ -1,4 +1,7 @@
-import type { JobCredentialsPayload } from "@shinkai_network/shinkai-message-ts/models";
+import type {
+  JobCredentialsPayload,
+  ShinkaiMessage,
+} from "@shinkai_network/shinkai-message-ts/models";
 
 export type CreateJobInput = JobCredentialsPayload & {
   shinkaiIdentity: string;
@@ -6,9 +9,15 @@ export type CreateJobInput = JobCredentialsPayload & {
   agentId: string;
   content: string;
   files_inbox: string;
+  files: File[];
 };
 
 export type CreateJobOutput = {
   jobId: string;
-  response: string;
+  response:
+    | string
+    | {
+        inboxId: string;
+        message: ShinkaiMessage;
+      };
 };

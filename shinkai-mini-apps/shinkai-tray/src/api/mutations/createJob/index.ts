@@ -1,6 +1,7 @@
 import {
   createJob as createJobApi,
   sendMessageToJob,
+  sendTextMessageWithFilesForInbox,
 } from "@shinkai_network/shinkai-message-ts/api";
 import {
   JobCreationWrapper,
@@ -9,19 +10,24 @@ import {
 
 import { CreateJobInput } from "./types";
 
+export const buildInboxIdFromJobId = (jobId: string): string => {
+  // TODO: job_inbox, false is hardcoded
+  return `job_inbox::${jobId}::false`;
+};
+
 export const createJob = async ({
   shinkaiIdentity,
   profile,
   agentId,
   content,
   files_inbox,
+  files,
   my_device_encryption_sk,
   my_device_identity_sk,
   node_encryption_pk,
   profile_encryption_sk,
   profile_identity_sk,
 }: CreateJobInput) => {
-  const sender = shinkaiIdentity + "/" + profile;
   const receiver = shinkaiIdentity;
   const receiver_subidentity = `${profile}/agent/${agentId}`;
 
@@ -30,7 +36,8 @@ export const createJob = async ({
 
   const jobId = await createJobApi(
     scope.to_jsvalue(),
-    sender,
+    shinkaiIdentity,
+    profile,
     receiver,
     receiver_subidentity,
     {
@@ -42,21 +49,37 @@ export const createJob = async ({
     }
   );
 
-  const response = await sendMessageToJob(
-    jobId,
-    content,
-    files_inbox,
-    sender,
-    receiver,
-    receiver_subidentity,
-    {
-      my_device_encryption_sk: my_device_encryption_sk,
-      my_device_identity_sk: my_device_identity_sk,
-      node_encryption_pk: node_encryption_pk,
-      profile_encryption_sk,
-      profile_identity_sk,
-    }
-  );
-
+  const response = files?.length
+    ? await sendTextMessageWithFilesForInbox(
+        shinkaiIdentity,
+        profile, // sender subidentity
+        receiver,
+        content,
+        buildInboxIdFromJobId(jobId),
+        files[0],
+        {
+          my_device_encryption_sk: my_device_encryption_sk,
+          my_device_identity_sk: my_device_identity_sk,
+          node_encryption_pk: node_encryption_pk,
+          profile_encryption_sk,
+          profile_identity_sk,
+        }
+      )
+    : await sendMessageToJob(
+        jobId,
+        content,
+        files_inbox,
+        shinkaiIdentity,
+        profile,
+        receiver,
+        receiver_subidentity,
+        {
+          my_device_encryption_sk: my_device_encryption_sk,
+          my_device_identity_sk: my_device_identity_sk,
+          node_encryption_pk: node_encryption_pk,
+          profile_encryption_sk,
+          profile_identity_sk,
+        }
+      );
   return { jobId, response };
 };

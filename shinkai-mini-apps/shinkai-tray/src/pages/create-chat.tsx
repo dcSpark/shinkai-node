@@ -28,7 +28,7 @@ const CreateChatPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
 
-  const { isLoading, mutateAsync: createChat } = useCreateChat({
+  const { isPending, mutateAsync: createChat } = useCreateChat({
     onSuccess: (data) => {
       console.log(data, "chat");
       // TODO: job_inbox, false is hardcoded
@@ -96,8 +96,8 @@ const CreateChatPage = () => {
 
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
           >
             Create Chat

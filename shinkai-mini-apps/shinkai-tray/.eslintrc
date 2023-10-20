@@ -1,7 +1,6 @@
 {
   "extends": [
     "eslint:recommended",
-    "plugin:@tanstack/eslint-plugin-query/recommended",
     "plugin:@typescript-eslint/recommended",
     "plugin:react/recommended",
     "plugin:react-hooks/recommended",
@@ -11,7 +10,6 @@
     "eslint-config-prettier"
   ],
   "plugins": [
-    "@tanstack/eslint-plugin-query",
     "react",
     "react-hooks",
     "import",
