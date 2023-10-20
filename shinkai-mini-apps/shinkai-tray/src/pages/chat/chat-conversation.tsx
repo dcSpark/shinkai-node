@@ -81,10 +81,7 @@ const ChatConversation = () => {
   const previousChatHeightRef = useRef<number>(0);
   const fromPreviousMessagesRef = useRef<boolean>(false);
   const inboxId = decodeURIComponent(encodedInboxId);
-  console.log({
-    inboxId,
-    encodedInboxId,
-  });
+
   const chatForm = useForm<z.infer<typeof chatSchema>>({
     resolver: zodResolver(chatSchema),
     defaultValues: {
@@ -142,7 +139,7 @@ const ChatConversation = () => {
     mutateAsync: sendTextMessageWithFilesForInbox,
     isPending: isSendingTextMessageWithFilesForInbox,
   } = useSendMessageWithFilesToInbox();
-  console.log(data?.pages, "data");
+
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
     if (!auth) return;
     fromPreviousMessagesRef.current = false;
