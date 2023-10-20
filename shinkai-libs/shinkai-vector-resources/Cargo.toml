@@ -3,6 +3,10 @@ name = "shinkai_vector_resources"
 version = "0.1.0"
 edition = "2021"
 
+[[test]]
+name = "vector_resource_tests"
+path = "tests/vector_resource_tests.rs"
+
 [dependencies]
 lazy_static = "1.4.0"
 env_logger = "0.9"
@@ -17,15 +21,10 @@ keyphrases = "0.3.2"
 async-trait = "0.1.74"
 async-recursion = "1.0.5"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
-tokio = "1"
-
-[dependencies.reqwest]
-version = "0.11"
-default-features = false
-features = ["json", "tokio-native-tls", "blocking", "multipart", "default-tls"]
 
 [build-dependencies]
 reqwest = { version = "0.11", features = ["json", "tokio-native-tls", "blocking", "multipart"] }
+tokio = { version = "1.0"  }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -35,10 +34,11 @@ default = ["native-http"]
 native-http = ["reqwest/blocking"]
 wasm-http = []
 
+[dependencies.reqwest]
+version = "0.11"
+default-features = false
+features = ["json", "tokio-native-tls", "blocking", "multipart", "default-tls"]
+
 [dependencies.serde]
 version = "1.0.188"
 features = ["derive"]
-
-[[test]]
-name = "vector_resource_tests"
-path = "tests/vector_resource_tests.rs"

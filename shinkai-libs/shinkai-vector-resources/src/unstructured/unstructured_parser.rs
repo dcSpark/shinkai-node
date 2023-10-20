@@ -11,6 +11,7 @@ use crate::vector_resource::VectorResource;
 use async_recursion::async_recursion;
 use blake3::Hasher;
 use serde_json::Value as JsonValue;
+#[cfg(feature = "native-http")]
 use tokio::runtime::Runtime;
 
 /// Struct which contains several methods related to parsing output from Unstructured

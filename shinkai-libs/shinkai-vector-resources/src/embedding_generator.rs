@@ -1,7 +1,6 @@
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
-#[cfg(feature = "native-http")]
 use async_trait::async_trait;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
