@@ -48,7 +48,7 @@ const CreateAgentPage = () => {
   });
   const {
     mutateAsync: createAgent,
-    isLoading,
+    isPending,
     isError,
     error,
   } = useCreateAgent({
@@ -178,8 +178,8 @@ const CreateAgentPage = () => {
 
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
           >
             Create Agent

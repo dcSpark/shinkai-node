@@ -9,7 +9,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { PaperPlaneIcon } from "@radix-ui/react-icons";
 import { MessageSchemaType } from "@shinkai_network/shinkai-message-ts/models";
 import {
-  calculateMessageHash,
   extractJobIdFromInbox,
   extractReceiverShinkaiName,
   getMessageContent,
@@ -117,7 +116,7 @@ const ChatConversation = () => {
     data,
     fetchPreviousPage,
     hasPreviousPage,
-    isLoading: isChatConversationLoading,
+    isPending: isChatConversationLoading,
     isFetchingPreviousPage,
     isSuccess: isChatConversationSuccess,
   } = useGetChatConversationWithPagination({
@@ -131,13 +130,13 @@ const ChatConversation = () => {
     profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
-  const { mutateAsync: sendMessageToInbox, isLoading: isSendingMessageToInbox } =
+  const { mutateAsync: sendMessageToInbox, isPending: isSendingMessageToInbox } =
     useSendMessageToInbox();
-  const { mutateAsync: sendMessageToJob, isLoading: isSendingMessageToJob } =
+  const { mutateAsync: sendMessageToJob, isPending: isSendingMessageToJob } =
     useSendMessageToJob();
   const {
     mutateAsync: sendTextMessageWithFilesForInbox,
-    isLoading: isSendingTextMessageWithFilesForInbox,
+    isPending: isSendingTextMessageWithFilesForInbox,
   } = useSendMessageWithFilesToInbox();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
@@ -198,14 +197,14 @@ const ChatConversation = () => {
   const isLoading = isSendingMessageToJob || isSendingMessageToInbox;
 
   const fetchPreviousMessages = useCallback(async () => {
-    const firstMessage = data?.pages?.[0]?.[0];
+    // const firstMessage = data?.pages?.[0]?.[0];
     fromPreviousMessagesRef.current = true;
-    if (!firstMessage) return;
-    const timeKey = firstMessage?.external_metadata?.scheduled_time;
-    const hashKey = calculateMessageHash(firstMessage);
-    const firstMessageKey = `${timeKey}:::${hashKey}`;
-    await fetchPreviousPage({ pageParam: { lastKey: firstMessageKey } });
-  }, [data?.pages, fetchPreviousPage]);
+    // if (!firstMessage) return;
+    // const timeKey = firstMessage?.external_metadata?.scheduled_time;
+    // const hashKey = calculateMessageHash(firstMessage);
+    // const firstMessageKey = `${timeKey}:::${hashKey}`;
+    await fetchPreviousPage();
+  }, [fetchPreviousPage]);
 
   const handleScroll = useCallback(async () => {
     const chatContainerElement = chatContainerRef.current;
@@ -239,12 +238,16 @@ const ChatConversation = () => {
     }
   }, [data?.pages]);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [isChatConversationSuccess]);
+
   return (
     <div className="flex flex-1 flex-col pt-2">
       <ScrollArea className="h-full px-5" ref={chatContainerRef}>
         {isChatConversationSuccess && (
           <div className="py-2 text-center text-xs">
-            {isFetchingPreviousPage || hasPreviousPage ? (
+            {isFetchingPreviousPage ? (
               <Loader className="flex animate-spin justify-center text-white" />
             ) : (
               "All messages has been loaded ✅"
@@ -303,7 +306,7 @@ const ChatConversation = () => {
                               </Avatar>
                               <MarkdownPreview
                                 className={cn(
-                                  "mt-1 rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
+                                  "mt-1 break-all rounded-lg bg-transparent px-2.5 py-3 text-sm text-foreground",
                                   isLocal
                                     ? "rounded-tl-none border border-slate-800"
                                     : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"

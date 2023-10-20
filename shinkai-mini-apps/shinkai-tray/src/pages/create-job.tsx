@@ -48,7 +48,7 @@ const CreateJobPage = () => {
     profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
-  const { isLoading, mutateAsync: createJob } = useCreateJob({
+  const { isPending, mutateAsync: createJob } = useCreateJob({
     onSuccess: (data) => {
       // TODO: job_inbox, false is hardcoded
       navigate(`/inboxes/job_inbox::${data.jobId}::false`);
@@ -136,8 +136,8 @@ const CreateJobPage = () => {
 
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
           >
             Create Job
