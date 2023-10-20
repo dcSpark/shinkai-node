@@ -92,6 +92,13 @@ fn api_to_node_proxy() {
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9550);
         let addr1_api = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9551);
+        let proxy_identity = ProxyIdentity {
+            api_peer: addr2,
+            tcp_peer: addr2,
+            shinkai_name: ShinkaiName::new(proxy_identity_name.to_string()).unwrap(),
+        };
+        let node_conf = NodeProxyMode::IsProxied(vec![proxy_identity.clone()]);
+
         let mut node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
@@ -107,6 +114,21 @@ fn api_to_node_proxy() {
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9560);
         let addr2_api = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9561);
+        let proxy_node_conf = NodeProxyMode::IsProxy(IsProxyConf {
+            allow_new_identities: true,
+            proxy_node_identities: {
+                let mut map = HashMap::new();
+                map.insert(
+                    node1_identity_name.to_string(),
+                    ProxyIdentity {
+                        api_peer: addr1,
+                        tcp_peer: addr1,
+                        shinkai_name: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
+                    },
+                );
+                map
+            },
+        });
         let mut proxy_node = Node::new(
             proxy_identity_name.to_string(),
             addr2,
@@ -117,21 +139,7 @@ fn api_to_node_proxy() {
             node2_db_path,
             true,
             None,
-            NodeProxyMode::IsProxy(IsProxyConf {
-                allow_new_identities: true,
-                proxy_node_identities: {
-                    let mut map = HashMap::new();
-                    map.insert(
-                        node1_identity_name.to_string(),
-                        ProxyIdentity {
-                            api_peer: addr1,
-                            tcp_peer: addr1,
-                            shinkai_name: ShinkaiName::new(node1_identity_name.to_string()).unwrap(),
-                        },
-                    );
-                    map
-                },
-            }),
+            proxy_node_conf,
         );
 
         // Start node1 and node2
@@ -150,6 +158,7 @@ fn api_to_node_proxy() {
             eprintln!("Starting proxy node");
             let _ = proxy_node.await.start().await;
         });
+
         let proxy_node_api_handler = tokio::spawn(async move {
             node_api::run_api(node2_commands_sender, addr2_api, NodeProxyMode::NoProxy).await;
         });
@@ -159,7 +168,7 @@ fn api_to_node_proxy() {
             eprintln!("Registration of Subidentities");
 
             // Wait for the API servers to start
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
 
             // Send a GET request to the v1/shinkai_health endpoint of each node
             let client = reqwest::Client::new();

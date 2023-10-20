@@ -26,8 +26,8 @@ pub enum NodeProxyMode {
     // and a flag indicating if it allows new identities
     // if the flag is also then it will also clean up saved identities
     IsProxy(IsProxyConf),
-    // Node is being proxied, holds its proxy's identity
-    IsProxied(ProxyIdentity),
+    // Node is being proxied, holds its proxy's identities
+    IsProxied(Vec<ProxyIdentity>),
     // Node is not using a proxy
     NoProxy,
 }
@@ -223,33 +223,35 @@ impl Node {
                 self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
                     .await
             }
-            NodeProxyMode::IsProxy(_) => match Node::is_recipient_proxied(self.db.clone(), &potentially_encrypted_msg).await {
-                Ok(Some(proxied_identity)) => {
-                    let api_peer = proxied_identity.api_peer;
-                    let client = reqwest::Client::new();
-                    let res = client
-                        .post(format!("http://{}:{}/v1/send", api_peer.ip(), api_peer.port()))
-                        .json(&potentially_encrypted_msg)
-                        .send()
-                        .await;
-                    match res {
-                        Ok(response) => {
-                            if response.status().is_success() {
-                                Ok(())
-                            } else {
-                                Err(NodeError {
-                                    message: format!("Failed to send message to peer: {}", response.status()),
-                                })
+            NodeProxyMode::IsProxy(_) => {
+                match Node::is_recipient_proxied(self.db.clone(), &potentially_encrypted_msg).await {
+                    Ok(Some(proxied_identity)) => {
+                        let api_peer = proxied_identity.api_peer;
+                        let client = reqwest::Client::new();
+                        let res = client
+                            .post(format!("http://{}:{}/v1/send", api_peer.ip(), api_peer.port()))
+                            .json(&potentially_encrypted_msg)
+                            .send()
+                            .await;
+                        match res {
+                            Ok(response) => {
+                                if response.status().is_success() {
+                                    Ok(())
+                                } else {
+                                    Err(NodeError {
+                                        message: format!("Failed to send message to peer: {}", response.status()),
+                                    })
+                                }
                             }
+                            Err(err) => Err(NodeError {
+                                message: format!("Failed to send message to peer: {}", err),
+                            }),
                         }
-                        Err(err) => Err(NodeError {
-                            message: format!("Failed to send message to peer: {}", err),
-                        }),
                     }
+                    Ok(None) => Ok(()),
+                    Err(err) => Err(err),
                 }
-                Ok(None) => Ok(()),
-                Err(err) => Err(err),
-            },
+            }
             NodeProxyMode::NoProxy => {
                 self.api_handle_send_onionized_message(potentially_encrypted_msg, res)
                     .await
