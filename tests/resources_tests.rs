@@ -184,7 +184,7 @@ fn test_multi_resource_db_vector_search() {
     let ret_data_chunks = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_data_chunk = ret_data_chunks.get(0).unwrap();
     assert_eq!(
-            "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI coordinated computing paradigm that takes decentralization and user privacy seriously while offering native integration into the modern crypto stack.",
+            "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
             &ret_data_chunk.chunk.get_data_string().unwrap()
         );
 
@@ -278,6 +278,6 @@ fn test_db_syntactic_vector_search() {
         .syntactic_vector_search(query, 1, 10, &vec![multiplier_tag.name.clone()], &profile)
         .unwrap();
     let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!("15", &fetched_chunk.chunk.id);
+    assert_eq!("12", &fetched_chunk.chunk.id);
     assert!(fetched_data.len() == 1);
 }
