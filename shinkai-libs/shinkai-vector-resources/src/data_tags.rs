@@ -60,7 +60,7 @@ impl DataTagIndex {
     }
 
     /// Adds reference to the data chunk (id) to all tags in the index that are
-    /// annotated on the chunk in chunk.data_tags
+    /// annotated on the chunk in chunk.content_tags
     pub fn add_chunk(&mut self, chunk: &DataChunk) {
         self.add_chunk_id_multi_tags(&chunk.id, &chunk.data_tag_names);
     }

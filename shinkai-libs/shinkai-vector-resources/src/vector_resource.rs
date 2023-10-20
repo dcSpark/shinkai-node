@@ -167,7 +167,7 @@ pub trait VectorResource {
             self.vector_search_with_options(empty_embedding, 0, &TraversalMethod::UnscoredAllChunks, starting_path);
 
         if resources_only {
-            data_chunks.retain(|chunk| matches!(chunk.chunk.data, DataContent::Resource(_)));
+            data_chunks.retain(|chunk| matches!(chunk.chunk.content, NodeContent::Resource(_)));
         }
 
         data_chunks
@@ -186,15 +186,15 @@ pub trait VectorResource {
         let data_chunks = self.get_data_chunks_exhaustive(starting_path, resources_only);
         for chunk in data_chunks {
             let path = chunk.retrieval_path.format_to_string();
-            let data = match &chunk.chunk.data {
-                DataContent::Data(s) => {
+            let data = match &chunk.chunk.content {
+                NodeContent::Text(s) => {
                     if shorten_data && s.chars().count() > 25 {
                         s.chars().take(25).collect::<String>() + "..."
                     } else {
                         s.to_string()
                     }
                 }
-                DataContent::Resource(resource) => {
+                NodeContent::Resource(resource) => {
                     println!("");
                     format!(
                         "<{}> - {} Chunks Held Inside",
@@ -217,11 +217,11 @@ pub trait VectorResource {
         // Fetch the first data chunk directly, then iterate through the rest
         let mut data_chunk = self.get_data_chunk(path.path_ids[0].clone())?;
         for id in path.path_ids.iter().skip(1) {
-            match data_chunk.data {
-                DataContent::Resource(ref resource) => {
+            match data_chunk.content {
+                NodeContent::Resource(ref resource) => {
                     data_chunk = resource.as_trait_object().get_data_chunk(id.clone())?;
                 }
-                DataContent::Data(_) => {
+                NodeContent::Text(_) => {
                     if let Some(last) = path.path_ids.last() {
                         if id != last {
                             return Err(VectorResourceError::InvalidVRPath(path.clone()));
@@ -252,7 +252,7 @@ pub trait VectorResource {
         if let Some(path) = starting_path {
             match self.get_data_chunk_with_path(path.clone()) {
                 Ok(chunk) => {
-                    if let DataContent::Resource(resource) = chunk.data {
+                    if let NodeContent::Resource(resource) = chunk.content {
                         return resource.as_trait_object()._vector_search_with_options_core(
                             query,
                             num_of_results,
@@ -348,7 +348,7 @@ pub trait VectorResource {
         if let Some(path) = starting_path {
             match self.get_data_chunk_with_path(path.clone()) {
                 Ok(chunk) => {
-                    if let DataContent::Resource(resource) = chunk.data {
+                    if let NodeContent::Resource(resource) = chunk.content {
                         return resource.as_trait_object()._syntactic_vector_search_with_options_core(
                             query,
                             num_of_results,
@@ -445,7 +445,7 @@ pub trait VectorResource {
         for (score, id) in scores {
             if let Ok(chunk) = self.get_data_chunk(id) {
                 // Check if it's a resource
-                if let DataContent::Resource(_) = chunk.data {
+                if let NodeContent::Resource(_) = chunk.content {
                     // Keep track for later sorting efficiency
                     vector_resource_count += 1;
 
@@ -506,8 +506,8 @@ pub trait VectorResource {
         // Create a new traversal path with the chunk id
         let new_traversal_path = traversal_path.push_cloned(chunk.id.clone());
 
-        match &chunk.data {
-            DataContent::Resource(resource) => {
+        match &chunk.content {
+            NodeContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
                 let sub_results = if data_tag_names.is_empty() {
                     resource.as_trait_object()._vector_search_with_options_core(
@@ -542,7 +542,7 @@ pub trait VectorResource {
 
                 current_level_results.extend(sub_results);
             }
-            DataContent::Data(_) => {
+            NodeContent::Text(_) => {
                 let score = match traversal {
                     TraversalMethod::HierarchicalAverage => {
                         new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32
@@ -607,12 +607,12 @@ pub trait VectorResource {
         let ids = self._syntactic_search_id_fetch(data_tag_names);
         for id in ids {
             if let Ok(data_chunk) = self.get_data_chunk(id.clone()) {
-                match data_chunk.data {
-                    DataContent::Resource(resource) => {
+                match data_chunk.content {
+                    NodeContent::Resource(resource) => {
                         let sub_results = resource.as_trait_object().get_all_syntactic_matches(data_tag_names);
                         matching_data_chunks.extend(sub_results);
                     }
-                    DataContent::Data(_) => {
+                    NodeContent::Text(_) => {
                         let resource_pointer = self.get_resource_pointer();
                         let retrieved_data_chunk = RetrievedDataChunk {
                             chunk: data_chunk,

@@ -5,7 +5,7 @@ use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::resource_errors::VectorResourceError;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
-    DataContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
+    NodeContent, RetrievedDataChunk, VectorResource, VectorResourcePointer,
 };
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
@@ -88,7 +88,7 @@ impl VectorResourceRouter {
         let mut resource_pointers = vec![];
         for ret_chunk in ret_chunks {
             // Ignore resources added to the router with invalid resource types
-            if let DataContent::Data(data) = &ret_chunk.chunk.data {
+            if let NodeContent::Text(data) = &ret_chunk.chunk.content {
                 if let Ok(resource_base_type) = VectorResourceBaseType::from_str(data)
                     .map_err(|_| VectorResourceError::InvalidVectorResourceBaseType)
                 {
@@ -170,7 +170,7 @@ impl VectorResourceRouter {
                 // original resource.
                 self.routing_resource._insert_kv_without_tag_validation(
                     &shinkai_db_key,
-                    DataContent::Data(data.to_string()),
+                    NodeContent::Text(data.to_string()),
                     metadata,
                     &embedding,
                     &resource_pointer.data_tag_names,
@@ -191,7 +191,7 @@ impl VectorResourceRouter {
 
         self.routing_resource._replace_kv_without_tag_validation(
             old_pointer_id,
-            DataContent::Data(data.to_string()),
+            NodeContent::Text(data.to_string()),
             metadata,
             &embedding,
             &resource_pointer.data_tag_names,

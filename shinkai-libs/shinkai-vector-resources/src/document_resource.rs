@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, TraversalMethod, VRPath, VectorResource};
+use crate::vector_resource::{DataChunk, NodeContent, RetrievedDataChunk, TraversalMethod, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -228,7 +228,7 @@ impl DocumentVectorResource {
     pub fn append_vector_resource(&mut self, resource: BaseVectorResource, metadata: Option<HashMap<String, String>>) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._append_data_without_tag_validation(DataContent::Resource(resource), metadata, &embedding, &tag_names)
+        self._append_data_without_tag_validation(NodeContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
     /// Appends a new data chunk (with a data_string) and an associated embedding to the document
@@ -243,7 +243,7 @@ impl DocumentVectorResource {
         let validated_data_tags = DataTag::validate_tag_list(data_string, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._append_data_without_tag_validation(
-            DataContent::Data(data_string.to_string()),
+            NodeContent::Text(data_string.to_string()),
             metadata,
             embedding,
             &data_tag_names,
@@ -254,17 +254,17 @@ impl DocumentVectorResource {
     /// without checking if tags are valid. Used for internal purposes/the routing resource.
     pub fn _append_data_without_tag_validation(
         &mut self,
-        data: DataContent,
+        data: NodeContent,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
         let id = self.chunk_count + 1;
         let data_chunk = match data {
-            DataContent::Data(data_string) => {
+            NodeContent::Text(data_string) => {
                 DataChunk::new_with_integer_id(id, &data_string, metadata.clone(), tag_names)
             }
-            DataContent::Resource(resource) => {
+            NodeContent::Resource(resource) => {
                 DataChunk::new_vector_resource_with_integer_id(id, &resource, metadata.clone())
             }
         };
@@ -289,7 +289,7 @@ impl DocumentVectorResource {
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_data_without_tag_validation(
             id,
-            DataContent::Resource(new_resource),
+            NodeContent::Resource(new_resource),
             new_metadata,
             &embedding,
             &tag_names,
@@ -311,7 +311,7 @@ impl DocumentVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._replace_data_without_tag_validation(
             id,
-            DataContent::Data(new_data.to_string()),
+            NodeContent::Text(new_data.to_string()),
             new_metadata,
             embedding,
             &data_tag_names,
@@ -340,7 +340,7 @@ impl DocumentVectorResource {
     pub fn _replace_data_without_tag_validation(
         &mut self,
         id: u64,
-        new_data: DataContent,
+        new_data: NodeContent,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
@@ -353,10 +353,10 @@ impl DocumentVectorResource {
 
         // Next create the new chunk, and replace the old chunk in the data_chunks list
         let new_chunk = match new_data {
-            DataContent::Data(data_string) => {
+            NodeContent::Text(data_string) => {
                 DataChunk::new_with_integer_id(id, &data_string, new_metadata.clone(), new_tag_names)
             }
-            DataContent::Resource(resource) => {
+            NodeContent::Resource(resource) => {
                 DataChunk::new_vector_resource_with_integer_id(id, &resource, new_metadata.clone())
             }
         };

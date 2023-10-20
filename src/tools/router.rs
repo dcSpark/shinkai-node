@@ -8,7 +8,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{DataContent, RetrievedDataChunk, VectorResource};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedDataChunk, VectorResource};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -273,7 +273,7 @@ impl ToolRouter {
                 // If no tool is found, insert new tool
                 self.routing_resource._insert_kv_without_tag_validation(
                     &router_key,
-                    DataContent::Data(data),
+                    NodeContent::Text(data),
                     metadata,
                     &embedding,
                     &vec![],

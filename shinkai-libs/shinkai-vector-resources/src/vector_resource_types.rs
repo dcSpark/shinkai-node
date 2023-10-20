@@ -8,14 +8,6 @@ use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;
 
-/// Contents of a DataChunk. Either the String data itself, or
-/// another VectorResource
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum DataContent {
-    Data(String),
-    Resource(BaseVectorResource),
-}
-
 /// A data chunk that was retrieved from a search.
 /// Includes extra data like the resource_pointer of the resource it was from
 /// and the similarity score from the vector search. Resource pointer is especially
@@ -75,7 +67,7 @@ impl RetrievedDataChunk {
     /// leading to this RetrievedDataChunk
     pub fn format_path_to_string(&self) -> String {
         let mut path_string = self.retrieval_path.format_to_string();
-        if let DataContent::Resource(_) = self.chunk.data {
+        if let NodeContent::Resource(_) = self.chunk.content {
             path_string.push('/');
         }
         path_string
@@ -159,7 +151,7 @@ impl RetrievedDataChunk {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataChunk {
     pub id: String,
-    pub data: DataContent,
+    pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
 }
@@ -174,7 +166,7 @@ impl DataChunk {
     ) -> Self {
         Self {
             id,
-            data: DataContent::Data(data.to_string()),
+            content: NodeContent::Text(data.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
         }
@@ -198,7 +190,7 @@ impl DataChunk {
     ) -> Self {
         DataChunk {
             id: id,
-            data: DataContent::Resource(vector_resource.clone()),
+            content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
         }
@@ -215,19 +207,27 @@ impl DataChunk {
 
     /// Attempts to read the data String from the DataChunk. Errors if data is a VectorResource
     pub fn get_data_string(&self) -> Result<String, VectorResourceError> {
-        match &self.data {
-            DataContent::Data(s) => Ok(s.clone()),
-            DataContent::Resource(_) => Err(VectorResourceError::DataIsNonMatchingType),
+        match &self.content {
+            NodeContent::Text(s) => Ok(s.clone()),
+            NodeContent::Resource(_) => Err(VectorResourceError::DataIsNonMatchingType),
         }
     }
 
     /// Attempts to read the BaseVectorResource from the DataChunk. Errors if data is an actual String
     pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VectorResourceError> {
-        match &self.data {
-            DataContent::Data(_) => Err(VectorResourceError::DataIsNonMatchingType),
-            DataContent::Resource(resource) => Ok(resource.clone()),
+        match &self.content {
+            NodeContent::Text(_) => Err(VectorResourceError::DataIsNonMatchingType),
+            NodeContent::Resource(resource) => Ok(resource.clone()),
         }
     }
+}
+
+/// Contents of a DataChunk. Either the String text itself, or
+/// another VectorResource
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum NodeContent {
+    Text(String),
+    Resource(BaseVectorResource),
 }
 
 /// Type which holds referential data about a given resource.

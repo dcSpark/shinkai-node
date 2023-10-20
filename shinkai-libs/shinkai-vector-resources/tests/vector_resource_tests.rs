@@ -5,7 +5,7 @@ use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{DataContent, TraversalMethod, VectorResource};
+use shinkai_vector_resources::vector_resource::{NodeContent, TraversalMethod, VectorResource};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::fs::File;
 use std::io;
@@ -206,7 +206,7 @@ fn test_manual_resource_vector_search() {
     );
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2), None);
-    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_eq!(NodeContent::Text(fact1.to_string()), res[0].chunk.content);
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -214,9 +214,9 @@ fn test_manual_resource_vector_search() {
     // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Exhaustive, None);
-    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_eq!(NodeContent::Text(fact1.to_string()), res[0].chunk.content);
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Efficient, None);
-    assert_ne!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_ne!(NodeContent::Text(fact1.to_string()), res[0].chunk.content);
 
     //
     // Path Tests
@@ -296,7 +296,7 @@ fn test_manual_syntactic_vector_search() {
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 1, &vec![email_tag.name.clone()]);
     let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact1.to_string()), fetched_chunk.chunk.data);
+    assert_eq!(NodeContent::Text(fact1.to_string()), fetched_chunk.chunk.content);
 
     // Date syntactic vector search
     let query = generator
@@ -304,7 +304,7 @@ fn test_manual_syntactic_vector_search() {
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 10, &vec![date_tag.name.clone()]);
     let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact2.to_string()), fetched_chunk.chunk.data);
+    assert_eq!(NodeContent::Text(fact2.to_string()), fetched_chunk.chunk.content);
 
     // Price syntactic vector search
     let query = generator
@@ -312,7 +312,7 @@ fn test_manual_syntactic_vector_search() {
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 2, &vec![price_tag.name.clone()]);
     let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
+    assert_eq!(NodeContent::Text(fact3.to_string()), fetched_chunk.chunk.content);
 
     // Multiplier syntactic vector search
     let query = generator
@@ -320,5 +320,5 @@ fn test_manual_syntactic_vector_search() {
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
     let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
+    assert_eq!(NodeContent::Text(fact3.to_string()), fetched_chunk.chunk.content);
 }

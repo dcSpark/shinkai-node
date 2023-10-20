@@ -4,7 +4,7 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VRPath, VectorResource};
+use crate::vector_resource::{DataChunk, NodeContent, RetrievedDataChunk, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
@@ -179,7 +179,7 @@ impl MapVectorResource {
     ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._insert_kv_without_tag_validation(key, DataContent::Resource(resource), metadata, &embedding, &tag_names)
+        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
     /// Inserts a new data chunk (with a String value) and associated embeddings to the Map resource
@@ -196,7 +196,7 @@ impl MapVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._insert_kv_without_tag_validation(
             key,
-            DataContent::Data(value.to_string()),
+            NodeContent::Text(value.to_string()),
             metadata,
             embedding,
             &data_tag_names,
@@ -208,16 +208,16 @@ impl MapVectorResource {
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
-        data: DataContent,
+        data: NodeContent,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
         let data_chunk = match data {
-            DataContent::Data(data_string) => {
+            NodeContent::Text(data_string) => {
                 DataChunk::new(key.to_string(), &data_string, metadata.clone(), tag_names)
             }
-            DataContent::Resource(resource) => {
+            NodeContent::Resource(resource) => {
                 DataChunk::new_vector_resource(key.to_string(), &resource, metadata.clone())
             }
         };
@@ -242,7 +242,7 @@ impl MapVectorResource {
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_kv_without_tag_validation(
             key,
-            DataContent::Resource(new_resource),
+            NodeContent::Resource(new_resource),
             new_metadata,
             &embedding,
             &tag_names,
@@ -264,7 +264,7 @@ impl MapVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._replace_kv_without_tag_validation(
             key,
-            DataContent::Data(new_value.to_string()),
+            NodeContent::Text(new_value.to_string()),
             new_metadata,
             embedding,
             &data_tag_names,
@@ -276,17 +276,17 @@ impl MapVectorResource {
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
-        new_data: DataContent,
+        new_data: NodeContent,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
     ) -> Result<DataChunk, VectorResourceError> {
         // Next create the new chunk, and replace the old chunk in the data_chunks list
         let new_chunk = match new_data {
-            DataContent::Data(data_string) => {
+            NodeContent::Text(data_string) => {
                 DataChunk::new(key.to_string(), &data_string, new_metadata.clone(), new_tag_names)
             }
-            DataContent::Resource(resource) => {
+            NodeContent::Resource(resource) => {
                 DataChunk::new_vector_resource(key.to_string(), &resource, new_metadata.clone())
             }
         };
