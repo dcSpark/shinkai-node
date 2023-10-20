@@ -6,6 +6,7 @@ import { FunctionKey } from "../../constants";
 import { GetChatConversationInput, GetChatConversationOutput } from "./types";
 
 export const CONVERSATION_PAGINATION_LIMIT = 10;
+export const CONVERSATION_PAGINATION_REFETCH = 5000;
 
 export const useGetChatConversationWithPagination = (input: GetChatConversationInput) => {
   const response = useInfiniteQuery<
@@ -13,9 +14,7 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
     Error,
     InfiniteData<GetChatConversationOutput>,
     [string, GetChatConversationInput],
-    {
-      lastKey: string | null;
-    }
+    { lastKey: string | null }
   >({
     queryKey: [FunctionKey.GET_CHAT_CONVERSATION_PAGINATION, input],
     queryFn: ({ pageParam }) =>
@@ -26,23 +25,16 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
       }),
     getPreviousPageParam: (_, pages) => {
       const firstMessage = pages?.[0]?.[0];
-      console.log(firstMessage, "firstMessage");
       if (!firstMessage) return;
       const timeKey = firstMessage?.external_metadata?.scheduled_time;
       const hashKey = calculateMessageHash(firstMessage);
       const firstMessageKey = `${timeKey}:::${hashKey}`;
-      return {
-        lastKey: firstMessageKey,
-      };
+      return { lastKey: firstMessageKey };
     },
-    // refetchInterval: 5000,
-    initialPageParam: {
-      lastKey: null,
-    },
+    refetchInterval: CONVERSATION_PAGINATION_REFETCH,
+    initialPageParam: { lastKey: null },
     getNextPageParam: () => {
-      return {
-        lastKey: null,
-      };
+      return { lastKey: null };
     },
   });
   return response;
