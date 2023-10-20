@@ -1,4 +1,4 @@
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -47,18 +47,18 @@ impl VRSource {
     }
 
     /// Serializes the VRSource to a JSON string
-    pub fn to_json(&self) -> Result<String, VectorResourceError> {
-        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    pub fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
     }
 
     /// Deserializes a VRSource from a JSON string
-    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
-        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
+        serde_json::from_str(json).map_err(|_| VRError::FailedJSONParsing)
     }
 
     /// Creates a VRSource using file_name/content to auto-detect and create an instance of Self.
     /// Errors if can not detect matching extension in file_name.
-    pub fn from_file(file_name: &str, file_buffer: &Vec<u8>) -> Result<Self, VectorResourceError> {
+    pub fn from_file(file_name: &str, file_buffer: &Vec<u8>) -> Result<Self, VRError> {
         let re = Regex::new(r"\.[^.]+$").unwrap();
         let file_name_without_extension = re.replace(file_name, "");
         let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
@@ -66,7 +66,7 @@ impl VRSource {
         let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
             f_type
         } else {
-            return Err(VectorResourceError::CouldNotDetectFileType(file_name.to_string()));
+            return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
         };
 
         if file_name.starts_with("http") {

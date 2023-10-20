@@ -1,10 +1,10 @@
 use serde_json;
-use shinkai_vector_resources::base_vector_resources::VectorResourceBaseType;
+use shinkai_vector_resources::base_vector_resources::VRBaseType;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::map_resource::MapVectorResource;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource, VectorResourcePointer};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VRPointer, VectorResource};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 use std::convert::From;
@@ -36,28 +36,28 @@ impl VectorResourceRouter {
         "profile_resource_router".to_string()
     }
 
-    /// Returns a list of VectorResourcePointers of the most similar resources that
+    /// Returns a list of VRPointers of the most similar resources that
     /// have matching data tag names.
     pub fn syntactic_vector_search(
         &self,
         query: Embedding,
         num_of_results: u64,
         data_tag_names: &Vec<String>,
-    ) -> Vec<VectorResourcePointer> {
+    ) -> Vec<VRPointer> {
         let nodes = self
             .routing_resource
             .syntactic_vector_search(query, num_of_results, data_tag_names);
         self.ret_nodes_to_pointers(&nodes)
     }
 
-    /// Returns a list of VectorResourcePointers of the most similar resources.
-    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<VectorResourcePointer> {
+    /// Returns a list of VRPointers of the most similar resources.
+    pub fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<VRPointer> {
         let nodes = self.routing_resource.vector_search(query, num_of_results);
         self.ret_nodes_to_pointers(&nodes)
     }
 
-    /// Returns all VectorResourcePointers in the Resource Router
-    pub fn get_all_resource_pointers(&self) -> Vec<VectorResourcePointer> {
+    /// Returns all VRPointers in the Resource Router
+    pub fn get_all_resource_pointers(&self) -> Vec<VRPointer> {
         let nodes = self.routing_resource.get_nodes();
         let map_resource_pointer = self.routing_resource.get_resource_pointer();
         let mut resource_pointers = vec![];
@@ -77,19 +77,17 @@ impl VectorResourceRouter {
         resource_pointers
     }
 
-    /// Takes a list of RetrievedNodes and outputs a list of VectorResourcePointers
+    /// Takes a list of RetrievedNodes and outputs a list of VRPointers
     /// that point to the real resource (not the resource router).
     ///
-    /// Of note, if a node holds an invalid VectorResourceBaseType string then the node
+    /// Of note, if a node holds an invalid VRBaseType string then the node
     /// is ignored.
-    fn ret_nodes_to_pointers(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<VectorResourcePointer> {
+    fn ret_nodes_to_pointers(&self, ret_nodes: &Vec<RetrievedNode>) -> Vec<VRPointer> {
         let mut resource_pointers = vec![];
         for ret_node in ret_nodes {
             // Ignore resources added to the router with invalid resource types
             if let NodeContent::Text(data) = &ret_node.node.content {
-                if let Ok(resource_base_type) = VectorResourceBaseType::from_str(data)
-                    .map_err(|_| VectorResourceError::InvalidVectorResourceBaseType)
-                {
+                if let Ok(resource_base_type) = VRBaseType::from_str(data).map_err(|_| VRError::InvalidVRBaseType) {
                     let id = &ret_node.node.id;
                     let embedding = self.routing_resource.get_node_embedding(id.to_string()).ok();
 
@@ -102,7 +100,7 @@ impl VectorResourceRouter {
                         .and_then(|source_json| VRSource::from_json(source_json).ok())
                         .unwrap_or(VRSource::None);
 
-                    let resource_pointer = VectorResourcePointer::new(
+                    let resource_pointer = VRPointer::new(
                         &id,
                         resource_base_type,
                         embedding,
@@ -116,16 +114,16 @@ impl VectorResourceRouter {
         resource_pointers
     }
 
-    /// Extracts necessary data from a VectorResourcePointer to create a Node
+    /// Extracts necessary data from a VRPointer to create a Node
     fn extract_pointer_data(
         &self,
-        resource_pointer: &VectorResourcePointer,
-    ) -> Result<(String, String, Embedding, Option<HashMap<String, String>>), VectorResourceError> {
+        resource_pointer: &VRPointer,
+    ) -> Result<(String, String, Embedding, Option<HashMap<String, String>>), VRError> {
         let data = resource_pointer.resource_base_type.to_str().to_string();
         let embedding = resource_pointer
             .resource_embedding
             .clone()
-            .ok_or(VectorResourceError::NoEmbeddingProvided)?;
+            .ok_or(VRError::NoEmbeddingProvided)?;
         let shinkai_db_key = resource_pointer.reference.to_string();
         let metadata = match resource_pointer.resource_source.to_json() {
             Ok(source_json) => {
@@ -148,10 +146,7 @@ impl VectorResourceRouter {
     ///
     /// Of note, in this implementation we store the resource type in the `data`
     /// of the node and the shinkai db key (pointer reference) as the id of the node.
-    pub fn add_resource_pointer(
-        &mut self,
-        resource_pointer: &VectorResourcePointer,
-    ) -> Result<(), VectorResourceError> {
+    pub fn add_resource_pointer(&mut self, resource_pointer: &VRPointer) -> Result<(), VRError> {
         let (shinkai_db_key, data, embedding, metadata) = self.extract_pointer_data(resource_pointer)?;
         let shinkai_db_key_clone = shinkai_db_key.clone();
 
@@ -183,8 +178,8 @@ impl VectorResourceRouter {
     pub fn replace_resource_pointer(
         &mut self,
         old_pointer_id: &str,
-        resource_pointer: &VectorResourcePointer,
-    ) -> Result<(), VectorResourceError> {
+        resource_pointer: &VRPointer,
+    ) -> Result<(), VRError> {
         let (_, data, embedding, metadata) = self.extract_pointer_data(resource_pointer)?;
 
         self.routing_resource._replace_kv_without_tag_validation(
@@ -198,18 +193,15 @@ impl VectorResourceRouter {
     }
 
     /// Deletes the resource pointer inside of the VectorResourceRouter given a valid id
-    pub fn delete_resource_pointer(&mut self, old_pointer_id: &str) -> Result<(), VectorResourceError> {
+    pub fn delete_resource_pointer(&mut self, old_pointer_id: &str) -> Result<(), VRError> {
         self.routing_resource.delete_kv(old_pointer_id)?;
         Ok(())
     }
 
-    /// Acquire the resource_embedding for a given VectorResourcePointer.
+    /// Acquire the resource_embedding for a given VRPointer.
     /// If the pointer itself doesn't have the embedding attached to it,
     /// we use the id to fetch the embedding directly from the VectorResourceRouter.
-    pub fn get_resource_embedding(
-        &self,
-        resource_pointer: &VectorResourcePointer,
-    ) -> Result<Embedding, VectorResourceError> {
+    pub fn get_resource_embedding(&self, resource_pointer: &VRPointer) -> Result<Embedding, VRError> {
         if let Some(embedding) = resource_pointer.resource_embedding.clone() {
             Ok(embedding)
         } else {
@@ -218,13 +210,13 @@ impl VectorResourceRouter {
         }
     }
 
-    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
         Ok(VectorResourceRouter {
             routing_resource: MapVectorResource::from_json(json)?,
         })
     }
     /// Convert to json
-    pub fn to_json(&self) -> Result<String, VectorResourceError> {
-        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    pub fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
     }
 }

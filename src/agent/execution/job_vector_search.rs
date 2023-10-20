@@ -5,7 +5,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource_types::{Node, RetrievedNode, VectorResourcePointer};
+use shinkai_vector_resources::vector_resource_types::{Node, RetrievedNode, VRPointer};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;

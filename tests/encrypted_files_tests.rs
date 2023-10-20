@@ -25,7 +25,7 @@ use shinkai_node::agent::error::AgentError;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -222,7 +222,7 @@ fn sandwich_messages_with_files_test() {
 
             //     // Read the file into a buffer
             //     let file_data = std::fs::read(&file_path)
-            //         .map_err(|_| VectorResourceError::FailedPDFParsing)
+            //         .map_err(|_| VRError::FailedPDFParsing)
             //         .unwrap();
 
             //     // Encrypt the file using Aes256Gcm
@@ -297,7 +297,7 @@ fn sandwich_messages_with_files_test() {
 
                 // Read the file into a buffer
                 let file_data = std::fs::read(&file_path)
-                    .map_err(|_| VectorResourceError::FailedPDFParsing)
+                    .map_err(|_| VRError::FailedPDFParsing)
                     .unwrap();
 
                 // Encrypt the file using Aes256Gcm

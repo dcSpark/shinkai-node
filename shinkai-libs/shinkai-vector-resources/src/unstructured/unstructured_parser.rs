@@ -4,7 +4,7 @@ use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 #[cfg(feature = "native-http")]
@@ -18,17 +18,17 @@ pub struct UnstructuredParser;
 
 impl UnstructuredParser {
     /// Parses the JSON Array response from Unstructured into a list of `UnstructuredElement`s
-    pub fn parse_response_json(json: JsonValue) -> Result<Vec<UnstructuredElement>, VectorResourceError> {
+    pub fn parse_response_json(json: JsonValue) -> Result<Vec<UnstructuredElement>, VRError> {
         if let JsonValue::Array(array) = json {
             let mut elements = Vec::new();
             for item in array {
                 let element: UnstructuredElement = serde_json::from_value(item)
-                    .map_err(|err| VectorResourceError::FailedParsingUnstructedAPIJSON(err.to_string()))?;
+                    .map_err(|err| VRError::FailedParsingUnstructedAPIJSON(err.to_string()))?;
                 elements.push(element);
             }
             Ok(elements)
         } else {
-            Err(VectorResourceError::FailedParsingUnstructedAPIJSON(
+            Err(VRError::FailedParsingUnstructedAPIJSON(
                 "Response is not an array at top level".to_string(),
             ))
         }
@@ -46,7 +46,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         resource_id: String,
         max_chunk_size: u64,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_with_custom_collection(
             elements,
             generator,
@@ -73,7 +73,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         resource_id: String,
         max_chunk_size: u64,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_blocking_with_custom_collection(
             elements,
             generator,
@@ -100,7 +100,7 @@ impl UnstructuredParser {
         resource_id: String,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
         let new_text_groups = Self::generate_text_group_embeddings(
@@ -138,7 +138,7 @@ impl UnstructuredParser {
         resource_id: String,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         // Group elements together before generating the doc
         let text_groups = UnstructuredParser::hierarchical_group_elements_text(&elements, max_chunk_size);
         let cloned_generator = generator.box_clone();
@@ -176,7 +176,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
         resource_embedding: Option<Embedding>,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());
@@ -236,7 +236,7 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         resource_id: &str,
         resource_embedding: Option<Embedding>,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
         let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
         doc.set_embedding_model_used(generator.model_type());

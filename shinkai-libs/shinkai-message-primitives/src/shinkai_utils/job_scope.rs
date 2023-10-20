@@ -3,7 +3,7 @@ use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::{
     base_vector_resources::BaseVectorResource,
     source::{SourceFile, VRSource},
-    vector_resource_types::VectorResourcePointer,
+    vector_resource_types::VRPointer,
 };
 use std::fmt;
 
@@ -89,6 +89,6 @@ pub struct LocalScopeEntry {
 /// A Scope Entry for a file/vector resource that is saved in the DB
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct DBScopeEntry {
-    pub resource_pointer: VectorResourcePointer,
+    pub resource_pointer: VRPointer,
     pub source: VRSource,
 }

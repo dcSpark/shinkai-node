@@ -1,7 +1,7 @@
 use reqwest::Error as ReqwestError;
 use rocksdb::Error as RocksError;
 use serde_json::Error as SerdeError;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use std::error::Error;
 use std::fmt::{self, write};
 
@@ -17,7 +17,7 @@ pub enum ToolError {
     JSToolkitExecutorFailedStarting,
     RequestError(ReqwestError),
     ToolNotFound(String),
-    VectorResourceError(VectorResourceError),
+    VRError(VRError),
     ToolAlreadyInstalled(String),
     JSToolkitHeaderValidationFailed(String),
     ToolkitAlreadyActivated(String),
@@ -41,7 +41,7 @@ impl fmt::Display for ToolError {
             ToolError::JSToolkitExecutorFailedStarting => write!(f, "Failed starting local JS Toolkit Executor."),
             ToolError::RequestError(ref e) => write!(f, "Request error: {}", e),
             ToolError::ToolNotFound(ref t) => write!(f, "Tool not found: {}", t),
-            ToolError::VectorResourceError(ref e) => write!(f, "{}", e),
+            ToolError::VRError(ref e) => write!(f, "{}", e),
             ToolError::ToolAlreadyInstalled(ref t) => write!(f, "Tool already installed: {}", t),
             ToolError::JSToolkitHeaderValidationFailed(ref e) => write!(f, "Toolkit header validation failed: {}", e),
             ToolError::ToolkitAlreadyActivated(ref t) => write!(f, "Toolkit is already activated: {}", t),
@@ -52,9 +52,9 @@ impl fmt::Display for ToolError {
 
 impl Error for ToolError {}
 
-impl From<VectorResourceError> for ToolError {
-    fn from(err: VectorResourceError) -> ToolError {
-        ToolError::VectorResourceError(err)
+impl From<VRError> for ToolError {
+    fn from(err: VRError) -> ToolError {
+        ToolError::VRError(err)
     }
 }
 

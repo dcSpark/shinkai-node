@@ -2,7 +2,7 @@ use super::{unstructured_parser::UnstructuredParser, unstructured_types::Unstruc
 use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
@@ -42,7 +42,7 @@ impl UnstructuredAPI {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_blocking(file_buffer, &name)?;
@@ -71,7 +71,7 @@ impl UnstructuredAPI {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
-    ) -> Result<BaseVectorResource, VectorResourceError> {
+    ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request(file_buffer, &name).await?;
@@ -95,7 +95,7 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,
-    ) -> Result<Vec<UnstructuredElement>, VectorResourceError> {
+    ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::blocking::Client::new();
 
         let part = blocking_multipart::Part::bytes(file_buffer)
@@ -129,7 +129,7 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,
-    ) -> Result<Vec<UnstructuredElement>, VectorResourceError> {
+    ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::Client::new();
 
         let part = multipart::Part::bytes(file_buffer)

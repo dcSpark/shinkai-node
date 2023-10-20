@@ -1,4 +1,4 @@
-use crate::base_vector_resources::VectorResourceBaseType;
+use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
@@ -6,7 +6,7 @@ use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 use async_trait::async_trait;
@@ -46,18 +46,18 @@ pub trait VectorResource {
     fn resource_id(&self) -> &str;
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
-    fn resource_base_type(&self) -> VectorResourceBaseType;
+    fn resource_base_type(&self) -> VRBaseType;
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn node_embeddings(&self) -> Vec<Embedding>;
     fn data_tag_index(&self) -> &DataTagIndex;
-    fn get_node_embedding(&self, id: String) -> Result<Embedding, VectorResourceError>;
+    fn get_node_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves a node given its id, at the root level depth.
-    fn get_node(&self, id: String) -> Result<Node, VectorResourceError>;
+    fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves all nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
     // Note we cannot add from_json in the trait due to trait object limitations
-    fn to_json(&self) -> Result<String, VectorResourceError>;
+    fn to_json(&self) -> Result<String, VRError>;
 
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding.
@@ -65,7 +65,7 @@ pub trait VectorResource {
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
-    ) -> Result<(), VectorResourceError> {
+    ) -> Result<(), VRError> {
         let formatted = self.format_embedding_string(keywords);
         let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
         self.set_resource_embedding(new_embedding);
@@ -78,7 +78,7 @@ pub trait VectorResource {
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
-    ) -> Result<(), VectorResourceError> {
+    ) -> Result<(), VRError> {
         let formatted = self.format_embedding_string(keywords);
         let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
@@ -124,7 +124,7 @@ pub trait VectorResource {
     }
 
     /// Returns a "reference string" which is formatted as: `{name}:{resource_id}`.
-    /// This uniquely identifies the given VectorResource, and is used in VectorResourcePointer to
+    /// This uniquely identifies the given VectorResource, and is used in VRPointer to
     /// make it easy to know what resource a RetrievedNode is from (more informative than bare resource_id).
     ///
     /// This is also used in the Shinkai Node for the key where the VectorResource will be stored in the DB.
@@ -134,13 +134,13 @@ pub trait VectorResource {
         format!("{}:::{}", name, resource_id)
     }
 
-    /// Generates a VectorResourcePointer out of the VectorResource
-    fn get_resource_pointer(&self) -> VectorResourcePointer {
+    /// Generates a VRPointer out of the VectorResource
+    fn get_resource_pointer(&self) -> VRPointer {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
 
-        VectorResourcePointer::new(
+        VRPointer::new(
             &self.reference_string(),
             self.resource_base_type(),
             Some(embedding),
@@ -150,8 +150,8 @@ pub trait VectorResource {
     }
 
     /// Validates whether the VectorResource has a valid BaseVectorResourceType by checking its .resource_base_type()
-    fn is_base_vector_resource(&self) -> Result<(), VectorResourceError> {
-        VectorResourceBaseType::is_base_vector_resource(self.resource_base_type())
+    fn is_base_vector_resource(&self) -> Result<(), VRError> {
+        VRBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
     /// Returns every single node at any level in the whole Vector Resource, including sub Vector Resources
@@ -200,9 +200,9 @@ pub trait VectorResource {
 
     /// Retrieves a node, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
-    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VectorResourceError> {
+    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VRError> {
         if path.path_ids.is_empty() {
-            return Err(VectorResourceError::InvalidVRPath(path.clone()));
+            return Err(VRError::InvalidVRPath(path.clone()));
         }
 
         // Fetch the first node directly, then iterate through the rest
@@ -215,7 +215,7 @@ pub trait VectorResource {
                 NodeContent::Text(_) => {
                     if let Some(last) = path.path_ids.last() {
                         if id != last {
-                            return Err(VectorResourceError::InvalidVRPath(path.clone()));
+                            return Err(VRError::InvalidVRPath(path.clone()));
                         }
                     }
                 }

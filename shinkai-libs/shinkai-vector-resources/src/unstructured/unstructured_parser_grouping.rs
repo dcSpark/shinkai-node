@@ -2,7 +2,7 @@ use super::unstructured_parser::UnstructuredParser;
 use super::unstructured_types::{ElementType, GroupedText, UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
@@ -68,7 +68,7 @@ impl UnstructuredParser {
         mut max_batch_size: u64,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+    ) -> Result<Vec<GroupedText>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
@@ -124,7 +124,7 @@ impl UnstructuredParser {
         mut max_batch_size: u64,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+    ) -> Result<Vec<GroupedText>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 

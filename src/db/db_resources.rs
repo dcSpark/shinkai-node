@@ -2,11 +2,11 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VRBaseType};
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::vector_resource::{RetrievedNode, VectorResource, VectorResourcePointer};
+use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VRPointer, VectorResource};
 
 use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
@@ -122,10 +122,10 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Fetches the BaseVectorResource from the DB using a VectorResourcePointer
+    /// Fetches the BaseVectorResource from the DB using a VRPointer
     pub fn get_resource_by_pointer(
         &self,
-        resource_pointer: &VectorResourcePointer,
+        resource_pointer: &VRPointer,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
         self.get_resource(&resource_pointer.reference.clone(), profile)
@@ -224,9 +224,9 @@ impl ShinkaiDB {
         if retrieved_nodes.is_empty() {
             return Ok(Vec::new());
         }
-        let top_node = &retrieved_nodes.get(0).ok_or(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))?;
+        let top_node = &retrieved_nodes
+            .get(0)
+            .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
         // Fetch the nodes that fit in the tolerance range
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
@@ -269,9 +269,9 @@ impl ShinkaiDB {
         }
 
         let top_ret_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, 1);
-        let top_node = top_ret_nodes.get(0).ok_or(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))?;
+        let top_node = top_ret_nodes
+            .get(0)
+            .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
         for doc in &docs {
             if doc.reference_string() == top_node.resource_pointer.reference {
@@ -279,9 +279,7 @@ impl ShinkaiDB {
             }
         }
 
-        Err(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))
+        Err(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))
     }
 
     /// Performs a syntactic vector search using a query embedding and list of data tag names.
@@ -305,22 +303,19 @@ impl ShinkaiDB {
     }
 
     /// Returns all resource pointers in the profile's Resource Router
-    pub fn get_all_resource_pointers(
-        &self,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+    pub fn get_all_resource_pointers(&self, profile: &ShinkaiName) -> Result<Vec<VRPointer>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
         Ok(router.get_all_resource_pointers())
     }
 
     /// Performs a vector search using a query embedding and returns the
-    /// num_of_resources amount of most similar VectorResourcePointers.
+    /// num_of_resources amount of most similar VRPointers.
     fn vector_search_resource_pointers(
         &self,
         query: Embedding,
         num_of_resources: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+    ) -> Result<Vec<VRPointer>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
         Ok(router.vector_search(query, num_of_resources))
     }
@@ -356,7 +351,7 @@ impl ShinkaiDB {
 
         let mut resources = vec![];
         for res_pointer in resource_pointers {
-            if res_pointer.resource_base_type == VectorResourceBaseType::Document {
+            if res_pointer.resource_base_type == VRBaseType::Document {
                 if (resources.len() as u64) < num_of_docs {
                     resources.push(self.get_resource(&res_pointer.reference, profile)?);
                 }

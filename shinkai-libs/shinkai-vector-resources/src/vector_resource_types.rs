@@ -1,7 +1,7 @@
 use super::base_vector_resources::BaseVectorResource;
-use crate::base_vector_resources::VectorResourceBaseType;
+use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
@@ -16,13 +16,13 @@ use std::fmt;
 pub struct RetrievedNode {
     pub node: Node,
     pub score: f32,
-    pub resource_pointer: VectorResourcePointer,
+    pub resource_pointer: VRPointer,
     pub retrieval_path: VRPath,
 }
 
 impl RetrievedNode {
     /// Create a new RetrievedNode
-    pub fn new(node: Node, score: f32, resource_pointer: VectorResourcePointer, retrieval_path: VRPath) -> Self {
+    pub fn new(node: Node, score: f32, resource_pointer: VRPointer, retrieval_path: VRPath) -> Self {
         Self {
             node,
             score,
@@ -206,17 +206,17 @@ impl Node {
     }
 
     /// Attempts to read the data String from the Node. Errors if data is a VectorResource
-    pub fn get_data_string(&self) -> Result<String, VectorResourceError> {
+    pub fn get_data_string(&self) -> Result<String, VRError> {
         match &self.content {
             NodeContent::Text(s) => Ok(s.clone()),
-            NodeContent::Resource(_) => Err(VectorResourceError::DataIsNonMatchingType),
+            NodeContent::Resource(_) => Err(VRError::DataIsNonMatchingType),
         }
     }
 
     /// Attempts to read the BaseVectorResource from the Node. Errors if data is an actual String
-    pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VectorResourceError> {
+    pub fn get_data_vector_resource(&self) -> Result<BaseVectorResource, VRError> {
         match &self.content {
-            NodeContent::Text(_) => Err(VectorResourceError::DataIsNonMatchingType),
+            NodeContent::Text(_) => Err(VRError::DataIsNonMatchingType),
             NodeContent::Resource(resource) => Ok(resource.clone()),
         }
     }
@@ -234,20 +234,20 @@ pub enum NodeContent {
 /// `reference` holds a string which points back to the original resource that
 /// the pointer was created out of.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VectorResourcePointer {
+pub struct VRPointer {
     pub reference: String,
-    pub resource_base_type: VectorResourceBaseType,
+    pub resource_base_type: VRBaseType,
     pub resource_source: VRSource,
     pub data_tag_names: Vec<String>,
     pub resource_embedding: Option<Embedding>,
     // pub metadata: HashMap<String, String>,
 }
 
-impl VectorResourcePointer {
-    /// Create a new VectorResourcePointer
+impl VRPointer {
+    /// Create a new VRPointer
     pub fn new(
         reference: &str,
-        resource_base_type: VectorResourceBaseType,
+        resource_base_type: VRBaseType,
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
@@ -271,7 +271,7 @@ impl VectorResourcePointer {
     }
 }
 
-impl From<Box<dyn VectorResource>> for VectorResourcePointer {
+impl From<Box<dyn VectorResource>> for VRPointer {
     fn from(resource: Box<dyn VectorResource>) -> Self {
         resource.get_resource_pointer()
     }

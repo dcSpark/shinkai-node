@@ -1,8 +1,8 @@
-use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, TraversalMethod, VRPath, VectorResource};
 use serde_json;
@@ -19,7 +19,7 @@ pub struct DocumentVectorResource {
     resource_id: String,
     resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
-    resource_base_type: VectorResourceBaseType,
+    resource_base_type: VRBaseType,
     node_embeddings: Vec<Embedding>,
     node_count: u64,
     nodes: Vec<Node>,
@@ -55,7 +55,7 @@ impl VectorResource for DocumentVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_base_type(&self) -> VectorResourceBaseType {
+    fn resource_base_type(&self) -> VRBaseType {
         self.resource_base_type.clone()
     }
 
@@ -63,8 +63,8 @@ impl VectorResource for DocumentVectorResource {
         self.node_embeddings.clone()
     }
 
-    fn to_json(&self) -> Result<String, VectorResourceError> {
-        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
@@ -76,22 +76,22 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
-    fn get_node_embedding(&self, id: String) -> Result<Embedding, VectorResourceError> {
-        let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidNodeId)?;
+    fn get_node_embedding(&self, id: String) -> Result<Embedding, VRError> {
+        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
         if id == 0 || id > self.node_count {
-            return Err(VectorResourceError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId);
         }
-        let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidNodeId)? as usize;
+        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
         Ok(self.node_embeddings[index].clone())
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
-    fn get_node(&self, id: String) -> Result<Node, VectorResourceError> {
-        let id = id.parse::<u64>().map_err(|_| VectorResourceError::InvalidNodeId)?;
+    fn get_node(&self, id: String) -> Result<Node, VRError> {
+        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
         if id == 0 || id > self.node_count {
-            return Err(VectorResourceError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId);
         }
-        let index = id.checked_sub(1).ok_or(VectorResourceError::InvalidNodeId)? as usize;
+        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
         Ok(self.nodes[index].clone())
     }
 
@@ -124,7 +124,7 @@ impl DocumentVectorResource {
             node_count: nodes.len() as u64,
             nodes: nodes,
             embedding_model_used,
-            resource_base_type: VectorResourceBaseType::Document,
+            resource_base_type: VRBaseType::Document,
             data_tag_index: DataTagIndex::new(),
         }
     }
@@ -152,14 +152,14 @@ impl DocumentVectorResource {
         &self,
         query: Embedding,
         proximity_window: u64,
-    ) -> Result<Vec<RetrievedNode>, VectorResourceError> {
+    ) -> Result<Vec<RetrievedNode>, VRError> {
         let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
-        let most_similar_node = search_results.first().ok_or(VectorResourceError::VectorResourceEmpty)?;
+        let most_similar_node = search_results.first().ok_or(VRError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_node
             .node
             .id
             .parse::<u64>()
-            .map_err(|_| VectorResourceError::InvalidNodeId)?;
+            .map_err(|_| VRError::InvalidNodeId)?;
 
         // Get Start/End ids
         let start_id = if most_similar_id >= proximity_window {
@@ -195,11 +195,7 @@ impl DocumentVectorResource {
 
     /// Returns all Nodes with a matching key/value pair in the metadata hashmap.
     /// Does not perform any traversal.
-    pub fn metadata_search(
-        &self,
-        metadata_key: &str,
-        metadata_value: &str,
-    ) -> Result<Vec<RetrievedNode>, VectorResourceError> {
+    pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
         let mut matching_nodes = Vec::new();
 
         for node in &self.nodes {
@@ -216,7 +212,7 @@ impl DocumentVectorResource {
         }
 
         if matching_nodes.is_empty() {
-            return Err(VectorResourceError::NoNodeFound);
+            return Err(VRError::NoNodeFound);
         }
 
         Ok(matching_nodes)
@@ -282,7 +278,7 @@ impl DocumentVectorResource {
         id: u64,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
-    ) -> Result<Node, VectorResourceError> {
+    ) -> Result<Node, VRError> {
         let embedding = new_resource.as_trait_object().resource_embedding().clone();
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_data_without_tag_validation(
@@ -303,7 +299,7 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
-    ) -> Result<Node, VectorResourceError> {
+    ) -> Result<Node, VRError> {
         // Validate which tags will be saved with the new data
         let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
@@ -318,7 +314,7 @@ impl DocumentVectorResource {
 
     /// Pops and returns the last node and associated embedding
     /// and updates the data tags index.
-    pub fn pop_data(&mut self) -> Result<(Node, Embedding), VectorResourceError> {
+    pub fn pop_data(&mut self) -> Result<(Node, Embedding), VRError> {
         let popped_node = self.nodes.pop();
         let popped_embedding = self.node_embeddings.pop();
 
@@ -329,7 +325,7 @@ impl DocumentVectorResource {
                 self.node_count -= 1;
                 Ok((node, embedding))
             }
-            _ => Err(VectorResourceError::VectorResourceEmpty),
+            _ => Err(VRError::VectorResourceEmpty),
         }
     }
 
@@ -342,10 +338,10 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
-    ) -> Result<Node, VectorResourceError> {
+    ) -> Result<Node, VRError> {
         // Id + index
         if id > self.node_count {
-            return Err(VectorResourceError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId);
         }
         let index = (id - 1) as usize;
 
@@ -374,7 +370,7 @@ impl DocumentVectorResource {
 
     /// Deletes a node and associated embedding from the resource
     /// and updates the data tags index.
-    pub fn delete_data(&mut self, id: u64) -> Result<(Node, Embedding), VectorResourceError> {
+    pub fn delete_data(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self.delete_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
 
@@ -390,9 +386,9 @@ impl DocumentVectorResource {
     }
 
     /// Internal node deletion
-    fn delete_node(&mut self, id: u64) -> Result<Node, VectorResourceError> {
+    fn delete_node(&mut self, id: u64) -> Result<Node, VRError> {
         if id > self.node_count {
-            return Err(VectorResourceError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId);
         }
         let index = (id - 1) as usize;
         let removed_node = self.nodes.remove(index);
@@ -410,7 +406,7 @@ impl DocumentVectorResource {
         self.nodes.push(node);
     }
 
-    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
         Ok(serde_json::from_str(json)?)
     }
 

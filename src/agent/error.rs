@@ -1,6 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
 
@@ -26,14 +26,14 @@ pub enum AgentError {
     ContentParseFailed,
     InferenceJSONResponseMissingField(String),
     JSONSerializationError(String),
-    VectorResource(VectorResourceError),
+    VectorResource(VRError),
     InvalidSubidentity(ShinkaiNameError),
     InvalidProfileSubidentity(String),
     SerdeError(serde_json::Error),
     TaskJoinError(String),
     InferenceRecursionLimitReached(String),
     TokenizationError(String),
-    JobDequeueFailed(String)
+    JobDequeueFailed(String),
 }
 
 impl fmt::Display for AgentError {
@@ -126,8 +126,8 @@ impl From<serde_json::Error> for AgentError {
     }
 }
 
-impl From<VectorResourceError> for AgentError {
-    fn from(error: VectorResourceError) -> Self {
+impl From<VRError> for AgentError {
+    fn from(error: VRError) -> Self {
         AgentError::VectorResource(error)
     }
 }

@@ -5,7 +5,7 @@ use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{SourceReference, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::fs;
@@ -24,7 +24,7 @@ fn default_test_profile() -> ShinkaiName {
 fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
     // Read the pdf from file into a buffer
     let buffer = std::fs::read("files/shinkai_intro.pdf")
-        .map_err(|_| VectorResourceError::FailedPDFParsing)
+        .map_err(|_| VRError::FailedPDFParsing)
         .unwrap();
 
     // Create a new Tokio runtime

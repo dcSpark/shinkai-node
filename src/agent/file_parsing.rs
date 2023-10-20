@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
@@ -200,11 +200,11 @@ impl ParsingHelper {
 impl ParsingHelper {
     /// Parse CSV data from a buffer and attempt to automatically detect
     /// headers.
-    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VectorResourceError> {
+    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VRError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = reader
             .headers()
-            .map_err(|_| VectorResourceError::FailedCSVParsing)?
+            .map_err(|_| VRError::FailedCSVParsing)?
             .iter()
             .map(String::from)
             .collect::<Vec<String>>();
@@ -223,12 +223,12 @@ impl ParsingHelper {
     /// Parse CSV data from a buffer.
     /// * `header` - A boolean indicating whether to prepend column headers to
     ///   values.
-    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VectorResourceError> {
+    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VRError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = if header {
             reader
                 .headers()
-                .map_err(|_| VectorResourceError::FailedCSVParsing)?
+                .map_err(|_| VRError::FailedCSVParsing)?
                 .iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -238,7 +238,7 @@ impl ParsingHelper {
 
         let mut result = Vec::new();
         for record in reader.records() {
-            let record = record.map_err(|_| VectorResourceError::FailedCSVParsing)?;
+            let record = record.map_err(|_| VRError::FailedCSVParsing)?;
             let row: Vec<String> = if header {
                 record
                     .iter()
