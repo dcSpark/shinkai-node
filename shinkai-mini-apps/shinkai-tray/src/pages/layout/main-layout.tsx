@@ -172,6 +172,7 @@ export function Footer() {
 }
 
 const MainLayout = () => {
+  const auth = useAuth((state) => state.auth);
   return (
     <div className="relative flex h-full flex-col bg-app-gradient bg-cover text-white">
       <div
@@ -184,7 +185,7 @@ const MainLayout = () => {
       <div className="flex-auto overflow-auto">
         <Outlet />
       </div>
-      <Footer />
+      {auth && <Footer />}
     </div>
   );
 };
