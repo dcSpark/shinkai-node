@@ -5,7 +5,6 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
-use crate::resources::bert_cpp::BertCPPProcess;
 use async_recursion::async_recursion;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -35,10 +34,16 @@ impl JobManager {
 
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
-        let query = generator.generate_embedding_default(&query_text).unwrap();
-        let ret_data_chunks =
-            JobManager::job_scope_vector_search(db.clone(), full_job.scope(), query, 20, &user_profile.clone().unwrap(), true)
-                .await?;
+        let query = generator.generate_embedding_default(&query_text).await.unwrap();
+        let ret_data_chunks = JobManager::job_scope_vector_search(
+            db.clone(),
+            full_job.scope(),
+            query,
+            20,
+            &user_profile.clone().unwrap(),
+            true,
+        )
+        .await?;
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < max_iterations {

@@ -22,6 +22,7 @@ pub enum VectorResourceError {
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
+    TaskFailed(String),
 }
 
 impl fmt::Display for VectorResourceError {
@@ -53,6 +54,9 @@ impl fmt::Display for VectorResourceError {
             }
             VectorResourceError::CouldNotDetectFileType(ref s) => {
                 write!(f, "Could not detect file type from file name: {}", s)
+            }
+            VectorResourceError::TaskFailed(ref s) => {
+                write!(f, "Tokio task failed: {}", s)
             }
         }
     }

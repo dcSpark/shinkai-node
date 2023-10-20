@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(
             agent.model,
             AgentLLMInterface::OpenAI(OpenAI {
-                model_type: "chatgpt3-turbo".to_string()
+                model_type: "gpt-3.5-turbo".to_string()
             })
         );
         assert_eq!(

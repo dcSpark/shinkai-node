@@ -142,7 +142,8 @@ impl ShinkaiDB {
 
         for tool in toolkit.tools {
             let js_tool = ShinkaiTool::JS(tool);
-            let embedding = embedding_generator.generate_embedding_default(&js_tool.format_embedding_string())?;
+            let embedding =
+                embedding_generator.generate_embedding_default_blocking(&js_tool.format_embedding_string())?;
             tool_router.add_shinkai_tool(&js_tool, embedding)?;
         }
 

@@ -33,7 +33,7 @@ impl UnstructuredAPI {
     /// Makes a blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: Requires name to include the extension ie. `*.pdf`
-    pub fn process_file(
+    pub fn process_file_blocking(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
@@ -47,7 +47,7 @@ impl UnstructuredAPI {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request_blocking(file_buffer, &name)?;
 
-        UnstructuredParser::process_elements_into_resource(
+        UnstructuredParser::process_elements_into_resource_blocking(
             elements,
             generator,
             name,
@@ -62,7 +62,7 @@ impl UnstructuredAPI {
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: Requires name to include the extension ie. `*.pdf`
-    pub async fn process_file_async(
+    pub async fn process_file(
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
@@ -74,7 +74,7 @@ impl UnstructuredAPI {
     ) -> Result<BaseVectorResource, VectorResourceError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let elements = self.file_request_async(file_buffer, &name).await?;
+        let elements = self.file_request(file_buffer, &name).await?;
 
         UnstructuredParser::process_elements_into_resource(
             elements,
@@ -86,6 +86,7 @@ impl UnstructuredAPI {
             resource_id,
             max_chunk_size,
         )
+        .await
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of
@@ -124,7 +125,7 @@ impl UnstructuredAPI {
 
     /// Makes an async request to process a file in a buffer into a list of
     /// UnstructuredElements
-    pub async fn file_request_async(
+    pub async fn file_request(
         &self,
         file_buffer: Vec<u8>,
         file_name: &str,

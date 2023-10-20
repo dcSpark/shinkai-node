@@ -2,20 +2,6 @@
 
 ## Dependencies
 
-### MuPDF
-
-Linux:
-
-```
-sudo apt install mupdf libfontconfig1-dev gcc g++
-```
-
-Mac:
-
-```
-brew install mupdf fontconfig
-```
-
 ### GCC Compiler Setup
 
 Make sure you have gcc/g++ as your default compilers:
@@ -86,8 +72,6 @@ npm run test.unit
 
 ### Shinkai PYO3 Tests
 
-
 ### Further CI Development
 
 Use `act -j test-wasm -P self-hosted=nektos/act-environments-ubuntu:18.04 --container-architecture linux/amd64` to run the tests locally in a docker container. This is useful for debugging CI issues.
-

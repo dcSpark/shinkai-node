@@ -2,7 +2,6 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
 use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use mupdf::device;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
 use serde_json::to_vec;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

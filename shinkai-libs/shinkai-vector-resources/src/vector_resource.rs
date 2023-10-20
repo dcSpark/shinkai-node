@@ -1,12 +1,15 @@
 use crate::base_vector_resources::VectorResourceBaseType;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
+#[cfg(feature = "native-http")]
+use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
+use async_trait::async_trait;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
@@ -35,6 +38,7 @@ pub enum TraversalMethod {
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
+#[async_trait]
 pub trait VectorResource {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
@@ -55,16 +59,45 @@ pub trait VectorResource {
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VectorResourceError>;
 
+    #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding.
-    fn update_resource_embedding(
+    async fn update_resource_embedding(
         &mut self,
         generator: &dyn EmbeddingGenerator,
         keywords: Vec<String>,
     ) -> Result<(), VectorResourceError> {
         let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator.generate_embedding(&formatted, "RE")?;
+        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
         self.set_resource_embedding(new_embedding);
         Ok(())
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Regenerates and updates the resource's embedding.
+    fn update_resource_embedding_blocking(
+        &mut self,
+        generator: &dyn EmbeddingGenerator,
+        keywords: Vec<String>,
+    ) -> Result<(), VectorResourceError> {
+        let formatted = self.format_embedding_string(keywords);
+        let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
+        self.set_resource_embedding(new_embedding);
+        Ok(())
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
+    /// (targets the same model and interface for embedding generation).
+    fn initialize_compatible_embeddings_generator(
+        &self,
+        api_url: &str,
+        api_key: Option<&str>,
+    ) -> Box<dyn EmbeddingGenerator> {
+        Box::new(RemoteEmbeddingGenerator::new(
+            self.embedding_model_used(),
+            api_url,
+            api_key,
+        ))
     }
 
     /// Generates a formatted string that represents the data to be used for the
@@ -527,10 +560,6 @@ pub trait VectorResource {
         current_level_results
     }
 
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar data chunks within a specific range.
-    /// Automatically uses Efficient Traversal.
-    ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
     ///   of the highest score.
@@ -571,7 +600,7 @@ pub trait VectorResource {
 
     /// Fetches all data chunks which contain tags matching the input name list
     /// (including fetching inside all depths of Vector Resources exhaustively)
-    /// TODO: Fix the retrieval path/depth to be proper
+    /// TODO: Fix the retrieval path/depth to be proper on retrieved nodes
     fn get_all_syntactic_matches(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedDataChunk> {
         // Fetch all data chunks with matching data tags
         let mut matching_data_chunks = vec![];

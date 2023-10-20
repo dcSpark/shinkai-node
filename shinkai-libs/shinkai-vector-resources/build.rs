@@ -11,12 +11,12 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
-    prepare_bert_cpp();
+    // prepare_bert_cpp();
 
-    // Remote Embedding Generator model (used via Bert.cpp server)
-    let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
-    let model_filename = "models/all-MiniLM-L12-v2.bin";
-    download_file(model_url, model_filename, model_filename);
+    // // Remote Embedding Generator model (used via Bert.cpp server)
+    // let model_url = "https://huggingface.co/skeskinen/ggml/resolve/main/all-MiniLM-L12-v2/ggml-model-q4_1.bin";
+    // let model_filename = "models/all-MiniLM-L12-v2.bin";
+    // download_file(model_url, model_filename, model_filename);
 
     // Local Embedding Generator model (not used anymore, here in case for testing)
     // let model_url = "https://huggingface.co/rustformers/pythia-ggml/resolve/main/pythia-160m-q4_0.bin";

@@ -3,76 +3,72 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EmbeddingModelType {
-    // LocalModel(LocalModel),
-    RemoteModel(RemoteModel),
+    TextEmbeddingsInference(TextEmbeddingsInference),
+    BertCPP(BertCPP),
+    OpenAI(OpenAI),
 }
 
 impl fmt::Display for EmbeddingModelType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            // EmbeddingModelType::LocalModel(local_model) => write!(f, "{}", local_model),
-            EmbeddingModelType::RemoteModel(remote_model) => write!(f, "{}", remote_model),
+            EmbeddingModelType::TextEmbeddingsInference(model) => write!(f, "{}", model),
+            EmbeddingModelType::BertCPP(model) => write!(f, "{}", model),
+            EmbeddingModelType::OpenAI(model) => write!(f, "{}", model),
         }
     }
 }
 
+/// Hugging Face's Text Embeddings Inference
+/// (https://github.com/huggingface/text-embeddings-inference)
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum LocalModel {
-    Bloom,
-    Gpt2,
-    GptJ,
-    GptNeoX,
-    Llama,
-    Mpt,
-    Falcon,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum RemoteModel {
-    OpenAITextEmbeddingAda002,
+pub enum TextEmbeddingsInference {
     AllMiniLML6v2,
     AllMiniLML12v2,
     MultiQAMiniLML6,
     Other(String),
 }
 
-impl fmt::Display for RemoteModel {
+/// Bert.CPP (https://github.com/skeskinen/bert.cpp)
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum BertCPP {
+    AllMiniLML6v2,
+    AllMiniLML12v2,
+    MultiQAMiniLML6,
+    Other(String),
+}
+
+/// OpenAI
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum OpenAI {
+    OpenAITextEmbeddingAda002,
+}
+
+impl fmt::Display for TextEmbeddingsInference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RemoteModel::OpenAITextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
-            RemoteModel::AllMiniLML6v2 => write!(f, "all-MiniLM-L6-v2"),
-            RemoteModel::AllMiniLML12v2 => write!(f, "all-MiniLM-L12-v2"),
-            RemoteModel::MultiQAMiniLML6 => write!(f, "multi-qa-MiniLM-L6-cos-v1"),
-            RemoteModel::Other(name) => write!(f, "{}", name),
+            TextEmbeddingsInference::AllMiniLML6v2 => write!(f, "sentence-transformers/all-MiniLM-L6-v2"),
+            TextEmbeddingsInference::AllMiniLML12v2 => write!(f, "sentence-transformers/all-MiniLM-L12-v2"),
+            TextEmbeddingsInference::MultiQAMiniLML6 => write!(f, "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"),
+            TextEmbeddingsInference::Other(name) => write!(f, "sentence-transformers/{}", name),
         }
     }
 }
 
-// impl LocalModel {
-//     pub fn from_model_architecture(arch: ModelArchitecture) -> LocalModel {
-//         match arch {
-//             ModelArchitecture::Bloom => LocalModel::Bloom,
-//             ModelArchitecture::Gpt2 => LocalModel::Gpt2,
-//             ModelArchitecture::GptJ => LocalModel::GptJ,
-//             ModelArchitecture::GptNeoX => LocalModel::GptNeoX,
-//             ModelArchitecture::Llama => LocalModel::Llama,
-//             ModelArchitecture::Mpt => LocalModel::Mpt,
-//             //ModelArchitecture::Falcon => LocalModel::Falcon, // Falcon not implemented yet in llm crate
-//             _ => LocalModel::Llama,
-//         }
-//     }
-// }
+impl fmt::Display for BertCPP {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BertCPP::AllMiniLML6v2 => write!(f, "all-MiniLM-L6-v2"),
+            BertCPP::AllMiniLML12v2 => write!(f, "all-MiniLM-L12-v2"),
+            BertCPP::MultiQAMiniLML6 => write!(f, "multi-qa-MiniLM-L6-cos-v1"),
+            BertCPP::Other(name) => write!(f, "{}", name),
+        }
+    }
+}
 
-// impl fmt::Display for LocalModel {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         match self {
-//             LocalModel::Bloom => write!(f, "Bloom"),
-//             LocalModel::Gpt2 => write!(f, "Gpt2"),
-//             LocalModel::GptJ => write!(f, "GptJ"),
-//             LocalModel::GptNeoX => write!(f, "GptNeoX"),
-//             LocalModel::Llama => write!(f, "Llama"),
-//             LocalModel::Mpt => write!(f, "Mpt"),
-//             LocalModel::Falcon => write!(f, "Falcon"),
-//         }
-//     }
-// }
+impl fmt::Display for OpenAI {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OpenAI::OpenAITextEmbeddingAda002 => write!(f, "text-embedding-ada-002"),
+        }
+    }
+}
