@@ -1,9 +1,10 @@
 mod utils;
-use shinkai_node::{network::node::NodeProxyMode, utils::environment::fetch_node_proxy_mode};
+use shinkai_node::{utils::environment::fetch_node_proxy_mode};
 
 #[cfg(test)]
 mod tests {
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+    use shinkai_node::network::node_proxy::NodeProxyMode;
 
     use super::*;
     use std::env;

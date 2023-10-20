@@ -115,7 +115,7 @@ fn main() {
                 db_path,
                 node_env.first_device_needs_registration_code,
                 initial_agent,
-                node_proxy_mode
+                node_proxy_mode.clone()
             )
             .await
         }),
@@ -145,7 +145,7 @@ fn main() {
 
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
+            node_api::run_api(node_commands_sender, node_env.api_listen_address, node_proxy_mode).await;
         });
 
         let _ = tokio::try_join!(api_server, node_task);

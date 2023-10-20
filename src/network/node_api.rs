@@ -1,4 +1,5 @@
 use super::node::NodeCommand;
+use super::node_proxy::NodeProxyMode;
 use async_channel::Sender;
 use chrono::format;
 use futures::Stream;
@@ -16,6 +17,8 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use warp::fs::file;
 use warp::Buf;
 use warp::Filter;
@@ -70,8 +73,14 @@ impl From<&str> for APIError {
     }
 }
 
-pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
+pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_proxy: NodeProxyMode) {
     println!("Starting Node API server at: {}", &address);
+
+    let state = Arc::new(Mutex::new(node_proxy));
+
+    let node_command_clone = node_commands_sender.clone();
+    let state_clone = Arc::clone(&state);
+    let with_state = warp::any().map(move || (Arc::clone(&state_clone), node_command_clone.clone()));
 
     let log = warp::log::custom(|info| {
         eprintln!(
@@ -85,62 +94,69 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     });
 
     let ping_all = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "ping_all")
             .and(warp::post())
-            .and_then(move || ping_all_handler(node_commands_sender.clone()))
+            .and(with_state.clone())
+            .and_then(move |(state, node_commands_sender)| ping_all_handler(state, node_commands_sender))
     };
 
     // POST v1/send
     let send_msg = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::post()
             .and(warp::path("v1"))
             .and(warp::path("send"))
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| send_msg_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                send_msg_handler(state, node_commands_sender, message)
+            })
     };
 
     // GET v1/get_peers
     let get_peers = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "get_peers")
             .and(warp::get())
-            .and_then(move || get_peers_handler(node_commands_sender.clone()))
+            .and(with_state.clone())
+            .and_then(move |(state, node_commands_sender)| get_peers_handler(state, node_commands_sender))
     };
 
     // POST v1/identity_name_to_external_profile_data
     let identity_name_to_external_profile_data = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "identity_name_to_external_profile_data")
             .and(warp::post())
             .and(warp::body::json())
-            .and_then(move |body: NameToExternalProfileData| {
-                identity_name_to_external_profile_data_handler(node_commands_sender.clone(), body)
+            .and(with_state.clone())
+            .and_then(move |body: NameToExternalProfileData, (state, node_commands_sender)| {
+                identity_name_to_external_profile_data_handler(state, node_commands_sender, body)
             })
     };
 
     // GET v1/get_public_keys
     let get_public_key = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "get_public_keys")
             .and(warp::get())
-            .and_then(move || get_public_key_handler(node_commands_sender.clone()))
+            .and(with_state.clone())
+            .and_then(move |(state, node_commands_sender)| get_public_key_handler(state, node_commands_sender))
     };
 
     // POST v1/connect
     let connect = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "connect")
             .and(warp::post())
             .and(warp::body::json())
-            .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
+            .and(with_state.clone())
+            .and_then(move |body: ConnectBody, (state, node_commands_sender)| {
+                connect_handler(state, node_commands_sender, body)
+            })
     };
 
     // GET v1/shinkai_health
-    let shinkai_health = warp::path!("v1" / "shinkai_health")
-        .and(warp::get())
-        .and_then(shinkai_health_handler);
+    let shinkai_health = {
+        warp::path!("v1" / "shinkai_health")
+            .and(warp::get())
+            .and(with_state.clone())
+            .and_then(move |(state, node_commands_sender)| shinkai_health_handler(state, node_commands_sender))
+    };
 
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
@@ -156,93 +172,101 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
 
     // POST v1/available_agents
     let available_agents = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "available_agents")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| available_agents_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                available_agents_handler(state, node_commands_sender, message)
+            })
     };
 
     // POST v1/add_agent
     let add_agent = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "add_agent")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| add_agent_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                add_agent_handler(state, node_commands_sender, message)
+            })
     };
 
     // POST v1/last_messages_from_inbox?limit={number}&offset={key}
     let get_last_messages_from_inbox = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "last_messages_from_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_last_messages_from_inbox_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                get_last_messages_from_inbox_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/last_unread_messages?limit={number}&offset={key}
     let get_last_unread_messages = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "last_unread_messages_from_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_last_unread_messages_from_inbox_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                get_last_unread_messages_from_inbox_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/get_all_inboxes_for_profile_handler
     let get_all_inboxes_for_profile = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "get_all_inboxes_for_profile")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_all_inboxes_for_profile_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                get_all_inboxes_for_profile_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/get_all_smart_inboxes_for_profile_handler
     let get_all_smart_inboxes_for_profile = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "get_all_smart_inboxes_for_profile")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                get_all_smart_inboxes_for_profile_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                get_all_smart_inboxes_for_profile_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/update_smart_inbox_name_handler
     let update_smart_inbox_name = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "update_smart_inbox_name")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                update_smart_inbox_name_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                update_smart_inbox_name_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/create_job
     let create_job = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_job")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| create_job_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                create_job_handler(state, node_commands_sender, message)
+            })
     };
 
     // POST v1/job_message
     let job_message = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "job_message")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| job_message_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                job_message_handler(state, node_commands_sender, message)
+            })
     };
 
     // POST v1/get_filenames_for_file_inbox
@@ -256,64 +280,69 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
 
     // POST v1/mark_as_read_up_to
     let mark_as_read_up_to = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "mark_as_read_up_to")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| mark_as_read_up_to_handler(node_commands_sender.clone(), message))
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                mark_as_read_up_to_handler(state, node_commands_sender, message)
+            })
     };
 
     // POST v1/create_registration_code
     let create_registration_code = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_registration_code")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                create_registration_code_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                create_registration_code_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/use_registration_code
     let use_registration_code = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "use_registration_code")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                use_registration_code_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                use_registration_code_handler(state, node_commands_sender, message)
             })
     };
 
     // GET v1/get_all_subidentities
     let get_all_subidentities = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "get_all_subidentities")
             .and(warp::get())
-            .and_then(move || get_all_subidentities_handler(node_commands_sender.clone()))
+            .and(with_state.clone())
+            .and_then(move |(state, node_commands_sender)| {
+                get_all_subidentities_handler(state, node_commands_sender)
+            })
     };
 
     // POST v1/create_files_inbox_with_symmetric_key
     let create_files_inbox_with_symmetric_key = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "create_files_inbox_with_symmetric_key")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| {
-                create_files_inbox_with_symmetric_key_handler(node_commands_sender.clone(), message)
+            .and(with_state.clone())
+            .and_then(move |message: ShinkaiMessage, (state, node_commands_sender)| {
+                create_files_inbox_with_symmetric_key_handler(state, node_commands_sender, message)
             })
     };
 
     // POST v1/add_file_to_inbox_with_symmetric_key/{string1}/{string2}
+
     let add_file_to_inbox_with_symmetric_key = {
-        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "add_file_to_inbox_with_symmetric_key" / String / String)
             .and(warp::post())
             .and(warp::body::content_length_limit(1024 * 1024 * 200)) // 200MB
             .and(warp::multipart::form().max_length(1024 * 1024 * 200))
+            .and(with_state.clone())
             .and_then(
-                move |string1: String, string2: String, form: warp::multipart::FormData| {
-                    handle_file_upload(node_commands_sender.clone(), string1, string2, form)
+                move |string1: String, string2: String, form: warp::multipart::FormData, (state, node_commands_sender)| {
+                    handle_file_upload(state, node_commands_sender, string1, string2, form)
                 },
             )
     };
@@ -388,7 +417,10 @@ where
     }
 }
 
-async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn ping_all_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<impl warp::Reply, warp::Rejection> {
     match node_commands_sender.send(NodeCommand::PingAll).await {
         Ok(_) => Ok(warp::reply::json(&json!({
             "result": "Pinged all nodes successfully"
@@ -400,6 +432,7 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
 }
 
 async fn send_msg_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -424,7 +457,10 @@ async fn send_msg_handler(
     Ok(resp)
 }
 
-async fn get_peers_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
+async fn get_peers_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();
     let (res_sender, res_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -436,6 +472,7 @@ async fn get_peers_handler(node_commands_sender: Sender<NodeCommand>) -> Result<
 }
 
 async fn identity_name_to_external_profile_data_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     body: NameToExternalProfileData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -455,7 +492,28 @@ async fn identity_name_to_external_profile_data_handler(
     }))
 }
 
+async fn get_public_key_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let node_commands_sender = node_commands_sender.clone();
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .send(NodeCommand::GetPublicKeys(res_sender))
+        .await
+        .map_err(|_| warp::reject::reject())?; // Send the command to Node
+    let (signature_public_key, encryption_public_key) =
+        res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+    let signature_public_key_string = signature_public_key_to_string(signature_public_key.clone());
+    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key.clone());
+    Ok(warp::reply::json(&GetPublicKeysResponse {
+        signature_public_key: signature_public_key_string,
+        encryption_public_key: encryption_public_key_string,
+    }))
+}
+
 async fn handle_file_upload(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     public_key: String,
     encrypted_nonce: String,
@@ -514,26 +572,8 @@ async fn handle_file_upload(
     }
 }
 
-async fn get_public_key_handler(
-    node_commands_sender: Sender<NodeCommand>,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    let node_commands_sender = node_commands_sender.clone();
-    let (res_sender, res_receiver) = async_channel::bounded(1);
-    node_commands_sender
-        .send(NodeCommand::GetPublicKeys(res_sender))
-        .await
-        .map_err(|_| warp::reject::reject())?; // Send the command to Node
-    let (signature_public_key, encryption_public_key) =
-        res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    let signature_public_key_string = signature_public_key_to_string(signature_public_key.clone());
-    let encryption_public_key_string = encryption_public_key_to_string(encryption_public_key.clone());
-    Ok(warp::reply::json(&GetPublicKeysResponse {
-        signature_public_key: signature_public_key_string,
-        encryption_public_key: encryption_public_key_string,
-    }))
-}
-
 async fn connect_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     body: ConnectBody,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -546,10 +586,11 @@ async fn connect_handler(
             profile_name: profile_name.clone(),
         })
         .await;
-    Ok(warp::reply::json(&"OK".to_string()))
+    Ok(warp::reply::json(&json!({ "status": "ok" })))
 }
 
 async fn get_last_messages_from_inbox_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -565,6 +606,7 @@ async fn get_last_messages_from_inbox_handler(
 }
 
 async fn get_last_unread_messages_from_inbox_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -580,6 +622,7 @@ async fn get_last_unread_messages_from_inbox_handler(
 }
 
 async fn get_all_inboxes_for_profile_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -595,6 +638,7 @@ async fn get_all_inboxes_for_profile_handler(
 }
 
 async fn get_all_smart_inboxes_for_profile_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -610,6 +654,7 @@ async fn get_all_smart_inboxes_for_profile_handler(
 }
 
 async fn update_smart_inbox_name_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -624,7 +669,9 @@ async fn update_smart_inbox_name_handler(
     .await
 }
 
+
 async fn create_job_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -640,6 +687,7 @@ async fn create_job_handler(
 }
 
 async fn add_agent_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -655,6 +703,7 @@ async fn add_agent_handler(
 }
 
 async fn available_agents_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -670,6 +719,7 @@ async fn available_agents_handler(
 }
 
 async fn job_message_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -700,6 +750,7 @@ async fn get_filenames_message_handler(
 }
 
 async fn mark_as_read_up_to_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -715,6 +766,7 @@ async fn mark_as_read_up_to_handler(
 }
 
 async fn create_files_inbox_with_symmetric_key_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -730,6 +782,7 @@ async fn create_files_inbox_with_symmetric_key_handler(
 }
 
 async fn create_registration_code_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -764,6 +817,7 @@ pub struct APIUseRegistrationCodeSuccessResponse {
 }
 
 async fn use_registration_code_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
@@ -794,11 +848,15 @@ async fn use_registration_code_handler(
     }
 }
 
-async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
+async fn shinkai_health_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::json(&json!({ "status": "ok" })))
 }
 
 async fn get_all_subidentities_handler(
+    state: Arc<Mutex<NodeProxyMode>>,
     node_commands_sender: Sender<NodeCommand>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let node_commands_sender = node_commands_sender.clone();

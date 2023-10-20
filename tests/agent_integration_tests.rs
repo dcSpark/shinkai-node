@@ -14,9 +14,10 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
-use shinkai_node::network::node::{NodeCommand, NodeProxyMode};
+use shinkai_node::network::node::{NodeCommand};
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
+use shinkai_node::network::node_proxy::NodeProxyMode;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;

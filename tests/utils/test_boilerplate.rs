@@ -2,6 +2,7 @@ use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use futures::Future;
+use shinkai_node::network::node_proxy::NodeProxyMode;
 use core::panic;
 use std::pin::Pin;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
@@ -20,7 +21,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::network::node::{NodeCommand, NodeProxyMode};
+use shinkai_node::network::node::{NodeCommand};
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use std::fs;
