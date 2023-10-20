@@ -7,6 +7,7 @@ use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
+#[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use blake3::Hasher;
 use serde_json::Value as JsonValue;
@@ -34,9 +35,9 @@ impl UnstructuredParser {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource
-    #[cfg(feature = "native-http")]
     pub async fn process_elements_into_resource(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
@@ -61,9 +62,9 @@ impl UnstructuredParser {
         .await
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource.
-    #[cfg(feature = "native-http")]
     pub fn process_elements_into_resource_blocking(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
@@ -87,9 +88,9 @@ impl UnstructuredParser {
         )
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
-    #[cfg(feature = "native-http")]
     pub async fn process_elements_into_resource_with_custom_collection(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
@@ -129,9 +130,9 @@ impl UnstructuredParser {
         .await
     }
 
+    #[cfg(feature = "native-http")]
     /// Processes an ordered list of `UnstructuredElement`s returned from Unstructured into
     /// a ready-to-go BaseVectorResource. Allows specifying a custom collection function.
-    #[cfg(feature = "native-http")]
     pub fn process_elements_into_resource_blocking_with_custom_collection(
         elements: Vec<UnstructuredElement>,
         generator: &dyn EmbeddingGenerator,
@@ -174,9 +175,9 @@ impl UnstructuredParser {
         )
     }
 
-    /// Recursively processes all text groups & their sub groups into DocumentResources
     #[async_recursion]
     #[cfg(feature = "native-http")]
+    /// Recursively processes all text groups & their sub groups into DocumentResources
     async fn process_new_doc_resource(
         text_groups: Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,
@@ -235,8 +236,8 @@ impl UnstructuredParser {
         Ok(BaseVectorResource::Document(doc))
     }
 
-    /// Recursively processes all text groups & their sub groups into DocumentResources
     #[cfg(feature = "native-http")]
+    /// Recursively processes all text groups & their sub groups into DocumentResources
     fn process_new_doc_resource_blocking(
         text_groups: Vec<GroupedText>,
         generator: &dyn EmbeddingGenerator,

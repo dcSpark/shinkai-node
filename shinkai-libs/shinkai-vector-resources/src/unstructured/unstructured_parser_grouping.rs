@@ -3,6 +3,7 @@ use super::unstructured_types::{ElementType, GroupedText, UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VectorResourceError;
+#[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
 use std::collections::HashMap;
@@ -57,9 +58,10 @@ impl UnstructuredParser {
         }
     }
 
+    #[cfg(feature = "native-http")]
+    #[async_recursion]
     /// Recursively goes through all of the text groups and batch generates embeddings
     /// for all of them.
-    #[async_recursion]
     pub async fn generate_text_group_embeddings(
         text_groups: &Vec<GroupedText>,
         generator: Box<dyn EmbeddingGenerator>,

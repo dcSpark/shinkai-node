@@ -1,10 +1,9 @@
+use crate::resource_errors::VectorResourceError;
+use crate::unstructured::unstructured_parser::UnstructuredParser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-
-use crate::resource_errors::VectorResourceError;
-use crate::unstructured::unstructured_parser::UnstructuredParser;
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
 /// or a pointer to the source file (either external such as URL, or a FileRef)

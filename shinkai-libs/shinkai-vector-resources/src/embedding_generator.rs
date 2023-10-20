@@ -1,6 +1,7 @@
 use crate::embeddings::Embedding;
-use crate::model_type::{EmbeddingModelType, OpenAI, TextEmbeddingsInference};
+use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VectorResourceError;
+#[cfg(feature = "native-http")]
 use async_trait::async_trait;
 use byteorder::{LittleEndian, ReadBytesExt};
 use lazy_static::lazy_static;
@@ -9,8 +10,9 @@ use reqwest::blocking::Client;
 #[cfg(feature = "native-http")]
 use reqwest::Client as AsyncClient;
 use serde::{Deserialize, Serialize};
-use std::io::prelude::*;
-use std::io::Cursor;
+#[cfg(feature = "native-http")]
+use std::io::{prelude::*, Cursor};
+#[cfg(feature = "native-http")]
 use std::net::TcpStream;
 
 lazy_static! {
@@ -96,6 +98,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         Box::new(self.clone())
     }
 
+    #[cfg(feature = "native-http")]
     /// Generate Embeddings for an input list of strings by using the external API.
     /// This method batch generates whenever possible to increase speed.
     /// Note this method is blocking.
@@ -127,6 +130,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Generate an Embedding for an input string by using the external API.
     /// Note this method is blocking.
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
@@ -143,6 +147,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Generate an Embedding for an input string by using the external API.
     /// This method batch generates whenever possible to increase speed.
     async fn generate_embeddings(
@@ -168,6 +173,7 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// Generate an Embedding for an input string by using the external API.
     async fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VectorResourceError> {
         let input_strings = vec![input_string.to_string()];
@@ -215,6 +221,7 @@ impl RemoteEmbeddingGenerator {
     }
 
     #[cfg(feature = "native-http")]
+    /// Generates embeddings using Hugging Face's Text Embedding Interface server
     pub async fn generate_embedding_tei(
         &self,
         input_strings: Vec<String>,
@@ -280,8 +287,8 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// Generates embeddings using a Text Embeddings Inference server
     #[cfg(feature = "native-http")]
+    /// Generates embeddings using a Text Embeddings Inference server
     fn generate_embedding_tei_blocking(
         &self,
         input_strings: Vec<String>,
@@ -347,6 +354,7 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
+    #[cfg(feature = "native-http")]
     /// This function takes a string and a TcpStream and sends the string to the Bert-CPP server
     fn bert_cpp_embeddings_fetch(input_text: &str, server: &mut TcpStream) -> Result<Vec<f32>, VectorResourceError> {
         // Send the input text to the server
@@ -373,6 +381,7 @@ impl RemoteEmbeddingGenerator {
         Ok(embeddings)
     }
 
+    #[cfg(feature = "native-http")]
     /// Generates embeddings for a given text using a local BERT C++ server.
     /// Of note, requires using TcpStream as the server has an arbitrary
     /// implementation that is not proper HTTP.
@@ -392,8 +401,8 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     #[cfg(feature = "native-http")]
+    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     pub async fn generate_embedding_open_ai(
         &self,
         input_string: &str,
@@ -447,8 +456,8 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
-    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     #[cfg(feature = "native-http")]
+    /// Generate an Embedding for an input string by using the external OpenAI-matching API.
     fn generate_embedding_open_ai_blocking(
         &self,
         input_string: &str,
