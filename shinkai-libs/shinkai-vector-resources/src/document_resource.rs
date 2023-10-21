@@ -20,7 +20,7 @@ pub struct DocumentVectorResource {
     resource_embedding: Embedding,
     embedding_model_used: EmbeddingModelType,
     resource_base_type: VRBaseType,
-    get_embeddings: Vec<Embedding>,
+    embeddings: Vec<Embedding>,
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
@@ -60,7 +60,7 @@ impl VectorResource for DocumentVectorResource {
     }
 
     fn get_embeddings(&self) -> Vec<Embedding> {
-        self.get_embeddings.clone()
+        self.embeddings.clone()
     }
 
     fn to_json(&self) -> Result<String, VRError> {
@@ -82,7 +82,7 @@ impl VectorResource for DocumentVectorResource {
             return Err(VRError::InvalidNodeId);
         }
         let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
-        Ok(self.get_embeddings[index].clone())
+        Ok(self.embeddings[index].clone())
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
@@ -110,7 +110,7 @@ impl DocumentVectorResource {
         source: VRSource,
         resource_id: &str,
         resource_embedding: Embedding,
-        get_embeddings: Vec<Embedding>,
+        embeddings: Vec<Embedding>,
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -120,7 +120,7 @@ impl DocumentVectorResource {
             source: source,
             resource_id: String::from(resource_id),
             resource_embedding,
-            get_embeddings,
+            embeddings,
             node_count: nodes.len() as u64,
             nodes: nodes,
             embedding_model_used,
@@ -194,7 +194,7 @@ impl DocumentVectorResource {
     }
 
     /// Returns all Nodes with a matching key/value pair in the metadata hashmap.
-    /// Does not perform any traversal.
+    /// Does not perform any traversal, meaning only searches at root depth.
     pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
         let mut matching_nodes = Vec::new();
 
@@ -221,34 +221,38 @@ impl DocumentVectorResource {
     /// Appends a new node (with a BaseVectorResource) to the document
     /// and updates the data tags index. Of note, we use the resource's data tags
     /// and resource embedding.
-    pub fn append_vector_resource(&mut self, resource: BaseVectorResource, metadata: Option<HashMap<String, String>>) {
+    pub fn append_vector_resource_node(
+        &mut self,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+    ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._append_data_without_tag_validation(NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+        self._append_node_without_tag_validation(NodeContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
-    /// Appends a new node (with a data_string) and an associated embedding to the document
+    /// Appends a new text node and an associated embedding to the document
     /// and updates the data tags index.
-    pub fn append_data(
+    pub fn append_text_node(
         &mut self,
-        data_string: &str,
+        text: &str,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
-        let validated_data_tags = DataTag::validate_tag_list(data_string, parsing_tags);
+        let validated_data_tags = DataTag::validate_tag_list(text, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._append_data_without_tag_validation(
-            NodeContent::Text(data_string.to_string()),
+        self._append_node_without_tag_validation(
+            NodeContent::Text(text.to_string()),
             metadata,
             embedding,
             &data_tag_names,
         )
     }
 
-    /// Appends a new node and associated embedding to the document
+    /// Appends a new text node and associated embedding to the document
     /// without checking if tags are valid. Used for internal purposes/the routing resource.
-    pub fn _append_data_without_tag_validation(
+    pub fn _append_node_without_tag_validation(
         &mut self,
         data: NodeContent,
         metadata: Option<HashMap<String, String>>,
@@ -257,7 +261,7 @@ impl DocumentVectorResource {
     ) {
         let id = self.node_count + 1;
         let node = match data {
-            NodeContent::Text(data_string) => Node::new_with_integer_id(id, &data_string, metadata.clone(), tag_names),
+            NodeContent::Text(text) => Node::new_with_integer_id(id, &text, metadata.clone(), tag_names),
             NodeContent::Resource(resource) => {
                 Node::new_vector_resource_with_integer_id(id, &resource, metadata.clone())
             }
@@ -267,13 +271,13 @@ impl DocumentVectorResource {
         // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        self.append_node(node);
-        self.get_embeddings.push(embedding);
+        self._append_node(node);
+        self.embeddings.push(embedding);
     }
 
     /// Replaces an existing node and associated embedding in the Document resource
     /// with a BaseVectorResource in the new Node, and updates the data tags index.
-    pub fn replace_vector_resource(
+    pub fn replace_with_vector_resource_node(
         &mut self,
         id: u64,
         new_resource: BaseVectorResource,
@@ -281,7 +285,7 @@ impl DocumentVectorResource {
     ) -> Result<Node, VRError> {
         let embedding = new_resource.as_trait_object().resource_embedding().clone();
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
-        self._replace_data_without_tag_validation(
+        self._replace_node_without_tag_validation(
             id,
             NodeContent::Resource(new_resource),
             new_metadata,
@@ -292,7 +296,7 @@ impl DocumentVectorResource {
 
     /// Replaces an existing node & associated embedding and updates the data tags index.
     /// * `id` - The id of the node to be replaced.
-    pub fn replace_data(
+    pub fn replace_with_text_node(
         &mut self,
         id: u64,
         new_data: &str,
@@ -303,7 +307,7 @@ impl DocumentVectorResource {
         // Validate which tags will be saved with the new data
         let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._replace_data_without_tag_validation(
+        self._replace_node_without_tag_validation(
             id,
             NodeContent::Text(new_data.to_string()),
             new_metadata,
@@ -314,9 +318,9 @@ impl DocumentVectorResource {
 
     /// Pops and returns the last node and associated embedding
     /// and updates the data tags index.
-    pub fn pop_data(&mut self) -> Result<(Node, Embedding), VRError> {
+    pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
         let popped_node = self.nodes.pop();
-        let popped_embedding = self.get_embeddings.pop();
+        let popped_embedding = self.embeddings.pop();
 
         match (popped_node, popped_embedding) {
             (Some(node), Some(embedding)) => {
@@ -331,7 +335,7 @@ impl DocumentVectorResource {
 
     /// Replaces an existing node & associated embedding in the Document resource
     /// without checking if tags are valid. Used for resource router.
-    pub fn _replace_data_without_tag_validation(
+    pub fn _replace_node_without_tag_validation(
         &mut self,
         id: u64,
         new_data: NodeContent,
@@ -347,9 +351,7 @@ impl DocumentVectorResource {
 
         // Next create the new node, and replace the old node in the nodes list
         let new_node = match new_data {
-            NodeContent::Text(data_string) => {
-                Node::new_with_integer_id(id, &data_string, new_metadata.clone(), new_tag_names)
-            }
+            NodeContent::Text(text) => Node::new_with_integer_id(id, &text, new_metadata.clone(), new_tag_names),
             NodeContent::Resource(resource) => {
                 Node::new_vector_resource_with_integer_id(id, &resource, new_metadata.clone())
             }
@@ -363,30 +365,30 @@ impl DocumentVectorResource {
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
-        self.get_embeddings[index] = embedding;
+        self.embeddings[index] = embedding;
 
         Ok(old_node)
     }
 
     /// Deletes a node and associated embedding from the resource
     /// and updates the data tags index.
-    pub fn delete_data(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
-        let deleted_node = self.delete_node(id)?;
+    pub fn remove_node(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
 
         let index = (id - 1) as usize;
-        let deleted_embedding = self.get_embeddings.remove(index);
+        let deleted_embedding = self.embeddings.remove(index);
 
         // Adjust the ids of the remaining embeddings
-        for i in index..self.get_embeddings.len() {
-            self.get_embeddings[i].set_id_with_integer((i + 1) as u64);
+        for i in index..self.embeddings.len() {
+            self.embeddings[i].set_id_with_integer((i + 1) as u64);
         }
 
         Ok((deleted_node, deleted_embedding))
     }
 
     /// Internal node deletion
-    fn delete_node(&mut self, id: u64) -> Result<Node, VRError> {
+    fn _remove_node(&mut self, id: u64) -> Result<Node, VRError> {
         if id > self.node_count {
             return Err(VRError::InvalidNodeId);
         }
@@ -400,7 +402,8 @@ impl DocumentVectorResource {
         Ok(removed_node)
     }
 
-    fn append_node(&mut self, mut node: Node) {
+    /// Internal node appending
+    fn _append_node(&mut self, mut node: Node) {
         self.node_count += 1;
         node.id = self.node_count.to_string();
         self.nodes.push(node);

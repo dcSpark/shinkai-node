@@ -82,9 +82,9 @@ fn test_manual_resource_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
-    doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
-    doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
+    doc.append_text_node(fact1, None, &fact1_embeddings, &vec![]);
+    doc.append_text_node(fact2, None, &fact2_embeddings, &vec![]);
+    doc.append_text_node(fact3, None, &fact3_embeddings, &vec![]);
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -125,12 +125,12 @@ fn test_manual_resource_vector_search() {
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
     let fact4_embeddings = generator.generate_embedding_default_blocking(fact4).unwrap();
-    map_resource.insert_kv("some_key", fact4, None, &fact4_embeddings, &vec![]);
+    map_resource.insert_text_node("some_key", fact4, None, &fact4_embeddings, &vec![]);
 
     // Insert the document resource into the map resource
     // To allow for this composability we need to convert the doc into a BaseVectorResource
     let doc_resource = BaseVectorResource::from(doc);
-    map_resource.insert_vector_resource("doc_key", doc_resource, None);
+    map_resource.insert_vector_resource_node("doc_key", doc_resource, None);
 
     //
     // Create a third resource, a DocumentVectorResource about fruits
@@ -148,12 +148,12 @@ fn test_manual_resource_vector_search() {
     let fact5_embeddings = generator.generate_embedding_default_blocking(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
-    fruit_doc.append_data(fact5, None, &fact5_embeddings, &vec![]);
-    fruit_doc.append_data(fact6, None, &fact6_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact5, None, &fact5_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact6, None, &fact6_embeddings, &vec![]);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
-    fruit_doc.append_vector_resource(map_resource, None);
+    fruit_doc.append_vector_resource_node(map_resource, None);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -282,9 +282,9 @@ fn test_manual_syntactic_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_data(fact1, None, &fact1_embeddings, &data_tags);
-    doc.append_data(fact2, None, &fact2_embeddings, &data_tags);
-    doc.append_data(fact3, None, &fact3_embeddings, &data_tags);
+    doc.append_text_node(fact1, None, &fact1_embeddings, &data_tags);
+    doc.append_text_node(fact2, None, &fact2_embeddings, &data_tags);
+    doc.append_text_node(fact3, None, &fact3_embeddings, &data_tags);
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
 

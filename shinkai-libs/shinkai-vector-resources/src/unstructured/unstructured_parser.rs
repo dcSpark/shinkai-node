@@ -207,17 +207,17 @@ impl UnstructuredParser {
                     grouped_text.embedding.clone(),
                 )
                 .await?;
-                doc.append_vector_resource(new_doc, metadata);
+                doc.append_vector_resource_node(new_doc, metadata);
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
                 }
             }
         }
@@ -264,17 +264,17 @@ impl UnstructuredParser {
                     &new_resource_id,
                     grouped_text.embedding.clone(),
                 )?;
-                doc.append_vector_resource(new_doc, metadata);
+                doc.append_vector_resource_node(new_doc, metadata);
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-                    doc.append_data(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
                 }
             }
         }

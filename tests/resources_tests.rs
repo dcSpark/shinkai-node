@@ -141,9 +141,9 @@ fn test_multi_resource_db_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
-    doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
-    doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
+    doc.append_text_node(fact1, None, &fact1_embeddings, &vec![]);
+    doc.append_text_node(fact2, None, &fact2_embeddings, &vec![]);
+    doc.append_text_node(fact3, None, &fact3_embeddings, &vec![]);
 
     // Read the pdf from file into a buffer
     let doc2 = get_shinkai_intro_doc(&generator, &vec![]);

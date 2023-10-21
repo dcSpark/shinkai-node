@@ -197,7 +197,7 @@ impl VectorResourceRouter {
 
     /// Deletes the resource resource_header inside of the VectorResourceRouter given a valid id
     pub fn delete_resource_header(&mut self, old_resource_header_id: &str) -> Result<(), VRError> {
-        self.routing_resource.delete_kv(old_resource_header_id)?;
+        self.routing_resource.remove_node(old_resource_header_id)?;
         Ok(())
     }
 
