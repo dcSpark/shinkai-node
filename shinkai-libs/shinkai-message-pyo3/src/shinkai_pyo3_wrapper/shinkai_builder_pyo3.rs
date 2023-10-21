@@ -1199,6 +1199,7 @@ impl PyShinkaiMessageBuilder {
     pub fn job_message(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_encryption_secret_key: String,
         my_signature_secret_key: String,
         receiver_public_key: String,
@@ -1212,7 +1213,7 @@ impl PyShinkaiMessageBuilder {
             let job_message = JobMessage {
                 job_id,
                 content,
-                files_inbox: "".to_string(),
+                files_inbox,
             };
 
             let body = match serde_json::to_string(&job_message) {

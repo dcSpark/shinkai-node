@@ -135,11 +135,13 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
         node = "@@node1.shinkai"
         job_id = "job1"
         content = "Job content"
+        files_inbox = ""
 
         # job_message
         result = shinkai_message_pyo3.PyShinkaiMessageBuilder.job_message(
             job_id,
             content,
+            files_inbox,
             my_encryption_sk_string,
             my_identity_sk_string,
             my_encryption_sk_string,
