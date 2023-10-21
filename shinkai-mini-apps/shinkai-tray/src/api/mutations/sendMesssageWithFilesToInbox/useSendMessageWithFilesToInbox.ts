@@ -1,11 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
 
-import { sendMessageToInbox } from ".";
+import { sendMessageWithFilesToInbox } from ".";
 import { FunctionKey, queryClient } from "../../constants";
 
-export const useSendMessageToInbox = () => {
+export const useSendMessageWithFilesToInbox = () => {
   return useMutation({
-    mutationFn: sendMessageToInbox,
+    mutationFn: sendMessageWithFilesToInbox,
     onSuccess: () => {
       queryClient.invalidateQueries([FunctionKey.GET_CHAT_CONVERSATION_PAGINATION]);
     },

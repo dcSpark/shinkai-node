@@ -6,7 +6,6 @@ import { z } from "zod";
 
 import { useCreateAgent } from "../api/mutations/createAgent/useCreateAgent";
 import { Button } from "../components/ui/button";
-import { Checkbox } from "../components/ui/checkbox";
 import ErrorMessage from "../components/ui/error-message";
 import {
   Form,
@@ -49,7 +48,7 @@ const CreateAgentPage = () => {
   });
   const {
     mutateAsync: createAgent,
-    isLoading,
+    isPending,
     isError,
     error,
   } = useCreateAgent({
@@ -125,18 +124,6 @@ const CreateAgentPage = () => {
             <FormField
               render={({ field }) => (
                 <FormItem>
-                  <FormControl>
-                    <Checkbox checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
-                  <FormLabel className="ml-3">Perform Locally</FormLabel>
-                </FormItem>
-              )}
-              control={addAgentForm.control}
-              name="performLocally"
-            />
-            <FormField
-              render={({ field }) => (
-                <FormItem>
                   <FormLabel>Api Key</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder="Eg: xYz1DFa..." />
@@ -191,8 +178,8 @@ const CreateAgentPage = () => {
 
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
           >
             Create Agent

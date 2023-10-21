@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { PlusIcon } from "lucide-react";
 import { z } from "zod";
 
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
@@ -23,6 +24,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
+import { ADD_AGENT_PATH } from "../routes/name";
 import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
 
@@ -46,7 +48,7 @@ const CreateJobPage = () => {
     profile_identity_sk: auth?.profile_identity_sk ?? "",
   });
 
-  const { isLoading, mutateAsync: createJob } = useCreateJob({
+  const { isPending, mutateAsync: createJob } = useCreateJob({
     onSuccess: (data) => {
       // TODO: job_inbox, false is hardcoded
       navigate(`/inboxes/job_inbox::${data.jobId}::false`);
@@ -65,6 +67,7 @@ const CreateJobPage = () => {
       agentId: data.model,
       content: data.description,
       files_inbox: "",
+      files: [],
       my_device_encryption_sk: auth.my_device_encryption_sk,
       my_device_identity_sk: auth.my_device_identity_sk,
       node_encryption_pk: auth.node_encryption_pk,
@@ -88,11 +91,23 @@ const CreateJobPage = () => {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {agents?.map((agent) => (
-                        <SelectItem key={agent.id} value={agent.id}>
-                          <span>{agent.id} </span>
-                        </SelectItem>
-                      ))}
+                      {agents?.length ? (
+                        agents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            <span>{agent.id} </span>
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <Button
+                          onClick={() => {
+                            navigate(ADD_AGENT_PATH);
+                          }}
+                          variant="ghost"
+                        >
+                          <PlusIcon className="mr-2" />
+                          Add Agents
+                        </Button>
+                      )}
                     </SelectContent>
                   </Select>
                 </FormItem>
@@ -121,8 +136,8 @@ const CreateJobPage = () => {
 
           <Button
             className="w-full"
-            disabled={isLoading}
-            isLoading={isLoading}
+            disabled={isPending}
+            isLoading={isPending}
             type="submit"
           >
             Create Job

@@ -1,6 +1,6 @@
 target/
 .env
-./db/
+/db
 ./db_tests/
 db_tests/
 !package.json
@@ -30,3 +30,4 @@ shinkai-libs/shinkai-message-pyo3/venv
 tmp_tests
 parse_pdf_to_string_list_output.txt
 zeko_word_listing.txt
+.idea

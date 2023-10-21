@@ -1,10 +1,10 @@
 import { MemoryRouter as Router } from "react-router-dom";
 
 import { QueryClientProvider } from "@tanstack/react-query";
+// import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 import { queryClient } from "./api/constants";
 import AppRoutes from "./routes";
-// import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 function App() {
   return (
@@ -12,7 +12,7 @@ function App() {
       <Router>
         <AppRoutes />
       </Router>
-      {/* <ReactQueryDevtools initialIsOpen /> */}
+      {/* <ReactQueryDevtools initialIsOpen={false} /> */}
     </QueryClientProvider>
   );
 }
