@@ -256,16 +256,20 @@ impl JobManager {
             None => return Err(AgentError::AgentNotFound),
         };
 
-        let shinkai_db = db.lock().await;
-        let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
-        // Check if there was an error getting the files
-        let files = match files_result {
-            Ok(files) => files,
-            Err(e) => return Err(AgentError::ShinkaiDB(e)),
-        };
         // Create the RemoteEmbeddingGenerator instance
         let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
+
+        // Get the files from the DB
+        let files = {
+            let shinkai_db = db.lock().await;
+            let files_result = shinkai_db.get_all_files_from_inbox(files_inbox.clone());
+            // Check if there was an error getting the files
+            match files_result {
+                Ok(files) => files,
+                Err(e) => return Err(AgentError::ShinkaiDB(e)),
+            }
+        };
 
         // Start processing the files
         for (filename, content) in files.into_iter() {
@@ -287,6 +291,7 @@ impl JobManager {
             // Now create Local/DBScopeEntry depending on setting
             if save_to_db_directly {
                 let pointer = resource.as_trait_object().get_resource_pointer();
+                let mut shinkai_db = db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 
