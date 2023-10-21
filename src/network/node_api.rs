@@ -481,8 +481,8 @@ async fn handle_file_upload(
 
     if let Some((filename, mut file_stream)) = stream.next().await {
         let mut file_data = Vec::new();
-        while let Some(Ok(chunk)) = file_stream.next().await {
-            file_data.extend(chunk);
+        while let Some(Ok(node)) = file_stream.next().await {
+            file_data.extend(node);
         }
 
         let (res_sender, res_receiver) = async_channel::bounded(1);

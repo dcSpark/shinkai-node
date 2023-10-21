@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
+use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
@@ -41,7 +41,7 @@ impl JobManager {
         name: String,
         parsing_tags: &Vec<DataTag>,
         agent: SerializedAgent,
-        max_chunk_size: u64,
+        max_node_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
         let (resource_id, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone()).await?;
@@ -54,7 +54,7 @@ impl JobManager {
             source,
             parsing_tags,
             resource_id,
-            max_chunk_size,
+            max_node_size,
         )
         .await
     }
@@ -77,7 +77,7 @@ impl ParsingHelper {
         name: String,
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
-        max_chunk_size: u64,
+        max_node_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
         let (resource_id, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone()).await?;
@@ -90,7 +90,7 @@ impl ParsingHelper {
             source,
             parsing_tags,
             resource_id,
-            max_chunk_size,
+            max_node_size,
         )
         .await
     }
@@ -104,7 +104,7 @@ impl ParsingHelper {
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         resource_id: String,
-        max_chunk_size: u64,
+        max_node_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
         let resource = UnstructuredParser::process_elements_into_resource(
             elements,
@@ -114,13 +114,11 @@ impl ParsingHelper {
             source,
             parsing_tags,
             resource_id,
-            max_chunk_size,
+            max_node_size,
         )
         .await?;
 
-        resource
-            .as_trait_object()
-            .print_all_data_chunks_exhaustive(None, true, false);
+        resource.as_trait_object().print_all_nodes_exhaustive(None, true, false);
 
         Ok(resource)
     }
@@ -140,14 +138,14 @@ impl ParsingHelper {
     /// Takes the provided elements and creates a description prompt ready to be used
     /// to inference with an LLM.
     pub fn process_elements_into_description_prompt(elements: &Vec<UnstructuredElement>, max_size: usize) -> Prompt {
-        let max_chunk_size = 300;
+        let max_node_size = 300;
         let mut descriptions = Vec::new();
         let mut description = String::new();
         let mut total_size = 0;
 
         for element in elements {
             let element_text = &element.text;
-            if description.len() + element_text.len() > max_chunk_size {
+            if description.len() + element_text.len() > max_node_size {
                 descriptions.push(description.clone());
                 total_size += description.len();
                 description.clear();
@@ -202,11 +200,11 @@ impl ParsingHelper {
 impl ParsingHelper {
     /// Parse CSV data from a buffer and attempt to automatically detect
     /// headers.
-    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VectorResourceError> {
+    pub fn parse_csv_auto(buffer: &[u8]) -> Result<Vec<String>, VRError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = reader
             .headers()
-            .map_err(|_| VectorResourceError::FailedCSVParsing)?
+            .map_err(|_| VRError::FailedCSVParsing)?
             .iter()
             .map(String::from)
             .collect::<Vec<String>>();
@@ -225,12 +223,12 @@ impl ParsingHelper {
     /// Parse CSV data from a buffer.
     /// * `header` - A boolean indicating whether to prepend column headers to
     ///   values.
-    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VectorResourceError> {
+    pub fn parse_csv(buffer: &[u8], header: bool) -> Result<Vec<String>, VRError> {
         let mut reader = Reader::from_reader(Cursor::new(buffer));
         let headers = if header {
             reader
                 .headers()
-                .map_err(|_| VectorResourceError::FailedCSVParsing)?
+                .map_err(|_| VRError::FailedCSVParsing)?
                 .iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -240,7 +238,7 @@ impl ParsingHelper {
 
         let mut result = Vec::new();
         for record in reader.records() {
-            let record = record.map_err(|_| VectorResourceError::FailedCSVParsing)?;
+            let record = record.map_err(|_| VRError::FailedCSVParsing)?;
             let row: Vec<String> = if header {
                 record
                     .iter()

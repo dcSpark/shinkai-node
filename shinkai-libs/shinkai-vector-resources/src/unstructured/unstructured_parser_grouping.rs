@@ -2,7 +2,7 @@ use super::unstructured_parser::UnstructuredParser;
 use super::unstructured_types::{ElementType, GroupedText, UnstructuredElement};
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use keyphrases::KeyPhraseExtractor;
@@ -68,7 +68,7 @@ impl UnstructuredParser {
         mut max_batch_size: u64,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+    ) -> Result<Vec<GroupedText>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
@@ -124,7 +124,7 @@ impl UnstructuredParser {
         mut max_batch_size: u64,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
-    ) -> Result<Vec<GroupedText>, VectorResourceError> {
+    ) -> Result<Vec<GroupedText>, VRError> {
         // Clone the input text_groups
         let mut text_groups = text_groups.clone();
 
@@ -265,7 +265,7 @@ impl UnstructuredParser {
                 } else if let Some(title_group) = current_title_group.as_mut() {
                     // If the current group only contains the title text, add a default GroupedText that holds the title's text
                     // This both pre-populates the sub-group field, and allows for the title to be found in a search
-                    // as a RetrievedDataChunk to the LLM which can be useful in some content.
+                    // as a RetrievedNode to the LLM which can be useful in some content.
                     let mut new_grouped_text = GroupedText::new();
                     new_grouped_text.push_data(&title_group.text, None);
                     title_group.sub_groups.push(new_grouped_text);

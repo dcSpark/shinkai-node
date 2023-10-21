@@ -62,7 +62,7 @@ impl Embedding {
     pub fn score_similarities(&self, embeddings: &Vec<Embedding>, num_of_results: u64) -> Vec<(f32, String)> {
         let num_of_results = num_of_results as usize;
 
-        // Calculate the similarity scores for all chunk embeddings and skip any that
+        // Calculate the similarity scores for all node embeddings and skip any that
         // are NaN or less than 0
         let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()

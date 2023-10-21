@@ -1,4 +1,4 @@
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
-/// or a pointer to the source file (either external such as URL, or a FileRef)
+/// or a reference to the source file (either external such as URL, or a FileRef)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum VRSource {
     Reference(SourceReference),
@@ -17,7 +17,7 @@ impl VRSource {
     /// Formats a printable string based on the source
     pub fn format_source_string(&self) -> String {
         match self {
-            VRSource::Reference(pointer) => pointer.format_source_string(),
+            VRSource::Reference(reference) => reference.format_source_string(),
             VRSource::None => String::from("None"),
         }
     }
@@ -47,18 +47,18 @@ impl VRSource {
     }
 
     /// Serializes the VRSource to a JSON string
-    pub fn to_json(&self) -> Result<String, VectorResourceError> {
-        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    pub fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
     }
 
     /// Deserializes a VRSource from a JSON string
-    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
-        serde_json::from_str(json).map_err(|_| VectorResourceError::FailedJSONParsing)
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
+        serde_json::from_str(json).map_err(|_| VRError::FailedJSONParsing)
     }
 
     /// Creates a VRSource using file_name/content to auto-detect and create an instance of Self.
     /// Errors if can not detect matching extension in file_name.
-    pub fn from_file(file_name: &str, file_buffer: &Vec<u8>) -> Result<Self, VectorResourceError> {
+    pub fn from_file(file_name: &str, file_buffer: &Vec<u8>) -> Result<Self, VRError> {
         let re = Regex::new(r"\.[^.]+$").unwrap();
         let file_name_without_extension = re.replace(file_name, "");
         let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
@@ -66,7 +66,7 @@ impl VRSource {
         let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
             f_type
         } else {
-            return Err(VectorResourceError::CouldNotDetectFileType(file_name.to_string()));
+            return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
         };
 
         if file_name.starts_with("http") {
@@ -120,7 +120,7 @@ pub enum SourceReference {
 impl SourceReference {
     pub fn format_source_string(&self) -> String {
         match self {
-            SourceReference::FileRef(pointer) => pointer.format_source_string(),
+            SourceReference::FileRef(reference) => reference.format_source_string(),
             SourceReference::ExternalURI(uri) => uri.clone(),
             SourceReference::Other(s) => s.clone(),
         }

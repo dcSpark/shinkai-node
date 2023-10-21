@@ -5,7 +5,7 @@ use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{DataContent, TraversalMethod, VectorResource};
+use shinkai_vector_resources::vector_resource::{NodeContent, TraversalMethod, VectorResource};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::fs::File;
 use std::io;
@@ -82,9 +82,9 @@ fn test_manual_resource_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_data(fact1, None, &fact1_embeddings, &vec![]);
-    doc.append_data(fact2, None, &fact2_embeddings, &vec![]);
-    doc.append_data(fact3, None, &fact3_embeddings, &vec![]);
+    doc.append_text_node(fact1, None, &fact1_embeddings, &vec![]);
+    doc.append_text_node(fact2, None, &fact2_embeddings, &vec![]);
+    doc.append_text_node(fact3, None, &fact3_embeddings, &vec![]);
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -95,17 +95,17 @@ fn test_manual_resource_vector_search() {
     let query_string = "What animal barks?";
     let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding1.clone(), 1);
-    assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact1, res[0].node.get_text_content().unwrap());
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding_default_blocking(query_string2).unwrap();
     let res2 = doc.vector_search(query_embedding2, 3);
-    assert_eq!(fact2, res2[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact2, res2[0].node.get_text_content().unwrap());
 
     let query_string3 = "What animal swims in the ocean?";
     let query_embedding3 = generator.generate_embedding_default_blocking(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
-    assert_eq!(fact3, res3[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact3, res3[0].node.get_text_content().unwrap());
 
     //
     // Create a 2nd resource, a MapVectorResource
@@ -125,12 +125,12 @@ fn test_manual_resource_vector_search() {
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
     let fact4_embeddings = generator.generate_embedding_default_blocking(fact4).unwrap();
-    map_resource.insert_kv("some_key", fact4, None, &fact4_embeddings, &vec![]);
+    map_resource.insert_text_node("some_key", fact4, None, &fact4_embeddings, &vec![]);
 
     // Insert the document resource into the map resource
     // To allow for this composability we need to convert the doc into a BaseVectorResource
     let doc_resource = BaseVectorResource::from(doc);
-    map_resource.insert_vector_resource("doc_key", doc_resource, None);
+    map_resource.insert_vector_resource_node("doc_key", doc_resource, None);
 
     //
     // Create a third resource, a DocumentVectorResource about fruits
@@ -148,12 +148,12 @@ fn test_manual_resource_vector_search() {
     let fact5_embeddings = generator.generate_embedding_default_blocking(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
-    fruit_doc.append_data(fact5, None, &fact5_embeddings, &vec![]);
-    fruit_doc.append_data(fact6, None, &fact6_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact5, None, &fact5_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact6, None, &fact6_embeddings, &vec![]);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
-    fruit_doc.append_vector_resource(map_resource, None);
+    fruit_doc.append_vector_resource_node(map_resource, None);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -162,7 +162,7 @@ fn test_manual_resource_vector_search() {
     // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
-    assert_eq!(fact1, res[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact1, res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -171,7 +171,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
-    assert_eq!(fact4, res[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact4, res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/some_key", res[0].format_path_to_string());
     assert_eq!(1, res[0].retrieval_path.depth());
@@ -181,7 +181,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding.clone(), 10);
-    assert_eq!(fact6, res[0].chunk.get_data_string().unwrap());
+    assert_eq!(fact6, res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/2", res[0].format_path_to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
@@ -191,22 +191,22 @@ fn test_manual_resource_vector_search() {
     //
     // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(0), None);
-    assert_ne!(fact1, res[0].chunk.get_data_string().unwrap());
+    assert_ne!(fact1, res[0].node.get_text_content().unwrap());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(1), None);
     assert_eq!(
         "3 Animal Facts",
         res[0]
-            .chunk
-            .get_data_vector_resource()
+            .node
+            .get_vector_resource_content()
             .unwrap()
             .as_trait_object()
             .name()
     );
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2), None);
-    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -214,9 +214,9 @@ fn test_manual_resource_vector_search() {
     // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Exhaustive, None);
-    assert_eq!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Efficient, None);
-    assert_ne!(DataContent::Data(fact1.to_string()), res[0].chunk.data);
+    assert_ne!(NodeContent::Text(fact1.to_string()), res[0].node.content);
 
     //
     // Path Tests
@@ -282,9 +282,9 @@ fn test_manual_syntactic_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_data(fact1, None, &fact1_embeddings, &data_tags);
-    doc.append_data(fact2, None, &fact2_embeddings, &data_tags);
-    doc.append_data(fact3, None, &fact3_embeddings, &data_tags);
+    doc.append_text_node(fact1, None, &fact1_embeddings, &data_tags);
+    doc.append_text_node(fact2, None, &fact2_embeddings, &data_tags);
+    doc.append_text_node(fact3, None, &fact3_embeddings, &data_tags);
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
 
@@ -295,30 +295,30 @@ fn test_manual_syntactic_vector_search() {
         .generate_embedding_default_blocking("What is the applicant's email?")
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 1, &vec![email_tag.name.clone()]);
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact1.to_string()), fetched_chunk.chunk.data);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!(NodeContent::Text(fact1.to_string()), fetched_node.node.content);
 
     // Date syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("What is the applicant's birthday?")
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 10, &vec![date_tag.name.clone()]);
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact2.to_string()), fetched_chunk.chunk.data);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!(NodeContent::Text(fact2.to_string()), fetched_node.node.content);
 
     // Price syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("Any notable accomplishments in previous positions?")
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 2, &vec![price_tag.name.clone()]);
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
 
     // Multiplier syntactic vector search
     let query = generator
         .generate_embedding_default_blocking("Any notable accomplishments in previous positions?")
         .unwrap();
     let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
-    let fetched_chunk = fetched_data.get(0).unwrap();
-    assert_eq!(DataContent::Data(fact3.to_string()), fetched_chunk.chunk.data);
+    let fetched_node = fetched_data.get(0).unwrap();
+    assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
 }

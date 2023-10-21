@@ -2,7 +2,7 @@ use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use crate::tools::router::ShinkaiTool;
 use lazy_static::lazy_static;
 use serde_json::to_string;
-use shinkai_vector_resources::vector_resource_types::RetrievedDataChunk;
+use shinkai_vector_resources::vector_resource_types::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
 
@@ -69,7 +69,7 @@ impl JobPromptGenerator {
     /// that it should use them as context to answer the job_task, with the ability to further search.
     pub fn response_prompt_with_vector_search(
         job_task: String,
-        ret_data_chunks: Vec<RetrievedDataChunk>,
+        ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         prev_search_text: Option<String>,
         previous_job_step_response: Option<String>,
@@ -99,11 +99,11 @@ impl JobPromptGenerator {
             );
         }
 
-        // Parses the retrieved data chunks into a single string to add to the prompt
-        let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 3500);
+        // Parses the retrieved nodes into a single string to add to the prompt
+        let ret_nodes_content = RetrievedNode::format_ret_nodes_for_prompt(ret_nodes, 3500);
         let search_context = format!(
             "Here is a list of relevant new content the user provided for you to use while answering: ``` {}```.\n",
-            ret_chunks_content,
+            ret_nodes_content,
         );
         prompt.add_content(search_context, SubPromptType::User);
 
@@ -139,7 +139,7 @@ impl JobPromptGenerator {
     /// that it should use them as context to answer the job_task with no option to further search.
     pub fn response_prompt_with_vector_search_final(
         job_task: String,
-        ret_data_chunks: Vec<RetrievedDataChunk>,
+        ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
@@ -159,11 +159,11 @@ impl JobPromptGenerator {
         }
 
         // TODO: Either re-introduce this or delete it after testing with more QA in practice.
-        // Parses the retrieved data chunks into a single string to add to the prompt
-        // let ret_chunks_content = RetrievedDataChunk::format_ret_chunks_for_prompt(ret_data_chunks, 2000);
+        // Parses the retrieved nodes into a single string to add to the prompt
+        // let ret_nodes_content = RetrievedNode::format_ret_nodes_for_prompt(ret_nodes, 2000);
         // let search_context = format!(
         //     "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
-        //     ret_chunks_content,
+        //     ret_nodes_content,
         // );
         // prompt.add_content(search_context, SubPromptType::System);
 
@@ -220,7 +220,7 @@ impl JobPromptGenerator {
     }
 
     /// Prompt optimized to generate a description based on the first pages of a document
-    pub fn simple_doc_description(chunks: Vec<String>) -> Prompt {
+    pub fn simple_doc_description(nodes: Vec<String>) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             "You are an advanced assistant who who is specialized in summarizing information. Do not ask for further context or information in your answer, simply summarize as much information as possible.".to_string(),
@@ -228,8 +228,8 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(format!("Here is content from a document:"), SubPromptType::User);
-        for chunk in chunks {
-            prompt.add_content(format!("{}", chunk), SubPromptType::User);
+        for node in nodes {
+            prompt.add_content(format!("{}", node), SubPromptType::User);
         }
         prompt.add_content(
             format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),

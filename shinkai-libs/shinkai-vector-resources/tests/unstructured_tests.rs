@@ -80,9 +80,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
         )
         .unwrap();
 
-    resource
-        .as_trait_object()
-        .print_all_data_chunks_exhaustive(None, true, false);
+    resource.as_trait_object().print_all_nodes_exhaustive(None, true, false);
 
     // let query_string = "When does a sequencer cross-reference what has already been committed to Zeko?";
     let query_string = "Who are the authors?";
@@ -92,8 +90,8 @@ fn test_unstructured_parse_pdf_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.chunk.get_data_string().unwrap()
+            result.node.get_text_content().unwrap()
         );
     }
-    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].chunk.get_data_string().unwrap());
+    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].node.get_text_content().unwrap());
 }

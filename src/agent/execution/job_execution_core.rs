@@ -290,13 +290,13 @@ impl JobManager {
 
             // Now create Local/DBScopeEntry depending on setting
             if save_to_db_directly {
-                let pointer = resource.as_trait_object().get_resource_pointer();
+                let resource_header = resource.as_trait_object().generate_resource_header();
                 let mut shinkai_db = db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 
                 let db_scope_entry = DBScopeEntry {
-                    resource_pointer: pointer,
+                    resource_header: resource_header,
                     source: VRSource::from_file(&filename, &content)?,
                 };
                 files_map.insert(filename, ScopeEntry::Database(db_scope_entry));

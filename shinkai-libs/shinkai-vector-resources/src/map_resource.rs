@@ -1,15 +1,16 @@
-use crate::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use crate::resource_errors::VectorResourceError;
+use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::{DataChunk, DataContent, RetrievedDataChunk, VRPath, VectorResource};
+use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
 
-/// A VectorResource which uses an internal HashMap data model, thus providing a
-/// native key-value interface.
+/// A VectorResource which uses a HashMap data model, thus providing a
+/// native key-value interface. Ideal for use cases such as spreadsheet ingestion,
+/// constantly-updating data streams, or any unordered/mutating source data.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapVectorResource {
     name: String,
@@ -17,11 +18,11 @@ pub struct MapVectorResource {
     source: VRSource,
     resource_id: String,
     resource_embedding: Embedding,
-    resource_base_type: VectorResourceBaseType,
+    resource_base_type: VRBaseType,
     embedding_model_used: EmbeddingModelType,
-    chunk_embeddings: HashMap<String, Embedding>,
-    chunk_count: u64,
-    data_chunks: HashMap<String, DataChunk>,
+    embeddings: HashMap<String, Embedding>,
+    node_count: u64,
+    nodes: HashMap<String, Node>,
     data_tag_index: DataTagIndex,
 }
 
@@ -54,16 +55,16 @@ impl VectorResource for MapVectorResource {
         &self.resource_embedding
     }
 
-    fn resource_base_type(&self) -> VectorResourceBaseType {
+    fn resource_base_type(&self) -> VRBaseType {
         self.resource_base_type.clone()
     }
 
-    fn chunk_embeddings(&self) -> Vec<Embedding> {
-        self.chunk_embeddings.values().cloned().collect()
+    fn get_embeddings(&self) -> Vec<Embedding> {
+        self.embeddings.values().cloned().collect()
     }
 
-    fn to_json(&self) -> Result<String, VectorResourceError> {
-        serde_json::to_string(self).map_err(|_| VectorResourceError::FailedJSONParsing)
+    fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
@@ -74,27 +75,19 @@ impl VectorResource for MapVectorResource {
         self.resource_embedding = embedding;
     }
 
-    /// Retrieves a data chunk's embedding given its key (id)
-    fn get_chunk_embedding(&self, key: String) -> Result<Embedding, VectorResourceError> {
-        Ok(self
-            .chunk_embeddings
-            .get(&key)
-            .ok_or(VectorResourceError::InvalidChunkId)?
-            .clone())
+    /// Retrieves a node's embedding given its key (id)
+    fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
+        Ok(self.embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
     }
 
-    /// Retrieves a data chunk given its key (id)
-    fn get_data_chunk(&self, key: String) -> Result<DataChunk, VectorResourceError> {
-        Ok(self
-            .data_chunks
-            .get(&key)
-            .ok_or(VectorResourceError::InvalidChunkId)?
-            .clone())
+    /// Retrieves a node given its key (id)
+    fn get_node(&self, key: String) -> Result<Node, VRError> {
+        Ok(self.nodes.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
     }
 
-    /// Returns all data chunks in the MapVectorResource
-    fn get_data_chunks(&self) -> Vec<DataChunk> {
-        self.data_chunks.values().cloned().collect()
+    /// Returns all nodes in the MapVectorResource
+    fn get_nodes(&self) -> Vec<Node> {
+        self.nodes.values().cloned().collect()
     }
 }
 
@@ -107,8 +100,8 @@ impl MapVectorResource {
         source: VRSource,
         resource_id: &str,
         resource_embedding: Embedding,
-        chunk_embeddings: HashMap<String, Embedding>,
-        data_chunks: HashMap<String, DataChunk>,
+        embeddings: HashMap<String, Embedding>,
+        nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
         MapVectorResource {
@@ -117,10 +110,10 @@ impl MapVectorResource {
             source: source,
             resource_id: String::from(resource_id),
             resource_embedding,
-            chunk_embeddings,
-            chunk_count: data_chunks.len() as u64,
-            resource_base_type: VectorResourceBaseType::Map,
-            data_chunks,
+            embeddings,
+            node_count: nodes.len() as u64,
+            resource_base_type: VRBaseType::Map,
+            nodes,
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
         }
@@ -140,38 +133,34 @@ impl MapVectorResource {
         )
     }
 
-    /// Returns all DataChunks with a matching key/value pair in the metadata hashmap
-    /// Does not perform any traversal.
-    pub fn metadata_search(
-        &self,
-        metadata_key: &str,
-        metadata_value: &str,
-    ) -> Result<Vec<RetrievedDataChunk>, VectorResourceError> {
-        let mut matching_chunks = Vec::new();
+    /// Returns all Nodes with a matching key/value pair in the metadata hashmap
+    /// Does not perform any traversal, meaning only searches in root depth.
+    pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
+        let mut matching_nodes = Vec::new();
 
-        for chunk in self.data_chunks.values() {
-            match &chunk.metadata {
-                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_chunks
-                    .push(RetrievedDataChunk {
-                        chunk: chunk.clone(),
+        for node in self.nodes.values() {
+            match &node.metadata {
+                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_nodes
+                    .push(RetrievedNode {
+                        node: node.clone(),
                         score: 0.00,
-                        resource_pointer: self.get_resource_pointer(),
+                        resource_header: self.generate_resource_header(),
                         retrieval_path: VRPath::new(),
                     }),
                 _ => (),
             }
         }
 
-        if matching_chunks.is_empty() {
-            return Err(VectorResourceError::NoChunkFound);
+        if matching_nodes.is_empty() {
+            return Err(VRError::NoNodeFound);
         }
 
-        Ok(matching_chunks)
+        Ok(matching_nodes)
     }
 
-    /// Inserts a new data chunk (with a BaseVectorResource) and associated embeddings to the Map resource
-    /// and updates the data tags index.
-    pub fn insert_vector_resource(
+    /// Inserts a new node (with a BaseVectorResource) and associated embeddings
+    /// at the specified key in the Map resource, and updates the data tags index.
+    pub fn insert_vector_resource_node(
         &mut self,
         key: &str,
         resource: BaseVectorResource,
@@ -179,164 +168,154 @@ impl MapVectorResource {
     ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._insert_kv_without_tag_validation(key, DataContent::Resource(resource), metadata, &embedding, &tag_names)
+        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
     }
 
-    /// Inserts a new data chunk (with a String value) and associated embeddings to the Map resource
-    /// and updates the data tags index.
-    pub fn insert_kv(
+    /// Inserts a new text node and associated embeddings
+    /// at the specified key in the Map resource, and updates the data tags index.
+    pub fn insert_text_node(
         &mut self,
         key: &str,
-        value: &str,
+        text_value: &str,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
-        let validated_data_tags = DataTag::validate_tag_list(value, parsing_tags);
+        let validated_data_tags = DataTag::validate_tag_list(text_value, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._insert_kv_without_tag_validation(
             key,
-            DataContent::Data(value.to_string()),
+            NodeContent::Text(text_value.to_string()),
             metadata,
             embedding,
             &data_tag_names,
         )
     }
 
-    /// Insert a new data chunk and associated embeddings to the Map resource
+    /// Insert a new node and associated embeddings to the Map resource
     /// without checking if tags are valid. Also used by resource router.
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
-        data: DataContent,
+        data: NodeContent,
         metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
-        let data_chunk = match data {
-            DataContent::Data(data_string) => {
-                DataChunk::new(key.to_string(), &data_string, metadata.clone(), tag_names)
-            }
-            DataContent::Resource(resource) => {
-                DataChunk::new_vector_resource(key.to_string(), &resource, metadata.clone())
-            }
+        let node = match data {
+            NodeContent::Text(data_string) => Node::new(key.to_string(), &data_string, metadata.clone(), tag_names),
+            NodeContent::Resource(resource) => Node::new_vector_resource(key.to_string(), &resource, metadata.clone()),
         };
-        self.data_tag_index.add_chunk(&data_chunk);
+        self.data_tag_index.add_node(&node);
 
         // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
-        self.insert_data_chunk(data_chunk.clone());
-        self.chunk_embeddings.insert(data_chunk.id.clone(), embedding);
+        self._insert_node(node.clone());
+        self.embeddings.insert(node.id.clone(), embedding);
     }
 
-    /// Replaces an existing data chunk (based on key) and associated embeddings in the Map resource
-    /// with a BaseVectorResource in the new DataChunk, and updates the data tags index.
-    pub fn replace_vector_resource(
+    /// Replaces an existing node & associated embedding with a new
+    /// BaseVectorResource, and updates the data tags index.
+    pub fn replace_with_vector_resource_node(
         &mut self,
         key: &str,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
-    ) -> Result<DataChunk, VectorResourceError> {
+    ) -> Result<Node, VRError> {
         let embedding = new_resource.as_trait_object().resource_embedding().clone();
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_kv_without_tag_validation(
             key,
-            DataContent::Resource(new_resource),
+            NodeContent::Resource(new_resource),
             new_metadata,
             &embedding,
             &tag_names,
         )
     }
 
-    /// Replaces an existing data chunk & associated embedding and updates the data tags index.
-    /// * `id` - The id of the data chunk to be replaced.
-    pub fn replace_kv(
+    /// Replaces an existing node & associated embedding with a new text node
+    /// and updates the data tags index.
+    pub fn replace_with_text_node(
         &mut self,
         key: &str,
-        new_value: &str,
+        new_text_value: &str,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
-    ) -> Result<DataChunk, VectorResourceError> {
+    ) -> Result<Node, VRError> {
         // Validate which tags will be saved with the new data
-        let validated_data_tags = DataTag::validate_tag_list(new_value, parsing_tags);
+        let validated_data_tags = DataTag::validate_tag_list(new_text_value, parsing_tags);
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         self._replace_kv_without_tag_validation(
             key,
-            DataContent::Data(new_value.to_string()),
+            NodeContent::Text(new_text_value.to_string()),
             new_metadata,
             embedding,
             &data_tag_names,
         )
     }
 
-    /// Replaces an existing data chunk & associated embeddings in the Map resource
+    /// Replaces an existing node & associated embeddings in the Map resource
     /// without checking if tags are valid. Used for resource router.
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
-        new_data: DataContent,
+        new_data: NodeContent,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
-    ) -> Result<DataChunk, VectorResourceError> {
-        // Next create the new chunk, and replace the old chunk in the data_chunks list
-        let new_chunk = match new_data {
-            DataContent::Data(data_string) => {
-                DataChunk::new(key.to_string(), &data_string, new_metadata.clone(), new_tag_names)
+    ) -> Result<Node, VRError> {
+        // Next create the new node, and replace the old node in the nodes list
+        let new_node = match new_data {
+            NodeContent::Text(data_string) => {
+                Node::new(key.to_string(), &data_string, new_metadata.clone(), new_tag_names)
             }
-            DataContent::Resource(resource) => {
-                DataChunk::new_vector_resource(key.to_string(), &resource, new_metadata.clone())
+            NodeContent::Resource(resource) => {
+                Node::new_vector_resource(key.to_string(), &resource, new_metadata.clone())
             }
         };
-        let old_chunk = self
-            .data_chunks
-            .insert(key.to_string(), new_chunk.clone())
-            .ok_or(VectorResourceError::InvalidChunkId)?;
+        let old_node = self
+            .nodes
+            .insert(key.to_string(), new_node.clone())
+            .ok_or(VRError::InvalidNodeId)?;
 
-        // Then deletion of old chunk from index and addition of new chunk
-        self.data_tag_index.remove_chunk(&old_chunk);
-        self.data_tag_index.add_chunk(&new_chunk);
+        // Then deletion of old node from index and addition of new node
+        self.data_tag_index.remove_node(&old_node);
+        self.data_tag_index.add_node(&new_node);
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
-        self.chunk_embeddings.insert(key.to_string(), embedding);
+        self.embeddings.insert(key.to_string(), embedding);
 
-        Ok(old_chunk)
+        Ok(old_node)
     }
 
-    /// Deletes a data chunk and associated embedding from the resource
+    /// Deletes a node and associated embedding from the resource
     /// and updates the data tags index.
-    pub fn delete_kv(&mut self, key: &str) -> Result<(DataChunk, Embedding), VectorResourceError> {
-        let deleted_chunk = self.delete_data_chunk(key)?;
-        self.data_tag_index.remove_chunk(&deleted_chunk);
-        let deleted_embedding = self
-            .chunk_embeddings
-            .remove(key)
-            .ok_or(VectorResourceError::InvalidChunkId)?;
+    pub fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_node(key)?;
+        self.data_tag_index.remove_node(&deleted_node);
+        let deleted_embedding = self.embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
 
-        Ok((deleted_chunk, deleted_embedding))
+        Ok((deleted_node, deleted_embedding))
     }
 
-    /// Internal data chunk deletion from the hashmap
-    fn delete_data_chunk(&mut self, key: &str) -> Result<DataChunk, VectorResourceError> {
-        self.chunk_count -= 1;
-        let removed_chunk = self
-            .data_chunks
-            .remove(key)
-            .ok_or(VectorResourceError::InvalidChunkId)?;
-        Ok(removed_chunk)
+    /// Internal node deletion from the hashmap
+    fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
+        self.node_count -= 1;
+        let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
+        Ok(removed_node)
     }
 
-    // Inserts a data chunk into the data_chunks hashmap
-    fn insert_data_chunk(&mut self, data_chunk: DataChunk) {
-        self.chunk_count += 1;
-        self.data_chunks.insert(data_chunk.id.clone(), data_chunk);
+    // Inserts a node into the nodes hashmap
+    fn _insert_node(&mut self, node: Node) {
+        self.node_count += 1;
+        self.nodes.insert(node.id.clone(), node);
     }
 
-    pub fn from_json(json: &str) -> Result<Self, VectorResourceError> {
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
         Ok(serde_json::from_str(json)?)
     }
 

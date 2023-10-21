@@ -2,11 +2,11 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VectorResourceBaseType};
+use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VRBaseType};
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::resource_errors::VectorResourceError;
-use shinkai_vector_resources::vector_resource::{RetrievedDataChunk, VectorResource, VectorResourcePointer};
+use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::vector_resource::{RetrievedNode, VRHeader, VectorResource};
 
 use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
@@ -50,14 +50,10 @@ impl ShinkaiDB {
     /// string.
     ///
     /// Note this is only to be used internally, as this does not add a resource
-    /// pointer in the global VectorResourceRouter. Adding the pointer is required for any
+    /// resource_header in the global VectorResourceRouter. Adding the resource_header is required for any
     /// resource being saved and is implemented in `.save_resources`.
-    fn _save_resource_pointerless(
-        &self,
-        resource: &BaseVectorResource,
-        profile: &ShinkaiName,
-    ) -> Result<(), ShinkaiDBError> {
-        let (bytes, cf) = self._prepare_resource_pointerless(resource)?;
+    fn _save_resource(&self, resource: &BaseVectorResource, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+        let (bytes, cf) = self._prepare_resource(resource)?;
 
         // Insert into the "VectorResources" column family
         self.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes, profile)?;
@@ -67,7 +63,7 @@ impl ShinkaiDB {
 
     /// Prepares the `BaseVectorResource` for saving into the ShinkaiDB in the resources topic as a JSON
     /// string. Note this is only to be used internally.
-    fn _prepare_resource_pointerless(
+    fn _prepare_resource(
         &self,
         resource: &BaseVectorResource,
     ) -> Result<(Vec<u8>, &rocksdb::ColumnFamily), ShinkaiDBError> {
@@ -82,7 +78,7 @@ impl ShinkaiDB {
     }
 
     /// Saves the `BaseVectorResource` into the ShinkaiDB. This updates the
-    /// Global VectorResourceRouter with the resource pointers as well.
+    /// Global VectorResourceRouter with the resource resource_headers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
@@ -91,7 +87,7 @@ impl ShinkaiDB {
     }
 
     /// Saves the list of `VectorResource`s into the ShinkaiDB. This updates the
-    /// Profile VectorResourceRouter with the resource pointers as well.
+    /// Profile VectorResourceRouter with the resource resource_headers as well.
     ///
     /// Of note, if an existing resource exists in the DB with the same name and
     /// resource_id, this will overwrite the old resource completely.
@@ -106,13 +102,13 @@ impl ShinkaiDB {
         let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
         for resource in resources {
             // Adds the JSON of the resource to the batch
-            let (bytes, cf) = self._prepare_resource_pointerless(&resource)?;
+            let (bytes, cf) = self._prepare_resource(&resource)?;
             pb_batch.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes);
 
-            // Add the pointer to the router, then putting the router
+            // Add the resource_header to the router, then putting the router
             // into the batch
-            let pointer = resource.as_trait_object().get_resource_pointer();
-            router.add_resource_pointer(&pointer)?;
+            let resource_header = resource.as_trait_object().generate_resource_header();
+            router.add_resource_header(&resource_header)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router)?;
             pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);
         }
@@ -122,13 +118,13 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Fetches the BaseVectorResource from the DB using a VectorResourcePointer
-    pub fn get_resource_by_pointer(
+    /// Fetches the BaseVectorResource from the DB using a VRHeader
+    pub fn get_resource_by_header(
         &self,
-        resource_pointer: &VectorResourcePointer,
+        resource_header: &VRHeader,
         profile: &ShinkaiName,
     ) -> Result<BaseVectorResource, ShinkaiDBError> {
-        self.get_resource(&resource_pointer.reference.clone(), profile)
+        self.get_resource(&resource_header.reference_string(), profile)
     }
 
     /// Fetches the BaseVectorResource from the DB
@@ -158,7 +154,7 @@ impl ShinkaiDB {
 
     /// Performs a 2-tier syntactic vector search across all resources.
     /// Only resources with matching data tags will be considered at all,
-    /// and likewise only data chunks with matching data tags inside of said
+    /// and likewise only nodes with matching data tags inside of said
     /// resources will be scored and potentially returned.
     pub fn syntactic_vector_search(
         &self,
@@ -167,48 +163,48 @@ impl ShinkaiDB {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let resources =
             self.syntactic_vector_search_resources(query.clone(), num_of_resources, data_tag_names, profile)?;
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for resource in resources {
             println!("VectorResource: {}", resource.as_trait_object().name());
             let results =
                 resource
                     .as_trait_object()
                     .syntactic_vector_search(query.clone(), num_of_results, data_tag_names);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
+        Ok(RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding.
     ///
     /// From there a vector search is performed on each resource with the query embedding,
     /// and the results from all resources are then collected, sorted, and the top num_of_results
-    /// RetriedDataChunks based on similarity score are returned.
+    /// RetriedNodes based on similarity score are returned.
     pub fn vector_search(
         &self,
         query: Embedding,
         num_of_resources: u64,
         num_of_results: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for resource in resources {
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        Ok(RetrievedDataChunk::sort_by_score(&retrieved_chunks, num_of_results))
+        Ok(RetrievedNode::sort_by_score(&retrieved_nodes, num_of_results))
     }
 
     /// Performs a 2-tier vector search across all resources using a query embedding,
-    /// returning retrieved data chunks that are within a tolerance range of similarity.
+    /// returning retrieved nodes that are within a tolerance range of similarity.
     ///
     /// * `tolerance_range` - A float between 0 and 1, inclusive, that
     ///   determines the range of acceptable similarity scores as a percentage
@@ -219,32 +215,32 @@ impl ShinkaiDB {
         num_of_resources: u64,
         tolerance_range: f32,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
-        let retrieved_chunks = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
-        if retrieved_chunks.is_empty() {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
+        let retrieved_nodes = self.vector_search(query.clone(), num_of_resources, 1, profile)?;
+        if retrieved_nodes.is_empty() {
             return Ok(Vec::new());
         }
-        let top_chunk = &retrieved_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))?;
+        let top_node = &retrieved_nodes
+            .get(0)
+            .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
-        // Fetch the chunks that fit in the tolerance range
+        // Fetch the nodes that fit in the tolerance range
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
-        let mut final_chunks = Vec::new();
+        let mut final_nodes = Vec::new();
         for resource in resources {
             let results = resource.as_trait_object()._vector_search_tolerance_ranged_score(
                 query.clone(),
                 tolerance_range,
-                top_chunk.score,
+                top_node.score,
             );
-            final_chunks.extend(results);
+            final_nodes.extend(results);
         }
 
-        Ok(final_chunks)
+        Ok(final_nodes)
     }
 
     /// Performs a 2-tier vector search using a query embedding across all DocumentVectorResources
-    /// and fetches the most similar data chunk + proximity_window number of chunks around it.
+    /// and fetches the most similar node + proximity_window number of nodes around it.
     ///
     /// Note: This only searches DocumentVectorResources in Topic::VectorResources, not all resources. This is
     /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
@@ -254,7 +250,7 @@ impl ShinkaiDB {
         num_of_docs: u64,
         proximity_window: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedDataChunk>, ShinkaiDBError> {
+    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let mut docs: Vec<DocumentVectorResource> = Vec::new();
         for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
             if let Ok(document_resource) = doc.as_document_resource() {
@@ -262,26 +258,24 @@ impl ShinkaiDB {
             }
         }
 
-        let mut retrieved_chunks = Vec::new();
+        let mut retrieved_nodes = Vec::new();
         for doc in &docs {
             let results = doc.vector_search(query.clone(), 1);
-            retrieved_chunks.extend(results);
+            retrieved_nodes.extend(results);
         }
 
-        let top_ret_chunks = RetrievedDataChunk::sort_by_score(&retrieved_chunks, 1);
-        let top_chunk = top_ret_chunks.get(0).ok_or(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))?;
+        let top_ret_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, 1);
+        let top_node = top_ret_nodes
+            .get(0)
+            .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
         for doc in &docs {
-            if doc.reference_string() == top_chunk.resource_pointer.reference {
+            if doc.reference_string() == top_node.resource_header.reference_string() {
                 return Ok(doc.vector_search_proximity(query, proximity_window)?);
             }
         }
 
-        Err(ShinkaiDBError::VectorResourceError(
-            VectorResourceError::VectorResourceEmpty,
-        ))
+        Err(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))
     }
 
     /// Performs a syntactic vector search using a query embedding and list of data tag names.
@@ -294,33 +288,30 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
-        let resource_pointers = router.syntactic_vector_search(query, num_of_resources, data_tag_names);
+        let resource_headers = router.syntactic_vector_search(query, num_of_resources, data_tag_names);
 
         let mut resources = vec![];
-        for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.reference, profile)?);
+        for res_resource_header in resource_headers {
+            resources.push(self.get_resource(&res_resource_header.reference_string(), profile)?);
         }
 
         Ok(resources)
     }
 
-    /// Returns all resource pointers in the profile's Resource Router
-    pub fn get_all_resource_pointers(
-        &self,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+    /// Returns all resource resource_headers in the profile's Resource Router
+    pub fn get_all_resource_headers(&self, profile: &ShinkaiName) -> Result<Vec<VRHeader>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
-        Ok(router.get_all_resource_pointers())
+        Ok(router.get_all_resource_headers())
     }
 
     /// Performs a vector search using a query embedding and returns the
-    /// num_of_resources amount of most similar VectorResourcePointers.
-    fn vector_search_resource_pointers(
+    /// num_of_resources amount of most similar VRHeaders.
+    fn vector_search_resource_headers(
         &self,
         query: Embedding,
         num_of_resources: u64,
         profile: &ShinkaiName,
-    ) -> Result<Vec<VectorResourcePointer>, ShinkaiDBError> {
+    ) -> Result<Vec<VRHeader>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
         Ok(router.vector_search(query, num_of_resources))
     }
@@ -333,11 +324,11 @@ impl ShinkaiDB {
         num_of_resources: u64,
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
-        let resource_pointers = self.vector_search_resource_pointers(query, num_of_resources, profile)?;
+        let resource_headers = self.vector_search_resource_headers(query, num_of_resources, profile)?;
 
         let mut resources = vec![];
-        for res_pointer in resource_pointers {
-            resources.push(self.get_resource(&res_pointer.reference, profile)?);
+        for res_resource_header in resource_headers {
+            resources.push(self.get_resource(&res_resource_header.reference_string(), profile)?);
         }
 
         Ok(resources)
@@ -352,13 +343,13 @@ impl ShinkaiDB {
         profile: &ShinkaiName,
     ) -> Result<Vec<BaseVectorResource>, ShinkaiDBError> {
         let router = self.get_profile_resource_router(profile)?;
-        let resource_pointers = router.vector_search(query, num_of_docs * 2);
+        let resource_headers = router.vector_search(query, num_of_docs * 2);
 
         let mut resources = vec![];
-        for res_pointer in resource_pointers {
-            if res_pointer.resource_base_type == VectorResourceBaseType::Document {
+        for res_resource_header in resource_headers {
+            if res_resource_header.resource_base_type == VRBaseType::Document {
                 if (resources.len() as u64) < num_of_docs {
-                    resources.push(self.get_resource(&res_pointer.reference, profile)?);
+                    resources.push(self.get_resource(&res_resource_header.reference_string(), profile)?);
                 }
             }
         }

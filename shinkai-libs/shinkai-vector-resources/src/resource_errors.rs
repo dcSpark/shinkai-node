@@ -1,88 +1,86 @@
+use crate::vector_resource::VRPath;
 use serde_json::Error as SerdeError;
 use std::error::Error;
 use std::fmt;
 
-use crate::vector_resource::VRPath;
-
 #[derive(Debug, PartialEq)]
-pub enum VectorResourceError {
-    InvalidChunkId,
+pub enum VRError {
+    InvalidNodeId,
     VectorResourceEmpty,
     FailedEmbeddingGeneration(String),
-    NoChunkFound,
+    NoNodeFound,
     InvalidModelArchitecture,
     FailedJSONParsing,
     FailedCSVParsing,
     FailedPDFParsing,
-    InvalidVectorResourceBaseType,
+    InvalidVRBaseType,
     RegexError(regex::Error),
     RequestFailed(String),
     NoEmbeddingProvided,
-    DataIsNonMatchingType,
+    ContentIsNonMatchingType,
     InvalidVRPath(VRPath),
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
-    TaskFailed(String),
+    InvalidReferenceString(String),
 }
 
-impl fmt::Display for VectorResourceError {
+impl fmt::Display for VRError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            VectorResourceError::InvalidChunkId => write!(f, "Invalid chunk id"),
-            VectorResourceError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
-            VectorResourceError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
-            VectorResourceError::NoChunkFound => write!(f, "No matching data chunk found"),
-            VectorResourceError::InvalidModelArchitecture => {
+            VRError::InvalidNodeId => write!(f, "Invalid node id"),
+            VRError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
+            VRError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
+            VRError::NoNodeFound => write!(f, "No matching node found"),
+            VRError::InvalidModelArchitecture => {
                 write!(f, "An unsupported model architecture was specified.")
             }
-            VectorResourceError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
-            VectorResourceError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
-            VectorResourceError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
-            VectorResourceError::NoEmbeddingProvided => write!(f, "No embedding provided."),
-            VectorResourceError::InvalidVectorResourceBaseType => write!(
-                f,
-                "The resource type does not match any of the VectorResourceBaseTypes."
-            ),
-            VectorResourceError::RegexError(ref e) => write!(f, "Regex error: {}", e),
-            VectorResourceError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
-            VectorResourceError::DataIsNonMatchingType => {
-                write!(f, "Data inside of the DataChunk is of a different type than requested.")
+            VRError::FailedJSONParsing => write!(f, "Failed JSON parsing."),
+            VRError::FailedCSVParsing => write!(f, "Failed CSV parsing."),
+            VRError::FailedPDFParsing => write!(f, "Failed PDF parsing."),
+            VRError::NoEmbeddingProvided => write!(f, "No embedding provided."),
+            VRError::InvalidVRBaseType => {
+                write!(f, "The resource type does not match any of the VRBaseTypes.")
             }
-            VectorResourceError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
-            VectorResourceError::FailedParsingUnstructedAPIJSON(ref s) => {
+            VRError::RegexError(ref e) => write!(f, "Regex error: {}", e),
+            VRError::RequestFailed(ref e) => write!(f, "HTTP request failed: {}", e),
+            VRError::ContentIsNonMatchingType => {
+                write!(f, "Content inside of the Node is of a different type than requested.")
+            }
+            VRError::InvalidVRPath(ref p) => write!(f, "Vector Resource Path is invalid: {}", p),
+            VRError::FailedParsingUnstructedAPIJSON(ref s) => {
                 write!(f, "Failed to parse Unstructed API response json: {}", s)
             }
-            VectorResourceError::CouldNotDetectFileType(ref s) => {
+            VRError::CouldNotDetectFileType(ref s) => {
                 write!(f, "Could not detect file type from file name: {}", s)
             }
-            VectorResourceError::TaskFailed(ref s) => {
-                write!(f, "Tokio task failed: {}", s)
+            VRError::InvalidReferenceString(ref s) => {
+                write!(f, "Vector Resource reference string is invalid: {}", s)
             }
         }
     }
 }
 
-impl Error for VectorResourceError {}
+impl Error for VRError {}
 
-impl From<regex::Error> for VectorResourceError {
-    fn from(err: regex::Error) -> VectorResourceError {
-        VectorResourceError::RegexError(err)
+impl From<regex::Error> for VRError {
+    fn from(err: regex::Error) -> VRError {
+        VRError::RegexError(err)
     }
 }
 
-impl From<SerdeError> for VectorResourceError {
+impl From<SerdeError> for VRError {
     fn from(error: SerdeError) -> Self {
         match error.classify() {
-            serde_json::error::Category::Io => VectorResourceError::FailedJSONParsing,
-            serde_json::error::Category::Syntax => VectorResourceError::FailedJSONParsing,
-            serde_json::error::Category::Data => VectorResourceError::FailedJSONParsing,
-            serde_json::error::Category::Eof => VectorResourceError::FailedJSONParsing,
+            serde_json::error::Category::Io => VRError::FailedJSONParsing,
+            serde_json::error::Category::Syntax => VRError::FailedJSONParsing,
+            serde_json::error::Category::Data => VRError::FailedJSONParsing,
+            serde_json::error::Category::Eof => VRError::FailedJSONParsing,
         }
     }
 }
 
-impl From<reqwest::Error> for VectorResourceError {
+impl From<reqwest::Error> for VRError {
     fn from(error: reqwest::Error) -> Self {
-        VectorResourceError::RequestFailed(error.to_string())
+        VRError::RequestFailed(error.to_string())
     }
 }

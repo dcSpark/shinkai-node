@@ -1,4 +1,4 @@
-use super::vector_resource::DataChunk;
+use super::vector_resource::Node;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -59,55 +59,55 @@ impl DataTagIndex {
         self.index.keys().cloned().collect()
     }
 
-    /// Adds reference to the data chunk (id) to all tags in the index that are
-    /// annotated on the chunk in chunk.data_tags
-    pub fn add_chunk(&mut self, chunk: &DataChunk) {
-        self.add_chunk_id_multi_tags(&chunk.id, &chunk.data_tag_names);
+    /// Adds reference to the node (id) to all tags in the index that are
+    /// annotated on the node in node.content_tags
+    pub fn add_node(&mut self, node: &Node) {
+        self.add_node_id_multi_tags(&node.id, &node.data_tag_names);
     }
 
-    /// Removes all references to the data chunk in the index
-    pub fn remove_chunk(&mut self, chunk: &DataChunk) {
-        self.remove_chunk_id_multi_tags(&chunk.id, &chunk.data_tag_names);
+    /// Removes all references to the node in the index
+    pub fn remove_node(&mut self, node: &Node) {
+        self.remove_node_id_multi_tags(&node.id, &node.data_tag_names);
     }
 
-    /// Deletes all references in the index associated with old_chunk,
-    /// replacing them with the new_chunk
-    pub fn replace_chunk(&mut self, old_chunk: &DataChunk, new_chunk: &DataChunk) {
-        self.remove_chunk(&old_chunk);
-        self.add_chunk(&new_chunk);
+    /// Deletes all references in the index associated with old_node,
+    /// replacing them with the new_node
+    pub fn replace_node(&mut self, old_node: &Node, new_node: &Node) {
+        self.remove_node(&old_node);
+        self.add_node(&new_node);
     }
 
-    /// Add a chunk id under several DataTags in the index
-    fn add_chunk_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
+    /// Add a node id under several DataTags in the index
+    fn add_node_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
         for name in tag_names {
-            self.add_chunk_id(id, name)
+            self.add_node_id(id, name)
         }
     }
 
-    /// Removes a chunk id under several DataTags in the index
-    fn remove_chunk_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
+    /// Removes a node id under several DataTags in the index
+    fn remove_node_id_multi_tags(&mut self, id: &str, tag_names: &Vec<String>) {
         for name in tag_names {
-            self.remove_chunk_id(id, name)
+            self.remove_node_id(id, name)
         }
     }
 
-    /// Add a chunk id under a DataTag in the index
-    fn add_chunk_id(&mut self, id: &str, tag_name: &str) {
+    /// Add a node id under a DataTag in the index
+    fn add_node_id(&mut self, id: &str, tag_name: &str) {
         let entry = self.index.entry(tag_name.to_string()).or_insert_with(Vec::new);
         if !entry.contains(&id.to_string()) {
             entry.push(id.to_string());
         }
     }
 
-    /// Remove a chunk id associated with a DataTag in the index
-    fn remove_chunk_id(&mut self, id: &str, tag_name: &str) {
+    /// Remove a node id associated with a DataTag in the index
+    fn remove_node_id(&mut self, id: &str, tag_name: &str) {
         if let Some(ids) = self.index.get_mut(tag_name) {
             ids.retain(|x| x != id);
         }
     }
 
-    /// Get chunk ids associated with a data tag name
-    pub fn get_chunk_ids(&self, data_tag_name: &str) -> Option<&Vec<String>> {
+    /// Get node ids associated with a data tag name
+    pub fn get_node_ids(&self, data_tag_name: &str) -> Option<&Vec<String>> {
         self.index.get(data_tag_name)
     }
 }

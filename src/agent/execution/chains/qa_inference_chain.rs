@@ -35,7 +35,7 @@ impl JobManager {
         // Use search_text if available (on recursion), otherwise use job_task to generate the query (on first iteration)
         let query_text = search_text.clone().unwrap_or(job_task.clone());
         let query = generator.generate_embedding_default(&query_text).await.unwrap();
-        let ret_data_chunks = JobManager::job_scope_vector_search(
+        let ret_nodes = JobManager::job_scope_vector_search(
             db.clone(),
             full_job.scope(),
             query,
@@ -55,17 +55,13 @@ impl JobManager {
             };
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
-                ret_data_chunks,
+                ret_nodes,
                 summary_text,
                 Some(query_text),
                 previous_job_step_response,
             )
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(
-                job_task.clone(),
-                ret_data_chunks,
-                summary_text,
-            )
+            JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_nodes, summary_text)
         };
 
         // Inference the agent's LLM with the prompt. If it has an answer, the chain
