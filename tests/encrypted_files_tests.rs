@@ -79,9 +79,6 @@ fn sandwich_messages_with_files_test() {
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
-                let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo".to_string(),
-                };
                 let agent_name = ShinkaiName::new(
                     format!(
                         "{}/{}/agent/{}",
@@ -120,6 +117,14 @@ fn sandwich_messages_with_files_test() {
                     )
                     .create();
 
+                let open_ai = OpenAI {
+                    model_type: "gpt-3.5-turbo".to_string(),
+                };
+
+                let generic_api = GenericAPI {
+                    model_type: "mistralai/Mistral-7B-Instruct-v0.1".to_string(),
+                };
+
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
@@ -127,7 +132,9 @@ fn sandwich_messages_with_files_test() {
                     // external_url: Some("https://api.openai.com".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
+                    // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
+                    // model: AgentLLMInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],

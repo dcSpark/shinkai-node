@@ -442,7 +442,7 @@ impl Prompt {
     ) -> Result<String, AgentError> {
         self.check_ebnf_included()?;
     
-        let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
+        let limit = max_prompt_tokens.unwrap_or((1200 as usize).try_into().unwrap());
         let model = "llama2"; // TODO: change to something that actually fits
     
         let mut messages: Vec<String> = Vec::new();
@@ -450,20 +450,16 @@ impl Prompt {
     
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
-            let (_type, text) = match sub_prompt {
-                SubPrompt::Content(prompt_type, content) => (prompt_type, content.clone()),
-                SubPrompt::EBNF(prompt_type, ebnf) => {
-                    let ebnf_string = self.generate_ebnf_response_string(ebnf);
-                    (prompt_type, ebnf_string)
-                }
+            let new_message = match sub_prompt {
+                SubPrompt::Content(_, content) => format!("- {}", content.clone()),
+                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
             };
-    
-            let new_message = format!("- {}", text);
+        
             let new_message_length = new_message.len();
             if current_length + new_message_length > limit {
                 break;
             }
-    
+        
             messages.push(new_message);
             current_length += new_message_length;
         }

@@ -58,7 +58,6 @@ impl LLMProvider for GenericAPI {
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                eprintln!("Calling Generic API with key: {}", key);
                 let url = format!("{}{}", base_url, "/inference");
                 let messages_string = prompt.generate_genericapi_messages(None)?;
                 eprintln!("Tiktoken messages: {:?}", messages_string);
@@ -138,6 +137,8 @@ impl LLMProvider for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .collect::<Vec<String>>()
                             .join(" ");
+                        eprintln!("######");
+                        eprintln!("Response string: {:?}", response_string);
                         Self::extract_first_json_object(&response_string)
                     }
                     Err(e) => {
