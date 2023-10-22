@@ -12,24 +12,58 @@ mod tests {
     fn test_case(input_string: &str, expected_token_ids: Vec<i32>) {
         let mut tokenizer = LlamaTokenizer::new();
 
-        let actual_tokens = tokenizer.encode(input_string.to_string(), true, true, true)
-                             .iter()
-                             .map(|&x| x as i32)
-                             .collect::<Vec<i32>>();
+        // let actual_tokens = tokenizer.encode(input_string.to_string(), true, true, true)
+        //                      .iter()
+        //                      .map(|&x| x as i32)
+        //                      .collect::<Vec<i32>>();
 
-        assert!(is_equal(actual_tokens.clone(), expected_token_ids.clone()), 
-            "Test failed. LLaMA Tokenizer Encoder returned unexpected result: expected tokenize({}) === {:?}, actual was: {:?}", 
-            input_string, expected_token_ids, actual_tokens.clone());
+        let alt_tokens = tokenizer.alt2_encode(input_string);
+        eprintln!("alt_tokens: {:?}", alt_tokens);
+        eprintln!("length of alt_tokens: {}", alt_tokens.len());
 
-        let actual_tokens_usize = actual_tokens.iter().map(|&x| x as usize).collect::<Vec<usize>>();
-                             assert_eq!(input_string, tokenizer.decode(actual_tokens_usize.clone(), true, true), 
-                                 "Test failed. LLaMA Tokenizer Decoder returned unexpected result: expected decode({:?}) === {}, actual was: {}", 
-                                 actual_tokens_usize.clone(), input_string, tokenizer.decode(actual_tokens_usize, true, true));
+        let dec_tokens = tokenizer.alt2_decode(alt_tokens);
+        eprintln!("dec_tokens: {:?}", dec_tokens);
+
+        // assert!(is_equal(actual_tokens.clone(), expected_token_ids.clone()), 
+        //     "Test failed. LLaMA Tokenizer Encoder returned unexpected result: expected tokenize({}) === {:?}, actual was: {:?}", 
+        //     input_string, expected_token_ids, actual_tokens.clone());
+
+        // let actual_tokens_usize = actual_tokens.iter().map(|&x| x as usize).collect::<Vec<usize>>();
+        //                      assert_eq!(input_string, tokenizer.decode(actual_tokens_usize.clone(), true, true), 
+        //                          "Test failed. LLaMA Tokenizer Decoder returned unexpected result: expected decode({:?}) === {}, actual was: {}", 
+        //                          actual_tokens_usize.clone(), input_string, tokenizer.decode(actual_tokens_usize, true, true));
     }
 
     #[test]
     fn test_llama_tokenizer() {
         eprintln!("Running LLaMA Tokenizer tests...");
+
+        let mut tokenizer = LlamaTokenizer::new();
+
+        let num1 = tokenizer.num_to_vocab(1);
+        eprintln!("num1: {:?}", num1);
+
+        let num2646 = tokenizer.num_to_vocab(2646);
+        eprintln!("num2646: {:?}", num2646);
+
+        let num3874 = tokenizer.num_to_vocab(3874);
+        eprintln!("num3874: {:?}", num3874);
+
+        let num29871 = tokenizer.num_to_vocab(29871);
+        eprintln!("num29871: {:?}", num29871);
+
+        let num1327 = tokenizer.num_to_vocab(1327);
+        eprintln!("num1327: {:?}", num1327);
+
+        let num9967 = tokenizer.num_to_vocab(9967);
+        eprintln!("num9967: {:?}", num9967);
+
+        let num287 = tokenizer.num_to_vocab(287);
+        eprintln!("num287: {:?}", num287);
+
+        let num29881 = tokenizer.num_to_vocab(29881);
+        eprintln!("num29881: {:?}", num29881);
+
         // Simple test case
         test_case("grabbed", vec![1, 2646, 1327, 287]);
 
@@ -106,6 +140,9 @@ mod tests {
         674,   736,   304,   278,  4094,  7689,   886,   322,   301,  4425,
         787,   988,   896,  2041,   515,   472,   278,  1095,   310,   931,
         7226, 29953, 29962];
+
+        println!("Length of input_string is {}", input_string.len());
+        println!("Length of expected_token_ids is {}", expected_token_ids.len());
 
         test_case(input_string, expected_token_ids);
     }

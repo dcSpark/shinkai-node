@@ -239,10 +239,6 @@ impl LlamaTokenizer {
     }
 
     fn add_to_merge_queue(&self, left_node: &TokenNode, merge_queue: &mut PriorityQueue<TokenNode>) {
-        eprintln!("left_node: {:?}", left_node);
-        eprintln!("left_node.next: {:?}", left_node.next);
-        eprintln!("merge_queue: {:?}", merge_queue);
-
         if let Some(next_node) = left_node.next.as_ref() {
             let merge_identifier_string = self.get_merge_identifier_string(left_node.token_id, next_node.token_id);
             if let Some(merge_value) = self.merges.get(&merge_identifier_string) {
@@ -253,6 +249,115 @@ impl LlamaTokenizer {
                 merge_queue.push(left_node_clone);
             }
         }
+    }
+
+    pub fn num_to_vocab(&self, num: usize) -> &str {
+        &self.vocab_by_id[num]
+    }
+
+    pub fn alt_encode(&self, text: &str) -> Vec<usize> {
+        let mut tokens: Vec<usize> = vec![];
+        if text.is_empty() {
+            return tokens;
+        }
+        for c in text.chars() {
+            let char_str = c.to_string();
+            let t = self
+                .vocab_by_string
+                .get(&char_str)
+                .expect("Expect text can be encoded.");
+            tokens.push(*t);
+        }
+
+        loop {
+            let mut best_score: f32 = f32::NEG_INFINITY;
+            let mut best_token: usize = 0;
+            let mut best_idx: usize = 0;
+            let mut can_merge: bool = false;
+            for i in 0..(tokens.len() - 1) {
+                let merged = format!("{}{}", self.vocab_by_id[tokens[i]], self.vocab_by_id[tokens[i + 1]]);
+                if let Some(t) = self.vocab_by_string.get(&merged) {
+                    if self.merges.get(&merged).unwrap_or(&0) > &(best_score as usize) {
+                        best_score = *self.merges.get(&merged).unwrap() as f32;
+                        best_token = *t;
+                        best_idx = i;
+                        can_merge = true;
+                    }
+                }
+            }
+            if !can_merge {
+                break;
+            }
+            tokens[best_idx] = best_token;
+            tokens.remove(best_idx + 1);
+        }
+
+        tokens
+    }
+
+    // https://github.com/danielgrittner/llama2-rs/blob/main/src/main.rs
+    pub fn alt2_encode(&self, text: &str) -> Vec<usize> {
+        let mut tokens = Vec::new();
+        tokens.reserve(text.len());
+
+        let text = text.replace(" ", "_").replace("\n", "<0x0A>");
+
+        // encode every individual byte
+        for ch in text.chars() {
+            let token_id = self.vocab_by_string.get(ch.to_string().as_str()).unwrap_or(&0);
+            tokens.push(*token_id);
+        }
+
+        let mut str_buffer = String::with_capacity(2 * self.vocab_by_id.len());
+
+        // merge the best consecutive pair each iteration, according the scores in vocab_scores
+        loop {
+            let mut best_score = -1e10;
+            let mut best_token_id = usize::MAX;
+            let mut best_idx = usize::MAX;
+
+            for i in 0..tokens.len() - 1 {
+                // Copy the two consecutive tokens into a single string
+                str_buffer.clear();
+                str_buffer.push_str(&self.vocab_by_id[tokens[i]]);
+                str_buffer.push_str(&self.vocab_by_id[tokens[i + 1]]);
+                
+                if let Some(token_id) = self.vocab_by_string.get(&str_buffer) {
+                    let score = *self.merges.get(&str_buffer).unwrap_or(&0) as f32;
+                    if score > best_score {
+                        best_score = score;
+                        best_token_id = *token_id;
+                        best_idx = i;
+                    }
+                }
+            }
+
+            if best_idx == usize::MAX {
+                break;
+            }
+
+            // Merge the best pair and delete the second token
+            tokens[best_idx] = best_token_id;
+            tokens.remove(best_idx + 1);
+        }
+
+        tokens
+    }
+
+    pub fn alt2_decode(&self, token_ids: Vec<usize>) -> String {
+        let mut utf8_byte_vals = Vec::new();
+        for token_id in token_ids {
+            let token_string = &self.vocab_by_id[token_id];
+            if token_string.starts_with("<0x") && token_string.ends_with(">") {
+                let utf8_byte = self.hex_to_utf8_byte(token_string);
+                utf8_byte_vals.push(utf8_byte);
+            } else {
+                let utf8_bytes = token_string.as_bytes();
+                utf8_byte_vals.extend_from_slice(utf8_bytes);
+            }
+        }
+        let decoded_string = str::from_utf8(&utf8_byte_vals).unwrap();
+        decoded_string.replace(&self.vocab_by_id[29871], " ")
     }
 
     pub fn decode(&self, token_ids: Vec<usize>, add_bos_token: bool, add_preceding_space: bool) -> String {
