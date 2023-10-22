@@ -80,7 +80,7 @@ impl LLMProvider for GenericAPI {
 
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": 2048,
+                    "max_tokens": 1024,
                     "prompt": messages_json,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
