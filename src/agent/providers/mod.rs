@@ -4,6 +4,7 @@ use reqwest::Client;
 use serde_json::Value as JsonValue;
 
 pub mod openai;
+pub mod genericapi;
 
 #[async_trait]
 pub trait LLMProvider {

@@ -21,6 +21,8 @@ pub struct SerializedAgent {
 pub enum AgentLLMInterface {
     #[serde(rename = "openai")]
     OpenAI(OpenAI),
+    #[serde(rename = "genericapi")]
+    GenericAPI(GenericAPI),
     #[serde(rename = "local-llm")]
     LocalLLM(LocalLLM),
 }
@@ -33,12 +35,20 @@ pub struct OpenAI {
     pub model_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct GenericAPI {
+    pub model_type: String,
+}
+
 impl FromStr for AgentLLMInterface {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.starts_with("openai:") {
             let model_type = s.strip_prefix("openai:").unwrap_or("").to_string();
+            Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
+        } else if s.starts_with("genericapi:") {
+            let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
         } else {
             // TODO: nothing else for now

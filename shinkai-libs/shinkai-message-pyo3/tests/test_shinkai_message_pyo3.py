@@ -8,6 +8,11 @@ class TestPyAgentLLMInterface(unittest.TestCase):
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_openai(model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
 
+    def test_new_openai(self):
+        model_type = "mistralai/Mistral-7B-Instruct-v0.1"
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_genericapi(model_type)
+        self.assertEqual(agent_llm_interface.get_model(), "genericapi:" + model_type)
+
     def test_new_localllm(self):
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_localllm()
         self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
@@ -16,6 +21,11 @@ class TestPyAgentLLMInterface(unittest.TestCase):
         model_type = "gpt-3.5-turbo"
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("openai:" + model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
+
+    def test_new_with_genericapi_prefix(self):
+        model_type = "mistralai/Mistral-7B-Instruct-v0.1"
+        agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("genericapi:" + model_type)
+        self.assertEqual(agent_llm_interface.get_model(), "genericapi:" + model_type)
 
     def test_new_without_openai_prefix(self):
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("not_openai")
