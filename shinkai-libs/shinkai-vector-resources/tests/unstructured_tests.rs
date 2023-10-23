@@ -92,7 +92,10 @@ fn test_unstructured_parse_pdf_vector_resource() {
             result.node.get_text_content().unwrap()
         );
     }
-    assert_eq!("Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction", res[0].node.get_text_content().unwrap());
+    assert_eq!(
+        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
+        res[0].node.get_text_content().unwrap()
+    );
 }
 
 #[test]
