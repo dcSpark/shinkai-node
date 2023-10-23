@@ -75,7 +75,7 @@ impl LLMProvider for GenericAPI {
 
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": 2800,// 4096 is max amount of tokens
+                    "max_tokens": 2000,// 4096 is max amount of tokens
                     "prompt": messages_string,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
@@ -91,8 +91,6 @@ impl LLMProvider for GenericAPI {
                     "safety_model": "",
                     "repetitive_penalty": 1,
                 });
-
-                // let body = serde_json::to_string(&payload)?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -134,8 +132,8 @@ impl LLMProvider for GenericAPI {
                             .map(|choice| choice.text.clone())
                             .unwrap_or_else(|| String::new());
 
-                        eprintln!("#####################################################################################");
-                        eprintln!("Response string: {:?}", response_string);
+                        // eprintln!("#####################################################################################");
+                        // eprintln!("Response string: {:?}", response_string);
 
                         // Code to clean up the response string
                         response_string = if response_string.starts_with("- \n\n") {
@@ -151,7 +149,7 @@ impl LLMProvider for GenericAPI {
                         response_string = response_string.replace("' }", "\" }");
                         // End cleaning up code
 
-                        eprintln!("(Cleaned up) Response string: {:?}", response_string);
+                        // eprintln!("(Cleaned up) Response string: {:?}", response_string);
 
                         Self::extract_first_json_object(&response_string)
                     }
