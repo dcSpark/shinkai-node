@@ -75,7 +75,7 @@ impl LLMProvider for GenericAPI {
 
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": 3072,
+                    "max_tokens": 2800,// 4096 is max amount of tokens
                     "prompt": messages_string,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
@@ -92,19 +92,19 @@ impl LLMProvider for GenericAPI {
                     "repetitive_penalty": 1,
                 });
 
-                let body = serde_json::to_string(&payload)?;
+                // let body = serde_json::to_string(&payload)?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", body).as_str(),
+                    format!("Call API Body: {:?}", payload).as_str(),
                 );
 
                 let res = client
                     .post(url)
                     .bearer_auth(key)
                     .header("Content-Type", "application/json")
-                    .body(body)
+                    .json(&payload)
                     .send()
                     .await?;
 

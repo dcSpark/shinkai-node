@@ -155,7 +155,7 @@ impl JobPromptGenerator {
                     "Here is the current content you found earlier to answer the user's question: `{}`",
                     summary
                 ),
-                SubPromptType::System,
+                SubPromptType::User,
             );
         }
 
@@ -238,10 +238,7 @@ impl JobPromptGenerator {
         );
         prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
-        prompt.add_content(
-            do_not_mention_prompt.to_string(),
-            SubPromptType::System,
-        );
+        prompt.add_content(do_not_mention_prompt.to_string(), SubPromptType::System);
 
         prompt
     }
@@ -450,8 +447,11 @@ impl Prompt {
 
         let mut messages: Vec<String> = Vec::new();
         let mut current_length: usize = 0;
-        let mut content_added = false;
-        let mut at_least_one_content = false;
+        let mut user_content_added = false;
+        let mut system_content_added = false;
+        let mut at_least_one_user_content = false;
+        let mut first_user_content: Option<String> = None;
+        let mut first_user_content_position: Option<usize> = None;
 
         // First, calculate the total length of EBNF content. We want to add it no matter what or
         // the response will be invalid.
@@ -463,27 +463,39 @@ impl Prompt {
         }
 
         // Then, process all sub-prompts in their original order
-        for sub_prompt in &self.sub_prompts {
+        for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
             match sub_prompt {
-                SubPrompt::Content(_, content) => {
-                    if content == &*do_not_mention_prompt {
+                SubPrompt::Content(prompt_type, content) => {
+                    if content == &*do_not_mention_prompt || content == "" {
                         continue;
                     }
                     let mut new_message = "".to_string();
-                    if !at_least_one_content {
+                    if prompt_type == &SubPromptType::System {
                         new_message = format!("{}", content.clone());
                     } else {
                         new_message = format!("- {}", content.clone());
+                        at_least_one_user_content = true;
+                        if first_user_content.is_none() {
+                            first_user_content = Some(new_message.clone());
+                            first_user_content_position = Some(i);
+                        }
                     }
-                    
-                    at_least_one_content = true;
+
+                    if prompt_type == &SubPromptType::User {
+                        at_least_one_user_content = true;
+                    }
+
                     let new_message_length = new_message.len();
                     if current_length + new_message_length > limit {
-                        break;
+                        continue;
                     }
                     messages.push(new_message);
                     current_length += new_message_length;
-                    content_added = true;
+
+                    match prompt_type {
+                        SubPromptType::User => user_content_added = true,
+                        SubPromptType::System => system_content_added = true,
+                    }
                 }
                 SubPrompt::EBNF(_, ebnf) => {
                     let new_message = self.generate_ebnf_response_string(ebnf);
@@ -492,7 +504,7 @@ impl Prompt {
             }
         }
 
-        if !at_least_one_content {
+        if !at_least_one_user_content {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Error,
@@ -500,17 +512,30 @@ impl Prompt {
             );
         }
 
-        if !content_added {
+        if !user_content_added && first_user_content.is_some() {
+            let remaining_tokens = limit - current_length;
+            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens-3]);
+            if let Some(position) = first_user_content_position {
+                messages.insert(position, truncated_content.to_string());
+            }
+        } else if !user_content_added {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Error,
-                "No content could be added before exceeded the limit",
+                "No user content was added to compute the prompt",
             );
         }
 
-        eprintln!("^^^ generate_genericapi_messages messages: {:?}", messages);
+        if !system_content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No system content was added to compute the prompt",
+            );
+        }
+
         let output = messages.join(" ");
-        eprintln!("^^^ generate_genericapi_messages output: {:?}", output);
+        eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)
     }
 }
@@ -518,7 +543,6 @@ impl Prompt {
 lazy_static! {
     static ref do_not_mention_prompt: String = "Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know: ".to_string();
 }
-
 
 lazy_static! {
     static ref bootstrap_plan_prompt: String = String::from(

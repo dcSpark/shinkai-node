@@ -92,20 +92,18 @@ impl LLMProvider for OpenAI {
                     "temperature": 0.7,
                     "max_tokens": max_tokens,
                 });
-
-                let body = serde_json::to_string(&payload)?;
                 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", body).as_str(),
+                    format!("Call API Body: {:?}", payload).as_str(),
                 );
 
                 let res = client
                     .post(url)
                     .bearer_auth(key)
                     .header("Content-Type", "application/json")
-                    .body(body)
+                    .json(&payload)
                     .send()
                     .await?;
 
