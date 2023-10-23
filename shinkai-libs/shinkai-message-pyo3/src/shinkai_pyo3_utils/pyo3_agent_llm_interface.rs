@@ -1,6 +1,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
+use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
 use shinkai_message_primitives::schemas::agents::serialized_agent::LocalLLM;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 
@@ -19,7 +20,13 @@ impl PyAgentLLMInterface {
             Ok(Self {
                 inner: AgentLLMInterface::OpenAI(OpenAI { model_type }),
             })
-        } else {
+        } else if s.starts_with("genericapi:") {
+            let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: AgentLLMInterface::GenericAPI(GenericAPI { model_type }),
+            })
+        } 
+        else {
             Ok(Self {
                 inner: AgentLLMInterface::LocalLLM(LocalLLM {}),
             })
@@ -37,6 +44,16 @@ impl PyAgentLLMInterface {
     }
 
     #[staticmethod]
+    pub fn new_genericapi(model_type: String) -> Self {
+        let generic_api = GenericAPI {
+            model_type,
+        };
+        Self {
+            inner: AgentLLMInterface::GenericAPI(generic_api),
+        }
+    }
+
+    #[staticmethod]
     pub fn new_localllm() -> Self {
         Self {
             inner: AgentLLMInterface::LocalLLM(LocalLLM {}),
@@ -46,6 +63,7 @@ impl PyAgentLLMInterface {
     pub fn get_model(&self) -> PyResult<String> {
         match &self.inner {
             AgentLLMInterface::OpenAI(open_ai) => Ok(format!("openai:{}", open_ai.model_type)),
+            AgentLLMInterface::GenericAPI(generic_ai) => Ok(format!("genericapi:{}", generic_ai.model_type)),
             AgentLLMInterface::LocalLLM(_) => Ok("LocalLLM".to_string()),
         }
     }

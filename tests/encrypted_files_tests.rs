@@ -2,7 +2,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, GenericAPI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
@@ -79,9 +79,6 @@ fn sandwich_messages_with_files_test() {
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
-                let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo".to_string(),
-                };
                 let agent_name = ShinkaiName::new(
                     format!(
                         "{}/{}/agent/{}",
@@ -120,6 +117,14 @@ fn sandwich_messages_with_files_test() {
                     )
                     .create();
 
+                let open_ai = OpenAI {
+                    model_type: "gpt-3.5-turbo".to_string(),
+                };
+
+                let generic_api = GenericAPI {
+                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
+                };
+
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
@@ -127,7 +132,9 @@ fn sandwich_messages_with_files_test() {
                     // external_url: Some("https://api.openai.com".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
+                    // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
+                    // model: AgentLLMInterface::GenericAPI(generic_api),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
@@ -353,10 +360,7 @@ fn sandwich_messages_with_files_test() {
                 let (res_sender, res_receiver) = async_channel::bounded(1);
                 // Send the command
                 node1_commands_sender
-                    .send(NodeCommand::APIGetFilenamesInInbox {
-                        msg,
-                        res: res_sender,
-                    })
+                    .send(NodeCommand::APIGetFilenamesInInbox { msg, res: res_sender })
                     .await
                     .unwrap();
 

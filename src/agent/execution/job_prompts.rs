@@ -2,6 +2,7 @@ use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use crate::tools::router::ShinkaiTool;
 use lazy_static::lazy_static;
 use serde_json::to_string;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource_types::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
@@ -60,7 +61,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
         prompt.add_content(format!("{}", job_task), SubPromptType::User);
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
         prompt
     }
@@ -114,7 +115,7 @@ impl JobPromptGenerator {
             format!("If you have enough information to directly answer the user's question:"),
             SubPromptType::System,
         );
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
         // Tell the LLM about the previous search term (up to max 3 words to not confuse it) to avoid searching the same
         if let Some(mut prev_search) = prev_search_text {
@@ -128,7 +129,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_ebnf(
-            String::from(r#""{" "search" ":" string, "summary": "string" }""#),
+            String::from(r#"'{' 'search' ':' string, 'summary': 'string' }'"#),
             SubPromptType::System,
         );
 
@@ -154,7 +155,7 @@ impl JobPromptGenerator {
                     "Here is the current content you found earlier to answer the user's question: `{}`",
                     summary
                 ),
-                SubPromptType::System,
+                SubPromptType::User,
             );
         }
 
@@ -176,7 +177,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
         prompt
     }
@@ -188,7 +189,7 @@ impl JobPromptGenerator {
         format!("Based on the following summary: \n\n{}\n\nYou need to come up with a unique and detailed search term that is different than the provided one: `{}`", summary, search_term),
         SubPromptType::System,
     );
-        prompt.add_ebnf(String::from(r#""{" "search" ":" string }""#), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#"'{' 'search' ':' string }'"#), SubPromptType::System);
 
         prompt
     }
@@ -235,12 +236,9 @@ impl JobPromptGenerator {
             format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
             SubPromptType::User,
         );
-        prompt.add_ebnf(String::from(r#""{" "answer" ":" string "}""#), SubPromptType::System);
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
-        prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
-            SubPromptType::System,
-        );
+        prompt.add_content(do_not_mention_prompt.to_string(), SubPromptType::System);
 
         prompt
     }
@@ -259,7 +257,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
         prompt.add_ebnf(
-            String::from("{{\"plan\": [\"string\" (, \"string\")*]}}"),
+            String::from("{{'plan': ['string' (, 'string')*]}}"),
             SubPromptType::System,
         );
 
@@ -297,7 +295,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
-        prompt.add_ebnf(String::from("{{\"prepared\": true}}"), SubPromptType::User);
+        prompt.add_ebnf(String::from("{{'prepared': true}}"), SubPromptType::User);
 
         prompt.add_content(
             String::from(
@@ -307,7 +305,7 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
-        prompt.add_ebnf(String::from("{{\"tool-search\": \"string\"}}"), SubPromptType::User);
+        prompt.add_ebnf(String::from("{{'tool-search': 'string'}}"), SubPromptType::User);
 
         prompt
     }
@@ -363,7 +361,7 @@ impl Prompt {
 
     fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
         format!(
-            "```Respond using the following EBNF and absolutely nothing else:\n{}\n```",
+            "Respond using the following EBNF and absolutely nothing else: {} ",
             ebnf
         )
     }
@@ -395,7 +393,7 @@ impl Prompt {
         self.check_ebnf_included()?;
 
         // We assume 2048 tokens max for the prompt which is about half of the total 4097
-        let limit = max_prompt_tokens.unwrap_or((2500 as usize).try_into().unwrap());
+        let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
         let model = "gpt-4";
 
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
@@ -435,6 +433,115 @@ impl Prompt {
 
         Ok(tiktoken_messages)
     }
+
+    // First version of generic. Probably we will need to pass a model name and a max tokens
+    // to this function. No any model name will work with the tokenizers so probably we will need
+    // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
+    pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
+        eprintln!("generate_genericapi_messages subprompts: {:?}", self.sub_prompts);
+        self.check_ebnf_included()?;
+
+        // TODO: Update to Llama tokenizer here
+        let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
+        // let model = "llama2"; // TODO: change to something that actually fits
+
+        let mut messages: Vec<String> = Vec::new();
+        let mut current_length: usize = 0;
+        let mut user_content_added = false;
+        let mut system_content_added = false;
+        let mut at_least_one_user_content = false;
+        let mut first_user_content: Option<String> = None;
+        let mut first_user_content_position: Option<usize> = None;
+
+        // First, calculate the total length of EBNF content. We want to add it no matter what or
+        // the response will be invalid.
+        for sub_prompt in &self.sub_prompts {
+            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
+                let new_message = self.generate_ebnf_response_string(ebnf);
+                current_length += new_message.len();
+            }
+        }
+
+        // Then, process all sub-prompts in their original order
+        for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
+            match sub_prompt {
+                SubPrompt::Content(prompt_type, content) => {
+                    if content == &*do_not_mention_prompt || content == "" {
+                        continue;
+                    }
+                    let mut new_message = "".to_string();
+                    if prompt_type == &SubPromptType::System {
+                        new_message = format!("{}", content.clone());
+                    } else {
+                        new_message = format!("- {}", content.clone());
+                        at_least_one_user_content = true;
+                        if first_user_content.is_none() {
+                            first_user_content = Some(new_message.clone());
+                            first_user_content_position = Some(i);
+                        }
+                    }
+
+                    if prompt_type == &SubPromptType::User {
+                        at_least_one_user_content = true;
+                    }
+
+                    let new_message_length = new_message.len();
+                    if current_length + new_message_length > limit {
+                        continue;
+                    }
+                    messages.push(new_message);
+                    current_length += new_message_length;
+
+                    match prompt_type {
+                        SubPromptType::User => user_content_added = true,
+                        SubPromptType::System => system_content_added = true,
+                    }
+                }
+                SubPrompt::EBNF(_, ebnf) => {
+                    let new_message = self.generate_ebnf_response_string(ebnf);
+                    messages.push(new_message);
+                }
+            }
+        }
+
+        if !at_least_one_user_content {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No content was added to compute the prompt",
+            );
+        }
+
+        if !user_content_added && first_user_content.is_some() {
+            let remaining_tokens = limit - current_length;
+            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens-3]);
+            if let Some(position) = first_user_content_position {
+                messages.insert(position, truncated_content.to_string());
+            }
+        } else if !user_content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No user content was added to compute the prompt",
+            );
+        }
+
+        if !system_content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No system content was added to compute the prompt",
+            );
+        }
+
+        let output = messages.join(" ");
+        eprintln!("generate_genericapi_messages output: {:?}", output);
+        Ok(output)
+    }
+}
+
+lazy_static! {
+    static ref do_not_mention_prompt: String = "Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know: ".to_string();
 }
 
 lazy_static! {

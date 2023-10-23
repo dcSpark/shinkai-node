@@ -23,6 +23,7 @@ impl JobManager {
         elements: &Vec<UnstructuredElement>,
         agent: SerializedAgent,
     ) -> Result<String, AgentError> {
+        // TODO: the 2000 should be dynamic depending on the LLM model
         let prompt = ParsingHelper::process_elements_into_description_prompt(&elements, 2000);
         let desc = Some(ParsingHelper::ending_stripper(
             &JobManager::inference_agent_and_extract(agent.clone(), prompt, "answer").await?,
