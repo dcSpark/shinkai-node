@@ -2,6 +2,7 @@ use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
 use crate::tools::router::ShinkaiTool;
 use lazy_static::lazy_static;
 use serde_json::to_string;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource_types::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
@@ -238,7 +239,7 @@ impl JobPromptGenerator {
         prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
         prompt.add_content(
-            format!("Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know:"),
+            do_not_mention_prompt.to_string(),
             SubPromptType::System,
         );
 
@@ -363,7 +364,7 @@ impl Prompt {
 
     fn generate_ebnf_response_string(&self, ebnf: &str) -> String {
         format!(
-            "Respond using the following EBNF and absolutely nothing else:\n{}\n",
+            "Respond using the following EBNF and absolutely nothing else: {} ",
             ebnf
         )
     }
@@ -436,38 +437,88 @@ impl Prompt {
         Ok(tiktoken_messages)
     }
 
-    pub fn generate_genericapi_messages(
-        &self,
-        max_prompt_tokens: Option<usize>,
-    ) -> Result<String, AgentError> {
+    // First version of generic. Probably we will need to pass a model name and a max tokens
+    // to this function. No any model name will work with the tokenizers so probably we will need
+    // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
+    pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
+        eprintln!("generate_genericapi_messages subprompts: {:?}", self.sub_prompts);
         self.check_ebnf_included()?;
-    
-        let limit = max_prompt_tokens.unwrap_or((1200 as usize).try_into().unwrap());
-        let model = "llama2"; // TODO: change to something that actually fits
-    
+
+        // TODO: Update to Llama tokenizer here
+        let limit = max_prompt_tokens.unwrap_or((4000 as usize).try_into().unwrap());
+        // let model = "llama2"; // TODO: change to something that actually fits
+
         let mut messages: Vec<String> = Vec::new();
         let mut current_length: usize = 0;
-    
-        // Process all sub-prompts in their original order
+        let mut content_added = false;
+        let mut at_least_one_content = false;
+
+        // First, calculate the total length of EBNF content. We want to add it no matter what or
+        // the response will be invalid.
         for sub_prompt in &self.sub_prompts {
-            let new_message = match sub_prompt {
-                SubPrompt::Content(_, content) => format!("- {}", content.clone()),
-                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
-            };
-        
-            let new_message_length = new_message.len();
-            if current_length + new_message_length > limit {
-                break;
+            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
+                let new_message = self.generate_ebnf_response_string(ebnf);
+                current_length += new_message.len();
             }
-        
-            messages.push(new_message);
-            current_length += new_message_length;
         }
-    
-        let output = messages.join("\n\n");
+
+        // Then, process all sub-prompts in their original order
+        for sub_prompt in &self.sub_prompts {
+            match sub_prompt {
+                SubPrompt::Content(_, content) => {
+                    if content == &*do_not_mention_prompt {
+                        continue;
+                    }
+                    let mut new_message = "".to_string();
+                    if !at_least_one_content {
+                        new_message = format!("{}", content.clone());
+                    } else {
+                        new_message = format!("- {}", content.clone());
+                    }
+                    
+                    at_least_one_content = true;
+                    let new_message_length = new_message.len();
+                    if current_length + new_message_length > limit {
+                        break;
+                    }
+                    messages.push(new_message);
+                    current_length += new_message_length;
+                    content_added = true;
+                }
+                SubPrompt::EBNF(_, ebnf) => {
+                    let new_message = self.generate_ebnf_response_string(ebnf);
+                    messages.push(new_message);
+                }
+            }
+        }
+
+        if !at_least_one_content {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No content was added to compute the prompt",
+            );
+        }
+
+        if !content_added {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Error,
+                "No content could be added before exceeded the limit",
+            );
+        }
+
+        eprintln!("^^^ generate_genericapi_messages messages: {:?}", messages);
+        let output = messages.join(" ");
+        eprintln!("^^^ generate_genericapi_messages output: {:?}", output);
         Ok(output)
     }
 }
+
+lazy_static! {
+    static ref do_not_mention_prompt: String = "Do not mention needing further context, or information, or ask for more research, just directly provide as much information as you know: ".to_string();
+}
+
 
 lazy_static! {
     static ref bootstrap_plan_prompt: String = String::from(

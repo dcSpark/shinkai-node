@@ -59,29 +59,24 @@ impl LLMProvider for GenericAPI {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/inference");
-                let messages_string = prompt.generate_genericapi_messages(None)?;
-                eprintln!("Tiktoken messages: {:?}", messages_string);
+                let mut messages_string = prompt.generate_genericapi_messages(None)?;
+                if !messages_string.ends_with(" ```") {
+                    messages_string.push_str(" ```json");
+                }
 
-                let messages_string = messages_string
-                    .split("\n\n")
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>()
-                    .join("\n\n");
-                // let messages_json = serde_json::to_value(&messages_string)?.to_string();
-                let messages_json = format!("{}", serde_json::to_value(&messages_string)?.to_string());
-                let messages_json = messages_json.strip_prefix('\"').unwrap_or(&messages_json);
-                let messages_json = messages_json.strip_suffix("\\\"\\n\\n ```").unwrap_or(&messages_json);
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Info,
+                    format!("Messages JSON: {:?}", messages_string).as_str(),
+                );
 
-                eprintln!("###");
-                eprintln!("Messages JSON: {:?}", messages_json);
-                eprintln!("###");
                 // panic!();
                 // let max_tokens = std::cmp::max(5, 4097 - used_characters);
 
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": 1024,
-                    "prompt": messages_json,
+                    "max_tokens": 3072,
+                    "prompt": messages_string,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
                     "top_p": 0.7,
@@ -122,7 +117,7 @@ impl LLMProvider for GenericAPI {
                 let response_text = res.text().await?;
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
+                    ShinkaiLogLevel::Info,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
 
@@ -130,15 +125,34 @@ impl LLMProvider for GenericAPI {
 
                 match data_resp {
                     Ok(data) => {
-                        let response_string: String = data
+                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
+                        // and from those the longest one. I haven't see multiple choices so far though.
+                        let mut response_string: String = data
                             .output
                             .choices
-                            .iter()
+                            .first()
                             .map(|choice| choice.text.clone())
-                            .collect::<Vec<String>>()
-                            .join(" ");
-                        eprintln!("######");
+                            .unwrap_or_else(|| String::new());
+
+                        eprintln!("#####################################################################################");
                         eprintln!("Response string: {:?}", response_string);
+
+                        // Code to clean up the response string
+                        response_string = if response_string.starts_with("- \n\n") {
+                            response_string[4..].to_string()
+                        } else {
+                            response_string
+                        };
+                        response_string = response_string.trim_end_matches(" ```").to_string();
+
+                        // Replace single quotes with double quotes in specific parts of the string
+                        response_string = response_string.replace("{ 'answer'", "{ \"answer\"");
+                        response_string = response_string.replace(": '", ": \"");
+                        response_string = response_string.replace("' }", "\" }");
+                        // End cleaning up code
+
+                        eprintln!("(Cleaned up) Response string: {:?}", response_string);
+
                         Self::extract_first_json_object(&response_string)
                     }
                     Err(e) => {
