@@ -13,10 +13,6 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-lazy_static! {
-    pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
-}
-
 #[test]
 fn test_remote_embeddings_generation() {
     let generator = RemoteEmbeddingGenerator::new_default();
