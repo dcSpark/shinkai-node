@@ -14,54 +14,31 @@ mod tests {
     };
     use tokio;
 
-    // fn setup_vars() -> (AgentLLMInterface, Client, Option<String>, Option<String>) {
-    //     // Extract from ENV with fallback to default values
-    //     let model_type =
-    //         env::var("INITIAL_AGENT_MODEL").unwrap_or_else(|_| "togethercomputer/llama-2-70b-chat".to_string());
-    //     let client = Client::new();
-    //     let url = env::var("INITIAL_AGENT_URL")
-    //         .ok()
-    //         .map(|url| url.to_string())
-    //         .or_else(|| Some("https://api.together.xyz".to_string()));
-    //     let api_key = env::var("INITIAL_AGENT_API_KEY").ok().map(|key| key.to_string());
-
-    //     // Determine the provider type from ENV or default to GenericAPI
-    //     let provider_type = env::var("INITIAL_TEST_LLM_PROVIDER").unwrap_or_else(|_| "genericapi".to_string());
-
-    //     // Create an instance of AgentLLMInterface based on the provider type
-    //     let provider = match provider_type.as_str() {
-    //         "openai" => AgentLLMInterface::OpenAI(OpenAI { model_type }),
-    //         _ => AgentLLMInterface::GenericAPI(GenericAPI { model_type }),
-    //     };
-
-    //     (provider, client, url, api_key)
-    // }
-
     fn setup_vars() -> Result<(AgentLLMInterface, Client, Option<String>, Option<String>), &'static str> {
         // Extract from ENV with fallback to default values
         let model_type =
             env::var("INITIAL_AGENT_MODEL").unwrap_or_else(|_| "togethercomputer/llama-2-70b-chat".to_string());
         let client = Client::new();
         let api_key = env::var("INITIAL_AGENT_API_KEY").ok().map(|key| key.to_string());
-    
+
         if api_key.is_none() {
             return Err("No API key provided");
         }
-    
+
         // Determine the provider type from ENV or default to GenericAPI
         let provider_type = env::var("INITIAL_TEST_LLM_PROVIDER").unwrap_or_else(|_| "genericapi".to_string());
-    
+
         // Create an instance of AgentLLMInterface based on the provider type
         let provider = match provider_type.as_str() {
             "openai" => AgentLLMInterface::OpenAI(OpenAI { model_type }),
             _ => AgentLLMInterface::GenericAPI(GenericAPI { model_type }),
         };
-    
+
         let url = env::var("INITIAL_AGENT_URL")
             .ok()
             .map(|url| url.to_string())
             .or_else(|| Some("https://api.together.xyz".to_string()));
-    
+
         Ok((provider, client, url, api_key))
     }
 
@@ -71,7 +48,7 @@ mod tests {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<Vec<String>> =
                     vec![get_elements_whats_zeko_with_6_resp() /* add more elements here */];
-    
+
                 for elements in elements_list {
                     let prompt = JobPromptGenerator::simple_doc_description(elements);
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -82,20 +59,20 @@ mod tests {
             }
         }
     }
-    
+
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_b() {
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![get_zeko_description() /* add more elements here */];
-    
+
                 for elements in elements_list {
                     let prompt = JobPromptGenerator::response_prompt_with_vector_search_final(
                         "What's Zeko?".to_string(),
                         vec![],
                         Some(elements),
                     );
-    
+
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
                 }
             }
