@@ -181,3 +181,47 @@ fn test_unstructured_parse_epub_vector_resource() {
         res[0].node.get_text_content().unwrap()
     );
 }
+
+#[test]
+fn test_unstructured_parse_html_vector_resource() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    let file_name = "unstructured.html";
+    let file_path = "../../files/".to_string() + file_name;
+
+    // Read the file into a byte vector
+    let file_buffer = fs::read(file_path).unwrap();
+
+    // Create an UnstructuredAPI and process the file
+    let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+
+    let resource = api
+        .process_file_blocking(
+            file_buffer,
+            &generator,
+            file_name.to_string(),
+            None,
+            VRSource::None,
+            &vec![],
+            300,
+        )
+        .unwrap();
+
+    resource.as_trait_object().print_all_nodes_exhaustive(None, true, false);
+
+    let query_string = "What is Unstructured?";
+    let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
+    let res = resource.as_trait_object().vector_search(query_embedding1.clone(), 50);
+    for (i, result) in res.iter().enumerate() {
+        println!(
+            "Score {} - Data: {}",
+            result.score,
+            result.node.get_text_content().unwrap()
+        );
+    }
+    assert_eq!(
+        "The unstructured library aims to simplify and streamline the preprocessing of structured and unstructured documents for downstream tasks. And what that means is no matter where your data is
+and no matter what format that data is in, Unstructured’s toolkit will transform and preprocess that data",
+        res[0].node.get_text_content().unwrap()
+    );
+}

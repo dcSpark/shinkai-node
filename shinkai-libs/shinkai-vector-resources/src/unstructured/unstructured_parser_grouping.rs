@@ -228,9 +228,8 @@ impl UnstructuredParser {
         for element in elements_iter {
             let element_text = element.text.clone();
 
-            // Skip over any uncategorized text (usually filler like headers/footers)
-            // Or elements with no content
-            if element.element_type == ElementType::UncategorizedText || element.text.len() <= 2 {
+            // Pre-parsing to skip useless elements that Unstructured failed to clean out itself properly
+            if Self::should_element_be_skipped(element) {
                 continue;
             }
 
@@ -302,6 +301,32 @@ impl UnstructuredParser {
             .collect();
 
         groups
+    }
+
+    /// Skip over any elements that Unstructured failed to clean out.
+    fn should_element_be_skipped(element: &UnstructuredElement) -> bool {
+        // Remove Uncategorized text (usually filler like headers/footers) && elements with no content at all.
+        if element.element_type == ElementType::UncategorizedText || element.text.len() <= 2 {
+            return true;
+        }
+
+        // Remove short narrative text which doesn't have enough content to matter
+        if element.element_type == ElementType::NarrativeText && element.text.len() <= 12 {
+            return true;
+        }
+
+        // For pieces of codeblocks which Unstructured failed to parse together and split up horribly.
+        if !element.text.contains(' ')
+            && (element.text.contains('.')
+                || element.text.contains('_')
+                || element.text.contains('[')
+                || element.text.contains(']')
+                || element.text.contains("::"))
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Removes any title element which occurs more than once.

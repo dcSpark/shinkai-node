@@ -20,6 +20,7 @@ blake3 = "1.5.0"
 keyphrases = "0.3.2"
 async-trait = "0.1.74"
 async-recursion = "1.0.5"
+scraper = "0.17.1"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [build-dependencies]
