@@ -228,33 +228,34 @@ impl UnstructuredParser {
         for element in elements_iter {
             let element_text = element.text.clone();
 
-            // Skip over any uncategorized text (usually filler like headers/footers)
-            // Or elements with no content
-            if element.element_type == ElementType::UncategorizedText || element.text.len() <= 2 {
+            // Pre-parsing to skip useless elements that Unstructured failed to clean out itself properly
+            if Self::should_element_be_skipped(element) {
                 continue;
             }
 
-            // If adding the current element text would exceed the max_chunk_size,
-            // push the current group to title group or groups and start a new group
-            if current_group.text.len() + element_text.len() > max_chunk_size {
-                Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
-                current_group = GroupedText::new();
-            }
-
-            // If the current element text is larger than max_chunk_size,
-            // split it into chunks and add them to title group or groups
-            if element_text.len() > max_chunk_size {
-                let chunks = Self::split_into_chunks(&element_text, max_chunk_size);
-                for chunk in chunks {
-                    let mut new_group = GroupedText::new();
-                    new_group.push_data(&chunk, element.metadata.page_number);
-                    Self::push_group_to_appropriate_parent(new_group, &mut current_title_group, &mut groups);
+            if element.element_type != ElementType::Title {
+                // If adding the current element text would exceed the max_chunk_size,
+                // push the current group to title group or groups and start a new group
+                if current_group.text.len() + element_text.len() > max_chunk_size {
+                    Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
+                    current_group = GroupedText::new();
                 }
-                continue;
-            }
 
-            // Add the current element text to the current group
-            current_group.push_data(&element_text, element.metadata.page_number);
+                // If the current element text is larger than max_chunk_size,
+                // split it into chunks and add them to title group or groups
+                if element_text.len() > max_chunk_size {
+                    let chunks = Self::split_into_chunks(&element_text, max_chunk_size);
+                    for chunk in chunks {
+                        let mut new_group = GroupedText::new();
+                        new_group.push_data(&chunk, element.metadata.page_number);
+                        Self::push_group_to_appropriate_parent(new_group, &mut current_title_group, &mut groups);
+                    }
+                    continue;
+                }
+
+                // Add the current element text to the current group
+                current_group.push_data(&element_text, element.metadata.page_number);
+            }
 
             // If the current element type is Title,
             // push the current title group to groups and start a new title group
@@ -263,18 +264,22 @@ impl UnstructuredParser {
                 if !current_group.text.is_empty() && current_group.text != element_text {
                     Self::push_group_to_appropriate_parent(current_group, &mut current_title_group, &mut groups);
                 } else if let Some(title_group) = current_title_group.as_mut() {
-                    // If the current group only contains the title text, add a default GroupedText that holds the title's text
-                    // This both pre-populates the sub-group field, and allows for the title to be found in a search
-                    // as a RetrievedNode to the LLM which can be useful in some content.
-                    let mut new_grouped_text = GroupedText::new();
-                    new_grouped_text.push_data(&title_group.text, None);
-                    title_group.sub_groups.push(new_grouped_text);
+                    if element_text.len() > 12 {
+                        // If the current group only contains the title text and is > 12 len, add a default GroupedText that holds the title's text
+                        // This both pre-populates the sub-group field, and allows for the title to be found in a search
+                        // as a RetrievedNode to the LLM which can be useful in some content.
+                        let mut new_grouped_text = GroupedText::new();
+                        new_grouped_text.push_data(&title_group.text, None);
+                        title_group.sub_groups.push(new_grouped_text);
+                    }
                 }
                 current_group = GroupedText::new();
 
                 // Push the existing title group to groups
                 if let Some(title_group) = current_title_group.take() {
-                    groups.push(title_group);
+                    if title_group.text.len() > 12 || title_group.sub_groups.len() > 0 {
+                        groups.push(title_group);
+                    }
                 }
 
                 // Start a new title group
@@ -295,13 +300,33 @@ impl UnstructuredParser {
             groups.push(title_group);
         }
 
-        // Filter out groups with a text of 15 characters or less and no sub-groups
-        groups = groups
-            .into_iter()
-            .filter(|group| group.text.len() > 15 || !group.sub_groups.is_empty())
-            .collect();
-
         groups
+    }
+
+    /// Skip over any elements that Unstructured failed to clean out.
+    fn should_element_be_skipped(element: &UnstructuredElement) -> bool {
+        // Remove Uncategorized text (usually filler like headers/footers) && elements with no content at all.
+        if element.element_type == ElementType::UncategorizedText || element.text.len() <= 2 {
+            return true;
+        }
+
+        // Remove short narrative text which doesn't have enough content to matter
+        if element.element_type == ElementType::NarrativeText && element.text.len() <= 12 {
+            return true;
+        }
+
+        // For pieces of codeblocks which Unstructured failed to parse together and split up horribly.
+        if !element.text.contains(' ')
+            && (element.text.contains('.')
+                || element.text.contains('_')
+                || element.text.contains('[')
+                || element.text.contains(']')
+                || element.text.contains("::"))
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Removes any title element which occurs more than once.

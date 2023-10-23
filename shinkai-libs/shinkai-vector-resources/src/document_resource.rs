@@ -102,8 +102,8 @@ impl VectorResource for DocumentVectorResource {
 }
 
 impl DocumentVectorResource {
-    /// * `resource_id` - For DocumentVectorResources this should be a Sha256 hash as a String
-    ///  from the bytes of the original data.
+    /// * `resource_id` - This can be the hash as a String from the bytes of the original data
+    /// or anything that is deterministic to ensure duplicates are not possible.
     pub fn new(
         name: &str,
         desc: Option<&str>,

@@ -15,7 +15,6 @@ use std::io::{prelude::*, Cursor};
 use std::net::TcpStream;
 
 lazy_static! {
-    pub static ref DEFAULT_LOCAL_EMBEDDINGS_PORT: &'static str = "7999";
     pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/embed";
 }
 const N_EMBD: usize = 384;

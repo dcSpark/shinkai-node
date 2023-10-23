@@ -4,10 +4,11 @@ use std::collections::BinaryHeap;
 
 /// TODO: This is set at 500 chars to be safe for 512 token limit on embedding models. Later
 /// make this more flexible based on embedding model used (important when larger
-/// context window models arrive)
+/// context window models arrive), and implement proper token counting.
 pub const MAX_EMBEDDING_STRING_SIZE: usize = 500;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// A struct that represents a Vector Embedding with an added string id.
 pub struct Embedding {
     pub id: String,
     pub vector: Vec<f32>,

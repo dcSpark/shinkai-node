@@ -6,6 +6,8 @@ use crate::resource_errors::VRError;
 use crate::source::VRSource;
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
+#[cfg(feature = "native-http")]
+use scraper::{Html, Selector};
 use serde_json::Value as JsonValue;
 
 #[derive(Debug)]
@@ -89,6 +91,25 @@ impl UnstructuredAPI {
         .await
     }
 
+    #[cfg(feature = "native-http")]
+    /// If the file provided is an html file, attempt to extract out the core content to improve
+    /// overall quality of UnstructuredElements returned.
+    pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
+        if file_name.ends_with(".html") || file_name.ends_with(".htm") {
+            let file_content = String::from_utf8_lossy(&file_buffer);
+            let document = Html::parse_document(&file_content);
+
+            // Try to select the 'main', 'article' tag or a class named 'main'
+            if let Ok(main_selector) = Selector::parse("main, .main, article") {
+                if let Some(main_element) = document.select(&main_selector).next() {
+                    return main_element.inner_html().into_bytes();
+                }
+            }
+        }
+
+        file_buffer
+    }
+
     /// Makes a blocking request to process a file in a buffer into a list of
     /// UnstructuredElements
     pub fn file_request_blocking(
@@ -97,6 +118,7 @@ impl UnstructuredAPI {
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::blocking::Client::new();
+        let file_buffer = self.extract_core_content(file_buffer, file_name);
 
         let part = blocking_multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())
@@ -116,6 +138,7 @@ impl UnstructuredAPI {
         let res = request_builder.send()?;
 
         let body = res.text()?;
+        println!("Server response: {}", body);
 
         let json: JsonValue = serde_json::from_str(&body)?;
 
@@ -131,6 +154,7 @@ impl UnstructuredAPI {
         file_name: &str,
     ) -> Result<Vec<UnstructuredElement>, VRError> {
         let client = reqwest::Client::new();
+        let file_buffer = self.extract_core_content(file_buffer, file_name);
 
         let part = multipart::Part::bytes(file_buffer)
             .file_name(file_name.to_string())

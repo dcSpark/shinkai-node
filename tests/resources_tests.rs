@@ -65,7 +65,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
-            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros nico@shinkai.com Introduction",
+            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
             res[0].node.get_text_content().unwrap()
         );
 

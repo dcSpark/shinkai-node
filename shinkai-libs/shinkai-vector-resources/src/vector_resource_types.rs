@@ -307,7 +307,8 @@ impl From<Box<dyn VectorResource>> for VRHeader {
     }
 }
 
-/// A path inside of a Vector Resource to an internal Node. Internally it is made up of an ordered list of node ids.
+/// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
+/// Internally the path is made up of an ordered list of Node ids (Int strings for Docs, any string for Maps).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
