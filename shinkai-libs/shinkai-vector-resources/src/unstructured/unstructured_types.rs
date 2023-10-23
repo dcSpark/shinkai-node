@@ -86,6 +86,7 @@ pub enum ElementType {
     UncategorizedText,
     ListItem,
     EmailAddress,
+    Table,
 }
 
 /// Output data from Unstructured which holds a piece of text and
