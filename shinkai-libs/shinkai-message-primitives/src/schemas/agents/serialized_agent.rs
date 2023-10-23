@@ -49,7 +49,7 @@ impl FromStr for AgentLLMInterface {
             Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
         } else if s.starts_with("genericapi:") {
             let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
-            Ok(AgentLLMInterface::OpenAI(OpenAI { model_type }))
+            Ok(AgentLLMInterface::GenericAPI(GenericAPI { model_type }))
         } else {
             // TODO: nothing else for now
             Err(())
