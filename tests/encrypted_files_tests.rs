@@ -2,7 +2,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, GenericAPI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
@@ -122,7 +122,7 @@ fn sandwich_messages_with_files_test() {
                 };
 
                 let generic_api = GenericAPI {
-                    model_type: "mistralai/Mistral-7B-Instruct-v0.1".to_string(),
+                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 };
 
                 let agent = SerializedAgent {
@@ -360,10 +360,7 @@ fn sandwich_messages_with_files_test() {
                 let (res_sender, res_receiver) = async_channel::bounded(1);
                 // Send the command
                 node1_commands_sender
-                    .send(NodeCommand::APIGetFilenamesInInbox {
-                        msg,
-                        res: res_sender,
-                    })
+                    .send(NodeCommand::APIGetFilenamesInInbox { msg, res: res_sender })
                     .await
                     .unwrap();
 
