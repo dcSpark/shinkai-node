@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
@@ -37,7 +38,7 @@ const CreateJobPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
 
-  const { agents } = useAgents({
+  const { agents, isSuccess } = useAgents({
     sender: auth?.shinkai_identity ?? "",
     senderSubidentity: `${auth?.profile}`,
     shinkaiIdentity: auth?.shinkai_identity ?? "",
@@ -75,6 +76,17 @@ const CreateJobPage = () => {
       profile_identity_sk: auth.profile_identity_sk,
     });
   };
+
+  useEffect(
+    () => {
+      if (isSuccess && agents?.length) {
+        createJobForm.setValue("model", agents[0].id);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isSuccess]
+  );
+
   return (
     <SimpleLayout title="Create Job">
       <Form {...createJobForm}>
@@ -84,7 +96,7 @@ const CreateJobPage = () => {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Select your AI Agent</FormLabel>
-                  <Select defaultValue={field.value} onValueChange={field.onChange}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select your AI Agent" />
@@ -121,6 +133,11 @@ const CreateJobPage = () => {
                   <FormLabel>Tell us the job you want to do</FormLabel>
                   <FormControl>
                     <Textarea
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                          createJobForm.handleSubmit(onSubmit)();
+                        }
+                      }}
                       className="resize-none border-white"
                       placeholder="Eg: Explain me how internet works..."
                       {...field}
