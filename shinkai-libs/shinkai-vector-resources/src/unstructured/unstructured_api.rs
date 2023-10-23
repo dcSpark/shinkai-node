@@ -61,25 +61,6 @@ impl UnstructuredAPI {
         )
     }
 
-    #[cfg(feature = "native-http")]
-    /// If the file provided is an html file, attempt to extract out the core content to improve
-    /// overall quality of UnstructuredElements returned.
-    pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
-        if file_name.ends_with(".html") || file_name.ends_with(".htm") {
-            let file_content = String::from_utf8_lossy(&file_buffer);
-            let document = Html::parse_document(&file_content);
-
-            // Try to select the 'main', 'article' tag or a class named 'main'
-            if let Ok(main_selector) = Selector::parse("main, .main, article") {
-                if let Some(main_element) = document.select(&main_selector).next() {
-                    return main_element.inner_html().into_bytes();
-                }
-            }
-        }
-
-        file_buffer
-    }
-
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
     /// Note: Requires name to include the extension ie. `*.pdf`
@@ -108,6 +89,25 @@ impl UnstructuredAPI {
             max_chunk_size,
         )
         .await
+    }
+
+    #[cfg(feature = "native-http")]
+    /// If the file provided is an html file, attempt to extract out the core content to improve
+    /// overall quality of UnstructuredElements returned.
+    pub fn extract_core_content(&self, file_buffer: Vec<u8>, file_name: &str) -> Vec<u8> {
+        if file_name.ends_with(".html") || file_name.ends_with(".htm") {
+            let file_content = String::from_utf8_lossy(&file_buffer);
+            let document = Html::parse_document(&file_content);
+
+            // Try to select the 'main', 'article' tag or a class named 'main'
+            if let Ok(main_selector) = Selector::parse("main, .main, article") {
+                if let Some(main_element) = document.select(&main_selector).next() {
+                    return main_element.inner_html().into_bytes();
+                }
+            }
+        }
+
+        file_buffer
     }
 
     /// Makes a blocking request to process a file in a buffer into a list of

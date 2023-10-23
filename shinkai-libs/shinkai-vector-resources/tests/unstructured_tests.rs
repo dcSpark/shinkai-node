@@ -1,18 +1,11 @@
 use lazy_static::lazy_static;
 use serde_json::Value as JsonValue;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
-use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::ElementType;
 use std::fs;
-use std::fs::File;
-use std::io;
-use std::process::{Child, Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 lazy_static! {
     pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
@@ -58,7 +51,6 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let file_name = "shinkai_intro.pdf";
-    // let file_name = "Zeko_Mina_Rollup.pdf";
     let file_path = "../../files/".to_string() + file_name;
 
     // Read the file into a byte vector

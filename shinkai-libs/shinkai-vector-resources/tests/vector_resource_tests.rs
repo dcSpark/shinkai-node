@@ -1,4 +1,3 @@
-use lazy_static::lazy_static;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
@@ -7,11 +6,6 @@ use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{NodeContent, TraversalMethod, VectorResource};
 use shinkai_vector_resources::vector_resource_types::VRPath;
-use std::fs::File;
-use std::io;
-use std::process::{Child, Command, Stdio};
-use std::thread;
-use std::time::Duration;
 
 #[test]
 fn test_remote_embeddings_generation() {
