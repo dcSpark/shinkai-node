@@ -2,11 +2,13 @@
 
 A powerful native Rust fully in-memory/serializable Vector Search solution.
 
+A Vector Resource is made up of a hierarchy of nodes, where each node can either hold a piece of `Text` or another `Vector Resource`. Vector Searching can be performed from the root resource or starting from any path throughout the entire hierarchy. Along with the easy-to-use enum-based TraversalMethods, they offer great customizability of how results are found/scored.
+
 ## Importing Into Your Project
 
 By default the library includes both async & blocking interfaces for parsing files into Vector Resources automatically (with hierarchy/embeddings auto-generated + batched). This ingestion is non-wasm compatible, and is included as a default feature called `native-http`.
 
-Past ingestion (which requires sending requests to Unstructured + Embedding Generation Server) & generation of the Vector Resources themselves, all other parts of the library are pure Rust and are wasm compatible. As such, you can generate Vector Resources in non-wasm code, then simply serialize/send them into the wasm side, and use them freely with no issues.
+Past ingestion & generation of the Vector Resources themselves (which requires sending requests to Unstructured + Embedding Generation Server), all other parts of the library are pure Rust and are wasm compatible. As such, you can generate Vector Resources in non-wasm code and simply serialize/send them into the wasm side, to then use them freely with no issues.
 
 To disable `native-http` & support wasm, simply import as such:
 

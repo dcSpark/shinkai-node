@@ -92,7 +92,7 @@ impl VectorResource for MapVectorResource {
 }
 
 impl MapVectorResource {
-    /// * `resource_id` - This can be the Sha256 hash as a String from the bytes of the original data
+    /// * `resource_id` - This can be the hash as a String from the bytes of the original data
     /// or anything that is deterministic to ensure duplicates are not possible.
     pub fn new(
         name: &str,
