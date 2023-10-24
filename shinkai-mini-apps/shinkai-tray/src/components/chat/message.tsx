@@ -11,6 +11,7 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import CopyToClipboardIcon from "../ui/copy-to-clipboard-icon";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 export const getMessageFilesInbox = (message: ShinkaiMessage): string | undefined => {
   // unnencrypted content
@@ -67,10 +68,10 @@ const Message = ({ message, inboxId }: { message: ShinkaiMessage; inboxId: strin
       </Avatar>
       <div
         className={cn(
-          "break-words rounded-lg bg-transparent px-2.5 py-3",
+          "group flex items-start gap-1 break-words rounded-lg bg-transparent px-2.5 py-3",
           isLocal
             ? "rounded-tl-none border border-slate-800"
-            : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+            : "mt-4 rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
         )}
       >
         <MarkdownPreview
@@ -85,12 +86,17 @@ const Message = ({ message, inboxId }: { message: ShinkaiMessage; inboxId: strin
           className="bg-transparent text-sm text-foreground"
         />
         {isLocal ? null : (
-          <CopyToClipboardIcon
-            className="ml-auto mt-2"
-            string={getMessageContent(message)}
-          >
-            Copy
-          </CopyToClipboardIcon>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger>
+                <CopyToClipboardIcon
+                  className="duration-30 -mr-1 -mt-1 opacity-0 group-hover:opacity-100 group-hover:transition-opacity"
+                  string={getMessageContent(message)}
+                />
+              </TooltipTrigger>
+              <TooltipContent>Copy</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
     </div>
