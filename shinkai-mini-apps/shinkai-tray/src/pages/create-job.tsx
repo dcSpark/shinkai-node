@@ -37,7 +37,7 @@ const createJobSchema = z.object({
   file: z.any().optional(),
 });
 
-function isImageOrPdf(file: File): boolean {
+export function isImageOrPdf(file: File): boolean {
   if (!file) return false;
   return file?.type.startsWith("image/") || file?.type.startsWith("application/pdf");
 }
