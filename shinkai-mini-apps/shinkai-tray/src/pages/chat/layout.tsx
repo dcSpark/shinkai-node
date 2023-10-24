@@ -1,4 +1,4 @@
-import { Link, Outlet, useMatch, useResolvedPath } from "react-router-dom";
+import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
 import { MessageCircleIcon, Workflow } from "lucide-react";
@@ -10,8 +10,7 @@ import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
 const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
-  const resolved = useResolvedPath(to);
-  const match = useMatch({ path: resolved.pathname, end: true });
+  const match = useMatch(to);
 
   return (
     <Link
