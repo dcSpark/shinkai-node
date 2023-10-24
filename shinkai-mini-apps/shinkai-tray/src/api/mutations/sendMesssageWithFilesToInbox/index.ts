@@ -1,5 +1,4 @@
 import { sendTextMessageWithFilesForInbox } from "@shinkai_network/shinkai-message-ts/api";
-import { buildInboxIdFromJobId } from "@shinkai_network/shinkai-message-ts/utils";
 
 import { SendMessageWithFilesToInboxInput } from "./types";
 
