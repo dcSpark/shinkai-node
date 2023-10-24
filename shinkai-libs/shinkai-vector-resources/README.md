@@ -2,7 +2,7 @@
 
 A powerful native Rust fully in-memory/serializable Vector Search solution.
 
-A Vector Resource is made up of a hierarchy of nodes, where each node can either hold a piece of `Text` or another `Vector Resource`. Vector Searching can be performed from the root resource or starting from any path throughout the entire hierarchy. Along with the easy-to-use enum-based TraversalMethods, they offer great customizability of how results are found/scored.
+A Vector Resource is made up of a hierarchy of nodes, where each node can either hold a piece of `Text` or another `Vector Resource`. Vector Searching can be performed starting from the root resource or from any path throughout the entire hierarchy, and with the easy-to-use enum-based TraversalMethod interface, offers great customizability of how results are found/scored.
 
 ## Importing Into Your Project
 
@@ -40,15 +40,6 @@ Reference `vector_resource_tests.rs` to see examples of how to use advanced capa
 5. Manual Vector Resource building (including manual hierarchy building)
 
 ## Tests
-
-### GCC Compiler Setup
-
-Make sure you have gcc/g++ as your default compilers in order to ensure bert.cpp can be compiled:
-
-```
-export CC=gcc
-export CXX=g++
-```
 
 ### Running Tests
 
