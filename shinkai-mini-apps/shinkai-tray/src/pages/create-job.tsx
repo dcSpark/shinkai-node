@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ImagePlusIcon, PlusIcon, XCircleIcon } from "lucide-react";
+import { ImagePlusIcon, PlusIcon, X } from "lucide-react";
 import { z } from "zod";
 
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
@@ -177,51 +177,59 @@ const CreateJobPage = () => {
               name="description"
             />
 
-            <div
-              {...getRootFileProps({
-                className: cn(
-                  "dropzone group relative relative flex w-full flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
-                  file && "border-0"
-                ),
-              })}
-            >
-              {!file && (
-                <div className="flex flex-col items-center gap-2 p-4">
-                  <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
-                  <span className="text-xs">
-                    Upload a file or drag and drop (optional)
-                  </span>
-                </div>
-              )}
-              <input
-                {...createJobForm.register("file")}
-                {...getInputFileProps({
-                  onChange: createJobForm.register("file").onChange,
+            <div>
+              <FormLabel>
+                Upload a file
+                <span className="ml-1 text-muted-foreground">(optional)</span>
+              </FormLabel>
+
+              <div
+                {...getRootFileProps({
+                  className: cn(
+                    "dropzone group relative relative mt-3 flex h-[9.375rem] w-[12.5rem] cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
+                    file && "border border-solid border-slate-500"
+                  ),
                 })}
-              />
-              <div>
-                {file && (
-                  <img
-                    alt=""
-                    className="absolute left-0 top-0 h-full w-full object-cover"
-                    src={file.preview}
-                  />
+              >
+                {!file && (
+                  <div className="flex flex-col items-center gap-2 p-4 text-xs">
+                    <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
+                    <span className="text-center  font-semibold text-slate-400">
+                      Drag & drop your documents here
+                    </span>
+                    <span className="text-foreground">Click here to Upload</span>
+                  </div>
+                )}
+                <input
+                  {...createJobForm.register("file")}
+                  {...getInputFileProps({
+                    onChange: createJobForm.register("file").onChange,
+                  })}
+                />
+                <div>
+                  {file && (
+                    <img
+                      alt=""
+                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                      src={file.preview}
+                    />
+                  )}
+                </div>
+                {file != null && (
+                  <button
+                    className={cn(
+                      "absolute right-1 top-1 h-6 w-6 cursor-pointer rounded-full bg-slate-900 p-1 hover:bg-slate-800",
+                      file ? "block" : "hidden"
+                    )}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      createJobForm.setValue("file", undefined, { shouldValidate: true });
+                    }}
+                  >
+                    <X className="h-full w-full text-slate-500" />
+                  </button>
                 )}
               </div>
-              {file != null && (
-                <button
-                  className={cn(
-                    "absolute -right-1 -top-1 cursor-pointer rounded-full bg-slate-700 hover:bg-slate-900",
-                    file ? "block" : "hidden"
-                  )}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    createJobForm.setValue("file", undefined, { shouldValidate: true });
-                  }}
-                >
-                  <XCircleIcon className="h-6 w-6" />
-                </button>
-              )}
             </div>
           </div>
 
