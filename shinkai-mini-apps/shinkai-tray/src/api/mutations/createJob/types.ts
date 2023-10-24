@@ -9,7 +9,7 @@ export type CreateJobInput = JobCredentialsPayload & {
   agentId: string;
   content: string;
   files_inbox: string;
-  files: File[];
+  file: File;
 };
 
 export type CreateJobOutput = {

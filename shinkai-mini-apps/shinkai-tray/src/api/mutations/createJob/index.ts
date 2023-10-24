@@ -21,7 +21,7 @@ export const createJob = async ({
   agentId,
   content,
   files_inbox,
-  files,
+  file,
   my_device_encryption_sk,
   my_device_identity_sk,
   node_encryption_pk,
@@ -49,14 +49,14 @@ export const createJob = async ({
     }
   );
 
-  const response = files?.length
+  const response = file
     ? await sendTextMessageWithFilesForInbox(
         shinkaiIdentity,
         profile, // sender subidentity
         receiver,
         content,
         buildInboxIdFromJobId(jobId),
-        files[0],
+        file,
         {
           my_device_encryption_sk: my_device_encryption_sk,
           my_device_identity_sk: my_device_identity_sk,
