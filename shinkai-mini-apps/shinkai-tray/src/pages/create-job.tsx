@@ -126,6 +126,12 @@ const CreateJobPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [isSuccess]
   );
+  useEffect(() => {
+    return () => {
+      file && URL.revokeObjectURL(file.preview);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <SimpleLayout title="Create Job">
