@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { FileCheck2, ImagePlusIcon, PlusIcon, X } from "lucide-react";
 import { z } from "zod";
 
+import { buildInboxIdFromJobId } from "../api/mutations/createJob";
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
 import { useAgents } from "../api/queries/getAgents/useGetAgents";
 import { Button } from "../components/ui/button";
@@ -96,7 +97,7 @@ const CreateJobPage = () => {
   const { isPending, mutateAsync: createJob } = useCreateJob({
     onSuccess: (data) => {
       // TODO: job_inbox, false is hardcoded
-      navigate(`/inboxes/job_inbox::${data.jobId}::false`);
+      navigate(`/inboxes/${encodeURIComponent(buildInboxIdFromJobId(data.jobId))}`);
     },
   });
 
