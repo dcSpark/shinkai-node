@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ImagePlusIcon, PlusIcon, X } from "lucide-react";
+import { FileCheck2, ImagePlusIcon, PlusIcon, X } from "lucide-react";
 import { z } from "zod";
 
 import { useCreateJob } from "../api/mutations/createJob/useCreateJob";
@@ -37,6 +37,10 @@ const createJobSchema = z.object({
   file: z.any().optional(),
 });
 
+function isImageOrPdf(file: File): boolean {
+  if (!file) return false;
+  return file?.type.startsWith("image/") || file?.type.startsWith("application/pdf");
+}
 const CreateJobPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
@@ -48,22 +52,31 @@ const CreateJobPage = () => {
   const { getRootProps: getRootFileProps, getInputProps: getInputFileProps } =
     useDropzone({
       multiple: false,
+      // accept: {
+      //   "image/png": [".png"],
+      //   "text/html": [".html", ".htm"],
+      //   "application/pdf": [".pdf"],
+      // },
       onDrop: (acceptedFiles) => {
         const file = acceptedFiles[0];
-        const reader = new FileReader();
-        reader.addEventListener("abort", () => console.log("file reading was aborted"));
-        reader.addEventListener("load", (event: ProgressEvent<FileReader>) => {
-          const binaryUrl = event.target?.result;
-          const image = new Image();
-          image.addEventListener("load", function () {
-            const imageInfo = Object.assign(file, {
-              preview: URL.createObjectURL(file),
+        if (isImageOrPdf(file)) {
+          const reader = new FileReader();
+          reader.addEventListener("abort", () => console.log("file reading was aborted"));
+          reader.addEventListener("load", (event: ProgressEvent<FileReader>) => {
+            const binaryUrl = event.target?.result;
+            const image = new Image();
+            image.addEventListener("load", function () {
+              const imageInfo = Object.assign(file, {
+                preview: URL.createObjectURL(file),
+              });
+              createJobForm.setValue("file", imageInfo, { shouldValidate: true });
             });
-            createJobForm.setValue("file", imageInfo, { shouldValidate: true });
+            image.src = binaryUrl as string;
           });
-          image.src = binaryUrl as string;
-        });
-        reader.readAsDataURL(file);
+          reader.readAsDataURL(file);
+        } else {
+          createJobForm.setValue("file", file, { shouldValidate: true });
+        }
       },
     });
 
@@ -206,15 +219,25 @@ const CreateJobPage = () => {
                     onChange: createJobForm.register("file").onChange,
                   })}
                 />
-                <div>
-                  {file && (
-                    <img
-                      alt=""
-                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
-                      src={file.preview}
-                    />
-                  )}
-                </div>
+                {file && (
+                  <>
+                    {isImageOrPdf(file) && (
+                      <img
+                        alt=""
+                        className="absolute inset-0 h-full w-full rounded-lg bg-white object-cover"
+                        src={file.preview}
+                      />
+                    )}
+                    {!isImageOrPdf(file) && (
+                      <div className="flex flex-col items-center gap-2">
+                        <FileCheck2 className="h-6 w-6 text-muted-foreground " />
+                        <span className="line-clamp-3 break-all px-2 text-center text-xs ">
+                          {file?.name}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
                 {file != null && (
                   <button
                     className={cn(
