@@ -113,8 +113,7 @@ const ChatConversation = () => {
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
     if (!auth) return;
     fromPreviousMessagesRef.current = false;
-
-    if (file) {
+    if (data.file) {
       await sendTextMessageWithFilesForInbox({
         sender: auth.shinkai_identity,
         senderSubidentity: auth.profile,
@@ -261,7 +260,7 @@ const ChatConversation = () => {
                           true && "sticky top-5"
                         )}
                       >
-                        <span className="px-2.5 py-2 text-sm capitalize text-foreground">
+                        <span className="px-2.5 py-2 text-xs capitalize text-foreground">
                           {formatDate(new Date(date))}
                         </span>
                       </div>
