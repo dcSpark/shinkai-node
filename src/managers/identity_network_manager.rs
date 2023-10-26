@@ -28,9 +28,9 @@ impl IdentityNetworkManager {
             NetworkIdentity {
                 node_identity_name: "@@node1.shinkai".to_string(),
                 addr: SocketAddr::from(([192, 168, 1, 109], 8080)),
-                signature_public_key: string_to_signature_public_key("801e158387f6d78ebf39104a964ea1b11b4d3e5269556fb9fd063daf92dfa972")
+                signature_public_key: string_to_signature_public_key("69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e")
                     .expect("Failed to parse public key"),
-                encryption_public_key: string_to_encryption_public_key("798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679")
+                encryption_public_key: string_to_encryption_public_key("60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708")
                     .expect("Failed to parse public key"),
             },
         );
@@ -39,9 +39,9 @@ impl IdentityNetworkManager {
             NetworkIdentity {
                 node_identity_name: "@@node2.shinkai".to_string(),
                 addr: SocketAddr::from(([192, 168, 1, 233], 8081)),
-                signature_public_key: string_to_signature_public_key("7c5585c186fb3f45c66c0722b963e36e444535111ed49d4b481d3e9020bbd6cf")
+                signature_public_key: string_to_signature_public_key("389fb4bbb3d382a2f2f23cdfa5614ed288975bc4f4a0448876efba108dc2c583")
                     .expect("Failed to parse public key"),
-                encryption_public_key: string_to_encryption_public_key("6d8072573dbebb0305777f57332286271693f8c050843d7bf15db81a4556446a")
+                encryption_public_key: string_to_encryption_public_key("912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f")
                     .expect("Failed to parse public key"),
             },
         );
@@ -61,9 +61,9 @@ impl IdentityNetworkManager {
             NetworkIdentity {
                 node_identity_name: "@@node1_test.shinkai".to_string(),
                 addr: SocketAddr::from(([127, 0, 0, 1], 8080)),
-                signature_public_key: string_to_signature_public_key("801e158387f6d78ebf39104a964ea1b11b4d3e5269556fb9fd063daf92dfa972")
+                signature_public_key: string_to_signature_public_key("69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e")
                     .expect("Failed to parse public key"),
-                encryption_public_key: string_to_encryption_public_key("798cbd64d78c4a0fba338b2a6349634940dc4e5b601db1029e02c41e0fe05679")
+                encryption_public_key: string_to_encryption_public_key("60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708")
                     .expect("Failed to parse public key"),
             },
         );
@@ -72,9 +72,9 @@ impl IdentityNetworkManager {
             NetworkIdentity {
                 node_identity_name: "@@node2_test.shinkai".to_string(),
                 addr: SocketAddr::from(([127, 0, 0, 1], 8081)),
-                signature_public_key: string_to_signature_public_key("7c5585c186fb3f45c66c0722b963e36e444535111ed49d4b481d3e9020bbd6cf")
+                signature_public_key: string_to_signature_public_key("389fb4bbb3d382a2f2f23cdfa5614ed288975bc4f4a0448876efba108dc2c583")
                     .expect("Failed to parse public key"),
-                encryption_public_key: string_to_encryption_public_key("6d8072573dbebb0305777f57332286271693f8c050843d7bf15db81a4556446a")
+                encryption_public_key: string_to_encryption_public_key("912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f")
                     .expect("Failed to parse public key"),
             },
         );

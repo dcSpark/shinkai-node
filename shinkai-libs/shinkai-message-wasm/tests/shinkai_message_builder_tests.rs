@@ -66,7 +66,7 @@ mod tests {
         let message_result = builder.build();
         assert!(message_result.is_ok());
 
-        let message_json = message_result.unwrap().to_json_str().unwrap();
+        let message_json = message_result.unwrap().to_json_str();
         let message: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_json).unwrap();
 
         let body = message.clone().body;
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(external_metadata.recipient, recipient);
 
         // Convert ShinkaiMessage back to JSON
-        let message_clone_string = message.to_json_str().unwrap();
+        let message_clone_string = message.to_json_str();
         let message_clone: ShinkaiMessage = ShinkaiMessage::from_json_str(&message_clone_string).unwrap();
         assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }

@@ -1,9 +1,13 @@
+use crate::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use shinkai_message_primitives::{shinkai_message::shinkai_message::{ShinkaiMessage, MessageBody, ShinkaiBody, ExternalMetadata}, shinkai_utils::encryption::EncryptionMethod};
+use serde_json::json;
+use shinkai_message_primitives::{
+    shinkai_message::shinkai_message::{ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage},
+    shinkai_utils::encryption::EncryptionMethod,
+};
 use wasm_bindgen::prelude::*;
-use crate::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
+use web_sys::console;
 
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -24,9 +28,7 @@ impl ShinkaiMessageWrapper {
     #[wasm_bindgen(method, getter)]
     pub fn message_body(&self) -> Result<JsValue, JsValue> {
         match &self.inner.body {
-            MessageBody::Unencrypted(body) => {
-                body.to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string()))
-            },
+            MessageBody::Unencrypted(body) => body.to_jsvalue().map_err(|e| JsValue::from_str(&e.to_string())),
             // Add other variants of MessageBody if needed
             _ => Err(JsValue::from_str("Unsupported MessageBody variant")),
         }
@@ -80,8 +82,10 @@ impl ShinkaiMessageWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn to_json_str(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner).map_err(|e| JsValue::from_str(&e.to_string()))
+    pub fn to_json_str(&self) -> String {
+        let j = json!(self.inner);
+        let string = j.to_string();
+        string
     }
 
     #[wasm_bindgen]
@@ -91,12 +95,44 @@ impl ShinkaiMessageWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn calculate_hash(&self) -> String {
-        let mut hasher = Sha256::new();
+    pub fn calculate_blake3_hash(&self) -> String {
+        self.inner.calculate_message_hash()
+    }
 
-        hasher.update(format!("{:?}", self.inner));
-        let result = hasher.finalize();
-        format!("{:x}", result)
+    #[wasm_bindgen]
+    pub fn new_with_empty_outer_signature(&self) -> ShinkaiMessageWrapper {
+        let mut new_message = self.inner.clone();
+        new_message.external_metadata.signature = String::new();
+        ShinkaiMessageWrapper { inner: new_message }
+    }
+
+    #[wasm_bindgen]
+    pub fn new_with_empty_inner_signature(&self) -> Result<ShinkaiMessageWrapper, JsValue> {
+        let mut new_message = self.inner.clone();
+        match new_message.body {
+            MessageBody::Unencrypted(ref mut body) => {
+                body.internal_metadata.signature = String::new();
+            }
+            _ => return Err(JsValue::from_str("Unsupported MessageBody variant")),
+        }
+        Ok(ShinkaiMessageWrapper { inner: new_message })
+    }
+
+    #[wasm_bindgen]
+    pub fn inner_content_for_hashing(&self) -> Result<String, JsValue> {
+        self.inner.inner_content_ready_for_hashing()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
+    pub fn calculate_blake3_hash_with_empty_outer_signature(&self) -> String {
+        self.inner.calculate_message_hash_with_empty_outer_signature()
+    }
+
+    #[wasm_bindgen]
+    pub fn calculate_blake3_hash_with_empty_inner_signature(&self) -> Result<String, JsValue> {
+        self.inner.calculate_message_hash_with_empty_inner_signature()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     #[wasm_bindgen]

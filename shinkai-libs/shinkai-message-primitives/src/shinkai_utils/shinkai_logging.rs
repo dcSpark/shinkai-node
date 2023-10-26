@@ -11,6 +11,7 @@ pub enum ShinkaiLogOption {
     DetailedAPI,
     Node,
     InternalAPI,
+    Network,
     Tests,
 }
 
@@ -42,6 +43,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::DetailedAPI,
             ShinkaiLogOption::Node,
             ShinkaiLogOption::InternalAPI,
+            ShinkaiLogOption::Network,
             ShinkaiLogOption::Tests,
         ];
     }
@@ -67,6 +69,9 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_INTERNAL_API").is_ok() {
         active_options.push(ShinkaiLogOption::InternalAPI);
+    }
+    if std::env::var("LOG_INTERNAL_NETWORK").is_ok() {
+        active_options.push(ShinkaiLogOption::Network);
     }
     if std::env::var("LOG_TESTS").is_ok() {
         active_options.push(ShinkaiLogOption::Tests);

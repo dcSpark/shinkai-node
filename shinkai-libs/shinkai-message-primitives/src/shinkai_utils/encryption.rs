@@ -6,8 +6,8 @@ use chacha20poly1305::ChaCha20Poly1305;
 // Or use ChaCha20Poly1305Ietf
 use rand::rngs::OsRng;
 use rand::RngCore;
+use blake3::Hasher;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use x25519_dalek::{PublicKey, StaticSecret};
 
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
@@ -33,12 +33,12 @@ impl EncryptionMethod {
 }
 
 pub fn unsafe_deterministic_encryption_keypair(n: u32) -> (StaticSecret, PublicKey) {
-    let mut hasher = Sha256::new();
-    hasher.update(n.to_le_bytes());
+    let mut hasher = Hasher::new();
+    hasher.update(&n.to_le_bytes());
     let hash = hasher.finalize();
 
     let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(&hash[0..32]);
+    bytes.copy_from_slice(hash.as_bytes());
 
     let secret_key = StaticSecret::from(bytes);
     let public_key = PublicKey::from(&secret_key);
@@ -107,10 +107,10 @@ pub fn clone_static_secret_key(original: &StaticSecret) -> StaticSecret {
 
 pub fn hash_encryption_public_key(public_key: PublicKey) -> String {
     let bytes = public_key.to_bytes();
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&bytes);
     let result = hasher.finalize();
-    format!("{:x}", result)
+    hex::encode(result.as_bytes())
 }
 
 pub fn encrypt_with_chacha20poly1305(key: &StaticSecret, data: &[u8]) -> Result<(Vec<u8>, String), Box<dyn Error>> {

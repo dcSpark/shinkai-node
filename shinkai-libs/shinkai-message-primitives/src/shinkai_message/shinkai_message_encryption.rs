@@ -12,7 +12,7 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::info;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use sha2::{Digest, Sha256};
+use blake3::Hasher;
 use std::convert::TryInto;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -127,10 +127,10 @@ impl MessageBody {
         let body_bytes = bincode::serialize(body).unwrap();
 
         let shared_secret = self_sk.diffie_hellman(destination_pk);
-        let mut hasher = Sha256::new();
+        let mut hasher = Hasher::new();
         hasher.update(shared_secret.as_bytes());
         let result = hasher.finalize();
-        let key = GenericArray::clone_from_slice(&result[..]);
+        let key = GenericArray::clone_from_slice(result.as_bytes());
         let cipher = ChaCha20Poly1305::new(&key);
 
         let mut nonce = [0u8; 12];
@@ -158,10 +158,10 @@ impl MessageBody {
             Some(&"encrypted") => {
                 let content = parts.get(1).unwrap_or(&"");
                 let shared_secret = self_sk.diffie_hellman(sender_pk);
-                let mut hasher = Sha256::new();
+                let mut hasher = Hasher::new();
                 hasher.update(shared_secret.as_bytes());
                 let result = hasher.finalize();
-                let key = GenericArray::clone_from_slice(&result[..]);
+                let key = GenericArray::clone_from_slice(result.as_bytes());
                 let cipher = ChaCha20Poly1305::new(&key);
 
                 let decoded = hex::decode(content)
@@ -215,10 +215,10 @@ impl MessageData {
     ) -> Result<MessageData, ShinkaiMessageError> {
         let shared_secret = self_sk.diffie_hellman(destination_pk);
 
-        let mut hasher = Sha256::new();
+        let mut hasher = Hasher::new();
         hasher.update(shared_secret.as_bytes());
         let result = hasher.finalize();
-        let key = GenericArray::clone_from_slice(&result[..]);
+        let key = GenericArray::clone_from_slice(result.as_bytes());
         let cipher = ChaCha20Poly1305::new(&key);
 
         let mut nonce = [0u8; 12];
@@ -253,10 +253,10 @@ impl MessageData {
             Some(&"encrypted") => {
                 let content = parts.get(1).unwrap_or(&"");
                 let shared_secret = self_sk.diffie_hellman(sender_pk);
-                let mut hasher = Sha256::new();
+                let mut hasher = Hasher::new();
                 hasher.update(shared_secret.as_bytes());
                 let result = hasher.finalize();
-                let key = GenericArray::clone_from_slice(&result[..]);
+                let key = GenericArray::clone_from_slice(result.as_bytes());
                 let cipher = ChaCha20Poly1305::new(&key);
 
                 let decoded = hex::decode(content)

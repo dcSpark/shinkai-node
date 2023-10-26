@@ -2863,7 +2863,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "sha2",
  "shinkai_vector_resources",
  "thiserror",
  "x25519-dalek",

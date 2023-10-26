@@ -1,8 +1,4 @@
-use crate::{
-    db::ShinkaiDB,
-    managers::{IdentityManager},
-    network::Node,
-};
+use crate::{db::ShinkaiDB, managers::IdentityManager, network::Node};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_primitives::{
     shinkai_message::{
@@ -11,6 +7,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{clone_static_secret_key, encryption_public_key_to_string},
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         shinkai_message_builder::{ProfileName, ShinkaiMessageBuilder},
         signatures::{clone_signature_secret_key, signature_public_key_to_string},
     },
@@ -141,11 +138,15 @@ pub fn verify_message_signature(
     match message.verify_outer_layer_signature(&sender_signature_pk) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
-            println!("Failed to validate message's signature. Message: {:?}", message);
-            println!(
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Error,
+                "Failed to validate message's signature",
+            );
+            shinkai_log(ShinkaiLogOption::Network, ShinkaiLogLevel::Error, &format!(
                 "Sender signature pk: {:?}",
                 signature_public_key_to_string(sender_signature_pk)
-            );
+            ));
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to validate message's signature",
@@ -292,7 +293,7 @@ pub async fn send_ack(
         maybe_db,
         maybe_identity_manager,
         false,
-        None
+        None,
     );
     Ok(())
 }
@@ -337,7 +338,7 @@ pub async fn ping_pong(
         maybe_db,
         maybe_identity_manager,
         false,
-        None
+        None,
     );
     Ok(())
 }
