@@ -185,6 +185,18 @@ impl ShinkaiMessage {
     }
 
     pub fn calculate_message_hash_with_empty_inner_signature(&self) -> Result<String, ShinkaiMessageError> {
+        // Get the ShinkaiBody ready for hashing
+        let shinkai_body_string = self.inner_content_ready_for_hashing()?;
+
+        // Hash the ShinkaiBody
+        let mut hasher = Hasher::new();
+        hasher.update(shinkai_body_string.as_bytes());
+        let shinkai_body_hash = hasher.finalize();
+
+        Ok(hex::encode(shinkai_body_hash.as_bytes()))
+    }
+
+    pub fn inner_content_ready_for_hashing(&self) -> Result<String, ShinkaiMessageError> {
         // Check if the body is unencrypted
         let shinkai_body = match &self.body {
             MessageBody::Unencrypted(body) => body,
@@ -199,14 +211,39 @@ impl ShinkaiMessage {
         let mut shinkai_body_for_hashing = shinkai_body.clone();
         shinkai_body_for_hashing.internal_metadata.signature = String::from("");
 
-        // Convert the ShinkaiBody to bytes
-        let shinkai_body_bytes = bincode::serialize(&shinkai_body_for_hashing).unwrap();
+        // Convert the ShinkaiBody to a JSON Value
+        let mut shinkai_body_value: serde_json::Value = serde_json::to_value(&shinkai_body_for_hashing).unwrap();
 
-        // Hash the ShinkaiBody
-        let mut hasher = Hasher::new();
-        hasher.update(&shinkai_body_bytes);
-        let shinkai_body_hash = hasher.finalize();
+        // Sort the JSON Value
+        ShinkaiMessage::sort_json_value(&mut shinkai_body_value);
 
-        Ok(hex::encode(shinkai_body_hash.as_bytes()))
+        // Convert the sorted JSON Value back to a string
+        let shinkai_body_string = shinkai_body_value.to_string();
+
+        Ok(shinkai_body_string)
+    }
+
+    // Function to sort a JSON Value
+    fn sort_json_value(val: &mut serde_json::Value) {
+        match val {
+            serde_json::Value::Object(map) => {
+                let mut sorted = serde_json::Map::new();
+                let keys: Vec<_> = map.keys().cloned().collect();
+                for k in keys {
+                    let v = map.remove(&k).unwrap();
+                    sorted.insert(k, v);
+                }
+                *map = sorted;
+                for (_, v) in map.iter_mut() {
+                    Self::sort_json_value(v);
+                }
+            }
+            serde_json::Value::Array(vec) => {
+                for v in vec {
+                    Self::sort_json_value(v);
+                }
+            }
+            _ => {}
+        }
     }
 }

@@ -529,6 +529,10 @@ export class ShinkaiMessageWrapper {
 /**
 * @returns {string}
 */
+  inner_content_for_hashing(): string;
+/**
+* @returns {string}
+*/
   calculate_blake3_hash_with_empty_outer_signature(): string;
 /**
 * @returns {string}

@@ -120,6 +120,12 @@ impl ShinkaiMessageWrapper {
     }
 
     #[wasm_bindgen]
+    pub fn inner_content_for_hashing(&self) -> Result<String, JsValue> {
+        self.inner.inner_content_ready_for_hashing()
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen]
     pub fn calculate_blake3_hash_with_empty_outer_signature(&self) -> String {
         self.inner.calculate_message_hash_with_empty_outer_signature()
     }
