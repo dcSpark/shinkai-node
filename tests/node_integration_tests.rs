@@ -91,7 +91,7 @@ fn subidentity_registration() {
         let mut node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
-            node1_identity_sk,
+            clone_signature_secret_key(&node1_identity_sk),
             node1_encryption_sk,
             0,
             node1_commands_receiver,
@@ -104,7 +104,7 @@ fn subidentity_registration() {
         let mut node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
-            node2_identity_sk,
+            clone_signature_secret_key(&node2_identity_sk),
             node2_encryption_sk,
             0,
             node2_commands_receiver,
@@ -130,6 +130,24 @@ fn subidentity_registration() {
         eprintln!(
             "Node 2 encryption pk: {:?}",
             encryption_public_key_to_string(node2_encryption_pk)
+        );
+
+        eprintln!(
+            "Node 1 identity sk: {:?}",
+            signature_secret_key_to_string(clone_signature_secret_key(&node1_identity_sk))
+        );
+        eprintln!(
+            "Node 1 identity pk: {:?}",
+            signature_public_key_to_string(node1_identity_pk)
+        );
+
+        eprintln!(
+            "Node 2 identity sk: {:?}",
+            signature_secret_key_to_string(clone_signature_secret_key(&node2_identity_sk))
+        );
+        eprintln!(
+            "Node 2 identity pk: {:?}",
+            signature_public_key_to_string(node2_identity_pk)
         );
 
         eprintln!(

@@ -1,3 +1,5 @@
+use crate::shinkai_utils::signatures::signature_public_key_to_string;
+
 use super::shinkai_message::{
     EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
 };
@@ -17,9 +19,6 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 impl ShinkaiMessage {
     pub fn sign_outer_layer(&self, secret_key: &SignatureStaticKey) -> Result<ShinkaiMessage, ShinkaiMessageError> {
         let mut message_clone = self.clone();
-        if !message_clone.external_metadata.signature.is_empty() {
-            message_clone.external_metadata.signature = "".to_string();
-        }
 
         // Calculate the hash of the message with an empty outer signature
         let message_hash = message_clone.calculate_message_hash_with_empty_outer_signature();
