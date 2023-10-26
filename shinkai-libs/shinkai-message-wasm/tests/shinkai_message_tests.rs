@@ -70,7 +70,7 @@ mod tests {
         assert!(message_result.is_ok());
 
         let message_wrapper = message_result.unwrap();
-        let message_json = message_wrapper.to_json_str().unwrap();
+        let message_json = message_wrapper.to_json_str();
 
         // Convert the JSON string to bytes
         let message_bytes = message_json.into_bytes();
@@ -80,7 +80,7 @@ mod tests {
 
         // Check if the original and deserialized messages are the same
         assert_eq!(
-            message_wrapper.calculate_hash(),
+            message_wrapper.calculate_blake3_hash(),
             deserialized_message.calculate_message_hash()
         );
     }
