@@ -109,7 +109,7 @@ export function shinkaimessagewrapper_fromJsValue(a: number, b: number): void;
 export function shinkaimessagewrapper_to_json_str(a: number, b: number): void;
 export function shinkaimessagewrapper_from_json_str(a: number, b: number, c: number): void;
 export function shinkaimessagewrapper_calculate_blake3_hash(a: number, b: number): void;
-export function shinkaimessagewrapper_new_with_empty_signature(a: number): number;
+export function shinkaimessagewrapper_new_with_empty_outer_signature(a: number): number;
 export function shinkaimessagewrapper_new_with_empty_inner_signature(a: number, b: number): void;
 export function shinkaimessagewrapper_calculate_blake3_hash_with_empty_outer_signature(a: number, b: number): void;
 export function shinkaimessagewrapper_calculate_blake3_hash_with_empty_inner_signature(a: number, b: number): void;

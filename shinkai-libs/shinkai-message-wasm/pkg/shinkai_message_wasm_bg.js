@@ -2552,8 +2552,8 @@ export class ShinkaiMessageWrapper {
     /**
     * @returns {ShinkaiMessageWrapper}
     */
-    new_with_empty_signature() {
-        const ret = wasm.shinkaimessagewrapper_new_with_empty_signature(this.__wbg_ptr);
+    new_with_empty_outer_signature() {
+        const ret = wasm.shinkaimessagewrapper_new_with_empty_outer_signature(this.__wbg_ptr);
         return ShinkaiMessageWrapper.__wrap(ret);
     }
     /**

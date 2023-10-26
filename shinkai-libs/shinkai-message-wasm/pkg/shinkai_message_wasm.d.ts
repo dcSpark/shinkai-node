@@ -521,7 +521,7 @@ export class ShinkaiMessageWrapper {
 /**
 * @returns {ShinkaiMessageWrapper}
 */
-  new_with_empty_signature(): ShinkaiMessageWrapper;
+  new_with_empty_outer_signature(): ShinkaiMessageWrapper;
 /**
 * @returns {ShinkaiMessageWrapper}
 */

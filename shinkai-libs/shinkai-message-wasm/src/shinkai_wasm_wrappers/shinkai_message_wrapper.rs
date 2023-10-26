@@ -101,7 +101,7 @@ impl ShinkaiMessageWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn new_with_empty_signature(&self) -> ShinkaiMessageWrapper {
+    pub fn new_with_empty_outer_signature(&self) -> ShinkaiMessageWrapper {
         let mut new_message = self.inner.clone();
         new_message.external_metadata.signature = String::new();
         ShinkaiMessageWrapper { inner: new_message }
