@@ -11,7 +11,6 @@ use ed25519_dalek::{Signer, Verifier};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::convert::TryInto;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -139,20 +138,16 @@ impl ShinkaiMessage {
             ShinkaiMessageError::SigningError(format!("Failed to create signature from bytes: {}", e.to_string()))
         })?;
 
-        // Prepare ShinkaiBody for hashing - set signature to empty
-        let mut shinkai_body_for_hashing = shinkai_body.clone();
-        shinkai_body_for_hashing.internal_metadata.signature = String::from("");
+        // Calculate the hash of the ShinkaiBody with an empty inner signature
+        let shinkai_body_hash = self.calculate_message_hash_with_empty_inner_signature()?;
 
-        // Convert the ShinkaiBody to bytes
-        let shinkai_body_bytes = bincode::serialize(&shinkai_body_for_hashing).unwrap();
-
-        // Hash the ShinkaiBody
-        let mut hasher = Sha256::new();
-        hasher.update(shinkai_body_bytes);
-        let shinkai_body_hash = hasher.finalize();
+        // Convert the hexadecimal hash back to bytes
+        let shinkai_body_hash_bytes = hex::decode(&shinkai_body_hash).map_err(|e| {
+            ShinkaiMessageError::SigningError(format!("Failed to decode message hash: {}", e.to_string()))
+        })?;
 
         // Verify the signature against the hash of the ShinkaiBody
-        match public_key.verify(&shinkai_body_hash.as_slice(), &signature) {
+        match public_key.verify(&shinkai_body_hash_bytes, &signature) {
             Ok(_) => Ok(true),
             Err(_) => Ok(false),
         }

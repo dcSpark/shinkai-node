@@ -20,7 +20,7 @@ use crate::{
     },
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
-        signatures::{sign_message, signature_public_key_to_string},
+        signatures::{signature_public_key_to_string},
     },
 };
 
@@ -975,7 +975,7 @@ impl std::fmt::Debug for ShinkaiMessageBuilder {
 mod tests {
     use crate::shinkai_utils::{
         encryption::unsafe_deterministic_encryption_keypair,
-        signatures::{unsafe_deterministic_signature_keypair, verify_signature},
+        signatures::{unsafe_deterministic_signature_keypair},
     };
 
     use super::*;
@@ -1020,7 +1020,7 @@ mod tests {
         assert_eq!(external_metadata.sender, sender);
         assert_eq!(external_metadata.scheduled_time, scheduled_time);
         assert_eq!(external_metadata.recipient, recipient);
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
     #[test]
@@ -1072,7 +1072,7 @@ mod tests {
         }
         let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, sender);
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
     #[test]
@@ -1121,7 +1121,7 @@ mod tests {
         assert_eq!(message.encryption, EncryptionMethod::None);
         let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, sender);
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
     #[test]
@@ -1194,7 +1194,7 @@ mod tests {
 
         let external_metadata = message.external_metadata;
         assert_eq!(external_metadata.sender, recipient);
-        assert!(verify_signature(&my_identity_pk, &message_clone).unwrap())
+        assert!(message_clone.verify_outer_layer_signature(&my_identity_pk).unwrap())
     }
 
     #[test]

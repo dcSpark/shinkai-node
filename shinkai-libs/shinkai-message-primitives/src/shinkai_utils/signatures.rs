@@ -8,18 +8,18 @@ So, you would indeed need to use a different crate (such as ed25519_dalek) to cr
  */
 
 use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
-use sha2::{Digest, Sha256};
+use blake3::{Hasher};
 
 use crate::shinkai_message::shinkai_message::MessageBody;
 use crate::shinkai_message::shinkai_message::MessageData;
 use crate::shinkai_message::shinkai_message::ShinkaiMessage;
 
 pub fn unsafe_deterministic_signature_keypair(n: u32) -> (SecretKey, PublicKey) {
-    let mut hasher = Sha256::new();
-    hasher.update(n.to_le_bytes());
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&n.to_le_bytes());
     let hash = hasher.finalize();
 
-    let secret_key = SecretKey::from_bytes(&hash.as_slice()).expect("Failed to create SecretKey from hash");
+    let secret_key = SecretKey::from_bytes(hash.as_bytes()).expect("Failed to create SecretKey from hash");
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }
@@ -76,111 +76,8 @@ pub fn string_to_signature_public_key(encoded_key: &str) -> Result<PublicKey, &'
 }
 
 pub fn hash_signature_public_key(public_key: &PublicKey) -> String {
-    let mut hasher = Sha256::new();
+    let mut hasher = Hasher::new();
     hasher.update(public_key.as_bytes());
     let hash = hasher.finalize();
-    hex::encode(hash)
-}
-
-pub fn sign_message(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
-    let mut message_clone = message.clone();
-    if !message_clone.external_metadata.signature.is_empty() {
-        message_clone.external_metadata.signature = "".to_string();
-    }
-
-    // Convert ShinkaiMessage to bytes
-    let message_bytes = bincode::serialize(&message_clone).unwrap();
-
-    let mut hasher = Sha256::new();
-    hasher.update(message_bytes);
-    let message_hash = hasher.finalize();
-    let public_key = PublicKey::from(secret_key);
-    let secret_key_clone = SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
-
-    let keypair = ed25519_dalek::Keypair {
-        public: public_key,
-        secret: secret_key_clone,
-    };
-
-    let signature = keypair.sign(message_hash.as_slice());
-    hex::encode(signature.to_bytes())
-}
-
-pub fn sign_message_with_body(secret_key: &SecretKey, body: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(body.as_bytes());
-    let body_hash = hasher.finalize();
-    let public_key = PublicKey::from(secret_key);
-    let secret_key_clone = SecretKey::from_bytes(secret_key.as_ref()).expect("Failed to create SecretKey from bytes");
-
-    let keypair = ed25519_dalek::Keypair {
-        public: public_key,
-        secret: secret_key_clone,
-    };
-
-    let signature = keypair.sign(body_hash.as_slice());
-    hex::encode(signature.to_bytes())
-}
-
-pub fn sign_message_body(secret_key: &SecretKey, message: ShinkaiMessage) -> String {
-    // TODO: needs to sign content and the other stuff inside internal_metadata
-    let body = serde_json::to_string(&message.body).expect("Failed to serialize message body");
-    sign_message_with_body(secret_key, &body)
-}
-
-pub fn verify_signature(
-    public_key: &ed25519_dalek::PublicKey,
-    message: &ShinkaiMessage,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let base58_signature = &message.external_metadata.signature;
-
-    // Decode the base58 signature to bytes
-    let signature_bytes = hex::decode(base58_signature)?;
-
-    // Convert the bytes to Signature
-    let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes)?;
-
-    // Prepare message for hashing - set signature to empty
-    let mut message_for_hashing = message.clone();
-    message_for_hashing.external_metadata.signature = String::from("");
-
-    // Encode the message to a Vec<u8>
-    let bytes = bincode::serialize(&message_for_hashing).unwrap();
-
-    // Create a hash of the message
-    let mut hasher = Sha256::new();
-    hasher.update(&bytes);
-    let message_hash = hasher.finalize();
-
-    // Verify the signature against the hash of the message
-    Ok(public_key.verify(&message_hash.as_slice(), &signature).is_ok())
-}
-
-pub fn verify_signature_with_body(
-    public_key: &ed25519_dalek::PublicKey,
-    body: &str,
-    signature: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    // Decode the base58 signature to bytes
-    let signature_bytes = hex::decode(signature)?;
-
-    // Convert the bytes to Signature
-    let signature = ed25519_dalek::Signature::from_bytes(&signature_bytes)?;
-
-    // Hash the body
-    let mut hasher = Sha256::new();
-    hasher.update(body.as_bytes());
-    let body_hash = hasher.finalize();
-
-    // Verify the signature against the hash of the body
-    Ok(public_key.verify(&body_hash.as_slice(), &signature).is_ok())
-}
-
-pub fn verify_signature_body(
-    public_key: &ed25519_dalek::PublicKey,
-    message: &ShinkaiMessage,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let body = serde_json::to_string(&message.body)?;
-    let signature = message.external_metadata.signature.clone();
-    verify_signature_with_body(public_key, &body, &signature)
+    hex::encode(hash.as_bytes())
 }

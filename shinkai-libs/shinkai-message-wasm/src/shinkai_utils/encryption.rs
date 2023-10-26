@@ -8,7 +8,6 @@ use js_sys::Uint8Array;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use shinkai_message_primitives::shinkai_utils::encryption::{string_to_encryption_static_key, encryption_public_key_to_string, EncryptionMethod};
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsValue;

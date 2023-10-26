@@ -4,7 +4,6 @@ use aes_gcm::aead::{generic_array::GenericArray};
 use aes_gcm::KeyInit;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use sha2::{Digest, Sha256};
 use hex;
 
 pub fn random_aes_encryption_key() -> [u8; 32] {
@@ -18,12 +17,12 @@ pub fn random_aes_encryption_key() -> [u8; 32] {
 }
 
 pub fn unsafe_deterministic_aes_encryption_key(n: u32) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(n.to_le_bytes());
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&n.to_le_bytes());
     let hash = hasher.finalize();
 
     let mut symmetrical = [0u8; 32];
-    symmetrical.copy_from_slice(&hash[0..32]);
+    symmetrical.copy_from_slice(hash.as_bytes());
 
     let key = GenericArray::from_slice(&symmetrical);
     let _cipher = Aes256Gcm::new(key);

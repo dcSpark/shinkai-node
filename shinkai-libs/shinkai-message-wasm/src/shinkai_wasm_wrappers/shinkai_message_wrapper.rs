@@ -2,7 +2,6 @@ use crate::shinkai_wasm_wrappers::wasm_shinkai_message::SerdeWasmMethods;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use shinkai_message_primitives::{
     shinkai_message::shinkai_message::{ExternalMetadata, MessageBody, ShinkaiBody, ShinkaiMessage},
     shinkai_utils::encryption::EncryptionMethod,
