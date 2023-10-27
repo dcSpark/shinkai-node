@@ -4,6 +4,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { ApiConfig } from "@shinkai_network/shinkai-message-ts/api";
 import { invoke } from "@tauri-apps/api/tauri";
 
+import OnboardingPage from "../pages/Onboarding";
+import SettingsPage from "../pages/Settings";
 import ChatConversation from "../pages/chat/chat-conversation";
 import EmptyMessage from "../pages/chat/empty-message";
 import ChatLayout from "../pages/chat/layout";
@@ -11,8 +13,6 @@ import CreateAgentPage from "../pages/create-agent";
 import CreateChatPage from "../pages/create-chat";
 import CreateJobPage from "../pages/create-job";
 import MainLayout from "../pages/layout/main-layout";
-import OnboardingPage from "../pages/onboarding";
-import SettingsPage from "../pages/settings";
 import { useAuth } from "../store/auth";
 import {
   ADD_AGENT_PATH,

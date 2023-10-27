@@ -2,6 +2,7 @@ import * as React from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 
 import { GearIcon, LightningBoltIcon, PersonIcon } from "@radix-ui/react-icons";
+import { listen } from "@tauri-apps/api/event";
 
 // import { ShinkaiLogo } from "../../components/icons";
 import {
@@ -29,6 +30,12 @@ export function Footer() {
   const logout = useAuth((state) => state.setLogout);
 
   React.useEffect(() => {
+    const unlisten = async () =>
+      listen("navigate-job-and-focus", (event) => {
+        console.log("Received event from Rust:", event);
+        goToCreateJob();
+      });
+
     const down = (event: KeyboardEvent) => {
       if (event.key === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -37,7 +44,10 @@ export function Footer() {
     };
 
     document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
+    return () => {
+      unlisten();
+      document.removeEventListener("keydown", down);
+    };
   }, []);
 
   const goToCreateJob = () => {

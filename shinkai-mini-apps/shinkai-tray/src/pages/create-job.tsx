@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useDropzone } from "react-dropzone";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -45,6 +45,8 @@ export function isImageOrPdf(file: File): boolean {
 const CreateJobPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const createJobForm = useForm<z.infer<typeof createJobSchema>>({
     resolver: zodResolver(createJobSchema),
@@ -120,12 +122,16 @@ const CreateJobPage = () => {
 
   useEffect(
     () => {
+
       if (isSuccess && agents?.length) {
         createJobForm.setValue("model", agents[0].id);
+
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isSuccess]
+    [agents, createJobForm, isSuccess]
   );
   useEffect(() => {
     return () => {
@@ -188,6 +194,7 @@ const CreateJobPage = () => {
                       className="resize-none border-white"
                       placeholder="Eg: Explain me how internet works..."
                       {...field}
+                      ref={textareaRef}
                     />
                   </FormControl>
                   <FormMessage />
