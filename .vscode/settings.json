@@ -1,5 +1,0 @@
-{
-    "rust-analyzer.linkedProjects": [
-        "./shinkai-mini-apps/shinkai-tray/src-tauri/Cargo.toml"
-    ]
-}

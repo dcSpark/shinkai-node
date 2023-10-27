@@ -7,7 +7,7 @@ use db::db::TrayDB;
 use models::setup_data::SetupData;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tauri::{CustomMenuItem, SystemTray, SystemTrayEvent, SystemTrayMenu};
+use tauri::{AppHandle, CustomMenuItem, GlobalShortcutManager, SystemTray, SystemTrayEvent, SystemTrayMenu, Wry};
 use tauri::{Manager, SystemTrayMenuItem};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext};
 
@@ -20,6 +20,7 @@ use audio::transcribe::run;
 use shinkai::registration::process_onboarding_data;
 
 use crate::shinkai::registration::validate_setup_data;
+
 
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit");
@@ -80,7 +81,31 @@ fn main() {
     tauri::Builder::default()
         .manage(db)
         .invoke_handler(tauri::generate_handler![process_onboarding_data, validate_setup_data])
-        .setup(|app| Ok(()))
+        .setup(|app| {
+            let app_clone = app.app_handle();
+
+            app.global_shortcut_manager()
+                .register("CmdOrCtrl+y", move || {
+                    match app_clone.get_window("main") {
+                        Some(window) => {
+                            if let Err(e) = app_clone.emit_all("navigate-job-and-focus", ()) {
+                                println!("Failed to emit 'navigate-job-and-focus': {}", e);
+                            }
+            
+                            if let Err(e) = window.set_focus() {
+                                println!("Failed to set focus: {}", e);
+                            }
+                        }
+                        None => {
+                            println!("Failed to get main window");
+                        }
+                    }
+                })
+                .unwrap_or_else(|e| {
+                    println!("Failed to register shortcut: {}", e);
+                });
+            Ok(())
+        })
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::LeftClick {
