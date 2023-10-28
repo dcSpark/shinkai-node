@@ -7,7 +7,7 @@ use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tiktoken_rs::get_chat_completion_max_tokens;
 use tiktoken_rs::num_tokens_from_messages;
 
@@ -64,7 +64,7 @@ impl LLMProvider for OpenAI {
                 let tiktoken_messages = prompt.generate_openai_messages(None)?;
                 let used_tokens = num_tokens_from_messages("gpt-4", &tiktoken_messages).unwrap();
 
-                let messages: Vec<OpenAIApiMessage> = tiktoken_messages
+                let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
                     .into_iter()
                     .filter_map(|message| {
                         if let Some(content) = message.content {
@@ -82,9 +82,14 @@ impl LLMProvider for OpenAI {
                     })
                     .collect();
 
+                if let Some(last_message) = messages.last_mut() {
+                    if !last_message.content.ends_with(" ```") {
+                        last_message.content.push_str(" ```json");
+                    }
+                }
                 let messages_json = serde_json::to_value(&messages)?;
 
-                let max_tokens = std::cmp::max(5, 4097 - used_tokens);
+                let max_tokens = std::cmp::max(5, 4089 - used_tokens);
 
                 let payload = json!({
                     "model": self.model_type,
@@ -92,7 +97,7 @@ impl LLMProvider for OpenAI {
                     "temperature": 0.7,
                     "max_tokens": max_tokens,
                 });
-                
+
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -112,7 +117,7 @@ impl LLMProvider for OpenAI {
                     ShinkaiLogLevel::Debug,
                     format!("Call API Status: {:?}", res.status()).as_str(),
                 );
-                
+
                 let response_text = res.text().await?;
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -140,7 +145,7 @@ impl LLMProvider for OpenAI {
                             format!("Failed to parse response: {:?}", e).as_str(),
                         );
                         Err(AgentError::SerdeError(e))
-                    },
+                    }
                 }
             } else {
                 Err(AgentError::ApiKeyNotSet)

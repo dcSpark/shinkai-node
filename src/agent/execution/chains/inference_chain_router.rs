@@ -50,7 +50,7 @@ impl JobManager {
                         None,
                         None,
                         0,
-                        5,
+                        3, // TODO: Make this configurable. Default value was 5.
                     )
                     .await?;
                     new_execution_context
