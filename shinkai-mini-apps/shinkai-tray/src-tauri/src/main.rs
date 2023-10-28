@@ -74,7 +74,8 @@ fn main() {
     //     }
     // });
 
-    let db = TrayDB::new("db").unwrap();
+    let db = TrayDB::new("db/tauri").unwrap();
+
 
     tauri::Builder::default()
         .manage(db)
