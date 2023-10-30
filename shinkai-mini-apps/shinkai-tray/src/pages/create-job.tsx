@@ -118,15 +118,12 @@ const CreateJobPage = () => {
     });
   };
 
-  useEffect(
-    () => {
-      if (isSuccess && agents?.length) {
-        createJobForm.setValue("model", agents[0].id);
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isSuccess]
-  );
+  useEffect(() => {
+    if (isSuccess && agents?.length) {
+      createJobForm.setValue("model", agents[0].id);
+    }
+  }, [isSuccess, agents, createJobForm]);
+
   useEffect(() => {
     return () => {
       file && URL.revokeObjectURL(file.preview);
