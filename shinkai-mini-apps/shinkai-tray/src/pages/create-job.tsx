@@ -202,7 +202,7 @@ const CreateJobPage = () => {
                 Upload a file
                 <span className="ml-1 text-muted-foreground">(optional)</span>
               </FormLabel>
-              <div className="flex gap-4">
+              <div className="flex gap-5">
                 <div
                   {...getRootFileProps({
                     className: cn(
@@ -262,10 +262,10 @@ const CreateJobPage = () => {
                     </button>
                   )}
                 </div>
-                <span className="pt-2 text-xs font-bold text-muted-foreground">
+                <span className="pt-4 text-xs font-bold text-muted-foreground">
                   Supported formats
-                  <p className="mt-3 ">
-                    Plain Text:
+                  <p className="mt-2">
+                    Plain Text
                     <span className="block font-normal">
                       {" "}
                       {[
@@ -281,8 +281,8 @@ const CreateJobPage = () => {
                       ].join(" • ")}
                     </span>
                   </p>
-                  <p className="mt-3 font-bold text-muted-foreground">
-                    Documents:
+                  <p className="mt-1 font-bold text-muted-foreground">
+                    Documents
                     <span className="block font-normal">
                       {[
                         "csv",
