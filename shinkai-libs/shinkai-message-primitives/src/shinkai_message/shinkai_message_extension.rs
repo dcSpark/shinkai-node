@@ -93,7 +93,7 @@ impl ShinkaiMessage {
     }
 
     pub fn encode_message(&self) -> Result<Vec<u8>, ShinkaiMessageError> {
-        bincode::serialize(&self).map_err(|err| ShinkaiMessageError::from(err))
+        serde_json::to_vec(&self).map_err(|err| ShinkaiMessageError::SerializationError(err.to_string()))
     }
 
     pub fn decode_message_result(encoded: Vec<u8>) -> Result<Self, ShinkaiMessageError> {
@@ -106,12 +106,8 @@ impl ShinkaiMessage {
             }
         }
     
-        // If JSON deserialization failed, try with bincode
-        let result: Result<ShinkaiMessage, _> = bincode::deserialize(&encoded[..]);
-        if result.is_err() {
-            eprintln!("Failed to decode entire message: {:?}, error: {}", encoded, result.as_ref().unwrap_err());
-        }
-        result.map_err(|err| ShinkaiMessageError::from(err))
+        // If JSON deserialization failed, return an error
+        Err(ShinkaiMessageError::DecryptionError("Failed to decode message".to_string()))
     }
 
     pub fn validate_message_schema(&self, schema: MessageSchemaType) -> Result<(), ShinkaiMessageError> {

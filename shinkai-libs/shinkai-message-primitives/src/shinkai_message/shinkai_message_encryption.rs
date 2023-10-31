@@ -5,6 +5,7 @@ use super::shinkai_message::{
 };
 use super::shinkai_message_error::ShinkaiMessageError;
 use super::shinkai_message_schemas::MessageSchemaType;
+use blake3::Hasher;
 use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
 use chacha20poly1305::ChaCha20Poly1305;
 use ed25519_dalek::Signer;
@@ -12,7 +13,6 @@ use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStati
 use log::info;
 use rand::rngs::OsRng;
 use rand::RngCore;
-use blake3::Hasher;
 use std::convert::TryInto;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -124,7 +124,7 @@ impl MessageBody {
         self_sk: &EncryptionStaticKey,
         destination_pk: &EncryptionPublicKey,
     ) -> Result<MessageBody, ShinkaiMessageError> {
-        let body_bytes = bincode::serialize(body).unwrap();
+        let body_bytes = serde_json::to_vec(body).unwrap();
 
         let shared_secret = self_sk.diffie_hellman(destination_pk);
         let mut hasher = Hasher::new();
@@ -173,8 +173,8 @@ impl MessageBody {
                     .decrypt(nonce, ciphertext)
                     .map_err(|_| ShinkaiMessageError::DecryptionError("Decryption failure!".to_string()))?;
 
-                let decrypted_body: ShinkaiBody = bincode::deserialize(&plaintext_bytes)
-                .map_err(|_| ShinkaiMessageError::DecryptionError("Failed to deserialize body".to_string()))?;
+                let decrypted_body: ShinkaiBody = serde_json::from_slice(&plaintext_bytes)
+                    .map_err(|_| ShinkaiMessageError::DecryptionError("Failed to deserialize body".to_string()))?;
 
                 Ok(decrypted_body)
             }

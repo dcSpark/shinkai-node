@@ -161,7 +161,7 @@ mod tests {
         );
     }
 
-    // #[cfg(target_arch = "wasm32")]
+    #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen_test]
     fn test_shinkai_message_from_jsvalue() {
         console_log::init_with_level(log::Level::Debug).expect("error initializing log");
