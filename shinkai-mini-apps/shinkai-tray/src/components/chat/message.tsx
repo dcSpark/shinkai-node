@@ -71,7 +71,7 @@ const Message = ({ message, inboxId }: { message: ShinkaiMessage; inboxId: strin
           "group flex items-start gap-1 break-words rounded-lg bg-transparent px-2.5 py-3",
           isLocal
             ? "rounded-tl-none border border-slate-800"
-            : "mt-4 rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
+            : "rounded-tr-none border-none bg-[rgba(217,217,217,0.04)]"
         )}
       >
         <MarkdownPreview
@@ -88,7 +88,7 @@ const Message = ({ message, inboxId }: { message: ShinkaiMessage; inboxId: strin
         {isLocal ? null : (
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger>
+              <TooltipTrigger asChild>
                 <CopyToClipboardIcon
                   className="duration-30 -mr-1 -mt-1 opacity-0 group-hover:opacity-100 group-hover:transition-opacity"
                   string={getMessageContent(message)}

@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useDropzone } from "react-dropzone";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
@@ -138,7 +145,7 @@ const ChatConversation = () => {
 
     if (isJobInbox(inboxId)) {
       const jobId = extractJobIdFromInbox(inboxId);
-      sendMessageToJob({
+      await sendMessageToJob({
         jobId: jobId,
         message: data.message,
         files_inbox: "",
@@ -153,7 +160,7 @@ const ChatConversation = () => {
     } else {
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
-      sendMessageToInbox({
+      await sendMessageToInbox({
         sender: auth.shinkai_identity,
         sender_subidentity: `${auth.profile}/device/${auth.registration_name}`,
         receiver,
@@ -400,38 +407,44 @@ const MessageEditor = ({
   setInitialValue?: string;
   disabled?: boolean;
 }) => {
-  const editor = useEditor({
-    editorProps: {
-      attributes: {
-        class: "prose prose-invert prose-sm mx-auto focus:outline-none",
-      },
-      handleDOMEvents: {
-        keydown: (_, event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onSubmit?.();
-          }
-        },
-      },
-    },
-    extensions: [
-      StarterKit,
-      Placeholder.configure({
-        placeholder: "Enter message",
-      }),
-      Markdown,
-    ],
-    content: value,
-    autofocus: true,
-    onUpdate({ editor }) {
-      // onChange(editor.getHTML());
-      onChange(editor.storage.markdown.getMarkdown());
-    },
+  // onSubmitRef is used to keep the latest onSubmit function
+  const onSubmitRef = useRef(onSubmit);
+  useLayoutEffect(() => {
+    onSubmitRef.current = onSubmit;
   });
 
-  useEffect(() => {
-    editor?.setEditable(!disabled);
-  }, [disabled, editor]);
+  const editor = useEditor(
+    {
+      editorProps: {
+        attributes: {
+          class: "prose prose-invert prose-sm mx-auto focus:outline-none",
+        },
+        handleDOMEvents: {
+          keydown: (_, event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              onSubmitRef?.current?.();
+            }
+          },
+        },
+      },
+      extensions: [
+        StarterKit,
+        Placeholder.configure({
+          placeholder: "Enter message",
+        }),
+        Markdown,
+      ],
+      content: value,
+      autofocus: true,
+      onUpdate({ editor }) {
+        // onChange(editor.getHTML());
+        onChange(editor.storage.markdown.getMarkdown());
+      },
+      editable: !disabled,
+    },
+    [disabled]
+  );
 
   useEffect(() => {
     setInitialValue === undefined
