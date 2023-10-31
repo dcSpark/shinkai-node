@@ -19,7 +19,7 @@ import {
   isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, Extension, useEditor } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { FileCheck2, ImagePlusIcon, Loader, X } from "lucide-react";
 import { Markdown } from "tiptap-markdown";
@@ -123,7 +123,7 @@ const ChatConversation = () => {
   } = useSendMessageWithFilesToInbox();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
-    if (!auth) return;
+    if (!auth || data.message.trim() === "") return;
     fromPreviousMessagesRef.current = false;
     if (data.file) {
       await sendTextMessageWithFilesForInbox({
@@ -243,6 +243,10 @@ const ChatConversation = () => {
     scrollToBottom();
   }, [isChatConversationSuccess]);
 
+  useEffect(() => {
+    chatForm.reset();
+  }, [chatForm, inboxId]);
+
   return (
     <div className="flex flex-1 flex-col pt-2">
       <ScrollArea className="h-full px-5" ref={chatContainerRef}>
@@ -296,7 +300,7 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pt-3">
+        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pb-3">
           {isLoading ? (
             <DotsLoader className="absolute left-8 top-10 flex items-center justify-center" />
           ) : null}
@@ -305,7 +309,7 @@ const ChatConversation = () => {
             <div
               {...getRootFileProps({
                 className: cn(
-                  "dropzone group relative relative flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
+                  "dropzone group relative relative flex h-12 w-12 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
                   file && "border-0",
                   isLoading && "hidden"
                 ),
@@ -367,9 +371,6 @@ const ChatConversation = () => {
                       value={field.value}
                     />
                   </FormControl>
-                  <FormDescription className="pt-1 text-xs">
-                    Press <kbd>⌘</kbd> <kbd>↵</kbd> to send message
-                  </FormDescription>
                 </FormItem>
               )}
               control={chatForm.control}
@@ -419,14 +420,6 @@ const MessageEditor = ({
         attributes: {
           class: "prose prose-invert prose-sm mx-auto focus:outline-none",
         },
-        handleDOMEvents: {
-          keydown: (_, event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              onSubmitRef?.current?.();
-            }
-          },
-        },
       },
       extensions: [
         StarterKit,
@@ -434,11 +427,28 @@ const MessageEditor = ({
           placeholder: "Enter message",
         }),
         Markdown,
+        Extension.create({
+          addKeyboardShortcuts() {
+            return {
+              Enter: () => {
+                onSubmitRef?.current?.();
+                return this.editor.commands.clearContent();
+              },
+              "Shift-Enter": ({ editor }) =>
+                editor.commands.first(({ commands }) => [
+                  () => commands.newlineInCode(),
+                  () => commands.splitListItem("listItem"),
+                  () => commands.createParagraphNear(),
+                  () => commands.liftEmptyBlock(),
+                  () => commands.splitBlock(),
+                ]),
+            };
+          },
+        }),
       ],
       content: value,
       autofocus: true,
       onUpdate({ editor }) {
-        // onChange(editor.getHTML());
         onChange(editor.storage.markdown.getMarkdown());
       },
       editable: !disabled,

@@ -30,7 +30,6 @@ const CreateChatPage = () => {
 
   const { isPending, mutateAsync: createChat } = useCreateChat({
     onSuccess: (data) => {
-      console.log(data, "chat");
       // TODO: job_inbox, false is hardcoded
       navigate(`/inboxes/${encodeURIComponent(data.inboxId)}`);
     },
