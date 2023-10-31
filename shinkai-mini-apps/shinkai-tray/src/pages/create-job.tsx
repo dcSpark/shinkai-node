@@ -46,6 +46,7 @@ const CreateJobPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
 
+
   const createJobForm = useForm<z.infer<typeof createJobSchema>>({
     resolver: zodResolver(createJobSchema),
   });
@@ -118,14 +119,19 @@ const CreateJobPage = () => {
     });
   };
 
-  useEffect(() => {
-    if (isSuccess && agents?.length) {
-      createJobForm.setValue("model", agents[0].id);
-    }
-  }, [isSuccess, agents, createJobForm]);
+  useEffect(
+    () => {
 
+      if (isSuccess && agents?.length) {
+        createJobForm.setValue("model", agents[0].id);
+      }
+
+
+    },
+    [agents, createJobForm, isSuccess]
+  );
   useEffect(() => {
-    return () => {
+      return () => {
       file && URL.revokeObjectURL(file.preview);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,6 +142,33 @@ const CreateJobPage = () => {
       <Form {...createJobForm}>
         <form className="space-y-8" onSubmit={createJobForm.handleSubmit(onSubmit)}>
           <div className="space-y-6">
+
+          <FormField
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tell us the job you want to do</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                          createJobForm.handleSubmit(onSubmit)();
+                        }
+                      }}
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
+                      autoFocus={true}
+                      className="resize-none border-white"
+                      placeholder="Eg: Explain me how internet works..."
+                      {...field}
+                    
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+              control={createJobForm.control}
+              name="description"
+            />
+
             <FormField
               render={({ field }) => (
                 <FormItem>
@@ -171,28 +204,7 @@ const CreateJobPage = () => {
               control={createJobForm.control}
               name="model"
             />
-            <FormField
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tell us the job you want to do</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                          createJobForm.handleSubmit(onSubmit)();
-                        }
-                      }}
-                      className="resize-none border-white"
-                      placeholder="Eg: Explain me how internet works..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-              control={createJobForm.control}
-              name="description"
-            />
+
 
             <div>
               <FormLabel>

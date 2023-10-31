@@ -19,7 +19,12 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
         textareaRef.current.scrollHeight,
         MIN_TEXTAREA_HEIGHT
       )}px`;
-    }, [props?.value]);
+
+      if (props.autoFocus !== undefined && props.autoFocus) {
+        textareaRef.current.focus()
+      }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [props.value]);
 
     return (
       <textarea
