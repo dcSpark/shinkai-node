@@ -141,6 +141,7 @@ impl LLMProvider for GenericAPI {
                         } else {
                             response_string
                         };
+                        response_string = response_string.replace("\\\"", "\"");
                         response_string = response_string.trim_end_matches(" ```").to_string();
 
                         // Replace single quotes with double quotes in specific parts of the string
@@ -151,7 +152,22 @@ impl LLMProvider for GenericAPI {
 
                         // eprintln!("(Cleaned up) Response string: {:?}", response_string);
 
-                        Self::extract_first_json_object(&response_string)
+                        // it cuts off everything after a triple single quotes by the end
+                        let pattern1 = "}\n ```";
+                        let pattern2 = "\n```";
+                        let mut json_part = response_string.clone();
+
+                        if let Some(end_index) = response_string
+                            .find(pattern1)
+                            .or_else(|| response_string.find(pattern2))
+                        {
+                            json_part = response_string[..end_index + 1].to_string();
+                            // +1 to include the closing brace of the JSON object
+                        }
+
+                        json_part = json_part.replace("\"\n}\n``` ", "\"}");
+
+                        Self::extract_first_json_object(&json_part)
                     }
                     Err(e) => {
                         shinkai_log(
