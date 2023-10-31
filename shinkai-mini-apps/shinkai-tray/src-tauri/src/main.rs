@@ -21,6 +21,11 @@ use shinkai::registration::process_onboarding_data;
 
 use crate::shinkai::registration::validate_setup_data;
 
+enum EmitableEvents {
+    CreateJobSection,
+}
+
+
 
 fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit");
