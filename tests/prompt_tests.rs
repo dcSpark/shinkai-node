@@ -82,6 +82,32 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_call_llm_with_simple_prompt() {
+        match setup_vars() {
+            Ok((provider, client, url, api_key)) => {
+                let elements_list: Vec<String> = vec![
+                    "Hello!".to_string(),
+                    "what does it mean to have 70B parameters?".to_string()
+                ];
+
+                for element in elements_list {
+                    let prompt = JobPromptGenerator::response_prompt_with_vector_search_final(
+                        element.to_string(),
+                        vec![],
+                        Some("".to_string()),
+                    );
+
+                    test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
+                }
+            }
+            Err(e) => {
+                eprintln!("Skipping test due to setup error: {}", e);
+            }
+        }
+    }
+
+
     async fn test_call_api(
         provider: AgentLLMInterface,
         client: &Client,
