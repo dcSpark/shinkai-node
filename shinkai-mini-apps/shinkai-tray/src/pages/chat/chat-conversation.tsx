@@ -1,4 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useDropzone } from "react-dropzone";
 import { useForm } from "react-hook-form";
 import { useParams } from "react-router-dom";
@@ -12,7 +19,7 @@ import {
   isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, Extension, useEditor } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
 import { FileCheck2, ImagePlusIcon, Loader, X } from "lucide-react";
 import { Markdown } from "tiptap-markdown";
@@ -28,7 +35,6 @@ import DotsLoader from "../../components/ui/dots-loader";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -116,7 +122,7 @@ const ChatConversation = () => {
   } = useSendMessageWithFilesToInbox();
 
   const onSubmit = async (data: z.infer<typeof chatSchema>) => {
-    if (!auth) return;
+    if (!auth || data.message.trim() === "") return;
     fromPreviousMessagesRef.current = false;
     if (data.file) {
       await sendTextMessageWithFilesForInbox({
@@ -138,7 +144,7 @@ const ChatConversation = () => {
 
     if (isJobInbox(inboxId)) {
       const jobId = extractJobIdFromInbox(inboxId);
-      sendMessageToJob({
+      await sendMessageToJob({
         jobId: jobId,
         message: data.message,
         files_inbox: "",
@@ -153,7 +159,7 @@ const ChatConversation = () => {
     } else {
       const sender = `${auth.shinkai_identity}/${auth.profile}/device/${auth.registration_name}`;
       const receiver = extractReceiverShinkaiName(inboxId, sender);
-      sendMessageToInbox({
+      await sendMessageToInbox({
         sender: auth.shinkai_identity,
         sender_subidentity: `${auth.profile}/device/${auth.registration_name}`,
         receiver,
@@ -236,6 +242,10 @@ const ChatConversation = () => {
     scrollToBottom();
   }, [isChatConversationSuccess]);
 
+  useEffect(() => {
+    chatForm.reset();
+  }, [chatForm, inboxId]);
+
   return (
     <div className="flex flex-1 flex-col pt-2">
       <ScrollArea className="h-full px-5" ref={chatContainerRef}>
@@ -289,7 +299,7 @@ const ChatConversation = () => {
       </ScrollArea>
 
       <div className="flex flex-col justify-start">
-        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pt-3">
+        <div className="relative flex items-start gap-2 bg-app-gradient p-2 pb-3">
           {isLoading ? (
             <DotsLoader className="absolute left-8 top-10 flex items-center justify-center" />
           ) : null}
@@ -298,7 +308,7 @@ const ChatConversation = () => {
             <div
               {...getRootFileProps({
                 className: cn(
-                  "dropzone group relative relative flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
+                  "dropzone group relative relative flex h-12 w-12 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
                   file && "border-0",
                   isLoading && "hidden"
                 ),
@@ -360,9 +370,6 @@ const ChatConversation = () => {
                       value={field.value}
                     />
                   </FormControl>
-                  <FormDescription className="pt-1 text-xs">
-                    Press <kbd>⌘</kbd> <kbd>↵</kbd> to send message
-                  </FormDescription>
                 </FormItem>
               )}
               control={chatForm.control}
@@ -400,38 +407,53 @@ const MessageEditor = ({
   setInitialValue?: string;
   disabled?: boolean;
 }) => {
-  const editor = useEditor({
-    editorProps: {
-      attributes: {
-        class: "prose prose-invert prose-sm mx-auto focus:outline-none",
-      },
-      handleDOMEvents: {
-        keydown: (_, event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-            event.preventDefault();
-            onSubmit?.();
-          }
-        },
-      },
-    },
-    extensions: [
-      StarterKit,
-      Placeholder.configure({
-        placeholder: "Enter message",
-      }),
-      Markdown,
-    ],
-    content: value,
-    autofocus: true,
-    onUpdate({ editor }) {
-      // onChange(editor.getHTML());
-      onChange(editor.storage.markdown.getMarkdown());
-    },
+  // onSubmitRef is used to keep the latest onSubmit function
+  const onSubmitRef = useRef(onSubmit);
+  useLayoutEffect(() => {
+    onSubmitRef.current = onSubmit;
   });
 
-  useEffect(() => {
-    editor?.setEditable(!disabled);
-  }, [disabled, editor]);
+  const editor = useEditor(
+    {
+      editorProps: {
+        attributes: {
+          class: "prose prose-invert prose-sm mx-auto focus:outline-none",
+        },
+      },
+      extensions: [
+        StarterKit,
+        Placeholder.configure({
+          placeholder: "Enter message",
+        }),
+        Markdown,
+        Extension.create({
+          addKeyboardShortcuts() {
+            return {
+              Enter: () => {
+                onSubmitRef?.current?.();
+                return this.editor.commands.clearContent();
+              },
+              "Shift-Enter": ({ editor }) =>
+                editor.commands.first(({ commands }) => [
+                  () => commands.newlineInCode(),
+                  () => commands.splitListItem("listItem"),
+                  () => commands.createParagraphNear(),
+                  () => commands.liftEmptyBlock(),
+                  () => commands.splitBlock(),
+                ]),
+            };
+          },
+        }),
+      ],
+      content: value,
+      autofocus: true,
+      onUpdate({ editor }) {
+        onChange(editor.storage.markdown.getMarkdown());
+      },
+      editable: !disabled,
+    },
+    [disabled]
+  );
 
   useEffect(() => {
     setInitialValue === undefined

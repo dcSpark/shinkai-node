@@ -30,9 +30,8 @@ const CreateChatPage = () => {
 
   const { isPending, mutateAsync: createChat } = useCreateChat({
     onSuccess: (data) => {
-      console.log(data, "chat");
       // TODO: job_inbox, false is hardcoded
-      navigate(`/inboxes/${data.inboxId}`);
+      navigate(`/inboxes/${encodeURIComponent(data.inboxId)}`);
     },
   });
 
@@ -81,6 +80,11 @@ const CreateChatPage = () => {
                   <FormLabel>Message</FormLabel>
                   <FormControl>
                     <Textarea
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                          createChatForm.handleSubmit(onSubmit)();
+                        }
+                      }}
                       className="resize-none border-white"
                       placeholder="Enter your message"
                       {...field}
