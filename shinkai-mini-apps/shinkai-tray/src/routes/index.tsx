@@ -63,7 +63,7 @@ const AppRoutes = () => {
               <ChatLayout />
             </ProtectedRoute>
           }
-          path="inboxes/*"
+          path="inboxes"
         >
           <Route element={<EmptyMessage />} index />
           <Route element={<ChatConversation />} path=":inboxId" />

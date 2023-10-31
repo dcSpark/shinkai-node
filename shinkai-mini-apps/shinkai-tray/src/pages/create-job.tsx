@@ -143,7 +143,7 @@ const CreateJobPage = () => {
   return (
     <SimpleLayout title="Create Job">
       <Form {...createJobForm}>
-        <form className="space-y-10" onSubmit={createJobForm.handleSubmit(onSubmit)}>
+        <form className="space-y-8" onSubmit={createJobForm.handleSubmit(onSubmit)}>
           <div className="space-y-6">
             <FormField
               render={({ field }) => (
@@ -209,63 +209,102 @@ const CreateJobPage = () => {
                 Upload a file
                 <span className="ml-1 text-muted-foreground">(optional)</span>
               </FormLabel>
-
-              <div
-                {...getRootFileProps({
-                  className: cn(
-                    "dropzone group relative relative mt-3 flex h-[9.375rem] w-[12.5rem] cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
-                    file && "border border-solid border-slate-500"
-                  ),
-                })}
-              >
-                {!file && (
-                  <div className="flex flex-col items-center gap-2 p-4 text-xs">
-                    <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
-                    <span className="text-center  font-semibold text-slate-400">
-                      Drag & drop your documents here
-                    </span>
-                    <span className="text-foreground">Click here to Upload</span>
-                  </div>
-                )}
-                <input
-                  {...createJobForm.register("file")}
-                  {...getInputFileProps({
-                    onChange: createJobForm.register("file").onChange,
+              <div className="flex gap-5">
+                <div
+                  {...getRootFileProps({
+                    className: cn(
+                      "dropzone group relative relative mt-3 flex h-[6.375rem] w-[9.5rem] cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-slate-500 border-slate-500 transition-colors hover:border-white",
+                      file && "border border-solid border-slate-500"
+                    ),
                   })}
-                />
-                {file && (
-                  <>
-                    {isImageOrPdf(file) && (
-                      <img
-                        alt=""
-                        className="absolute inset-0 h-full w-full rounded-lg bg-white object-cover"
-                        src={file.preview}
-                      />
-                    )}
-                    {!isImageOrPdf(file) && (
-                      <div className="flex flex-col items-center gap-2">
-                        <FileCheck2 className="h-6 w-6 text-muted-foreground " />
-                        <span className="line-clamp-3 break-all px-2 text-center text-xs ">
-                          {file?.name}
-                        </span>
-                      </div>
-                    )}
-                  </>
-                )}
-                {file != null && (
-                  <button
-                    className={cn(
-                      "absolute right-1 top-1 h-6 w-6 cursor-pointer rounded-full bg-slate-900 p-1 hover:bg-slate-800",
-                      file ? "block" : "hidden"
-                    )}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      createJobForm.setValue("file", undefined, { shouldValidate: true });
-                    }}
-                  >
-                    <X className="h-full w-full text-slate-500" />
-                  </button>
-                )}
+                >
+                  {!file && (
+                    <div className="flex flex-col items-center gap-2 p-4 text-xs">
+                      <ImagePlusIcon className="stroke-slate-500 transition-colors group-hover:stroke-white" />
+                      <span className="text-center  font-semibold text-slate-400">
+                        Drag & drop your documents here
+                      </span>
+                      {/* <span className="text-foreground">Click here to Upload</span> */}
+                    </div>
+                  )}
+                  <input
+                    {...createJobForm.register("file")}
+                    {...getInputFileProps({
+                      onChange: createJobForm.register("file").onChange,
+                    })}
+                  />
+                  {file && (
+                    <>
+                      {isImageOrPdf(file) && (
+                        <img
+                          alt=""
+                          className="absolute inset-0 h-full w-full rounded-lg bg-white object-cover"
+                          src={file.preview}
+                        />
+                      )}
+                      {!isImageOrPdf(file) && (
+                        <div className="flex flex-col items-center gap-2">
+                          <FileCheck2 className="h-6 w-6 text-muted-foreground " />
+                          <span className="line-clamp-3 break-all px-2 text-center text-xs ">
+                            {file?.name}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {file != null && (
+                    <button
+                      className={cn(
+                        "absolute right-1 top-1 h-6 w-6 cursor-pointer rounded-full bg-slate-900 p-1 hover:bg-slate-800",
+                        file ? "block" : "hidden"
+                      )}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        createJobForm.setValue("file", undefined, {
+                          shouldValidate: true,
+                        });
+                      }}
+                    >
+                      <X className="h-full w-full text-slate-500" />
+                    </button>
+                  )}
+                </div>
+                <span className="pt-4 text-xs font-bold text-muted-foreground">
+                  Supported formats
+                  <p className="mt-2">
+                    Plain Text
+                    <span className="block font-normal">
+                      {" "}
+                      {[
+                        "eml",
+                        "html",
+                        "json",
+                        "md",
+                        "msg",
+                        "rst",
+                        "rtf",
+                        "txt",
+                        "xml",
+                      ].join(" • ")}
+                    </span>
+                  </p>
+                  <p className="mt-1 font-bold text-muted-foreground">
+                    Documents
+                    <span className="block font-normal">
+                      {[
+                        "csv",
+                        "doc",
+                        "epub",
+                        "odt",
+                        "pdf",
+                        "ppt",
+                        "pptx",
+                        "tsv",
+                        "xlsx",
+                      ].join(" • ")}
+                    </span>
+                  </p>
+                </span>
               </div>
             </div>
           </div>

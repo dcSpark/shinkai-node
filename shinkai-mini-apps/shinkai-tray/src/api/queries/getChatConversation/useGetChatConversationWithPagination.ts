@@ -23,7 +23,8 @@ export const useGetChatConversationWithPagination = (input: GetChatConversationI
         lastKey: pageParam?.lastKey ?? undefined,
         count: CONVERSATION_PAGINATION_LIMIT,
       }),
-    getPreviousPageParam: (_, pages) => {
+    getPreviousPageParam: (firstPage, pages) => {
+      if (firstPage?.length < CONVERSATION_PAGINATION_LIMIT) return;
       const firstMessage = pages?.[0]?.[0];
       if (!firstMessage) return;
       const timeKey = firstMessage?.external_metadata?.scheduled_time;
