@@ -1,27 +1,94 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { DialogClose } from "@radix-ui/react-dialog";
 import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
-import { Edit2, EditIcon, MessageCircleIcon, Workflow } from "lucide-react";
+import {
+  CheckIcon,
+  Edit,
+  Edit2,
+  Edit3,
+  EditIcon,
+  MessageCircleIcon,
+  Workflow,
+} from "lucide-react";
+import { z } from "zod";
 
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
 import { Button } from "../../components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../../components/ui/dialog";
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+} from "../../components/ui/form";
 import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Separator } from "../../components/ui/separator";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
+
+const updateInboxNameSchema = z.object({
+  inboxName: z.string(),
+});
+
+const InboxNameInput = ({
+  closeEditable,
+  inboxId,
+  inboxName,
+}: {
+  closeEditable: () => void;
+  inboxId: string;
+  inboxName: string;
+}) => {
+  const updateInboxNameForm = useForm<z.infer<typeof updateInboxNameSchema>>({
+    resolver: zodResolver(updateInboxNameSchema),
+    defaultValues: {
+      inboxName,
+    },
+  });
+
+  const onSubmit = (data: z.infer<typeof updateInboxNameSchema>) => {
+    console.log(data);
+    closeEditable();
+  };
+
+  return (
+    <Form {...updateInboxNameForm}>
+      <form
+        className="relative flex h-[46px] items-center"
+        onSubmit={updateInboxNameForm.handleSubmit(onSubmit)}
+      >
+        <div className="space-y-1 pr-10">
+          <FormField
+            render={({ field }) => (
+              <FormItem className="space-y-0 text-xs">
+                <FormLabel className="sr-only">Update inbox name</FormLabel>
+                <FormControl>
+                  <Input className="text-xs" placeholder="Eg: Work Inbox " {...field} />
+                </FormControl>
+              </FormItem>
+            )}
+            control={updateInboxNameForm.control}
+            name="inboxName"
+          />
+        </div>
+
+        <Button
+          className="absolute right-0 top-1/2 -translate-y-1/2 transform"
+          size="icon"
+          type="submit"
+          variant="default"
+        >
+          <CheckIcon className="h-4 w-4" />
+        </Button>
+      </form>
+    </Form>
+  );
+};
 
 const MessageButton = ({
   to,
@@ -34,10 +101,18 @@ const MessageButton = ({
 }) => {
   const match = useMatch(to);
 
-  return (
+  const [isEditable, setIsEditable] = useState(false);
+
+  return isEditable ? (
+    <InboxNameInput
+      closeEditable={() => setIsEditable(false)}
+      inboxId={inboxId}
+      inboxName={inboxName}
+    />
+  ) : (
     <Link
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-muted-foreground hover:bg-slate-800",
+        "group flex h-[46px] w-full items-center gap-2 rounded-lg px-2 py-2 text-muted-foreground hover:bg-slate-800",
         match && "bg-slate-800 text-foreground"
       )}
       key={inboxId}
@@ -48,37 +123,15 @@ const MessageButton = ({
       ) : (
         <MessageCircleIcon className="mr-2 h-4 w-4 shrink-0" />
       )}
-      <span className="line-clamp-1 text-left text-xs">{inboxName}</span>
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button size="icon" variant="secondary">
-            <Edit2 className="h-4 w-4" />
-            <span className="sr-only">Edit Inbox Name</span>
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Edit Inbox Name</DialogTitle>
-            <DialogDescription>
-              Change the name of this inbox to make it easier to identify.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Label className="sr-only" htmlFor="name">
-              Name
-            </Label>
-            <Input className="col-span-3" defaultValue="Pedro Duarte" id="name" />
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="secondary">
-                Close
-              </Button>
-            </DialogClose>
-            <Button type="submit">Save changes</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <span className="line-clamp-1 flex-1 text-left text-xs">{inboxName}</span>
+      <Button
+        className={cn("hidden justify-self-end", match && "flex")}
+        onClick={() => setIsEditable(true)}
+        size="icon"
+        variant="ghost"
+      >
+        <Edit className="h-4 w-4" />
+      </Button>
     </Link>
   );
 };
@@ -106,7 +159,7 @@ const ChatLayout = () => {
           <div className="flex max-w-[280px] flex-[280px] shrink-0 flex-col px-2 py-4">
             <h2 className="mb-4 px-2">Recent Conversations</h2>
             <ScrollArea>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {inboxes.map((inbox) => (
                   <MessageButton
                     inboxName={
