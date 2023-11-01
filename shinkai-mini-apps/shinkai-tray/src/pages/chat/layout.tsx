@@ -3,19 +3,11 @@ import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { DialogClose } from "@radix-ui/react-dialog";
 import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
-import {
-  CheckIcon,
-  Edit,
-  Edit2,
-  Edit3,
-  EditIcon,
-  MessageCircleIcon,
-  Workflow,
-} from "lucide-react";
+import { CheckIcon, Edit, MessageCircleIcon, Workflow } from "lucide-react";
 import { z } from "zod";
 
+import { useUpdateInboxName } from "../../api/mutations/updateInboxName/useUpdateInboxName";
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
 import { Button } from "../../components/ui/button";
 import {
@@ -44,6 +36,7 @@ const InboxNameInput = ({
   inboxId: string;
   inboxName: string;
 }) => {
+  const auth = useAuth((state) => state.auth);
   const updateInboxNameForm = useForm<z.infer<typeof updateInboxNameSchema>>({
     resolver: zodResolver(updateInboxNameSchema),
     defaultValues: {
@@ -51,8 +44,20 @@ const InboxNameInput = ({
     },
   });
 
-  const onSubmit = (data: z.infer<typeof updateInboxNameSchema>) => {
+  const { mutateAsync: updateInboxName } = useUpdateInboxName({});
+
+  const onSubmit = async (data: z.infer<typeof updateInboxNameSchema>) => {
     console.log(data);
+    // TODO: connect to API properly
+    await updateInboxName({
+      my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+      my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+      node_encryption_pk: auth?.node_encryption_pk ?? "",
+      profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+      profile_identity_sk: auth?.profile_identity_sk ?? "",
+      inboxId,
+      inboxName: data.inboxName,
+    });
     closeEditable();
   };
 

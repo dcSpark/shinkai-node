@@ -6,15 +6,13 @@ import type {
 import { ApiConfig, handleHttpError } from "@shinkai_network/shinkai-message-ts/api";
 import { ShinkaiMessageBuilderWrapper } from "@shinkai_network/shinkai-message-ts/wasm";
 
-import type { GetInboxesInput } from "./types";
-
 export type SmartInbox = {
   custom_name: string;
   inbox_id: string;
   last_message: ShinkaiMessage;
 };
 
-export const getAllInboxesForProfile = async (
+export const updateInboxNameApi = async (
   sender: string,
   sender_subidentity: string,
   receiver: string,
@@ -36,7 +34,7 @@ export const getAllInboxesForProfile = async (
     const message = JSON.parse(messageString);
 
     const apiEndpoint = ApiConfig.getInstance().getEndpoint();
-    const response = await fetch(`${apiEndpoint}/v1/get_all_smart_inboxes_for_profile`, {
+    const response = await fetch(`${apiEndpoint}/v1/update_smart_inbox_name`, {
       method: "POST",
       body: JSON.stringify(message),
       headers: { "Content-Type": "application/json" },
@@ -50,7 +48,7 @@ export const getAllInboxesForProfile = async (
   }
 };
 
-export const getInboxes = async ({
+export const updateInboxName = async ({
   receiver,
   senderSubidentity,
   sender,
@@ -59,9 +57,9 @@ export const getInboxes = async ({
   my_device_identity_sk,
   node_encryption_pk,
   profile_encryption_sk,
-  profile_identity_sk,
-}: GetInboxesInput) => {
-  const inboxes = await getAllInboxesForProfile(
+  profile_identity_sk, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}: any) => {
+  const response = await updateInboxNameApi(
     sender,
     senderSubidentity,
     receiver,
@@ -74,10 +72,7 @@ export const getInboxes = async ({
       profile_identity_sk,
     }
   );
+  console.log("updateInboxName response:", response);
 
-  return inboxes.map((inbox) => ({
-    ...inbox,
-    inbox_id: encodeURIComponent(inbox.inbox_id),
-    custom_name: encodeURIComponent(inbox.custom_name),
-  }));
+  return response;
 };
