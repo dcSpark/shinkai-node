@@ -1,9 +1,23 @@
+import { useState } from "react";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
+import { DialogClose } from "@radix-ui/react-dialog";
 import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
-import { MessageCircleIcon, Workflow } from "lucide-react";
+import { Edit2, EditIcon, MessageCircleIcon, Workflow } from "lucide-react";
 
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
+import { Button } from "../../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Separator } from "../../components/ui/separator";
 import { cn } from "../../lib/utils";
@@ -35,6 +49,36 @@ const MessageButton = ({
         <MessageCircleIcon className="mr-2 h-4 w-4 shrink-0" />
       )}
       <span className="line-clamp-1 text-left text-xs">{inboxName}</span>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button size="icon" variant="secondary">
+            <Edit2 className="h-4 w-4" />
+            <span className="sr-only">Edit Inbox Name</span>
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Inbox Name</DialogTitle>
+            <DialogDescription>
+              Change the name of this inbox to make it easier to identify.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label className="sr-only" htmlFor="name">
+              Name
+            </Label>
+            <Input className="col-span-3" defaultValue="Pedro Duarte" id="name" />
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="secondary">
+                Close
+              </Button>
+            </DialogClose>
+            <Button type="submit">Save changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Link>
   );
 };

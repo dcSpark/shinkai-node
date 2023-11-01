@@ -8,7 +8,7 @@ import { ShinkaiMessageBuilderWrapper } from "@shinkai_network/shinkai-message-t
 
 import type { GetInboxesInput } from "./types";
 
-type SmartInbox = {
+export type SmartInbox = {
   custom_name: string;
   inbox_id: string;
   last_message: ShinkaiMessage;
