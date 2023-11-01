@@ -1,21 +1,26 @@
-import type { CredentialsPayload } from "@shinkai_network/shinkai-message-ts/models";
+import type {
+  CredentialsPayload,
+  ShinkaiMessage,
+} from "@shinkai_network/shinkai-message-ts/models";
 
-import {
-  ApiConfig,
-  getAllInboxesForProfile,
-  handleHttpError,
-} from "@shinkai_network/shinkai-message-ts/api";
+import { ApiConfig, handleHttpError } from "@shinkai_network/shinkai-message-ts/api";
 import { ShinkaiMessageBuilderWrapper } from "@shinkai_network/shinkai-message-ts/wasm";
 
 import type { GetInboxesInput } from "./types";
 
-export const getAllSmartInboxes = async (
+type SmartInbox = {
+  custom_name: string;
+  inbox_id: string;
+  last_message: ShinkaiMessage;
+};
+
+export const getAllInboxesForProfile = async (
   sender: string,
   sender_subidentity: string,
   receiver: string,
   target_shinkai_name_profile: string,
   setupDetailsState: CredentialsPayload
-): Promise<string[]> => {
+): Promise<SmartInbox[]> => {
   try {
     const messageString = ShinkaiMessageBuilderWrapper.get_all_inboxes_for_profile(
       setupDetailsState.my_device_encryption_sk,
@@ -55,7 +60,7 @@ export const getInboxes = async ({
   profile_encryption_sk,
   profile_identity_sk,
 }: GetInboxesInput) => {
-  const inboxes = await getAllSmartInboxes(
+  const inboxes = await getAllInboxesForProfile(
     sender,
     senderSubidentity,
     receiver,
@@ -68,7 +73,10 @@ export const getInboxes = async ({
       profile_identity_sk,
     }
   );
-  console.log("SMART", inboxes);
-  // TODO: fix types
-  return inboxes.map((inbox) => encodeURIComponent(inbox.inbox_id));
+
+  return inboxes.map((inbox) => ({
+    ...inbox,
+    inbox_id: encodeURIComponent(inbox.inbox_id),
+    custom_name: encodeURIComponent(inbox.custom_name),
+  }));
 };

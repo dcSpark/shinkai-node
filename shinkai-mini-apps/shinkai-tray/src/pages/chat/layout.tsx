@@ -1,6 +1,6 @@
 import { Link, Outlet, useMatch } from "react-router-dom";
 
-import { isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
+import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
 import { MessageCircleIcon, Workflow } from "lucide-react";
 
 import { useGetInboxes } from "../../api/queries/getInboxes/useGetInboxes";
@@ -9,7 +9,15 @@ import { Separator } from "../../components/ui/separator";
 import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
-const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
+const MessageButton = ({
+  to,
+  inboxId,
+  inboxName,
+}: {
+  to: string;
+  inboxId: string;
+  inboxName: string;
+}) => {
   const match = useMatch(to);
 
   return (
@@ -26,9 +34,7 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
       ) : (
         <MessageCircleIcon className="mr-2 h-4 w-4 shrink-0" />
       )}
-      <span className="line-clamp-1 text-left text-xs">
-        {decodeURIComponent(inboxId)}
-      </span>
+      <span className="line-clamp-1 text-left text-xs">{inboxName}</span>
     </Link>
   );
 };
@@ -36,7 +42,7 @@ const MessageButton = ({ to, inboxId }: { to: string; inboxId: string }) => {
 const ChatLayout = () => {
   const auth = useAuth((state) => state.auth);
 
-  const { inboxIds } = useGetInboxes({
+  const { inboxes } = useGetInboxes({
     sender: auth?.shinkai_identity ?? "",
     senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
     // Assuming receiver and target_shinkai_name_profile are the same as sender
@@ -51,17 +57,22 @@ const ChatLayout = () => {
 
   return (
     <div className="flex h-full">
-      {inboxIds.length > 0 ? (
+      {inboxes.length > 0 ? (
         <>
           <div className="flex max-w-[280px] flex-[280px] shrink-0 flex-col px-2 py-4">
             <h2 className="mb-4 px-2">Recent Conversations</h2>
             <ScrollArea>
               <div className="space-y-2">
-                {inboxIds.map((inboxId) => (
+                {inboxes.map((inbox) => (
                   <MessageButton
-                    inboxId={inboxId}
-                    key={inboxId}
-                    to={`/inboxes/${inboxId}`}
+                    inboxName={
+                      inbox.custom_name === inbox.inbox_id
+                        ? getMessageContent(inbox.last_message)?.slice(0, 40)
+                        : inbox.custom_name
+                    }
+                    inboxId={inbox.inbox_id}
+                    key={inbox.inbox_id}
+                    to={`/inboxes/${inbox.inbox_id}`}
                   />
                 ))}
               </div>
