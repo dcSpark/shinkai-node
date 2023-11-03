@@ -929,6 +929,39 @@ impl ShinkaiMessageBuilder {
         .build()
     }
 
+    pub fn update_inbox_name<T: Serialize>(
+        my_subidentity_encryption_sk: EncryptionStaticKey,
+        my_subidentity_signature_sk: SignatureStaticKey,
+        receiver_public_key: EncryptionPublicKey,
+        data: T,
+        sender_subidentity: String,
+        sender: ProfileName,
+        receiver: ProfileName,
+        schema: MessageSchemaType,
+    ) -> Result<ShinkaiMessage, &'static str> {
+        let body = serde_json::to_string(&data).map_err(|_| "Failed to serialize data to JSON")?;
+        let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk);
+        let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
+
+        ShinkaiMessageBuilder::new(
+            my_subidentity_encryption_sk,
+            my_subidentity_signature_sk,
+            receiver_public_key,
+        )
+        .message_raw_content(body)
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .internal_metadata_with_schema(
+            sender_subidentity,
+            "".to_string(),
+            "".to_string(),
+            schema,
+            EncryptionMethod::None,
+        )
+        .external_metadata_with_other(receiver.clone(), sender, other)
+        .build()
+    }
+
+
     pub fn error_message(
         my_encryption_secret_key: EncryptionStaticKey,
         my_signature_secret_key: SignatureStaticKey,
