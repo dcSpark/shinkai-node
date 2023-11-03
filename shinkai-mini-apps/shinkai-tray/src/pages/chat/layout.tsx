@@ -1,10 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
-import { CheckIcon, Edit, MessageCircleIcon, Workflow } from "lucide-react";
+import {
+  CheckIcon,
+  Edit,
+  Edit2Icon,
+  Edit3,
+  MessageCircleIcon,
+  Workflow,
+} from "lucide-react";
 import { z } from "zod";
 
 import { useUpdateInboxName } from "../../api/mutations/updateInboxName/useUpdateInboxName";
@@ -39,13 +46,16 @@ const InboxNameInput = ({
   const auth = useAuth((state) => state.auth);
   const updateInboxNameForm = useForm<z.infer<typeof updateInboxNameSchema>>({
     resolver: zodResolver(updateInboxNameSchema),
-    defaultValues: {
-      inboxName,
-    },
   });
+  const { inboxName: inboxNameValue } = updateInboxNameForm.watch();
+  const { mutateAsync: updateInboxName } = useUpdateInboxName();
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { mutateAsync: updateInboxName } = useUpdateInboxName({});
-
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current?.focus();
+    }
+  }, []);
   const onSubmit = async (data: z.infer<typeof updateInboxNameSchema>) => {
     console.log(data);
     // TODO: connect to API properly
@@ -64,32 +74,51 @@ const InboxNameInput = ({
   return (
     <Form {...updateInboxNameForm}>
       <form
-        className="relative flex h-[46px] items-center"
+        className="relative flex items-center"
         onSubmit={updateInboxNameForm.handleSubmit(onSubmit)}
       >
-        <div className="space-y-1 pr-10">
+        <div className="w-full">
           <FormField
             render={({ field }) => (
-              <FormItem className="space-y-0 text-xs">
-                <FormLabel className="sr-only">Update inbox name</FormLabel>
-                <FormControl>
-                  <Input className="text-xs" placeholder="Eg: Work Inbox " {...field} />
-                </FormControl>
-              </FormItem>
+              <div className="flex h-[46px] items-center  rounded-lg bg-app-gradient">
+                <Edit3 className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 transform text-white" />
+                <FormItem className="space-y-0 pl-7 text-xs">
+                  <FormLabel className="sr-only">Update inbox name</FormLabel>
+                  <FormControl>
+                    <Input
+                      className="border-none pr-16 text-xs caret-white placeholder:text-gray-600 focus-visible:ring-0 focus-visible:ring-white"
+                      placeholder={inboxName}
+                      {...field}
+                      ref={inputRef}
+                    />
+                  </FormControl>
+                </FormItem>
+              </div>
             )}
             control={updateInboxNameForm.control}
             name="inboxName"
           />
         </div>
 
-        <Button
-          className="absolute right-0 top-1/2 -translate-y-1/2 transform"
-          size="icon"
-          type="submit"
-          variant="default"
-        >
-          <CheckIcon className="h-4 w-4" />
-        </Button>
+        {inboxNameValue ? (
+          <Button
+            className="transformtext-xs absolute right-1 top-1/2 h-8 -translate-y-1/2 text-white"
+            size="sm"
+            type="submit"
+            variant="default"
+          >
+            Save
+          </Button>
+        ) : (
+          <Button
+            className="absolute right-1 top-1/2 h-8 -translate-y-1/2 transform bg-gray-700 text-xs text-white"
+            onClick={closeEditable}
+            size="sm"
+            variant="ghost"
+          >
+            Cancel
+          </Button>
+        )}
       </form>
     </Form>
   );
@@ -135,7 +164,7 @@ const MessageButton = ({
         size="icon"
         variant="ghost"
       >
-        <Edit className="h-4 w-4" />
+        <Edit3 className="h-4 w-4 text-muted-foreground" />
       </Button>
     </Link>
   );
