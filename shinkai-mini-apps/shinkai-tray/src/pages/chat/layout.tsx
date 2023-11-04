@@ -3,11 +3,12 @@ import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
 import {
-  CheckIcon,
-  Edit,
-  Edit2Icon,
+  extractReceiverShinkaiName,
+  getMessageContent,
+  isJobInbox,
+} from "@shinkai_network/shinkai-message-ts/utils";
+import {
   Edit3,
   MessageCircleIcon,
   Workflow,
@@ -57,15 +58,20 @@ const InboxNameInput = ({
     }
   }, []);
   const onSubmit = async (data: z.infer<typeof updateInboxNameSchema>) => {
-    console.log(data);
-    // TODO: connect to API properly
+    if (!auth) return;
+
     await updateInboxName({
-      my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
-      my_device_identity_sk: auth?.my_device_identity_sk ?? "",
-      node_encryption_pk: auth?.node_encryption_pk ?? "",
-      profile_encryption_sk: auth?.profile_encryption_sk ?? "",
-      profile_identity_sk: auth?.profile_identity_sk ?? "",
-      inboxId,
+      sender: auth.shinkai_identity,
+      senderSubidentity: auth.profile,
+      receiver: `${auth.shinkai_identity}`,
+      receiverSubidentity: "",
+      my_device_encryption_sk: auth.my_device_encryption_sk,
+      my_device_identity_sk: auth.my_device_identity_sk,
+      node_encryption_pk: auth.node_encryption_pk,
+      profile_encryption_sk: auth.profile_encryption_sk,
+      profile_identity_sk: auth.profile_identity_sk,
+
+      inboxId: decodeURIComponent(inboxId),
       inboxName: data.inboxName,
     });
     closeEditable();
