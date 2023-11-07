@@ -2,7 +2,7 @@ use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
-    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
 };
 
 use crate::{
@@ -18,7 +18,7 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
     pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
-        println!("Creating inbox: {}", inbox_name);
+        shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Info, &format!("Creating inbox: {}", inbox_name));
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -81,9 +81,6 @@ impl ShinkaiDB {
         }
 
         // TODO: should be check that the recipient also has access?
-
-        println!("Inserting message into inbox: {:?}", inbox_name);
-
         // Insert the message
         let _ = self.insert_message_to_all(&message.clone())?;
 
@@ -97,7 +94,6 @@ impl ShinkaiDB {
 
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash();
-        println!("About to insert message with hash key: {}", hash_key);
 
         // Clone the external_metadata first, then unwrap
         let ext_metadata = message.external_metadata.clone();
@@ -531,7 +527,7 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-        eprintln!("Inboxes: {:?}", inboxes);
+        shinkai_log(ShinkaiLogOption::API, ShinkaiLogLevel::Info, &format!("Inboxes: {}", inboxes.join(", ")));
         Ok(inboxes)
     }
 
@@ -544,11 +540,13 @@ impl ShinkaiDB {
         let mut smart_inboxes = Vec::new();
 
         for inbox_id in inboxes {
+            shinkai_log(ShinkaiLogOption::API, ShinkaiLogLevel::Info, &format!("Inbox: {}", inbox_id));
+
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
-                .next();
-    
+                .next();            
+            
             // Fetch the custom name from the smart_inbox_name column family
             let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_id);
             let cf_smart_inbox_name = self
