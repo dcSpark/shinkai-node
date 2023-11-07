@@ -112,9 +112,11 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Processing job: {}", job_id),
         );
-
+        eprintln!(">>> Processing job process: {:?}", full_job);
+        
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
+        eprintln!(">>> Prev execution context: {:?}", prev_execution_context);
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 

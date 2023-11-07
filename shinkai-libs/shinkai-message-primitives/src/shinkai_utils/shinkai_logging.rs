@@ -7,6 +7,7 @@ pub enum ShinkaiLogOption {
     Database,
     Identity,
     JobExecution,
+    CronExecution,
     API,
     DetailedAPI,
     Node,
@@ -39,6 +40,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::Database,
             ShinkaiLogOption::Identity,
             ShinkaiLogOption::JobExecution,
+            ShinkaiLogOption::CronExecution,
             ShinkaiLogOption::API,
             ShinkaiLogOption::DetailedAPI,
             ShinkaiLogOption::Node,
@@ -79,7 +81,9 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     if std::env::var("LOG_JOB_EXECUTION").is_ok() {
         active_options.push(ShinkaiLogOption::JobExecution);
     }
-
+    if std::env::var("LOG_CRON_EXECUTION").is_ok() {
+        active_options.push(ShinkaiLogOption::CronExecution);
+    }
     active_options
 }
 
