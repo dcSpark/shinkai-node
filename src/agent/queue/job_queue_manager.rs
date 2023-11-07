@@ -16,8 +16,6 @@ use tokio::sync::{mpsc, Mutex};
 type MutexQueue<T> = Arc<Mutex<Vec<T>>>;
 type Subscriber<T> = mpsc::Sender<T>;
 
-// First Type
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct JobForProcessing {
     pub job_message: JobMessage,

@@ -49,6 +49,7 @@ pub enum ShinkaiDBError {
     MessageEncodingError(String),
     ShinkaiMessageError(String),
     JobAlreadyExists(String),
+    CronTaskNotFound(String),
 }
 
 impl fmt::Display for ShinkaiDBError {
@@ -106,6 +107,7 @@ impl fmt::Display for ShinkaiDBError {
             ShinkaiDBError::MessageEncodingError(e) => write!(f, "Message encoding error: {}", e),
             ShinkaiDBError::ShinkaiMessageError(e) => write!(f, "ShinkaiMessage error: {}", e),
             ShinkaiDBError::JobAlreadyExists(e) => write!(f, "Job attempted to be created, but already exists: {}", e),
+            ShinkaiDBError::CronTaskNotFound(e) => write!(f, "Cron task not found: {}", e),
         }
     }
 }

@@ -1160,7 +1160,7 @@ impl Node {
                 if (std_device.permission_type == IdentityPermissions::Admin)
                     || (sender_profile_name == profile_requested)
                 {
-                    // Get all inboxes for the profile
+                    // Get all inboxes for the profilei
                     let inboxes = self.internal_get_all_smart_inboxes_for_profile(profile_requested).await;
 
                     // Send the result back
