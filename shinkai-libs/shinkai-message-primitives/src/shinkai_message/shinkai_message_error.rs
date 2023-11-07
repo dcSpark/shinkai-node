@@ -1,5 +1,4 @@
 use std::fmt;
-use bincode::Error as BincodeError;
 
 #[derive(Debug)]
 pub enum ShinkaiMessageError {
@@ -32,11 +31,5 @@ impl std::error::Error for ShinkaiMessageError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         // Note: Update this if we wrap other error and we want to return the source (underlying cause).
         None
-    }
-}
-
-impl From<BincodeError> for ShinkaiMessageError {
-    fn from(err: BincodeError) -> Self {
-        ShinkaiMessageError::SerializationError(err.to_string())
     }
 }

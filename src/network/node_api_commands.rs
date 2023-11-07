@@ -41,7 +41,7 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, decrypt_with_chacha20poly1305, encryption_public_key_to_string,
+            clone_static_secret_key, encryption_public_key_to_string,
             encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},

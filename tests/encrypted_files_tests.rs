@@ -7,7 +7,7 @@ use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encrypt_with_chacha20poly1305, encryption_public_key_to_string,
+    clone_static_secret_key, encryption_public_key_to_string,
     encryption_secret_key_to_string, ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair,
     EncryptionMethod,
 };
