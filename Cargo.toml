@@ -52,6 +52,8 @@ aes-gcm = "0.10.3"
 blake3 = "1.2.0"
 tiktoken-rs = "0.5.6"
 async-recursion = "1.0.5"
+rustube = "0.6.0"
+scraper = "0.18.1"
 
 [dependencies.rocksdb]
 version = "0.21.0"
