@@ -27,6 +27,12 @@
         "startDragging": true,
         "close": true
       },
+      "notification": {
+        "all": true
+      },
+      "os": {
+        "all": true
+      },
       "dialog": {
         "all": true,
         "ask": true,

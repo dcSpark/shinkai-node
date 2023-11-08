@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { handleSendNotification } from "../lib/utils";
 import { CREATE_JOB_PATH } from "../routes/name";
 import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
@@ -175,6 +176,9 @@ const CreateAgentPage = () => {
           {isError && <ErrorMessage message={error.message} />}
 
           <Button
+            onClick={async () =>
+              await handleSendNotification("Job being created", "Notification content!")
+            }
             className="w-full"
             disabled={isPending}
             isLoading={isPending}

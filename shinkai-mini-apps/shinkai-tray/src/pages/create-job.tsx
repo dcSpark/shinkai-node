@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { cn } from "../lib/utils";
+import { cn, handleSendNotification } from "../lib/utils";
 import { ADD_AGENT_PATH } from "../routes/name";
 import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
@@ -45,7 +45,6 @@ export function isImageOrPdf(file: File): boolean {
 const CreateJobPage = () => {
   const auth = useAuth((state) => state.auth);
   const navigate = useNavigate();
-
 
   const createJobForm = useForm<z.infer<typeof createJobSchema>>({
     resolver: zodResolver(createJobSchema),
@@ -119,19 +118,13 @@ const CreateJobPage = () => {
     });
   };
 
-  useEffect(
-    () => {
-
-      if (isSuccess && agents?.length) {
-        createJobForm.setValue("model", agents[0].id);
-      }
-
-
-    },
-    [agents, createJobForm, isSuccess]
-  );
   useEffect(() => {
-      return () => {
+    if (isSuccess && agents?.length) {
+      createJobForm.setValue("model", agents[0].id);
+    }
+  }, [agents, createJobForm, isSuccess]);
+  useEffect(() => {
+    return () => {
       file && URL.revokeObjectURL(file.preview);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,8 +135,7 @@ const CreateJobPage = () => {
       <Form {...createJobForm}>
         <form className="space-y-8" onSubmit={createJobForm.handleSubmit(onSubmit)}>
           <div className="space-y-6">
-
-          <FormField
+            <FormField
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Tell us the job you want to do</FormLabel>
@@ -159,7 +151,6 @@ const CreateJobPage = () => {
                       className="resize-none border-white"
                       placeholder="Eg: Explain me how internet works..."
                       {...field}
-                    
                     />
                   </FormControl>
                   <FormMessage />
@@ -204,7 +195,6 @@ const CreateJobPage = () => {
               control={createJobForm.control}
               name="model"
             />
-
 
             <div>
               <FormLabel>
@@ -312,6 +302,9 @@ const CreateJobPage = () => {
           </div>
 
           <Button
+            onClick={async () =>
+              await handleSendNotification("Job being created", "Notification content!")
+            }
             className="w-full"
             disabled={isPending}
             isLoading={isPending}
