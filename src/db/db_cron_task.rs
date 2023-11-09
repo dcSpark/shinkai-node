@@ -122,6 +122,8 @@ impl ShinkaiDB {
     }
 
     pub fn get_all_cron_tasks(&self, profile: String) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
+        eprintln!("get_all_cron_tasks for profile: {}", profile);
+        
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
         let cf_name_url = format!("{}_cron_task_url", profile);
