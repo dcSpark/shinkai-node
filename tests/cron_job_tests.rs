@@ -44,6 +44,7 @@ mod tests {
                     "prompt1".to_string(),
                     "url1".to_string(),
                     false,
+                    "agent_id1".to_string(),
                 )
                 .unwrap();
 
@@ -55,6 +56,7 @@ mod tests {
                     "prompt2".to_string(),
                     "url2".to_string(),
                     false,
+                    "agent_id2".to_string(),
                 )
                 .unwrap();
         }
@@ -96,6 +98,7 @@ mod tests {
             url: "url1".to_string(),
             crawl_links: false,
             created_at: Utc::now().to_rfc3339().to_string(),
+            agent_id: "agent_id1".to_string(),
         };
 
         let current_time = Utc::now();
@@ -108,6 +111,7 @@ mod tests {
             url: "url2".to_string(),
             crawl_links: false,
             created_at: Utc::now().to_rfc3339().to_string(),
+            agent_id: "agent_id2".to_string(),
         };
 
         let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes

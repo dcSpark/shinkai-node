@@ -33,6 +33,7 @@ mod tests {
             url: target_url_server.url(),
             crawl_links: false,
             created_at: chrono::Utc::now().to_rfc3339().to_string(),
+            agent_id: "agent1".to_string(),
         };
 
         let scraper = WebScraper {
