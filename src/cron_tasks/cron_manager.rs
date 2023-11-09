@@ -29,6 +29,8 @@ use std::{
     sync::Arc,
 };
 
+use chrono::{Utc, Timelike};
+use cron::Schedule;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use futures::Future;
 use shinkai_message_primitives::{
@@ -38,6 +40,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
+use std::str::FromStr;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
@@ -115,12 +118,15 @@ impl CronManager {
                         .get_all_cron_tasks(node_profile_name.clone().get_profile_name().unwrap())
                         .unwrap_or(HashMap::new())
                 };
-                eprintln!("jobs_to_process: {:?}", jobs_to_process);
 
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
                 for (_, cron_task) in jobs_to_process {
+                    if !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
+                        continue;
+                    }
+
                     let db_clone = db.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                     let job_processing_fn_clone = Arc::clone(&job_processing_fn);
@@ -173,5 +179,46 @@ impl CronManager {
         // youtube_checker.check_new_videos(&cron_job.url).await;
 
         Ok(true)
+    }
+
+    pub fn should_execute_cron_task(cron_task: &CronTask, cron_time_interval: u64) -> bool {
+        // Parse the cron expression
+        let cron_schedule = match Schedule::from_str(&cron_task.cron) {
+            Ok(schedule) => schedule,
+            Err(_) => {
+                eprintln!("Invalid cron expression: {}", &cron_task.cron);
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Error,
+                    format!("Invalid cron expression: {}", &cron_task.cron).as_str(),
+                );
+                return false;
+            }
+        };
+
+        // Calculate the current time and the end of the interval
+        let now = Utc::now();
+        let now_rounded = now.with_second(0).unwrap().with_nanosecond(0).unwrap();
+        let end_of_interval = now_rounded + chrono::Duration::seconds(cron_time_interval as i64);
+
+        // Calculate the next execution time of the cron task
+        let next_execution_time = match cron_schedule.upcoming(Utc).next() {
+            Some(datetime) => datetime,
+            None => {
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Error,
+                    format!(
+                        "Cannot calculate next execution time for cron task: {}",
+                        &cron_task.cron
+                    )
+                    .as_str(),
+                );
+                return false;
+            }
+        };
+
+        // Check if the next execution time falls within the range of now and now + cron_time_interval
+        next_execution_time >= now && next_execution_time <= end_of_interval
     }
 }
