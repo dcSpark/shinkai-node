@@ -61,7 +61,7 @@ const OnboardingPage = () => {
       registration_name: "main_device",
       identity_type: "device",
       permission_type: "admin",
-      shinkai_identity: "@@node1.shinkai", // this should actually be read from ENV
+      shinkai_identity: "@@localhost.shinkai", // this should actually be read from ENV
       node_encryption_pk: "",
       node_signature_pk: "",
       profile_encryption_sk: "",

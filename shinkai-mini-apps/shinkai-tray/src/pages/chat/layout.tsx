@@ -8,11 +8,7 @@ import {
   getMessageContent,
   isJobInbox,
 } from "@shinkai_network/shinkai-message-ts/utils";
-import {
-  Edit3,
-  MessageCircleIcon,
-  Workflow,
-} from "lucide-react";
+import { Edit3, MessageCircleIcon, Workflow } from "lucide-react";
 import { z } from "zod";
 
 import { useUpdateInboxName } from "../../api/mutations/updateInboxName/useUpdateInboxName";
@@ -181,7 +177,7 @@ const ChatLayout = () => {
 
   const { inboxes } = useGetInboxes({
     sender: auth?.shinkai_identity ?? "",
-    senderSubidentity: `${auth?.profile}/device/${auth?.registration_name}`,
+    senderSubidentity: auth?.profile ?? "",
     // Assuming receiver and target_shinkai_name_profile are the same as sender
     receiver: auth?.shinkai_identity ?? "",
     targetShinkaiNameProfile: `${auth?.shinkai_identity}/${auth?.profile}`,

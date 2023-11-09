@@ -2,16 +2,21 @@ import type { UseMutationOptions } from "@tanstack/react-query";
 
 import { useMutation } from "@tanstack/react-query";
 
-import type { UpdateInboxNameOutput, UpdateInboxNamebInput } from "./types";
+import type { UpdateInboxNameInput, UpdateInboxNameOutput } from "./types";
 
 import { updateInboxName } from ".";
+import { FunctionKey, queryClient } from "../../constants";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Options = UseMutationOptions<UpdateInboxNameOutput, Error, UpdateInboxNamebInput>;
+type Options = UseMutationOptions<UpdateInboxNameOutput, Error, UpdateInboxNameInput>;
 
 export const useUpdateInboxName = (options?: Options) => {
   return useMutation({
     mutationFn: updateInboxName,
-    ...options,
+    onSuccess: (...onSuccessParameters) => {
+      queryClient.invalidateQueries({ queryKey: [FunctionKey.GET_INBOXES] });
+      if (options?.onSuccess) {
+        options.onSuccess(...onSuccessParameters);
+      }
+    },
   });
 };

@@ -62,7 +62,6 @@ const CreateAgentPage = () => {
   const onSubmit = async (data: z.infer<typeof addAgentSchema>) => {
     const modelMapping: Record<string, { model_type: string }> = {
       OpenAI: { model_type: modelType },
-      SleepAPI: { model_type: modelType },
     };
 
     if (!auth) return;
@@ -149,7 +148,6 @@ const CreateAgentPage = () => {
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="OpenAI">OpenAI</SelectItem>
-                      <SelectItem value="SleepAPI">SleepAPI</SelectItem>
                     </SelectContent>
                   </Select>
                 </FormItem>
