@@ -43,6 +43,7 @@ mod tests {
                     "cron1".to_string(),
                     "prompt1".to_string(),
                     "url1".to_string(),
+                    false,
                 )
                 .unwrap();
 
@@ -53,6 +54,7 @@ mod tests {
                     "cron2".to_string(),
                     "prompt2".to_string(),
                     "url2".to_string(),
+                    false,
                 )
                 .unwrap();
         }
@@ -92,6 +94,8 @@ mod tests {
             cron: "0 * * * * *".to_string(), // This cron task should execute at the previous minute of any hour
             prompt: "prompt1".to_string(),
             url: "url1".to_string(),
+            crawl_links: false,
+            created_at: Utc::now().to_rfc3339().to_string(),
         };
 
         let current_time = Utc::now();
@@ -102,6 +106,8 @@ mod tests {
             cron: format!("* {} * * * *", next_hour), // This cron task should execute at a specific minute of the next hour
             prompt: "prompt2".to_string(),
             url: "url2".to_string(),
+            crawl_links: false,
+            created_at: Utc::now().to_rfc3339().to_string(),
         };
 
         let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes

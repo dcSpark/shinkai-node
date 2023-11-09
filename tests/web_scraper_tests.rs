@@ -31,6 +31,8 @@ mod tests {
             cron: "* * * * *".to_string(),
             prompt: "Prompt".to_string(),
             url: target_url_server.url(),
+            crawl_links: false,
+            created_at: chrono::Utc::now().to_rfc3339().to_string(),
         };
 
         let scraper = WebScraper {

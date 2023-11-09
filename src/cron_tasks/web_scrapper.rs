@@ -8,14 +8,14 @@ use uuid::Uuid;
 
 use crate::db::db_cron_task::CronTask;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WebScraper {
     pub task: CronTask,
     pub api_url: String,
 }
 
 impl WebScraper {
-    pub async fn download_and_parse(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn download_and_parse(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
         // Download the content
         eprintln!("Downloading: {}", &self.task.url);
         let response = reqwest::get(&self.task.url).await?;
@@ -75,5 +75,13 @@ impl WebScraper {
             let response_body: Value = response.json().await?;
             Err(format!("File upload failed with status code: {}. Response: {:?}", status, response_body).into())
         }
+    }
+
+    pub fn extract_links(content: &str) -> Vec<String> {
+        let url_re = regex::Regex::new(r"(http|https)://([^\s]+)").unwrap();
+        url_re
+            .find_iter(content)
+            .map(|mat| mat.as_str().to_string())
+            .collect()
     }
 }

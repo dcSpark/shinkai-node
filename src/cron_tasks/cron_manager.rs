@@ -29,7 +29,7 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{Utc, Timelike};
+use chrono::{Timelike, Utc};
 use cron::Schedule;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use futures::Future;
@@ -45,6 +45,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
     agent::queue::job_queue_manager::JobQueueManager,
+    cron_tasks::web_scrapper::WebScraper,
     db::{db_cron_task::CronTask, ShinkaiDB},
 };
 
@@ -63,7 +64,7 @@ pub enum CronManagerError {
     JobDequeueFailed(String),
 }
 
-const NUM_THREADS: usize = 4;
+const NUM_THREADS: usize = 2;
 const CRON_INTERVAL_TIME: u64 = 60 * 10;
 
 impl CronManager {
@@ -165,6 +166,8 @@ impl CronManager {
     //     pub cron: String,
     //     pub prompt: String,
     //     pub url: String,
+    //     pub crawl_links: bool,
+    //     pub created_at: String,
     // }
 
     pub async fn process_job_message_queued(
@@ -175,9 +178,56 @@ impl CronManager {
         // TODO: it needs to create a new job per cron task
         // Should it download the stuff and then connect it to the job? (very likely)
         eprintln!("Processing job: {:?}", cron_job);
-        // let youtube_checker = YoutubeChecker::new();
-        // youtube_checker.check_new_videos(&cron_job.url).await;
 
+        // Create a new instance of the WebScraper
+        let scraper = WebScraper {
+            task: cron_job.clone(),
+            // TODO: Move to ENV
+            api_url: "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string(),
+        };
+
+        // Call the download_and_parse method of the WebScraper
+        let mut results = Vec::new();
+        match scraper.download_and_parse().await {
+            Ok(content) => {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    "Web scraping completed successfully",
+                );
+                results.push(content.clone());
+
+                // If crawl_links is true, scan for all the links in content and download_and_parse them as well
+                if cron_job.crawl_links {
+                    let links = WebScraper::extract_links(&content);
+                    for link in links {
+                        let mut scraper_for_link = scraper.clone();
+                        scraper_for_link.task.url = link.clone();
+                        match scraper_for_link.download_and_parse().await {
+                            Ok(content) => {
+                                results.push(content);
+                            }
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::CronExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Web scraping failed for link: {:?}, error: {:?}", link, e).as_str(),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Error,
+                    format!("Web scraping failed: {:?}", e).as_str(),
+                );
+                return Err(CronManagerError::SomeError(format!("Web scraping failed: {:?}", e)));
+            }
+        }
+        // results
         Ok(true)
     }
 
