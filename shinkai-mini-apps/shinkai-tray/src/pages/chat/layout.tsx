@@ -66,8 +66,7 @@ const InboxNameInput = ({
       node_encryption_pk: auth.node_encryption_pk,
       profile_encryption_sk: auth.profile_encryption_sk,
       profile_identity_sk: auth.profile_identity_sk,
-
-      inboxId: decodeURIComponent(inboxId),
+      inboxId,
       inboxName: data.inboxName,
     });
     closeEditable();
@@ -154,12 +153,12 @@ const MessageButton = ({
       key={inboxId}
       to={to}
     >
-      {isJobInbox(decodeURIComponent(inboxId)) ? (
+      {isJobInbox(inboxId) ? (
         <Workflow className="mr-2 h-4 w-4 shrink-0" />
       ) : (
         <MessageCircleIcon className="mr-2 h-4 w-4 shrink-0" />
       )}
-      <span className="line-clamp-1 flex-1 text-left text-xs">{inboxName}</span>
+      <span className="line-clamp-1 flex-1 break-all text-left text-xs">{inboxName}</span>
       <Button
         className={cn("hidden justify-self-end", match && "flex")}
         onClick={() => setIsEditable(true)}
@@ -201,11 +200,11 @@ const ChatLayout = () => {
                     inboxName={
                       inbox.custom_name === inbox.inbox_id
                         ? getMessageContent(inbox.last_message)?.slice(0, 40)
-                        : inbox.custom_name
+                        : inbox.custom_name?.slice(0, 40)
                     }
                     inboxId={inbox.inbox_id}
                     key={inbox.inbox_id}
-                    to={`/inboxes/${inbox.inbox_id}`}
+                    to={`/inboxes/${encodeURIComponent(inbox.inbox_id)}`}
                   />
                 ))}
               </div>
