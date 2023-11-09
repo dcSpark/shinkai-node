@@ -610,28 +610,6 @@ impl ShinkaiMessageBuilderWrapper {
     }
 
     #[wasm_bindgen]
-    pub fn update_inbox_name(
-        my_subidentity_encryption_sk: String,
-        my_subidentity_signature_sk: String,
-        receiver_public_key: String,
-        inbox_name: String,
-        sender: ProfileName,
-        sender_subidentity: String,
-        receiver: ProfileName,
-    ) -> Result<String, JsValue> {
-        ShinkaiMessageBuilderWrapper::update_inbox_name(
-            my_subidentity_encryption_sk,
-            my_subidentity_signature_sk,
-            receiver_public_key,
-            inbox_name,
-            sender_subidentity,
-            sender,
-            receiver,
-            MessageSchemaType::Empty.to_str().to_string(),
-        )
-    }
-
-    #[wasm_bindgen]
     pub fn get_last_unread_messages_from_inbox(
         my_subidentity_encryption_sk: String,
         my_subidentity_signature_sk: String,
