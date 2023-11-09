@@ -81,4 +81,41 @@ mod tests {
             Err(_) => (),
         }
     }
+
+    #[test]
+    fn test_should_execute_cron_task() {
+        use chrono::Timelike;
+        use chrono::Utc;
+
+        let cron_task_should_execute = CronTask {
+            task_id: "task1".to_string(),
+            cron: "0 * * * * *".to_string(), // This cron task should execute at the previous minute of any hour
+            prompt: "prompt1".to_string(),
+            url: "url1".to_string(),
+        };
+
+        let current_time = Utc::now();
+        let next_hour = (current_time.hour() + 2) % 24; // Ensure the next hour is at least 2 hours away
+
+        let cron_task_should_not_execute = CronTask {
+            task_id: "task2".to_string(),
+            cron: format!("* {} * * * *", next_hour), // This cron task should execute at a specific minute of the next hour
+            prompt: "prompt2".to_string(),
+            url: "url2".to_string(),
+        };
+
+        let cron_time_interval = 120; // Check if the cron task should execute within the next 2 minutes
+
+        assert_eq!(
+        CronManager::should_execute_cron_task(&cron_task_should_execute, cron_time_interval),
+        true,
+        "Expected should_execute_cron_task to return true for a cron task that should execute every minute"
+    );
+
+        assert_eq!(
+        CronManager::should_execute_cron_task(&cron_task_should_not_execute, cron_time_interval),
+        false,
+        "Expected should_execute_cron_task to return false for a cron task that should not execute within the next 2 minutes"
+    );
+    }
 }
