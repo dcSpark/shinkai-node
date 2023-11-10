@@ -8,7 +8,6 @@ use serde_json::json;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use tiktoken_rs::get_chat_completion_max_tokens;
 use tiktoken_rs::model::get_context_size;
 use tiktoken_rs::num_tokens_from_messages;
 
@@ -49,20 +48,6 @@ struct ApiPayload {
     max_tokens: usize,
 }
 
-struct OpenAIModelConverter {}
-
-impl OpenAIModelConverter {
-    pub fn get_model_name_for_lib(model: String) -> &'static str {
-        if model.starts_with("gpt-4") {
-            "gpt-4-32k"
-        } else if model.starts_with("gpt-3.5") {
-            "gpt-3.5-turbo-16k"
-        } else {
-            "gpt-4"
-        }
-    }
-}
-
 #[async_trait]
 impl LLMProvider for OpenAI {
     async fn call_api(
@@ -77,8 +62,12 @@ impl LLMProvider for OpenAI {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
 
                 let tiktoken_messages = prompt.generate_openai_messages(None)?;
-                let total_tokens = get_context_size(OpenAIModelConverter::get_model_name_for_lib(self.model_type.clone()));
-                let used_tokens = num_tokens_from_messages(OpenAIModelConverter::get_model_name_for_lib(self.model_type.clone()), &tiktoken_messages).unwrap();
+                let total_tokens = Self::get_max_tokens(self.model_type.as_str());
+                let used_tokens = num_tokens_from_messages(
+                    Self::normalize_model(&self.model_type.clone()).as_str(),
+                    &tiktoken_messages,
+                )
+                .unwrap();
 
                 let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
                     .into_iter()
@@ -106,7 +95,7 @@ impl LLMProvider for OpenAI {
                 let messages_json = serde_json::to_value(&messages)?;
 
                 let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
-                max_tokens = std::cmp::min(max_tokens, 4096);
+                max_tokens = std::cmp::min(max_tokens, Self::get_max_output_tokens(self.model_type.as_str()));
 
                 let payload = json!({
                     "model": self.model_type,
@@ -170,6 +159,24 @@ impl LLMProvider for OpenAI {
             }
         } else {
             Err(AgentError::UrlNotSet)
+        }
+    }
+
+    fn get_max_tokens(s: &str) -> usize {
+        get_context_size(Self::normalize_model(s).as_str())
+    }
+
+    fn get_max_output_tokens(s: &str) -> usize {
+        4096
+    }
+
+    fn normalize_model(s: &str) -> String {
+        if s.to_string().starts_with("gpt-4") {
+            "gpt-4-32k".to_string()
+        } else if s.to_string().starts_with("gpt-3.5") {
+            "gpt-3.5-turbo-16k".to_string()
+        } else {
+            "gpt-4".to_string()
         }
     }
 }

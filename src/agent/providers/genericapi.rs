@@ -73,9 +73,13 @@ impl LLMProvider for GenericAPI {
                 // panic!();
                 // let max_tokens = std::cmp::max(5, 4097 - used_characters);
 
+                // TODO: implement diff tokenizers depending on the model
+                let mut max_tokens = Self::get_max_tokens(self.model_type.as_str());
+                max_tokens = std::cmp::max(5, max_tokens - (messages_string.len() / 2));
+
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": 2000,// 4096 is max amount of tokens
+                    "max_tokens": max_tokens,
                     "prompt": messages_string,
                     "request_type": "language-model-inference",
                     "temperature": 0.7,
@@ -184,5 +188,21 @@ impl LLMProvider for GenericAPI {
         } else {
             Err(AgentError::UrlNotSet)
         }
+    }
+
+    fn normalize_model(s: &str) -> String {
+        s.to_string()
+    }
+
+    fn get_max_tokens(s: &str) -> usize {
+        if s.to_string().starts_with("Open-Orca/Mistral-7B-OpenOrca") {
+            8000
+        } else {
+            4096
+        }
+    }
+
+    fn get_max_output_tokens(s: &str) -> usize {
+        Self::get_max_tokens(s)
     }
 }
