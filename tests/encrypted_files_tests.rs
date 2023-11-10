@@ -118,7 +118,7 @@ fn sandwich_messages_with_files_test() {
                     .create();
 
                 let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo".to_string(),
+                    model_type: "gpt-3.5-turbo-1106".to_string(),
                 };
 
                 let generic_api = GenericAPI {

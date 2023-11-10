@@ -36,7 +36,7 @@ pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
     let initial_agent_model: String = env::var("INITIAL_AGENT_MODEL")
         .unwrap_or_else(|_| "".to_string())
         .parse()
-        .expect("Failed to parse agent model e.g. openai:gpt-3.5-turbo");
+        .expect("Failed to parse agent model e.g. openai:gpt-3.5-turbo-1106");
 
     if initial_agent_name.is_empty()
     || initial_agent_api_key.is_empty()

@@ -43,7 +43,7 @@ const CreateAgentPage = () => {
     resolver: zodResolver(addAgentSchema),
     defaultValues: {
       performLocally: false,
-      modelType: "gpt-3.5-turbo",
+      modelType: "gpt-3.5-turbo-1106",
     },
   });
   const {

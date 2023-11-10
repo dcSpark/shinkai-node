@@ -4,7 +4,7 @@ import json
 
 class TestPyAgentLLMInterface(unittest.TestCase):
     def test_new_openai(self):
-        model_type = "gpt-3.5-turbo"
+        model_type = "gpt-3.5-turbo-1106"
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface.new_openai(model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
 
@@ -18,7 +18,7 @@ class TestPyAgentLLMInterface(unittest.TestCase):
         self.assertEqual(agent_llm_interface.get_model(), "LocalLLM")
 
     def test_new_with_openai_prefix(self):
-        model_type = "gpt-3.5-turbo"
+        model_type = "gpt-3.5-turbo-1106"
         agent_llm_interface = shinkai_message_pyo3.PyAgentLLMInterface("openai:" + model_type)
         self.assertEqual(agent_llm_interface.get_model(), "openai:" + model_type)
 
@@ -253,7 +253,7 @@ class TestShinkaiMessagePyO3(unittest.TestCase):
             full_identity_name="@@node1.shinkai",
             id="agent1",
             external_url="http://example.com",
-            model="openai:gpt-3.5-turbo",
+            model="openai:gpt-3.5-turbo-1106",
             api_key="your_api_key_here",
         )
 
