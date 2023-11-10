@@ -71,7 +71,7 @@ export function Footer() {
     navigate(SETTINGS_PATH);
     setOpen(false);
   };
-  const handleLogout = () => {
+  const handleDisconnect = () => {
     logout();
     navigate(ONBOARDING_PATH);
   };
@@ -100,7 +100,7 @@ export function Footer() {
           break;
         }
         case "6": {
-          handleLogout();
+          handleDisconnect();
           break;
         }
         default: {
@@ -167,9 +167,9 @@ export function Footer() {
                   <span>Settings</span>
                   <CommandShortcut>⌘5</CommandShortcut>
                 </CommandItem>
-                <CommandItem onSelect={handleLogout}>
+                <CommandItem onSelect={handleDisconnect}>
                   <GearIcon className="mr-2 h-4 w-4" />
-                  <span>Logout</span>
+                  <span>Disconnect</span>
                   <CommandShortcut>⌘6</CommandShortcut>
                 </CommandItem>
               </CommandGroup>
