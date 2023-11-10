@@ -35,7 +35,9 @@ use ed25519_dalek::SecretKey as SignatureStaticKey;
 use futures::Future;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
+    shinkai_message::shinkai_message_schemas::{JobCreationInfo, JobMessage},
     shinkai_utils::{
+        job_scope::JobScope,
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::clone_signature_secret_key,
     },
@@ -44,7 +46,7 @@ use std::str::FromStr;
 use tokio::sync::{Mutex, Semaphore};
 
 use crate::{
-    agent::queue::job_queue_manager::JobQueueManager,
+    agent::{error::AgentError, job_manager::JobManager, queue::job_queue_manager::JobQueueManager},
     cron_tasks::web_scrapper::WebScraper,
     db::{db_cron_task::CronTask, ShinkaiDB},
 };
@@ -55,6 +57,7 @@ pub struct CronManager {
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub node_profile_name: ShinkaiName,
     pub identity_secret_key: SignatureStaticKey,
+    pub job_manager: Arc<Mutex<JobManager>>,
     pub cron_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
 
@@ -62,6 +65,13 @@ pub struct CronManager {
 pub enum CronManagerError {
     SomeError(String),
     JobDequeueFailed(String),
+    JobCreationError(String),
+}
+
+impl From<AgentError> for CronManagerError {
+    fn from(error: AgentError) -> Self {
+        CronManagerError::JobCreationError(error.to_string())
+    }
 }
 
 const NUM_THREADS: usize = 2;
@@ -72,19 +82,30 @@ impl CronManager {
         db: Arc<Mutex<ShinkaiDB>>,
         identity_secret_key: SignatureStaticKey,
         node_profile_name: ShinkaiName,
+        job_manager: Arc<Mutex<JobManager>>,
     ) -> Self {
         let cron_processing_task = CronManager::process_job_queue(
             db.clone(),
             node_profile_name.clone(),
             clone_signature_secret_key(&identity_secret_key),
             CRON_INTERVAL_TIME,
-            |job, db, identity_sk| Box::pin(CronManager::process_job_message_queued(job, db, identity_sk)),
+            job_manager.clone(),
+            |job, db, identity_sk, job_manager, node_profile_name| {
+                Box::pin(CronManager::process_job_message_queued(
+                    job,
+                    db,
+                    identity_sk,
+                    job_manager,
+                    node_profile_name,
+                ))
+            },
         );
 
         Self {
             db,
             identity_secret_key,
             node_profile_name,
+            job_manager,
             cron_processing_task: Some(cron_processing_task),
         }
     }
@@ -94,10 +115,13 @@ impl CronManager {
         node_profile_name: ShinkaiName,
         identity_sk: SignatureStaticKey,
         cron_time_interval: u64,
+        job_manager: Arc<Mutex<JobManager>>,
         job_processing_fn: impl Fn(
                 CronTask,
                 Arc<Mutex<ShinkaiDB>>,
                 SignatureStaticKey,
+                Arc<Mutex<JobManager>>,
+                ShinkaiName,
             ) -> Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
             + Send
             + Sync
@@ -130,10 +154,19 @@ impl CronManager {
 
                     let db_clone = db.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
+                    let job_manager_clone = job_manager.clone();
+                    let node_profile_name_clone = node_profile_name.clone();
                     let job_processing_fn_clone = Arc::clone(&job_processing_fn);
 
                     let handle = tokio::spawn(async move {
-                        let result = job_processing_fn_clone(cron_task, db_clone, identity_sk_clone).await;
+                        let result = job_processing_fn_clone(
+                            cron_task,
+                            db_clone,
+                            identity_sk_clone,
+                            job_manager_clone,
+                            node_profile_name_clone,
+                        )
+                        .await;
                         match result {
                             Ok(_) => {
                                 shinkai_log(
@@ -160,20 +193,12 @@ impl CronManager {
         })
     }
 
-    // #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-    // pub struct CronTask {
-    //     pub task_id: String,
-    //     pub cron: String,
-    //     pub prompt: String,
-    //     pub url: String,
-    //     pub crawl_links: bool,
-    //     pub created_at: String,
-    // }
-
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Arc<Mutex<ShinkaiDB>>,
         identity_secret_key: SignatureStaticKey,
+        job_manager: Arc<Mutex<JobManager>>,
+        node_profile_name: ShinkaiName,
     ) -> Result<bool, CronManagerError> {
         // TODO: it needs to create a new job per cron task
         // Should it download the stuff and then connect it to the job? (very likely)
@@ -208,6 +233,7 @@ impl CronManager {
                                 results.push(content);
                             }
                             Err(e) => {
+                                eprintln!("Web scraping failed for link: {:?}, error: {:?}", link, e);
                                 shinkai_log(
                                     ShinkaiLogOption::CronExecution,
                                     ShinkaiLogLevel::Error,
@@ -227,7 +253,38 @@ impl CronManager {
                 return Err(CronManagerError::SomeError(format!("Web scraping failed: {:?}", e)));
             }
         }
-        // results
+
+        let job_creation = JobCreationInfo {
+            scope: JobScope::new_default(),
+        };
+
+        // Create Job
+        let job_id = job_manager
+            .lock()
+            .await
+            .process_job_creation(job_creation, &cron_job.agent_id)
+            .await?;
+
+        eprintln!("Results: {:?}", results);
+        for result in results {
+            // Concatenate the result with cron_job.prompt
+            let content = format!("{}{}", cron_job.prompt, result);
+
+            // Add Message to Job Queue
+            let job_message = JobMessage {
+                job_id: job_id.clone(),
+                content,
+                files_inbox: "".to_string(),
+            };
+
+            // TODO: fix this here
+            job_manager
+                .lock()
+                .await
+                .add_job_message_to_job_queue(&job_message, &node_profile_name)
+                .await?;
+        }
+
         Ok(true)
     }
 

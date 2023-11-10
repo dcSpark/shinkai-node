@@ -1,11 +1,35 @@
 #[cfg(test)]
 mod tests {
+    use std::{fs, path::Path, sync::Arc};
+
     use super::*;
+    use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
     use mockito::Server;
-    use shinkai_node::{cron_tasks::web_scrapper::WebScraper, db::db_cron_task::CronTask};
+    use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+    use shinkai_node::{
+        cron_tasks::{cron_manager::CronManager, web_scrapper::WebScraper},
+        db::{db_cron_task::CronTask, ShinkaiDB},
+    };
+    use tokio::sync::Mutex;
+    use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+    #[test]
+    fn setup() {
+        let path = Path::new("db_tests/");
+        let _ = fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn test_extract_links() {
+        let links = WebScraper::extract_links(&get_unstructured_response());
+        assert_eq!(links.len(), 30);
+    }
 
     #[tokio::test]
     async fn test_web_scraper() {
+        setup();
+        let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
+        let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);
         // Originals
         // let api_url = "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string();
         // let target_website = "https://news.ycombinator.com".to_string();
@@ -31,7 +55,7 @@ mod tests {
             cron: "* * * * *".to_string(),
             prompt: "Prompt".to_string(),
             url: target_url_server.url(),
-            crawl_links: false,
+            crawl_links: true,
             created_at: chrono::Utc::now().to_rfc3339().to_string(),
             agent_id: "agent1".to_string(),
         };
@@ -41,7 +65,10 @@ mod tests {
             api_url: unstructured_server.url(),
         };
 
-        let result = scraper.download_and_parse().await;
+        // TODO: mock up the other 30 websites lol
+        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key).await;
+
+        // let result = scraper.download_and_parse().await;
         eprintln!("result: {:?}", result);
         assert!(result.is_ok());
     }

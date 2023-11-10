@@ -354,6 +354,16 @@ impl JobManager {
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db);
 
+        self.add_job_message_to_job_queue(&job_message, &profile).await?; 
+
+        Ok(job_message.job_id.clone().to_string())
+    }
+
+    pub async fn add_job_message_to_job_queue(
+        &mut self,
+        job_message: &JobMessage,
+        profile: &ShinkaiName,
+    ) -> Result<String, AgentError> {
         let job_for_processing = JobForProcessing::new(job_message.clone(), profile.clone());
 
         let mut job_queue_manager = self.job_queue_manager.lock().await;

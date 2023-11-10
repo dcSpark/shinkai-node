@@ -28,10 +28,9 @@ mod tests {
     #[tokio::test]
     async fn test_process_cron_job_queue() {
         setup();
-        eprintln!("test_process_cron_job_queue");
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);
-        let node_profile_name = ShinkaiName::new("@@node1.shinkai/main".to_string()).unwrap();
+        let node_profile_name = ShinkaiName::new("@@localhost.shinkai/main".to_string()).unwrap();
 
         // Add a couple of cron tasks to the database
         {
