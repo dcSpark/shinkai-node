@@ -77,7 +77,7 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
-            model_type: "gpt-3.5-turbo".to_string(),
+            model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
         // Create an instance of SerializedAgent
@@ -123,7 +123,7 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
-            model_type: "gpt-3.5-turbo".to_string(),
+            model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
         let test_agent = SerializedAgent {
@@ -158,7 +158,7 @@ mod tests {
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
-            model_type: "gpt-3.5-turbo".to_string(),
+            model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
         let test_agent = SerializedAgent {
@@ -221,7 +221,7 @@ mod tests {
             .create();
 
         let openai = OpenAI {
-            model_type: "gpt-3.5-turbo".to_string(),
+            model_type: "gpt-3.5-turbo-1106".to_string(),
         };
         let agent = Agent::new(
             "1".to_string(),

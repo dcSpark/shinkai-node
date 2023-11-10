@@ -18,7 +18,7 @@ mod tests {
             "false".to_string(),
             "http://example.com".to_string(),
             "123456".to_string(),
-            "openai:gpt-3.5-turbo".to_string(),
+            "openai:gpt-3.5-turbo-1106".to_string(),
             "permission1,permission2".to_string(),
             "bucket1,bucket2".to_string(),
             "sender1,sender2".to_string(),
@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(
             agent.model,
             AgentLLMInterface::OpenAI(OpenAI {
-                model_type: "gpt-3.5-turbo".to_string()
+                model_type: "gpt-3.5-turbo-1106".to_string()
             })
         );
         assert_eq!(
