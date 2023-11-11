@@ -19,11 +19,44 @@ mod tests {
             "tasks": [
                 {
                     "task_id": "task_id_1",
+                    "task_inputs_schema": ["string", "string"],
+                    "task_inputs": ["input1", "input2"],
                     "description": "some description",
                     "task_query": "Find all the news related to {}",
-                    "task_inputs": ["string", "string"],
-                    "process_inputs": [0],
-                    "task_outputs": ["string", "string"],
+                    "query_inputs": [0],
+                    "task_query_output": ["some_result with: one %% two %% three"],
+                    "post_processing:": [
+                        {
+                            "mini_tool": "splitter",
+                            "param": "%%"
+                        },
+                        {
+                            "mini_tool": "regex",
+                            "param": "some_regex"
+                        }
+                    ],
+                    "post_processing_results": [
+                        "one", "two", "three"
+                    ],
+                    "task_outputs": [
+                        {
+                            "task_inputs": "string",
+                            "index": 1
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 0
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 1
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 2
+                        }
+                    ],
+                    "state": "completed",
                     "success": {
                         "next": "task_id_2",
                         "message": {
@@ -41,13 +74,45 @@ mod tests {
                 },
                 {
                     "task_id": "task_id_2",
-                    "description": "some description",
-                    "task_query": "Summarize {}",
                     "task_inputs": ["string", "string"],
-                    "process_inputs": [0],
-                    "task_outputs": ["string", "string"],
+                    "description": "some description",
+                    "task_query": "Find all the news related to {}",
+                    "query_inputs": [0],
+                    "task_query_output": ["some_result with: one %% two %% three"],
+                    "post_processing:": [
+                        {
+                            "mini_tool": "splitter",
+                            "param": "%%"
+                        },
+                        {
+                            "mini_tool": "regex",
+                            "param": "some_regex"
+                        }
+                    ],
+                    "post_processing_results": [
+                        "one", "two", "three"
+                    ],
+                    "task_outputs": [
+                        {
+                            "task_inputs": "string",
+                            "index": 1
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 0
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 1
+                        },
+                        {
+                            "post_processing_results": "string",
+                            "index": 2
+                        }
+                    ],
+                    "state": "completed",
                     "success": {
-                        "next": "",
+                        "next": "task_id_2",
                         "message": {
                             "query": "Step completed successfully with result {}",
                             "refs": ["output:0"]
@@ -60,10 +125,13 @@ mod tests {
                             "refs": ["input:0"]
                         }
                     }
-                }
+                },
             ],
             "states": {
-                "initial": "task_id_1",
+                "initial": {
+                    "task_id": "task_id_1",
+                    "inputs": ["input1", "input2"]
+                },
                 "processed": [],
                 "completed": false
             },
