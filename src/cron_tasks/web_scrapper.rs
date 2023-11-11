@@ -15,8 +15,14 @@ pub struct WebScraper {
     pub api_url: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct WebScraperResult {
+    pub structured: String,
+    pub unfiltered: String,
+}
+
 impl WebScraper {
-    pub async fn download_and_parse(&self) -> Result<String, Box<dyn std::error::Error + Send + Sync + 'static>> {
+    pub async fn download_and_parse(&self) -> Result<WebScraperResult, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let url = if self.task.url.starts_with("http://") || self.task.url.starts_with("https://") {
             self.task.url.clone()
         } else {
@@ -24,7 +30,7 @@ impl WebScraper {
         };
 
         // Download the content
-        // eprintln!("Downloading: {}", &url);
+        eprintln!("Downloading: {}", &url);
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::limited(20))
@@ -53,6 +59,10 @@ impl WebScraper {
         // Write the content to a file
         std::fs::write(&file_path, &content)?;
 
+        // Print the content to the console
+        let unfiltered = String::from_utf8_lossy(&content).to_string();
+        // println!("\n\n\n Content: {} \n\n\n", String::from_utf8_lossy(&content));
+
         // Create a multipart form with the file
         let part =
             reqwest::multipart::Part::bytes(fs::read(&file_path)?).file_name(file_path.to_string_lossy().to_string());
@@ -74,10 +84,13 @@ impl WebScraper {
 
         if response.status().is_success() {
             let response_body: Vec<Value> = response.json().await?;
-            // eprintln!("Response body: {:?}", response_body);
+            eprintln!("\n\n\n Response: {:?}", response_body);
             if let Some(first_obj) = response_body.get(0) {
                 match first_obj.get("text") {
-                    Some(text) => Ok(text.as_str().unwrap_or("").to_string()),
+                    Some(text) => Ok(WebScraperResult {
+                        structured: text.as_str().unwrap_or("").to_string(),
+                        unfiltered: unfiltered,
+                    }),
                     None => Err("Field 'text' not found in the response".into()),
                 }
             } else {

@@ -5,10 +5,10 @@ mod tests {
     use super::*;
     use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
     use mockito::Server;
-    use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
+    use shinkai_message_primitives::{shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, schemas::shinkai_name::ShinkaiName};
     use shinkai_node::{
         cron_tasks::{cron_manager::CronManager, web_scrapper::WebScraper},
-        db::{db_cron_task::CronTask, ShinkaiDB},
+        db::{db_cron_task::CronTask, ShinkaiDB}, managers::IdentityManager, agent::job_manager::JobManager,
     };
     use tokio::sync::Mutex;
     use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -30,6 +30,7 @@ mod tests {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);
+        let node_profile_name = ShinkaiName::new("@@localhost.shinkai/main".to_string()).unwrap();
         // Originals
         // let api_url = "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string();
         // let target_website = "https://news.ycombinator.com".to_string();
@@ -54,6 +55,7 @@ mod tests {
             task_id: "task1".to_string(),
             cron: "* * * * *".to_string(),
             prompt: "Prompt".to_string(),
+            subprompt: "Subprompt".to_string(),
             url: target_url_server.url(),
             crawl_links: true,
             created_at: chrono::Utc::now().to_rfc3339().to_string(),
@@ -65,8 +67,24 @@ mod tests {
             api_url: unstructured_server.url(),
         };
 
+        let subidentity_manager = IdentityManager::new(db.clone(), node_profile_name.clone())
+            .await
+            .unwrap();
+        let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+
+        let job_manager = Arc::new(Mutex::new(
+            JobManager::new(
+                Arc::clone(&db),
+                Arc::clone(&identity_manager),
+                clone_signature_secret_key(&identity_secret_key),
+                node_profile_name.clone(),
+            )
+            .await,
+        ));
+
         // TODO: mock up the other 30 websites lol
-        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key).await;
+        // TODO: let's modify this so it only returns one link
+        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key, job_manager, node_profile_name).await;
 
         // let result = scraper.download_and_parse().await;
         eprintln!("result: {:?}", result);

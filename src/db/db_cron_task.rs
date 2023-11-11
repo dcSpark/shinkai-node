@@ -10,6 +10,7 @@ pub struct CronTask {
     pub task_id: String,
     pub cron: String,
     pub prompt: String,
+    pub subprompt: String,
     pub url: String,
     pub crawl_links: bool,
     pub created_at: String,
@@ -35,14 +36,16 @@ impl ShinkaiDB {
         task_id: String,
         cron: String,
         prompt: String,
+        subprompt: String,
         url: String,
         crawl_links: bool,
         agent_id: String,
     ) -> Result<(), ShinkaiDBError> {
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
+        let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);
         let cf_name_url = format!("{}_cron_task_url", profile);
-        let cf_name_crawl_links = format!("{}_cron_crawl_links", profile);
+        let cf_name_crawl_links = format!("{}_cron_task_crawl_links", profile);
         let cf_name_created_at = format!("{}_cron_task_created_at", profile);
         let cf_name_agent_id = format!("{}_cron_task_agent_id", profile);
 
@@ -56,6 +59,10 @@ impl ShinkaiDB {
 
         if self.db.cf_handle(&cf_name_prompt).is_none() {
             self.db.create_cf(&cf_name_prompt, &cf_opts)?;
+        }
+
+        if self.db.cf_handle(&cf_name_subprompt).is_none() {
+            self.db.create_cf(&cf_name_subprompt, &cf_opts)?;
         }
 
         if self.db.cf_handle(&cf_name_url).is_none() {
@@ -85,6 +92,14 @@ impl ShinkaiDB {
         let cf_prompt = self
             .db
             .cf_handle(&cf_name_prompt)
+            .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
+                "Cron task not found: {}",
+                task_id
+            )))?;
+
+        let cf_subprompt = self
+            .db
+            .cf_handle(&cf_name_subprompt)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
                 "Cron task not found: {}",
                 task_id
@@ -125,6 +140,7 @@ impl ShinkaiDB {
         let mut batch = rocksdb::WriteBatch::default();
         batch.put_cf(cf_schedule, &task_id, &cron);
         batch.put_cf(cf_prompt, &task_id, &prompt);
+        batch.put_cf(cf_subprompt, &task_id, &subprompt);
         batch.put_cf(cf_url, &task_id, &url);
         batch.put_cf(cf_crawl_links, &task_id, &crawl_links.to_string());
 
@@ -133,13 +149,13 @@ impl ShinkaiDB {
         batch.put_cf(cf_agent_id, &task_id, &agent_id);
 
         self.db.write(batch)?;
-
         Ok(())
     }
 
     pub fn remove_cron_task(&mut self, profile: String, task_id: String) -> Result<(), ShinkaiDBError> {
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
+        let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);
         let cf_name_url = format!("{}_cron_task_url", profile);
         let cf_name_crawl_links = format!("{}_cron_task_crawl_links", profile);
         let cf_name_created_at = format!("{}_cron_task_created_at", profile);
@@ -162,6 +178,15 @@ impl ShinkaiDB {
                 task_id
             )))?;
         self.db.delete_cf(cf_prompt, &task_id)?;
+
+        let cf_subprompt = self
+            .db
+            .cf_handle(&cf_name_subprompt)
+            .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
+                "Cron task not found for prompt: {}",
+                task_id
+            )))?;
+        self.db.delete_cf(cf_subprompt, &task_id)?;
 
         let cf_url = self
             .db
@@ -203,10 +228,9 @@ impl ShinkaiDB {
     }
 
     pub fn get_all_cron_tasks(&self, profile: String) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
-        eprintln!("get_all_cron_tasks for profile: {}", profile);
-
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
+        let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);
         let cf_name_url = format!("{}_cron_task_url", profile);
         let cf_name_crawl_links = format!("{}_cron_task_crawl_links", profile);
         let cf_name_created_at = format!("{}_cron_task_created_at", profile);
@@ -216,7 +240,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_schedule)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (name_schedule) not found for profile: {}",
                 profile
             )))?;
 
@@ -224,7 +248,15 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_prompt)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (name_prompt) not found for profile: {}",
+                profile
+            )))?;
+
+        let cf_subprompt = self
+            .db
+            .cf_handle(&cf_name_subprompt)
+            .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
+                "Cron tasks (name_prompt) not found for profile: {}",
                 profile
             )))?;
 
@@ -232,7 +264,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_url)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (name_url) not found for profile: {}",
                 profile
             )))?;
 
@@ -240,7 +272,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_crawl_links)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (crawl_links) not found for profile: {}",
                 profile
             )))?;
 
@@ -248,7 +280,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_created_at)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (created_at) not found for profile: {}",
                 profile
             )))?;
 
@@ -256,7 +288,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name_agent_id)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
-                "Cron tasks not found for profile: {}",
+                "Cron tasks (agent_id) not found for profile: {}",
                 profile
             )))?;
 
@@ -267,6 +299,8 @@ impl ShinkaiDB {
                     let task_id = String::from_utf8(key.to_vec()).unwrap();
                     let cron = String::from_utf8(value.to_vec()).unwrap();
                     let prompt = String::from_utf8(self.db.get_cf(cf_prompt, &task_id)?.unwrap_or_default()).unwrap();
+                    let subprompt =
+                        String::from_utf8(self.db.get_cf(cf_subprompt, &task_id)?.unwrap_or_default()).unwrap();
                     let url = String::from_utf8(self.db.get_cf(cf_url, &task_id)?.unwrap_or_default()).unwrap();
                     let crawl_links = String::from_utf8(self.db.get_cf(cf_crawl_links, &task_id)?.unwrap_or_default())
                         .unwrap()
@@ -283,6 +317,7 @@ impl ShinkaiDB {
                             task_id,
                             cron,
                             prompt,
+                            subprompt,
                             url,
                             crawl_links,
                             created_at,
@@ -300,6 +335,7 @@ impl ShinkaiDB {
     pub fn get_cron_task(&self, profile: String, task_id: String) -> Result<CronTask, ShinkaiDBError> {
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
+        let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);
         let cf_name_url = format!("{}_cron_task_url", profile);
         let cf_name_crawl_links = format!("{}_cron_task_crawl_links", profile);
         let cf_name_created_at = format!("{}_cron_task_created_at", profile);
@@ -316,6 +352,14 @@ impl ShinkaiDB {
         let cf_prompt = self
             .db
             .cf_handle(&cf_name_prompt)
+            .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
+                "Cron task not found: {}",
+                task_id
+            )))?;
+
+        let cf_subprompt = self
+            .db
+            .cf_handle(&cf_name_subprompt)
             .ok_or(ShinkaiDBError::CronTaskNotFound(format!(
                 "Cron task not found: {}",
                 task_id
@@ -355,6 +399,7 @@ impl ShinkaiDB {
 
         let cron = String::from_utf8(self.db.get_cf(cf_schedule, &task_id)?.unwrap_or_default()).unwrap();
         let prompt = String::from_utf8(self.db.get_cf(cf_prompt, &task_id)?.unwrap_or_default()).unwrap();
+        let subprompt = String::from_utf8(self.db.get_cf(cf_subprompt, &task_id)?.unwrap_or_default()).unwrap();
         let url = String::from_utf8(self.db.get_cf(cf_url, &task_id)?.unwrap_or_default()).unwrap();
         let crawl_links = String::from_utf8(self.db.get_cf(cf_crawl_links, &task_id)?.unwrap_or_default())
             .unwrap()
@@ -367,10 +412,11 @@ impl ShinkaiDB {
             task_id,
             cron,
             prompt,
+            subprompt,
             url,
             crawl_links,
             created_at,
-            agent_id
+            agent_id,
         })
     }
 }
