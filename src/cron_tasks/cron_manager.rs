@@ -143,7 +143,7 @@ impl CronManager {
                         .get_all_cron_tasks(node_profile_name.clone().get_profile_name().unwrap())
                         .unwrap_or(HashMap::new())
                 };
-
+                eprintln!("Jobs to process: {:?}", jobs_to_process);
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
@@ -212,7 +212,8 @@ impl CronManager {
         };
 
         // Call the download_and_parse method of the WebScraper
-        let mut results = Vec::new();
+        let mut structured_results = Vec::new();
+        // let mut unfiltered_results = Vec::new();
         match scraper.download_and_parse().await {
             Ok(content) => {
                 shinkai_log(
@@ -220,17 +221,18 @@ impl CronManager {
                     ShinkaiLogLevel::Debug,
                     "Web scraping completed successfully",
                 );
-                results.push(content.clone());
+                structured_results.push(content.clone());
 
                 // If crawl_links is true, scan for all the links in content and download_and_parse them as well
                 if cron_job.crawl_links {
-                    let links = WebScraper::extract_links(&content);
-                    for link in links {
+                    let links = WebScraper::extract_links(&content.unfiltered);
+                    eprintln!("Links #: {:?}", links.len());
+                    for link in links.into_iter().take(2) { // TODO: remove .into_iter().take(2)
                         let mut scraper_for_link = scraper.clone();
                         scraper_for_link.task.url = link.clone();
                         match scraper_for_link.download_and_parse().await {
                             Ok(content) => {
-                                results.push(content);
+                                structured_results.push(content);
                             }
                             Err(e) => {
                                 eprintln!("Web scraping failed for link: {:?}, error: {:?}", link, e);
@@ -250,10 +252,13 @@ impl CronManager {
                     ShinkaiLogLevel::Error,
                     format!("Web scraping failed: {:?}", e).as_str(),
                 );
+                eprintln!("Web scraping failed: {:?}", e);
                 return Err(CronManagerError::SomeError(format!("Web scraping failed: {:?}", e)));
             }
         }
 
+        eprintln!("Results #: {:?}", structured_results.len());
+        eprintln!("Creating job");
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
         };
@@ -265,10 +270,12 @@ impl CronManager {
             .process_job_creation(job_creation, &cron_job.agent_id)
             .await?;
 
-        eprintln!("Results: {:?}", results);
-        for result in results {
+        eprintln!("Results: {:?} \n\n\n\n\n", structured_results);
+        for result in structured_results {
             // Concatenate the result with cron_job.prompt
-            let content = format!("{}{}", cron_job.prompt, result);
+            let content = format!("{} (try to extract their links from the content) --- website content --- {} --- end website content ---", cron_job.prompt, result.structured);
+            eprintln!("Content: {:?}", content);
+            // panic!("Job ID: {:?}", job_id);
 
             // Add Message to Job Queue
             let job_message = JobMessage {
@@ -277,7 +284,6 @@ impl CronManager {
                 files_inbox: "".to_string(),
             };
 
-            // TODO: fix this here
             job_manager
                 .lock()
                 .await
