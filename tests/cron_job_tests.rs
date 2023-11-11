@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::env;
     use core::panic;
     use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
     use futures::Future;
@@ -77,7 +78,7 @@ mod tests {
                 full_identity_name: agent_name,
                 perform_locally: false,
                 external_url: Some("https://api.openai.com".to_string()),
-                api_key: Some("".to_string()),
+                api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
                 model: AgentLLMInterface::OpenAI(open_ai),
                 toolkit_permissions: vec![],
                 storage_bucket_permissions: vec![],
