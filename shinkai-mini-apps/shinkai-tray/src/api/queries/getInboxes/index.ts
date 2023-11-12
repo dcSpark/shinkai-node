@@ -1,6 +1,14 @@
+import type { ShinkaiMessage } from "@shinkai_network/shinkai-message-ts/models";
+
 import { getAllInboxesForProfile } from "@shinkai_network/shinkai-message-ts/api";
 
 import type { GetInboxesInput } from "./types";
+
+export type SmartInbox = {
+  custom_name: string;
+  inbox_id: string;
+  last_message: ShinkaiMessage;
+};
 
 export const getInboxes = async ({
   receiver,
@@ -26,6 +34,6 @@ export const getInboxes = async ({
       profile_identity_sk,
     }
   );
-  // TODO:
-  return inboxes.map((inbox) => encodeURIComponent(inbox));
+
+  return inboxes;
 };
