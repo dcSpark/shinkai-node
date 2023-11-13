@@ -74,11 +74,9 @@ mod tests {
         match res {
             Ok(domain) => {
                 println!("Parsed domain: {:?}", domain);
-                if let Some(first_action) = domain.actions.get(0) {
-                    println!("\n\n First action: {:?}", first_action);
-                } else {
-                    println!("No actions found in the domain.");
-                }
+                let first_action = domain.actions.get(0);
+                assert!(first_action.is_some(), "No actions found in the domain.");
+                println!("\n\n First action: {:?}", first_action.unwrap());
             }
             Err(e) => match e {
                 ParserError::UnsupportedRequirement(_) => {}

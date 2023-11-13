@@ -12,10 +12,10 @@ use serde_json::Value;
 
 use crate::agent::execution::job_prompts::Prompt;
 
-pub type ExecuteActionFn = fn(&Action, &mut SharedState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
+pub type ExecuteActionFn = fn(&Action, &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
 
 fn default_execute_action_fn() -> ExecuteActionFn {
-    fn action_fn(action: &Action, state: &mut SharedState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
+    fn action_fn(action: &Action, state: &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
         let action_name = action.name.clone();
         Box::pin(async move {
             println!("Default action execution for {}", action_name);
@@ -25,8 +25,8 @@ fn default_execute_action_fn() -> ExecuteActionFn {
     action_fn
 }
 
-#[derive(Default, Clone)]
-pub struct SharedState {
+#[derive(Default, Clone, Debug)]
+pub struct SharedPlanState {
     html_fetched: Option<String>,
     links_extracted: Option<Vec<String>>,
     content_fetched: Option<String>,
@@ -34,15 +34,27 @@ pub struct SharedState {
 }
 
 #[derive(Clone, Debug)]
-pub struct Plan {
+pub struct ShinkaiPlan {
     pub domain: Domain,
-    pub state: SharedState,
+    pub state: SharedPlanState,
     // #[serde(skip_serializing, skip_deserializing, default = "default_execute_action_fn")]
     pub execute_action: ExecuteActionFn,
 }
 
-impl Plan {
-    pub fn process_plan(plan: Arc<Mutex<Plan>>) -> tokio::task::JoinHandle<()> {
+/*
+Two Parts
+
+Part A:
+    - when creating a cron job, create a plan
+    - go over the plan until completed
+    - also create a cron based on users preference
+    - should the cron be an actual job to create a cron?
+Part B:
+    - 
+*/
+
+impl ShinkaiPlan {
+    pub fn process_plan(plan: Arc<Mutex<ShinkaiPlan>>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut plan_guard = plan.lock().await;
             for action in plan_guard.clone().domain.actions.iter() {
@@ -58,7 +70,7 @@ impl Plan {
         })
     }
 
-    pub async fn create_plan(agent: SerializedAgent, description: String, location: String) -> Result<Plan, String> {
+    pub async fn create_plan(agent: SerializedAgent, description: String, location: String) -> Result<ShinkaiPlan, String> {
         // Create a prompt for the LLM
         let prompt = Prompt::new(format!("Generate a PDDL for a plan with description '{}' at location '{}'", description, location));
 
@@ -78,9 +90,9 @@ impl Plan {
         };
 
         // Create a new Plan with the parsed Domain and a default SharedState
-        let plan = Plan {
+        let plan = ShinkaiPlan {
             domain,
-            state: SharedState::default(),
+            state: SharedPlanState::default(),
             execute_action: default_execute_action_fn(),
         };
 
