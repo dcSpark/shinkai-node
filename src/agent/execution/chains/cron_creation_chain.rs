@@ -5,22 +5,172 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::db::ShinkaiDB;
+use crate::tools::argument::ToolArgument;
 use crate::tools::router::ShinkaiTool;
+use crate::tools::rust_tools::RustTool;
 use async_recursion::async_recursion;
 use pddl_parser::problem::Object;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /*
     We need:
-
     time -> cron -> check cron is valid
     task summary -> PDDL -> check that PDDL is valid
 */
+
+pub fn create_weblink_extractor_tool() -> ShinkaiTool {
+    let input_args = vec![ToolArgument {
+        name: "html".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "HTML string to extract links from.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"(.*)\"".to_string(),
+    }];
+
+    let output_args = vec![ToolArgument {
+        name: "links".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "Array of extracted hyperlinks.".to_string(),
+        is_optional: false,
+        wrapper_type: "array".to_string(),
+        ebnf: "\\[\"(.*)\"\\]".to_string(),
+    }];
+
+    let rust_tool = RustTool {
+        name: "WebLinkExtractor".to_string(),
+        description: "Extracts all hyperlinks from the provided HTML string.".to_string(),
+        input_args,
+        output_args,
+        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+    };
+
+    ShinkaiTool::Rust(rust_tool)
+}
+
+pub fn create_web_crawler_tool() -> ShinkaiTool {
+    let input_args = vec![ToolArgument {
+        name: "url".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "URL of the webpage to crawl.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"http(s)?://([\\w-]+\\.)+[\\w-]+(/[\\w- ./?%&=]*)?\"".to_string(),
+    }];
+
+    let output_args = vec![ToolArgument {
+        name: "htmlContent".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "HTML content of the crawled webpage.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"(.*)\"".to_string(),
+    }];
+
+    let rust_tool = RustTool {
+        name: "WebCrawler".to_string(),
+        description: "Fetches HTML content from the specified URL.".to_string(),
+        input_args,
+        output_args,
+        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+    };
+
+    ShinkaiTool::Rust(rust_tool)
+}
+
+pub fn create_content_summarizer_tool() -> ShinkaiTool {
+    let input_args = vec![
+        ToolArgument {
+            name: "text".to_string(),
+            arg_type: "STRING".to_string(),
+            description: "Text content to summarize.".to_string(),
+            is_optional: false,
+            wrapper_type: "none".to_string(),
+            ebnf: "\"(.*)\"".to_string(),
+        },
+        ToolArgument {
+            name: "summaryLength".to_string(),
+            arg_type: "INT".to_string(),
+            description: "Desired length of the summary in number of sentences.".to_string(),
+            is_optional: true,
+            wrapper_type: "none".to_string(),
+            ebnf: "([0-9]+)".to_string(),
+        },
+    ];
+
+    let output_args = vec![ToolArgument {
+        name: "summary".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "Summarized text.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"(.*)\"".to_string(),
+    }];
+
+    let rust_tool = RustTool {
+        name: "ContentSummarizer".to_string(),
+        description: "Generates a concise summary of the provided text content.".to_string(),
+        input_args,
+        output_args,
+        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+    };
+
+    ShinkaiTool::Rust(rust_tool)
+}
+
+pub fn create_llm_string_preparer_tool() -> ShinkaiTool {
+    let input_args = vec![
+        ToolArgument {
+            name: "text".to_string(),
+            arg_type: "STRING".to_string(),
+            description: "The text to be prepared for LLM processing.".to_string(),
+            is_optional: false,
+            wrapper_type: "none".to_string(),
+            ebnf: "\"(.*)\"".to_string(),
+        },
+        ToolArgument {
+            name: "llmModelName".to_string(),
+            arg_type: "STRING".to_string(),
+            description: "The name of the LLM model to be used.".to_string(),
+            is_optional: false,
+            wrapper_type: "none".to_string(),
+            ebnf: "\"(.*)\"".to_string(),
+        },
+        ToolArgument {
+            name: "maxTokens".to_string(),
+            arg_type: "INT".to_string(),
+            description: "The maximum number of tokens permissible for the LLM model (optional).".to_string(),
+            is_optional: true,
+            wrapper_type: "none".to_string(),
+            ebnf: "([0-9]+)".to_string(),
+        },
+    ];
+
+    let output_args = vec![ToolArgument {
+        name: "segments".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "Array of text segments, each conforming to the LLM's token limit.".to_string(),
+        is_optional: false,
+        wrapper_type: "array".to_string(),
+        ebnf: "\\[\"(.*)\"\\]".to_string(),
+    }];
+
+    let rust_tool = RustTool {
+        name: "LLMStringPreparer".to_string(),
+        description: "Splits a string into segments suitable for processing by a specified LLM without exceeding a maximum token count.".to_string(),
+        input_args,
+        output_args,
+        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+    };
+
+    ShinkaiTool::Rust(rust_tool)
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct CronCreationChainResponse {
@@ -60,7 +210,12 @@ impl JobManager {
         // )
         // .await?;
         // we are hard-coding them for the time being
-        let ret_nodes: Vec<ShinkaiTool> = vec![];
+        let ret_nodes: Vec<ShinkaiTool> = vec![
+            create_weblink_extractor_tool(),
+            create_web_crawler_tool(),
+            create_content_summarizer_tool(),
+            create_llm_string_preparer_tool(),
+        ];
 
         // TODO: convert from sequential to parallel
         // Use the default prompt if not reached final iteration count, else use final prompt

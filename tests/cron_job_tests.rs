@@ -172,7 +172,7 @@ mod tests {
 
         let cron_task_should_execute = CronTask {
             task_id: "task1".to_string(),
-            cron: "0 * * * * *".to_string(), // This cron task should execute at the previous minute of any hour
+            cron: "* * * * *".to_string(), // This cron task should execute every minute
             prompt: "prompt1".to_string(),
             subprompt: "subprompt1".to_string(),
             url: "url1".to_string(),
@@ -186,7 +186,7 @@ mod tests {
 
         let cron_task_should_not_execute = CronTask {
             task_id: "task2".to_string(),
-            cron: format!("* {} * * * *", next_hour), // This cron task should execute at a specific minute of the next hour
+            cron: format!("0 {} * * *", next_hour), // This cron task should execute at the start of the next hour
             prompt: "prompt2".to_string(),
             subprompt: "subprompt1".to_string(),
             url: "url2".to_string(),

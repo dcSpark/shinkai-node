@@ -70,32 +70,32 @@ impl ShinkaiPlan {
         })
     }
 
-    pub async fn create_plan(agent: SerializedAgent, description: String, location: String) -> Result<ShinkaiPlan, String> {
-        // Create a prompt for the LLM
-        let prompt = Prompt::new(format!("Generate a PDDL for a plan with description '{}' at location '{}'", description, location));
+    // pub async fn create_plan(agent: SerializedAgent, description: String, location: String) -> Result<ShinkaiPlan, String> {
+    //     // Create a prompt for the LLM
+    //     let prompt = Prompt::new(format!("Generate a PDDL for a plan with description '{}' at location '{}'", description, location));
 
-        // Perform the LLM inference and await its response
-        let llm_response = inference_agent(agent, prompt).await;
+    //     // Perform the LLM inference and await its response
+    //     let llm_response = inference_agent(agent, prompt).await;
 
-        // Assume the LLM response is a PDDL string
-        let pddl = match llm_response {
-            Ok(json_value) => json_value["pddl"].as_str().unwrap_or_default().to_string(),
-            Err(e) => return Err(format!("LLM error: {:?}", e)),
-        };
+    //     // Assume the LLM response is a PDDL string
+    //     let pddl = match llm_response {
+    //         Ok(json_value) => json_value["pddl"].as_str().unwrap_or_default().to_string(),
+    //         Err(e) => return Err(format!("LLM error: {:?}", e)),
+    //     };
 
-        // Parse the PDDL string into a Domain
-        let domain = match Domain::parse(Cursor::new(pddl)) {
-            Ok(domain) => domain,
-            Err(e) => return Err(format!("PDDL parsing error: {:?}", e)),
-        };
+    //     // Parse the PDDL string into a Domain
+    //     let domain = match Domain::parse(Cursor::new(pddl)) {
+    //         Ok(domain) => domain,
+    //         Err(e) => return Err(format!("PDDL parsing error: {:?}", e)),
+    //     };
 
-        // Create a new Plan with the parsed Domain and a default SharedState
-        let plan = ShinkaiPlan {
-            domain,
-            state: SharedPlanState::default(),
-            execute_action: default_execute_action_fn(),
-        };
+    //     // Create a new Plan with the parsed Domain and a default SharedState
+    //     let plan = ShinkaiPlan {
+    //         domain,
+    //         state: SharedPlanState::default(),
+    //         execute_action: default_execute_action_fn(),
+    //     };
 
-        Ok(plan)
-    }
+    //     Ok(plan)
+    // }
 }

@@ -322,13 +322,13 @@ impl JobPromptGenerator {
         prompt.add_content(
             format!(
                 "You are an assistant running in a system who only has access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are:\n\n```\n{}\n```\n",
-                task
+                tools_summary
             ),
             SubPromptType::System,
         );
 
         prompt.add_content(
-            format!("The current task at hand is create a planning using PDDL representation and limited to the previous tools, to:\n\n`{}`", task),
+            format!("The current task at hand is create a planning using PDDL representation and limited to the previous tools, to:\n\n`{}`. Give me the plan to solve this problem using PDDL Representation that starts with: (define...", task),
             SubPromptType::User,
         );
 
@@ -347,8 +347,9 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
+        // TODO: consider differences in timezones
         prompt.add_content(
-            format!("The current task at hand is create a cron expression using the following description:\n\n`{}`\n\nFor context, this is the cron format that needs to match: sec  min   hour   day of month   month   day of week   year", description),
+            format!("The current task at hand is create a cron expression using the following description:\n\n`{}`", description),
             SubPromptType::User,
         );
 

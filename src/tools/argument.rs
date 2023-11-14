@@ -8,6 +8,7 @@ pub struct ToolArgument {
     pub arg_type: String,
     pub description: String,
     pub is_optional: bool,
+    pub wrapper_type: String,
     pub ebnf: String,
 }
 
@@ -23,12 +24,14 @@ impl ToolArgument {
             .as_bool()
             .ok_or(ToolError::ParseError("isOptional".to_string()))?;
         let ebnf = json["ebnf"].as_str().ok_or(ToolError::ParseError("ebnf".to_string()))?;
+        let wrapper_type = json["wrapperType"].as_str().unwrap_or("none");
 
         Ok(Self {
             name: name.to_string(),
             arg_type: arg_type.to_string(),
             description: description.to_string(),
             is_optional,
+            wrapper_type: wrapper_type.to_string(),
             ebnf: ebnf.to_string(),
         })
     }
