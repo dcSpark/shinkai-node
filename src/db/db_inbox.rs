@@ -1,8 +1,10 @@
+use chrono::DateTime;
 use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
-    shinkai_message::shinkai_message::ShinkaiMessage, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
+    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
 use crate::{
@@ -18,7 +20,11 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
     pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
-        shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Info, &format!("Creating inbox: {}", inbox_name));
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            &format!("Creating inbox: {}", inbox_name),
+        );
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -527,11 +533,15 @@ impl ShinkaiDB {
                 Err(e) => return Err(e.into()),
             }
         }
-        shinkai_log(ShinkaiLogOption::API, ShinkaiLogLevel::Info, &format!("Inboxes: {}", inboxes.join(", ")));
+        shinkai_log(
+            ShinkaiLogOption::API,
+            ShinkaiLogLevel::Info,
+            &format!("Inboxes: {}", inboxes.join(", ")),
+        );
         Ok(inboxes)
     }
 
-    pub fn get_smart_inboxes_for_profile(
+    pub fn get_all_smart_inboxes_for_profile(
         &self,
         profile_name_identity: StandardIdentity,
     ) -> Result<Vec<SmartInbox>, ShinkaiDBError> {
@@ -540,13 +550,17 @@ impl ShinkaiDB {
         let mut smart_inboxes = Vec::new();
 
         for inbox_id in inboxes {
-            shinkai_log(ShinkaiLogOption::API, ShinkaiLogLevel::Info, &format!("Inbox: {}", inbox_id));
+            shinkai_log(
+                ShinkaiLogOption::API,
+                ShinkaiLogLevel::Info,
+                &format!("Inbox: {}", inbox_id),
+            );
 
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
-                .next();            
-            
+                .next();
+
             // Fetch the custom name from the smart_inbox_name column family
             let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_id);
             let cf_smart_inbox_name = self
@@ -558,15 +572,36 @@ impl ShinkaiDB {
                     .map_err(|_| ShinkaiDBError::SomeError("UTF-8 conversion error".to_string()))?,
                 None => inbox_id.clone(), // Use the inbox_id as the default value if the custom name is not found
             };
-    
+
+            // Determine if the inbox is finished
+            let is_finished = if inbox_id.starts_with("job::") {
+                let job = self.get_job(&inbox_id)?;
+                job.is_finished
+            } else {
+                false
+            };
+
             let smart_inbox = SmartInbox {
                 inbox_id: inbox_id.clone(),
                 custom_name,
                 last_message,
+                is_finished
             };
-    
+
             smart_inboxes.push(smart_inbox);
         }
+
+        // Sort the smart_inboxes by the timestamp of the last message
+        smart_inboxes.sort_by(|a, b| match (&a.last_message, &b.last_message) {
+            (Some(a_msg), Some(b_msg)) => {
+                let a_time = DateTime::parse_from_rfc3339(&a_msg.external_metadata.scheduled_time).unwrap();
+                let b_time = DateTime::parse_from_rfc3339(&b_msg.external_metadata.scheduled_time).unwrap();
+                b_time.cmp(&a_time)
+            }
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
 
         Ok(smart_inboxes)
     }
@@ -577,14 +612,11 @@ impl ShinkaiDB {
         let cf_smart_inbox_name = self
             .db
             .cf_handle(&cf_name_smart_inbox_name)
-            .ok_or(ShinkaiDBError::InboxNotFound(format!(
-                "Inbox not found: {}",
-                inbox_id
-            )))?;
-    
+            .ok_or(ShinkaiDBError::InboxNotFound(format!("Inbox not found: {}", inbox_id)))?;
+
         // Update the name in the column family
         self.db.put_cf(cf_smart_inbox_name, inbox_id, new_name)?;
-    
+
         Ok(())
     }
 }
