@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Textarea } from "../components/ui/textarea";
-import { cn, handleSendNotification } from "../lib/utils";
+import { cn } from "../lib/utils";
 import { ADD_AGENT_PATH } from "../routes/name";
 import { useAuth } from "../store/auth";
 import SimpleLayout from "./layout/simple-layout";
@@ -302,9 +302,6 @@ const CreateJobPage = () => {
           </div>
 
           <Button
-            onClick={async () =>
-              await handleSendNotification("Job being created", "Notification content!")
-            }
             className="w-full"
             disabled={isPending}
             isLoading={isPending}
