@@ -309,6 +309,53 @@ impl JobPromptGenerator {
 
         prompt
     }
+
+    /// Prompt for having the LLM generate a PDDL plan given some tools
+    pub fn pddl_plan_generation_prompt(task: String, tools: Vec<ShinkaiTool>) -> Prompt {
+        let tools_summary = tools
+            .iter()
+            .map(|tool| tool.formatted_tool_summary(true))
+            .collect::<Vec<String>>()
+            .join("\n\n");
+
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are an assistant running in a system who only has access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are:\n\n```\n{}\n```\n",
+                task
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            format!("The current task at hand is create a planning using PDDL representation and limited to the previous tools, to:\n\n`{}`", task),
+            SubPromptType::User,
+        );
+
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+
+        prompt
+    }
+
+    /// Prompt for having the description of a cron translated to a cron expression
+    pub fn cron_expression_generation_prompt(description: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            format!("The current task at hand is create a cron expression using the following description:\n\n`{}`\n\nFor context, this is the cron format that needs to match: sec  min   hour   day of month   month   day of week   year", description),
+            SubPromptType::User,
+        );
+
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+
+        prompt
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

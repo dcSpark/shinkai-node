@@ -5,8 +5,10 @@ use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
+use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
+use serde_json::Error;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
@@ -37,8 +39,23 @@ impl JobManager {
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
 
+        // Added a new special file that if found it takes over
+        let kai_found = JobManager::should_process_job_files_for_tasks_take_over(
+            db.clone(),
+            &job_message.job_message,
+            agent_found.clone(),
+            full_job.clone(),
+            job_message.profile.clone(),
+            clone_signature_secret_key(&identity_secret_key),
+        )
+        .await?;
+
+        if kai_found {
+            return Ok(job_id.clone());
+        }
+
         // Processes any files which were sent with the job message
-        JobManager::process_job_message_files(
+        JobManager::process_job_message_files_for_vector_resources(
             db.clone(),
             &job_message.job_message,
             agent_found.clone(),
@@ -87,7 +104,7 @@ impl JobManager {
                 );
 
                 // Save response data to DB
-                let mut shinkai_db = db.lock().await;
+                let shinkai_db = db.lock().await;
                 shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
             }
         }
@@ -112,11 +129,19 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Processing job: {}", job_id),
         );
-        eprintln!(">>> Processing job process: {:?}", full_job);
-        
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Processing Job: {:?}", full_job),
+        );
+
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
-        eprintln!(">>> Prev execution context: {:?}", prev_execution_context);
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Prev Execution Context: {:?}", prev_execution_context),
+        );
         let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 
@@ -156,7 +181,7 @@ impl JobManager {
         );
 
         // Save response data to DB
-        let mut shinkai_db = db.lock().await;
+        let shinkai_db = db.lock().await;
         shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
         shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
@@ -165,9 +190,118 @@ impl JobManager {
         Ok(())
     }
 
+    /// Temporary function to process the files in the job message for tasks
+    pub async fn should_process_job_files_for_tasks_take_over(
+        db: Arc<Mutex<ShinkaiDB>>,
+        job_message: &JobMessage,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        profile: ShinkaiName,
+        identity_secret_key: SignatureStaticKey,
+    ) -> Result<bool, AgentError> {
+        if !job_message.files_inbox.is_empty() {
+            shinkai_log(
+                ShinkaiLogOption::JobExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Searching for a .kai file in files: {}", job_message.files_inbox.len()).as_str(),
+            );
+
+            // Get the files from the DB
+            let files = {
+                let shinkai_db = db.lock().await;
+                let files_result = shinkai_db.get_all_files_from_inbox(job_message.files_inbox.clone());
+                // Check if there was an error getting the files
+                match files_result {
+                    Ok(files) => files,
+                    Err(e) => return Err(AgentError::ShinkaiDB(e)),
+                }
+            };
+
+            // Search for a .kai file
+            for (filename, content) in files.into_iter() {
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Debug,
+                    &format!("Processing file: {}", filename),
+                );
+
+                if filename.ends_with(".kai") {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Found a .kai file: {}", filename),
+                    );
+
+                    let content_str = String::from_utf8(content.clone()).unwrap();
+                    let cron_task_request_result: Result<CronTaskRequest, Error> = serde_json::from_str(&content_str);
+                    let cron_task_request = match cron_task_request_result {
+                        Ok(cron_task_request) => cron_task_request,
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error parsing cron_task_request: {}", e),
+                            );
+                            return Err(AgentError::AgentNotFound);
+                        }
+                    };
+
+                    // Setup initial data to get ready to call a specific inference chain
+                    let prev_execution_context = full_job.clone().execution_context.clone();
+
+                    // Call the inference chain router to choose which chain to use, and call it
+                    let (inference_response_content, new_execution_context) = JobManager::alt_inference_chain_router(
+                        db.clone(),
+                        agent_found,
+                        full_job.clone(),
+                        job_message.clone(),
+                        cron_task_request,
+                        prev_execution_context,
+                        Some(profile.clone()),
+                    )
+                    .await?;
+
+                    // Prepare data to save inference response to the DB
+                    let agg_response = format!("Cron: {}\n PDDL Plan: {}", inference_response_content.cron_expression.to_string(), inference_response_content.pddl_plan.to_string());
+
+                    let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+                    let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                        full_job.clone().job_id.to_string(),
+                        inference_response_content.cron_expression.to_string(),
+                        identity_secret_key_clone,
+                        profile.node_name.clone(),
+                        profile.node_name.clone(),
+                    )
+                    .unwrap();
+
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
+                    );
+
+                    // Save response data to DB
+                    let shinkai_db = db.lock().await;
+                    shinkai_db.add_step_history(job_message.job_id.clone(), job_message.clone().content)?;
+                    shinkai_db.add_step_history(job_message.job_id.clone(), agg_response.to_string())?;
+                    shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
+                    shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
+
+                    return Ok(true);
+                }
+            }
+        }
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("No .kai files found").as_str(),
+        );
+        Ok(false)
+    }
+
     /// Processes the files sent together with the current job_message into Vector Resources,
     /// and saves them either into the local job scope, or the DB depending on `save_to_db_directly`.
-    pub async fn process_job_message_files(
+    pub async fn process_job_message_files_for_vector_resources(
         db: Arc<Mutex<ShinkaiDB>>,
         job_message: &JobMessage,
         agent_found: Option<SerializedAgent>,
@@ -199,14 +333,22 @@ impl JobManager {
                                 if !full_job.scope.local.contains(&local_entry) {
                                     full_job.scope.local.push(local_entry);
                                 } else {
-                                    println!("Duplicate LocalScopeEntry detected");
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate LocalScopeEntry detected",
+                                    );
                                 }
                             }
                             ScopeEntry::Database(db_entry) => {
                                 if !full_job.scope.database.contains(&db_entry) {
                                     full_job.scope.database.push(db_entry);
                                 } else {
-                                    println!("Duplicate DBScopeEntry detected");
+                                    shinkai_log(
+                                        ShinkaiLogOption::JobExecution,
+                                        ShinkaiLogLevel::Error,
+                                        "Duplicate DBScopeEntry detected",
+                                    );
                                 }
                             }
                         }
@@ -293,7 +435,7 @@ impl JobManager {
             // Now create Local/DBScopeEntry depending on setting
             if save_to_db_directly {
                 let resource_header = resource.as_trait_object().generate_resource_header();
-                let mut shinkai_db = db.lock().await;
+                let shinkai_db = db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 

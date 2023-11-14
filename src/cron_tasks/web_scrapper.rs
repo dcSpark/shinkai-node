@@ -4,10 +4,18 @@ use std::fs;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::multipart::{Form, Part};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
 use crate::db::db_cron_task::CronTask;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CronTaskRequest {
+    pub cron_description: String,
+    pub task_description: String,
+    pub object_description: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct WebScraper {
