@@ -1,6 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_node::schemas::smart_inbox::SmartInbox;
 use core::panic;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -14,6 +14,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
     EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
@@ -118,7 +119,8 @@ pub async fn api_registration_device_node_profile_main(
                 "{} subidentity: {:?}",
                 node_profile_name,
                 node2_all_subidentities[0].get_full_identity_name()
-            ).as_str(),
+            )
+            .as_str(),
         );
         assert_eq!(
             node2_all_subidentities[1].get_full_identity_name(),
@@ -587,7 +589,6 @@ pub async fn api_initial_registration_with_no_code_for_device(
     );
 }
 
-
 pub async fn api_get_all_inboxes_from_profile(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
@@ -620,6 +621,53 @@ pub async fn api_get_all_inboxes_from_profile(
             .unwrap();
         let node_job_message = res_message_job_receiver.recv().await.unwrap();
         eprintln!("get all inboxes: {:?}", node_job_message);
+        assert!(node_job_message.is_ok(), "Job message was successfully processed");
+        return node_job_message.unwrap();
+    }
+}
+
+pub async fn api_get_all_smart_inboxes_from_profile(
+    node_commands_sender: Sender<NodeCommand>,
+    subidentity_encryption_sk: EncryptionStaticKey,
+    node_encryption_pk: EncryptionPublicKey,
+    subidentity_signature_sk: SignatureStaticKey,
+    sender: &str,
+    sender_subidentity: &str,
+    recipient: &str,
+) -> Vec<SmartInbox> {
+    {
+        let full_name = format!("{}/{}", sender, sender_subidentity);
+        let inbox_message = ShinkaiMessageBuilder::new(
+            subidentity_encryption_sk.clone(),
+            clone_signature_secret_key(&subidentity_signature_sk),
+            node_encryption_pk,
+        )
+        .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+        .internal_metadata_with_schema(
+            sender_subidentity.to_string(),
+            "".to_string(),
+            "".to_string(),
+            MessageSchemaType::TextContent,
+            EncryptionMethod::None
+        )
+        .external_metadata_with_intra_sender(
+            recipient.to_string(),
+            sender.to_string(),
+            sender_subidentity.to_string(),
+        )
+        .message_raw_content(full_name.to_string())
+        .build()
+        .unwrap();
+
+        let (res_message_job_sender, res_message_job_receiver) = async_channel::bounded(1);
+        node_commands_sender
+            .send(NodeCommand::APIGetAllSmartInboxesForProfile {
+                msg: inbox_message,
+                res: res_message_job_sender,
+            })
+            .await
+            .unwrap();
+        let node_job_message = res_message_job_receiver.recv().await.unwrap();
         assert!(node_job_message.is_ok(), "Job message was successfully processed");
         return node_job_message.unwrap();
     }

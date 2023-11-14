@@ -138,7 +138,7 @@ impl Node {
 
     pub async fn internal_get_all_smart_inboxes_for_profile(&self, full_profile_name: String) -> Vec<SmartInbox> {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(full_profile_name.as_str()).await;

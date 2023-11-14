@@ -37,7 +37,7 @@ use utils::test_boilerplate::run_test_one_node_network;
 mod utils;
 use crate::utils::node_test_api::{
     api_agent_registration, api_create_job, api_get_all_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
+    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main, api_get_all_smart_inboxes_from_profile,
 };
 use mockito::Server;
 
@@ -182,7 +182,6 @@ fn sandwich_messages_with_files_test() {
                 .await;
                 assert_eq!(inboxes.len(), 1);
             }
-
             // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
             {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
@@ -419,6 +418,23 @@ fn sandwich_messages_with_files_test() {
                 let duration = start.elapsed(); // Get the time elapsed since the start of the timer
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
+            {
+                // api_get_all_smart_inboxes_from_profile
+                eprintln!("\n\n Get All Smart Inboxes");
+                let inboxes = api_get_all_smart_inboxes_from_profile(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    node1_identity_name.clone().as_str(),
+                )
+                .await;
+                assert_eq!(inboxes.len(), 1);
+                assert_eq!(inboxes[0].custom_name, "What's Zeko?");
+            }
+
             // {
             //     tokio::time::sleep(Duration::from_secs(1000)).await;
             // }
