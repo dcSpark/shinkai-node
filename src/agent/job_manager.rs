@@ -7,6 +7,7 @@ use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::managers::IdentityManager;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use futures::Future;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
@@ -34,10 +35,6 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
-
-    // TODO: remove them
-    pub job_manager_receiver: Arc<Mutex<mpsc::Receiver<(Vec<JobPreMessage>, JobId)>>>,
-    pub job_manager_sender: mpsc::Sender<(Vec<JobPreMessage>, JobId)>,
 }
 
 impl JobManager {
@@ -47,8 +44,6 @@ impl JobManager {
         identity_secret_key: SignatureStaticKey,
         node_profile_name: ShinkaiName,
     ) -> Self {
-        let (job_manager_sender, job_manager_receiver) = mpsc::channel(100);
-
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
             let shinkai_db = db.lock().await;
@@ -85,8 +80,6 @@ impl JobManager {
 
         let job_manager = Self {
             db: db.clone(),
-            job_manager_receiver: Arc::new(Mutex::new(job_manager_receiver)),
-            job_manager_sender: job_manager_sender.clone(),
             identity_secret_key: clone_signature_secret_key(&identity_secret_key),
             node_profile_name,
             jobs: jobs_map,
@@ -348,6 +341,16 @@ impl JobManager {
         };
 
         let mut shinkai_db = self.db.lock().await;
+        let is_empty = shinkai_db.is_job_inbox_empty(&job_message.job_id.clone())?;
+        if is_empty {
+            let mut content = job_message.clone().content;
+            if content.chars().count() > 30 {
+                let truncated_content: String = content.chars().take(30).collect();
+                content = format!("{}...", truncated_content);
+            }
+            let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
+            shinkai_db.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
+        }
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db);
 

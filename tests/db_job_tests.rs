@@ -21,7 +21,7 @@ mod tests {
     use std::collections::HashSet;
 
     use shinkai_message_primitives::{
-        schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope, shinkai_utils::utils::hash_string,
+        schemas::inbox_name::InboxName, shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair}, shinkai_utils::utils::hash_string,
     };
     use shinkai_node::{agent::agent, db::db_errors::ShinkaiDBError};
 
@@ -32,9 +32,6 @@ mod tests {
         setup();
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
-        let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
-                .unwrap();
         let scope = JobScope::new_default();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
@@ -220,5 +217,37 @@ mod tests {
         // Additional check that all jobs have correct agent_id and they are unique
         let unique_jobs: HashSet<String> = jobs.iter().map(|job| job.job_id().to_string()).collect();
         assert_eq!(unique_jobs.len(), 5);
+    }
+
+    #[test]
+    fn test_job_inbox_empty() {
+        setup();
+        let job_id = "job_test".to_string();
+        let agent_id = "agent_test".to_string();
+        let scope = JobScope::new_default();
+        let db_path = format!("db_tests/{}", hash_string(&agent_id.clone().to_string()));
+        let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+
+        // Create a new job
+        create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
+
+        // Check if the job inbox is empty after creating a new job
+        assert!(shinkai_db.is_job_inbox_empty(&job_id).unwrap());
+
+        let (placeholder_signature_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            job_id.to_string(),
+            "something".to_string(),
+            placeholder_signature_sk,
+            "@@node1.shinkai".to_string(),
+            "@@node1.shinkai".to_string(),
+        )
+        .unwrap();
+
+        // Add a message to the job
+        let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message);
+
+        // Check if the job inbox is not empty after adding a message
+        assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
     }
 }

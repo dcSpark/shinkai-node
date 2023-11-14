@@ -499,6 +499,17 @@ impl ShinkaiDB {
         Ok(())
     }
 
+    pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, ShinkaiDBError> {
+        let cf_conversation_inbox_name = format!("job_inbox::{}::false", job_id);
+        let cf_handle = self
+            .db
+            .cf_handle(&cf_conversation_inbox_name)
+            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name.clone()))?;
+
+        let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+        Ok(iter.next().is_none())
+    }
+
     pub fn add_message_to_job_inbox(&self, job_id: &str, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
         let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.to_string();
         let cf_handle = self

@@ -1,5 +1,5 @@
 use crate::db::db_errors::ShinkaiDBError;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
+use shinkai_message_primitives::{schemas::{shinkai_name::ShinkaiNameError, inbox_name::InboxNameError}, shinkai_message::shinkai_message_error::ShinkaiMessageError};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
@@ -34,6 +34,8 @@ pub enum AgentError {
     InferenceRecursionLimitReached(String),
     TokenizationError(String),
     JobDequeueFailed(String),
+    ShinkaiMessage(ShinkaiMessageError),
+    InboxNameError(InboxNameError),
 }
 
 impl fmt::Display for AgentError {
@@ -80,7 +82,8 @@ impl fmt::Display for AgentError {
             AgentError::InferenceRecursionLimitReached(s) => write!(f, "Inferencing the LLM has reached too many iterations of recursion with no progess, and thus has been stopped for this job_task: {}", s),
             AgentError::TokenizationError(s) => write!(f, "Tokenization error: {}", s),
             AgentError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
-
+            AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
+            AgentError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
         }
     }
 }
@@ -135,5 +138,17 @@ impl From<VRError> for AgentError {
 impl From<JoinError> for AgentError {
     fn from(err: JoinError) -> AgentError {
         AgentError::TaskJoinError(err.to_string())
+    }
+}
+
+impl From<ShinkaiMessageError> for AgentError {
+    fn from(error: ShinkaiMessageError) -> Self {
+        AgentError::ShinkaiMessage(error)
+    }
+}
+
+impl From<InboxNameError> for AgentError {
+    fn from(error: InboxNameError) -> Self {
+        AgentError::InboxNameError(error)
     }
 }
