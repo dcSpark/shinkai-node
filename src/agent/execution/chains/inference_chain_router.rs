@@ -102,12 +102,17 @@ impl JobManager {
                         cron_task_request.object_description,
                         0,
                         1, // TODO: Make this configurable
+                        None,
                     )
                     .await?;
+                    eprintln!("Inference response content: {:?}", inference_response_content);
+
                     new_execution_context
                         .insert("previous_step_response".to_string(), inference_response_content.clone().cron_expression);
                     new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan);
+                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_problem);
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_domain);
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }

@@ -45,7 +45,7 @@ impl RustToolkit {
             .ok_or(ToolError::ToolNotFound(name.to_string()))
     }
 
-    pub fn toolkit_name() -> String {
+    pub fn toolkit_type_name() -> String {
         "rust_toolkit".to_string()
     }
 }
@@ -77,13 +77,13 @@ impl RustTool {
     }
 
     /// Default name of the rust toolkit
-    pub fn toolkit_name(&self) -> String {
-        RustToolkit::toolkit_name()
+    pub fn toolkit_type_name(&self) -> String {
+        RustToolkit::toolkit_type_name()
     }
 
     // Default name of the rust toolkit
     pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
-        RustToolkit::toolkit_name()
+        RustToolkit::toolkit_type_name()
     }
 
     /// Convert to json

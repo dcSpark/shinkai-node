@@ -1,21 +1,25 @@
 use futures::Future;
-use pddl_parser::domain::action::Action;
 use pddl_parser::domain::domain::Domain;
 use pddl_parser::domain::typed_parameter::TypedParameter;
 use pddl_parser::domain::typing::Type;
 use pddl_parser::error::ParserError;
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use std::{pin::Pin, sync::Arc, io::Cursor};
-use tokio::sync::Mutex;
+use pddl_parser::{domain::action::Action, lexer::TokenStream};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use std::{io::Cursor, pin::Pin, sync::Arc};
+use tokio::sync::Mutex;
 
 use crate::agent::execution::job_prompts::Prompt;
 
-pub type ExecuteActionFn = fn(&Action, &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
+pub type ExecuteActionFn =
+    fn(&Action, &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>>;
 
 fn default_execute_action_fn() -> ExecuteActionFn {
-    fn action_fn(action: &Action, state: &mut SharedPlanState) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
+    fn action_fn(
+        action: &Action,
+        state: &mut SharedPlanState,
+    ) -> Pin<Box<dyn Future<Output = Result<(), &'static str>> + Send>> {
         let action_name = action.name.clone();
         Box::pin(async move {
             println!("Default action execution for {}", action_name);
@@ -41,6 +45,11 @@ pub struct ShinkaiPlan {
     pub execute_action: ExecuteActionFn,
 }
 
+#[derive(Debug)]
+pub enum ShinkaiPlanError {
+    PddlParsingError(String),
+}
+
 /*
 Two Parts
 
@@ -50,7 +59,7 @@ Part A:
     - also create a cron based on users preference
     - should the cron be an actual job to create a cron?
 Part B:
-    - 
+    -
 */
 
 impl ShinkaiPlan {
@@ -70,32 +79,25 @@ impl ShinkaiPlan {
         })
     }
 
-    // pub async fn create_plan(agent: SerializedAgent, description: String, location: String) -> Result<ShinkaiPlan, String> {
-    //     // Create a prompt for the LLM
-    //     let prompt = Prompt::new(format!("Generate a PDDL for a plan with description '{}' at location '{}'", description, location));
+    pub fn validate_pddl_domain(pddl: String) -> Result<(), String> {
+        let token_stream: TokenStream = pddl.as_str().into();
+        match Domain::parse(token_stream) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                eprintln!("PDDL parsing error: {:?}", e);
+                Err(format!("PDDL parsing error: {:?}", e))
+            }
+        }
+    }
 
-    //     // Perform the LLM inference and await its response
-    //     let llm_response = inference_agent(agent, prompt).await;
-
-    //     // Assume the LLM response is a PDDL string
-    //     let pddl = match llm_response {
-    //         Ok(json_value) => json_value["pddl"].as_str().unwrap_or_default().to_string(),
-    //         Err(e) => return Err(format!("LLM error: {:?}", e)),
-    //     };
-
-    //     // Parse the PDDL string into a Domain
-    //     let domain = match Domain::parse(Cursor::new(pddl)) {
-    //         Ok(domain) => domain,
-    //         Err(e) => return Err(format!("PDDL parsing error: {:?}", e)),
-    //     };
-
-    //     // Create a new Plan with the parsed Domain and a default SharedState
-    //     let plan = ShinkaiPlan {
-    //         domain,
-    //         state: SharedPlanState::default(),
-    //         execute_action: default_execute_action_fn(),
-    //     };
-
-    //     Ok(plan)
-    // }
+    pub fn validate_pddl_problem(pddl: String) -> Result<(), String> {
+        let token_stream: TokenStream = pddl.as_str().into();
+        match pddl_parser::problem::Problem::parse(token_stream) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                eprintln!("PDDL parsing error: {:?}", e);
+                Err(format!("PDDL parsing error: {:?}", e))
+            }
+        }
+    }
 }

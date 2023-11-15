@@ -4,7 +4,9 @@ use crate::agent::execution::job_prompts::JobPromptGenerator;
 use crate::agent::file_parsing::ParsingHelper;
 use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
+use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::ShinkaiDB;
+use crate::planner::cron_planner::ShinkaiPlan;
 use crate::tools::argument::ToolArgument;
 use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
@@ -44,7 +46,7 @@ pub fn create_weblink_extractor_tool() -> ShinkaiTool {
     }];
 
     let rust_tool = RustTool {
-        name: "WebLinkExtractor".to_string(),
+        name: "web_link_extractor".to_string(),
         description: "Extracts all hyperlinks from the provided HTML string.".to_string(),
         input_args,
         output_args,
@@ -74,7 +76,7 @@ pub fn create_web_crawler_tool() -> ShinkaiTool {
     }];
 
     let rust_tool = RustTool {
-        name: "WebCrawler".to_string(),
+        name: "html_extractor".to_string(),
         description: "Fetches HTML content from the specified URL.".to_string(),
         input_args,
         output_args,
@@ -114,8 +116,8 @@ pub fn create_content_summarizer_tool() -> ShinkaiTool {
     }];
 
     let rust_tool = RustTool {
-        name: "ContentSummarizer".to_string(),
-        description: "Generates a concise summary of the provided text content.".to_string(),
+        name: "content_summarizer".to_string(),
+        description: "Generates a concise summary of the provided text content. It could be a website.".to_string(),
         input_args,
         output_args,
         tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
@@ -162,8 +164,38 @@ pub fn create_llm_string_preparer_tool() -> ShinkaiTool {
     }];
 
     let rust_tool = RustTool {
-        name: "LLMStringPreparer".to_string(),
+        name: "LLM_string_preparer".to_string(),
         description: "Splits a string into segments suitable for processing by a specified LLM without exceeding a maximum token count.".to_string(),
+        input_args,
+        output_args,
+        tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
+    };
+
+    ShinkaiTool::Rust(rust_tool)
+}
+
+pub fn create_llm_caller_tool() -> ShinkaiTool {
+    let input_args = vec![ToolArgument {
+        name: "prompt".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "The prompt to be processed by the LLM.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"(.*)\"".to_string(),
+    }];
+
+    let output_args = vec![ToolArgument {
+        name: "response".to_string(),
+        arg_type: "STRING".to_string(),
+        description: "The response from the LLM.".to_string(),
+        is_optional: false,
+        wrapper_type: "none".to_string(),
+        ebnf: "\"(.*)\"".to_string(),
+    }];
+
+    let rust_tool = RustTool {
+        name: "LLM_caller".to_string(),
+        description: "Calls an LLM with a given prompt and returns the response.".to_string(),
         input_args,
         output_args,
         tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
@@ -175,7 +207,18 @@ pub fn create_llm_string_preparer_tool() -> ShinkaiTool {
 #[derive(Debug, Clone, Default)]
 pub struct CronCreationChainResponse {
     pub cron_expression: String,
-    pub pddl_plan: String,
+    pub pddl_plan_problem: String,
+    pub pddl_plan_domain: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CronCreationState {
+    stage: String,
+    cron_expression: Option<String>,
+    pddl_plan_problem: Option<String>,
+    pddl_plan_domain: Option<String>,
+    previous: Option<String>,
+    previous_error: Option<String>,
 }
 
 impl JobManager {
@@ -195,6 +238,7 @@ impl JobManager {
         // how_description: Option<String, // how to proceed afterwards
         iteration_count: u64,
         max_iterations: u64,
+        state: Option<CronCreationState>,
     ) -> Result<CronCreationChainResponse, AgentError> {
         println!("start_cron_creation_chain>  message: {:?}", job_task);
 
@@ -215,78 +259,161 @@ impl JobManager {
             create_web_crawler_tool(),
             create_content_summarizer_tool(),
             create_llm_string_preparer_tool(),
+            create_llm_caller_tool(),
         ];
 
-        // TODO: convert from sequential to parallel
-        // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_cron_prompt = if iteration_count < max_iterations {
-            // Response from the previous job step
-            let previous_job_step_response = if iteration_count == 0 {
-                execution_context.get("previous_step_response").cloned()
-            } else {
-                None
-            };
-            JobPromptGenerator::cron_expression_generation_prompt(cron_description.clone())
-        } else {
-            // TODO: improve last shot
-            JobPromptGenerator::cron_expression_generation_prompt(cron_description.clone())
-        };
-
-        //  // Use the default prompt if not reached final iteration count, else use final prompt
-        let filled_pddl_prompt = if iteration_count < max_iterations {
-            // Response from the previous job step
-            let previous_job_step_response = if iteration_count == 0 {
-                execution_context.get("previous_step_response").cloned()
-            } else {
-                None
-            };
-            JobPromptGenerator::pddl_plan_generation_prompt(task_description.clone(), ret_nodes)
-        } else {
-            // TODO: improve last shot
-            JobPromptGenerator::pddl_plan_generation_prompt(task_description.clone(), ret_nodes)
-        };
-
-        // Inference the agent's LLM with the prompt. If it has an answer, the chain
-        // is finished and so just return the answer response as a cleaned String
-        let response_json_cron = JobManager::inference_agent(agent.clone(), filled_cron_prompt).await?;
-        let response_json_pddl = JobManager::inference_agent(agent.clone(), filled_pddl_prompt).await?;
-
-        if let Ok(answer_str_cron) = JobManager::extract_inference_json_response(response_json_cron.clone(), "answer") {
-            let cleaned_answer_cron = ParsingHelper::ending_stripper(&answer_str_cron);
-            println!("Cron Chain Final Answer: {:?}", cleaned_answer_cron);
-
-            if let Ok(answer_str_pddl) =
-                JobManager::extract_inference_json_response(response_json_pddl.clone(), "answer")
-            {
-                let cleaned_answer_pddl = ParsingHelper::ending_stripper(&answer_str_pddl);
-                println!("PDDL Chain Final Answer: {:?}", cleaned_answer_pddl);
-
-                // Return both answers
-                return Ok(CronCreationChainResponse {
-                    cron_expression: cleaned_answer_cron,
-                    pddl_plan: cleaned_answer_pddl,
-                });
+        let (filled_prompt, response_key, next_stage) = match state.as_ref().map(|s| s.stage.as_str()) {
+            None | Some("cron") => {
+                let filled_cron_prompt =
+                    JobPromptGenerator::cron_expression_generation_prompt(cron_description.clone());
+                (filled_cron_prompt, "cron_expression", "pddl_problem")
             }
-        }
-        // If iteration_count is > max_iterations and we still don't have an answer, return an error
-        else if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
-        }
+            Some("pddl_problem") => {
+                let filled_pddl_problem_prompt = JobPromptGenerator::pddl_plan_problem_generation_prompt(
+                    task_description.clone(),
+                    ret_nodes.clone(),
+                    state.as_ref().and_then(|s| s.previous.clone()),
+                    state.as_ref().and_then(|s| s.previous_error.clone()),
+                );
+                (filled_pddl_problem_prompt, "pddl_plan_problem", "pddl_domain")
+            }
+            Some("pddl_domain") => {
+                let filled_pddl_domain_prompt = JobPromptGenerator::pddl_plan_domain_generation_prompt(
+                    task_description.clone(),
+                    state.as_ref().unwrap().pddl_plan_problem.clone().unwrap(),
+                    ret_nodes,
+                    state.as_ref().and_then(|s| s.previous.clone()),
+                    state.as_ref().and_then(|s| s.previous_error.clone()),
+                );
+                (filled_pddl_domain_prompt, "pddl_plan_domain", "")
+            }
+            _ => {
+                return Err(AgentError::InvalidCronCreationChainStage(
+                    state.as_ref().unwrap().stage.clone(),
+                ))
+            }
+        };
 
-        // Recurse with the new search/summary text and increment iteration_count
-        Self::start_cron_creation_chain(
-            db,
-            full_job,
-            job_task.to_string(),
-            agent,
-            execution_context,
-            user_profile,
-            cron_description.clone(),
-            task_description.clone(),
-            object_description.clone(),
-            iteration_count + 1,
-            max_iterations,
-        )
-        .await
+        let response_json = JobManager::inference_agent(agent.clone(), filled_prompt).await?;
+        let mut cleaned_answer = String::new();
+
+        if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
+            cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
+            println!("Chain Final Answer: {:?}", cleaned_answer);
+
+            let is_valid = match state.as_ref().map(|s| s.stage.as_str()) {
+                None | Some("cron") => CronManager::is_valid_cron_expression(&cleaned_answer),
+                Some("pddl_domain") => ShinkaiPlan::validate_pddl_domain(cleaned_answer.clone()).is_ok(),
+                Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).is_ok(),
+                _ => false,
+            };
+            eprintln!("is_valid: {:?}", is_valid);
+
+            if is_valid {
+                let mut new_state = state.unwrap_or_else(|| CronCreationState {
+                    stage: "cron".to_string(),
+                    cron_expression: None,
+                    pddl_plan_problem: None,
+                    pddl_plan_domain: None,
+                    previous: None,
+                    previous_error: None,
+                });
+                new_state.stage = next_stage.to_string();
+                new_state.previous = None;
+                new_state.previous_error = None;
+                match new_state.stage.as_str() {
+                    "pddl_problem" => new_state.cron_expression = Some(cleaned_answer.clone()),
+                    "pddl_domain" => new_state.pddl_plan_problem = Some(cleaned_answer.clone()),
+                    _ => (),
+                };
+
+                if new_state.stage.is_empty() {
+                    return Ok(CronCreationChainResponse {
+                        cron_expression: new_state.cron_expression.unwrap(),
+                        pddl_plan_problem: new_state.pddl_plan_problem.unwrap(),
+                        pddl_plan_domain: cleaned_answer,
+                    });
+                } else {
+                    Self::start_cron_creation_chain(
+                        db,
+                        full_job,
+                        job_task.to_string(),
+                        agent,
+                        execution_context,
+                        user_profile,
+                        cron_description.clone(),
+                        task_description.clone(),
+                        object_description.clone(),
+                        iteration_count + 1,
+                        max_iterations,
+                        Some(new_state),
+                    )
+                    .await
+                }
+            } else {
+                let mut new_state = state.clone().unwrap_or_else(|| CronCreationState {
+                    stage: "cron".to_string(),
+                    cron_expression: None,
+                    pddl_plan_problem: None,
+                    pddl_plan_domain: None,
+                    previous: None,
+                    previous_error: None,
+                });
+                new_state.previous = Some(cleaned_answer.clone());
+                new_state.previous_error = match state.as_ref().map(|s| s.stage.as_str()) {
+                    Some("pddl_domain") => ShinkaiPlan::validate_pddl_domain(cleaned_answer.clone()).err(),
+                    Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).err(),
+                    _ => None,
+                };
+
+                Self::start_cron_creation_chain(
+                    db,
+                    full_job,
+                    job_task.to_string(),
+                    agent,
+                    execution_context,
+                    user_profile,
+                    cron_description.clone(),
+                    task_description.clone(),
+                    object_description.clone(),
+                    iteration_count + 1,
+                    max_iterations,
+                    Some(new_state),
+                )
+                .await
+            }
+        } else if iteration_count > max_iterations {
+            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+        } else {
+            let mut new_state = state.clone().unwrap_or_else(|| CronCreationState {
+                stage: "cron".to_string(),
+                cron_expression: None,
+                pddl_plan_problem: None,
+                pddl_plan_domain: None,
+                previous: None,
+                previous_error: None,
+            });
+            new_state.previous = Some(cleaned_answer.clone());
+            new_state.previous_error = match state.as_ref().map(|s| s.stage.as_str()) {
+                Some("pddl_domain") => ShinkaiPlan::validate_pddl_domain(cleaned_answer.clone()).err(),
+                Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).err(),
+                _ => None,
+            };
+            Self::start_cron_creation_chain(
+                db,
+                full_job,
+                job_task.to_string(),
+                agent,
+                execution_context,
+                user_profile,
+                cron_description.clone(),
+                task_description.clone(),
+                object_description.clone(),
+                iteration_count + 1,
+                max_iterations,
+                Some(new_state),
+            )
+            .await
+        }
     }
 }

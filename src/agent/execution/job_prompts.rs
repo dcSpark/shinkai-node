@@ -311,26 +311,86 @@ impl JobPromptGenerator {
     }
 
     /// Prompt for having the LLM generate a PDDL plan given some tools
-    pub fn pddl_plan_generation_prompt(task: String, tools: Vec<ShinkaiTool>) -> Prompt {
+    pub fn pddl_plan_problem_generation_prompt(
+        task: String,
+        tools: Vec<ShinkaiTool>,
+        previous: Option<String>,
+        previous_error: Option<String>,
+    ) -> Prompt {
         let tools_summary = tools
             .iter()
-            .map(|tool| tool.formatted_tool_summary(true))
+            .filter_map(|tool| tool.describe_formatted_tool_summary(true).ok())
             .collect::<Vec<String>>()
             .join("\n\n");
 
         let mut prompt = Prompt::new();
         prompt.add_content(
             format!(
-                "You are an assistant running in a system who only has access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are:\n\n```\n{}\n```\n",
+                "You are a PDDL planner expert with access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are: --- tools --- {} --- end tools ---",
                 tools_summary
             ),
             SubPromptType::System,
         );
 
         prompt.add_content(
-            format!("The current task at hand is create a planning using PDDL representation and limited to the previous tools, to:\n\n`{}`. Give me the plan to solve this problem using PDDL Representation that starts with: (define...", task),
+            format!("The current task is to: '{}'. Give me the problem representation to solve this problem using PDDL Representation and using the previous mentioned tools with their names. The response needs to start with: (define (problem ", task),
             SubPromptType::User,
         );
+
+        // if previous.is_some() && previous_error.is_some() {
+        //     prompt.add_content(
+        //         format!(
+        //             "Here is the previous plan you generated: '{}' double check the formatting because there is an error.",
+        //             previous.unwrap(),
+        //             // previous_error.unwrap()
+        //         ),
+        //         SubPromptType::User,
+        //     );
+        // }
+
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+
+        prompt
+    }
+
+    /// Prompt for having the LLM generate a PDDL plan given some tools
+    pub fn pddl_plan_domain_generation_prompt(
+        task: String,
+        problem: String,
+        tools: Vec<ShinkaiTool>,
+        previous: Option<String>,
+        previous_error: Option<String>,
+    ) -> Prompt {
+        let tools_summary = tools
+            .iter()
+            .filter_map(|tool| tool.describe_formatted_tool_summary(true).ok())
+            .collect::<Vec<String>>()
+            .join("\n\n");
+
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+                format!(
+                    "You are a PDDL planner expert with access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are: --- tools --- {} --- end tools ---",
+                    tools_summary
+                ),
+                SubPromptType::System,
+            );
+
+        // if previous.is_some() && previous_error.is_some() {
+        //     prompt.add_content(
+        //         format!(
+        //             "Here is the previous plan you generated: '{}' with the error: '{}'",
+        //             previous.unwrap(),
+        //             previous_error.unwrap()
+        //         ),
+        //         SubPromptType::User,
+        //     );
+        // }
+
+        prompt.add_content(
+                format!("The current task at hand is to: '{}'. We really need a good plan to solve this problem using a PDDL representation (Domain) and also matching actions with the previous tool names. The response needs to start with: (define (domain ", task),
+                SubPromptType::User,
+            );
 
         prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
 
@@ -349,7 +409,10 @@ impl JobPromptGenerator {
 
         // TODO: consider differences in timezones
         prompt.add_content(
-            format!("The current task at hand is create a cron expression using the following description:\n\n`{}`", description),
+            format!(
+                "The current task at hand is create a cron expression using the following description:\n\n`{}`",
+                description
+            ),
             SubPromptType::User,
         );
 
@@ -562,7 +625,7 @@ impl Prompt {
 
         if !user_content_added && first_user_content.is_some() {
             let remaining_tokens = limit - current_length;
-            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens-3]);
+            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
             if let Some(position) = first_user_content_position {
                 messages.insert(position, truncated_content.to_string());
             }

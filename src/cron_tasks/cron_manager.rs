@@ -172,14 +172,14 @@ impl CronManager {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
                                     ShinkaiLogLevel::Debug,
-                                    "Job processed successfully",
+                                    "Cron Job processed successfully",
                                 );
                             }
                             Err(e) => {
                                 shinkai_log(
                                     ShinkaiLogOption::CronExecution,
                                     ShinkaiLogLevel::Error,
-                                    format!("Job processing failed: {:?}", e).as_str(),
+                                    format!("Cron Job processing failed: {:?}", e).as_str(),
                                 );
                             }
                         }
@@ -317,5 +317,9 @@ impl CronManager {
     
         // Check if the next execution time falls within the range of now and now + cron_time_interval
         next_execution_time >= now && next_execution_time <= end_of_interval
+    }
+
+    pub fn is_valid_cron_expression(cron_expression: &str) -> bool {
+        cron_parser::parse(cron_expression, &Utc::now()).is_ok()
     }
 }

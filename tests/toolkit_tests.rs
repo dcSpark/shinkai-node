@@ -187,10 +187,10 @@ fn test_tool_router_and_toolkit_flow() {
     shinkai_db.deactivate_toolkit(&toolkit.name, &profile).unwrap();
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
     assert!(tool_router
-        .get_shinkai_tool(&results1[0].toolkit_name(), &results1[0].name())
+        .get_shinkai_tool(&results1[0].toolkit_type_name(), &results1[0].name())
         .is_err());
     assert!(tool_router
-        .get_shinkai_tool(&results2[0].toolkit_name(), &results2[0].name())
+        .get_shinkai_tool(&results2[0].toolkit_type_name(), &results2[0].name())
         .is_err());
 
     // Check toolkit is still installed, then uninstall, and check again

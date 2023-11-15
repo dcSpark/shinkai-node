@@ -32,6 +32,7 @@ mod schemas;
 mod tools;
 mod utils;
 mod cron_tasks;
+mod planner;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()

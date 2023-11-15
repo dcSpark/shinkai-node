@@ -23,7 +23,7 @@ impl ShinkaiTool {
         let (name, toolkit_name) = (
             self.name(),
             match self {
-                ShinkaiTool::Rust(r) => r.toolkit_name(),
+                ShinkaiTool::Rust(r) => r.toolkit_type_name(),
                 ShinkaiTool::JS(j) => j.toolkit_name.to_string(),
             },
         );
@@ -49,7 +49,15 @@ impl ShinkaiTool {
     /// Toolkit name the tool is from
     pub fn toolkit_name(&self) -> String {
         match self {
-            ShinkaiTool::Rust(r) => r.toolkit_name().clone(),
+            ShinkaiTool::Rust(r) => r.name.clone(),
+            ShinkaiTool::JS(j) => j.name.clone(),
+        }
+    }
+
+    /// Toolkit name the tool is from
+    pub fn toolkit_type_name(&self) -> String {
+        match self {
+            ShinkaiTool::Rust(r) => r.toolkit_type_name().clone(),
             ShinkaiTool::JS(j) => j.toolkit_name.clone(),
         }
     }
@@ -74,7 +82,7 @@ impl ShinkaiTool {
     pub fn ebnf_inputs(&self, add_arg_descriptions: bool) -> String {
         ToolArgument::generate_ebnf_for_args(
             self.input_args().clone(),
-            self.toolkit_name().clone(),
+            self.toolkit_type_name().clone(),
             add_arg_descriptions,
         )
     }
@@ -83,7 +91,7 @@ impl ShinkaiTool {
     pub fn ebnf_outputs(&self, add_arg_descriptions: bool) -> String {
         ToolArgument::generate_ebnf_for_args(
             self.output_args().clone(),
-            self.toolkit_name().clone(),
+            self.toolkit_type_name().clone(),
             add_arg_descriptions,
         )
     }
@@ -93,13 +101,124 @@ impl ShinkaiTool {
         let mut summary = format!(
             "Tool Name: {}\nToolkit Name: {}\nDescription: {}\nTool Input EBNF: `{}`",
             self.name(),
-            self.toolkit_name(),
+            self.toolkit_type_name(),
             self.description(),
             self.ebnf_inputs(false)
         );
 
         if ebnf_output {
             summary.push_str(&format!("\nTool Output EBNF: `{}`", self.ebnf_outputs(false)));
+        }
+
+        summary
+    }
+
+    /// Returns a formatted summary of the tool
+    pub fn xml_lite_formatted_tool_summary(&self, ebnf_output: bool) -> String {
+        let mut summary = format!(
+            "<toolkit name=\"{}\" description=\"{}\">",
+            self.toolkit_name(),
+            self.description(),
+        );
+
+        summary.push_str("<inputs>");
+        summary.push_str(&ToolArgument::lite_xml_generate_ebnf_for_args(
+            self.input_args().clone(),
+            ebnf_output,
+        ));
+        summary.push_str("</inputs>");
+
+        if ebnf_output {
+            summary.push_str("<outputs>");
+            summary.push_str(&ToolArgument::lite_xml_generate_ebnf_for_args(
+                self.output_args().clone(),
+                ebnf_output,
+            ));
+            summary.push_str("</outputs>");
+        }
+
+        summary.push_str("</toolkit>");
+
+        summary
+    }
+
+    pub fn json_formatted_tool_summary(&self, ebnf_output: bool) -> Result<String, ToolError> {
+        let mut summary = HashMap::new();
+
+        summary.insert("toolkit_name", self.toolkit_name());
+        summary.insert("description", self.description());
+
+        let inputs = ToolArgument::json_generate_ebnf_for_args(self.input_args().clone(), ebnf_output);
+        let inputs_json = serde_json::to_string(&inputs).map_err(|_| ToolError::FailedJSONParsing)?;
+        summary.insert("inputs", inputs_json);
+
+        if ebnf_output {
+            let outputs = ToolArgument::json_generate_ebnf_for_args(self.output_args().clone(), ebnf_output);
+            let outputs_json = serde_json::to_string(&outputs).map_err(|_| ToolError::FailedJSONParsing)?;
+            summary.insert("outputs", outputs_json);
+        }
+
+        serde_json::to_string(&summary).map_err(|_| ToolError::FailedJSONParsing)
+    }
+
+    pub fn describe_formatted_tool_summary(&self, ebnf_output: bool) -> Result<String, ToolError> {
+        let mut description = String::new();
+
+        description.push_str(&format!("Toolkit Name: {}\n", self.toolkit_name()));
+        description.push_str(&format!("Description: {}\n", self.description()));
+
+        let inputs = ToolArgument::json_generate_ebnf_for_args(self.input_args().clone(), ebnf_output);
+        for input in &inputs {
+            description.push_str(&format!(
+                "Input Name: {}\n",
+                input.get("name").unwrap_or(&String::from("N/A"))
+            ));
+            if ebnf_output {
+                description.push_str(&format!(
+                    "Input EBNF: {}\n",
+                    input.get("ebnf").unwrap_or(&String::from("N/A"))
+                ));
+            }
+        }
+
+        if ebnf_output {
+            let outputs = ToolArgument::json_generate_ebnf_for_args(self.output_args().clone(), ebnf_output);
+            for output in &outputs {
+                description.push_str(&format!(
+                    "Output Name: {}\n",
+                    output.get("name").unwrap_or(&String::from("N/A"))
+                ));
+                description.push_str(&format!(
+                    "Output EBNF: {}\n",
+                    output.get("ebnf").unwrap_or(&String::from("N/A"))
+                ));
+            }
+        }
+
+        Ok(description)
+    }
+
+    pub fn csv_formatted_tool_summary(&self, ebnf_output: bool) -> String {
+        let mut summary = String::from("Toolkit Name,Description,Inputs");
+
+        if ebnf_output {
+            summary.push_str(",Outputs");
+        }
+
+        summary.push('\n');
+
+        summary.push_str(&format!(
+            "{},{},{}",
+            self.toolkit_name(),
+            self.description(),
+            ToolArgument::lite_csv_generate_ebnf_for_args(self.input_args().clone(), ebnf_output,),
+        ));
+
+        if ebnf_output {
+            summary.push_str(&format!(
+                ",{}",
+                ToolArgument::lite_xml_generate_ebnf_for_args(self.output_args().clone(), ebnf_output,),
+            ));
         }
 
         summary

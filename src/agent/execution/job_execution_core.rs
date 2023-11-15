@@ -262,7 +262,12 @@ impl JobManager {
                     .await?;
 
                     // Prepare data to save inference response to the DB
-                    let agg_response = format!("Cron: {}\n PDDL Plan: {}", inference_response_content.cron_expression.to_string(), inference_response_content.pddl_plan.to_string());
+                    let agg_response = format!(
+                        "Cron: {}\n PDDL Plan: {} {}",
+                        inference_response_content.cron_expression.to_string(),
+                        inference_response_content.pddl_plan_problem.to_string(),
+                        inference_response_content.pddl_plan_domain.to_string()
+                    );
 
                     let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
                     let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
