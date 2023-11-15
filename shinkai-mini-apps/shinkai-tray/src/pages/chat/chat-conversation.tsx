@@ -16,7 +16,6 @@ import {
   extractJobIdFromInbox,
   extractReceiverShinkaiName,
   isJobInbox,
-  isJobMessage,
   isLocalMessage,
 } from "@shinkai_network/shinkai-message-ts/utils";
 import { Placeholder } from "@tiptap/extension-placeholder";
@@ -43,7 +42,7 @@ import {
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatDate, groupMessagesByDate } from "../../lib/chat-conversation";
-import { cn, handleSendNotification } from "../../lib/utils";
+import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 import { isImageOrPdf } from "../create-job";
 
@@ -176,9 +175,6 @@ const ChatConversation = () => {
     chatForm.reset();
   };
 
-  // by default there's always at least one message in the job, so initialize the initial state with this
-  const latestMessagesLength = useRef(1);
-
   const isLoading = useMemo(() => {
     if (
       isSendingMessageToJob ||
@@ -196,23 +192,8 @@ const ChatConversation = () => {
       auth?.profile ?? ""
     );
 
-    const lastPageLength = data?.pages?.at(-1)?.length ?? 0;
-    if (
-      isJobMessage(lastMessage) &&
-      // make sure that the number from the previous page changed (so we have one more message)
-      latestMessagesLength.current !== data?.pages?.at(-1)?.length &&
-      // odd messages are user's, so even ones are the responses from the node
-      lastPageLength % 2 == 0
-    ) {
-      handleSendNotification(
-        `Shinkai ${inboxId} reponse received`,
-        "Go to Shinkai Tray to see the response"
-      );
-    }
+    if (isJobInbox(inboxId) && isLocal) return true;
 
-    if (isJobInbox(inboxId) && isLocal) {
-      return true;
-    }
     return false;
   }, [
     isSendingMessageToJob,

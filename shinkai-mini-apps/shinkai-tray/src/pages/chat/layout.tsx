@@ -3,7 +3,11 @@ import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
+import {
+  getMessageContent,
+  isJobInbox,
+  isLocalMessage,
+} from "@shinkai_network/shinkai-message-ts/utils";
 import { Edit3, MessageCircleIcon, Workflow } from "lucide-react";
 import { z } from "zod";
 
@@ -20,7 +24,7 @@ import {
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Separator } from "../../components/ui/separator";
-import { cn } from "../../lib/utils";
+import { cn, handleSendNotification } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
 const updateInboxNameSchema = z.object({
@@ -125,12 +129,31 @@ const MessageButton = ({
   to,
   inboxId,
   inboxName,
+  lastMessageTime,
+  isJobLastMessage,
 }: {
   to: string;
   inboxId: string;
   inboxName: string;
+  lastMessageTime: string;
+  isJobLastMessage: boolean;
 }) => {
   const match = useMatch(to);
+  const previousDataRef = useRef<string>(lastMessageTime);
+  const previousLastMessageTime = previousDataRef.current;
+
+  useEffect(() => {
+    if (
+      lastMessageTime !== previousLastMessageTime &&
+      isJobInbox(inboxId) &&
+      isJobLastMessage
+    ) {
+      handleSendNotification(
+        `Shinkai ${inboxId} reponse received`,
+        "Go to Shinkai Tray to see the response"
+      );
+    }
+  }, [lastMessageTime, isJobLastMessage, inboxId, previousLastMessageTime]);
 
   const [isEditable, setIsEditable] = useState(false);
 
@@ -197,6 +220,16 @@ const ChatLayout = () => {
                       inbox.custom_name === inbox.inbox_id
                         ? getMessageContent(inbox.last_message)?.slice(0, 40)
                         : inbox.custom_name?.slice(0, 40)
+                    }
+                    isJobLastMessage={
+                      !isLocalMessage(
+                        inbox.last_message,
+                        auth?.shinkai_identity ?? "",
+                        auth?.profile ?? ""
+                      )
+                    }
+                    lastMessageTime={
+                      inbox.last_message.external_metadata?.scheduled_time ?? ""
                     }
                     inboxId={inbox.inbox_id}
                     key={inbox.inbox_id}
