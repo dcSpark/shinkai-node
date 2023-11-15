@@ -19,6 +19,7 @@ import { Input } from "../components/ui/input.tsx";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import QRCode from "../components/ui/qr-code.tsx";
 
 enum IdentityType {
   Profile = "profile",
@@ -33,7 +34,7 @@ enum PermissionType {
 
 const generateCodeSchema = z.object({
   identityType: z.nativeEnum(IdentityType),
-  profile: z.string().min(1),
+  profile: z.string(),
   permissionType: z.nativeEnum(PermissionType),
 });
 
@@ -55,6 +56,7 @@ const GenerateCodePage = () => {
   });
 
   const { identityType } = form.watch();
+
   const onSubmit = async (data: z.infer<typeof generateCodeSchema>) => {
     console.log("qwqweqwe", data);
   };
@@ -84,6 +86,7 @@ const GenerateCodePage = () => {
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
                 </FormItem>
               )}
               control={form.control}
@@ -123,6 +126,7 @@ const GenerateCodePage = () => {
                         </SelectItem>
                       ))}
                     </SelectContent>
+                    <FormMessage />
                   </Select>
                 </FormItem>
               )}
@@ -135,6 +139,7 @@ const GenerateCodePage = () => {
           </Button>
         </form>
       </Form>
+      <QRCode value={"https://www.shinkai.com"} size={180} />
     </SimpleLayout>
   );
 };
