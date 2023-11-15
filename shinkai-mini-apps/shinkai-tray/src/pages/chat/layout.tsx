@@ -24,7 +24,8 @@ import {
 import { Input } from "../../components/ui/input";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Separator } from "../../components/ui/separator";
-import { cn, handleSendNotification } from "../../lib/utils";
+import { handleSendNotification } from "../../lib/notifications.ts";
+import { cn } from "../../lib/utils";
 import { useAuth } from "../../store/auth";
 
 const updateInboxNameSchema = z.object({
@@ -149,11 +150,11 @@ const MessageButton = ({
       isJobLastMessage
     ) {
       handleSendNotification(
-        `Shinkai ${inboxId} reponse received`,
+        `${inboxName} response received`,
         "Go to Shinkai Tray to see the response"
       );
     }
-  }, [lastMessageTime, isJobLastMessage, inboxId, previousLastMessageTime]);
+  }, [lastMessageTime, isJobLastMessage, inboxId, previousLastMessageTime, inboxName]);
 
   const [isEditable, setIsEditable] = useState(false);
 
