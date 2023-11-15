@@ -3,11 +3,7 @@ import { useForm } from "react-hook-form";
 import { Link, Outlet, useMatch } from "react-router-dom";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  extractReceiverShinkaiName,
-  getMessageContent,
-  isJobInbox,
-} from "@shinkai_network/shinkai-message-ts/utils";
+import { getMessageContent, isJobInbox } from "@shinkai_network/shinkai-message-ts/utils";
 import { Edit3, MessageCircleIcon, Workflow } from "lucide-react";
 import { z } from "zod";
 

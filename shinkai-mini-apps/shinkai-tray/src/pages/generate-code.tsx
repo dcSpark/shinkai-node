@@ -1,11 +1,11 @@
 import SimpleLayout from "./layout/simple-layout.tsx";
 
-const SettingsPage = () => {
+const GenerateCodePage = () => {
   return (
-    <SimpleLayout title="Settings">
+    <SimpleLayout title="Generate Registration Code">
       <p>Manage your account settings preferences.</p>
     </SimpleLayout>
   );
 };
 
-export default SettingsPage;
+export default GenerateCodePage;

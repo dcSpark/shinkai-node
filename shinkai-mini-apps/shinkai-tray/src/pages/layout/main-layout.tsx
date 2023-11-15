@@ -1,10 +1,9 @@
 import * as React from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 
-import { GearIcon, LightningBoltIcon, PersonIcon } from "@radix-ui/react-icons";
+import { ExitIcon, GearIcon, PersonIcon, TokensIcon } from "@radix-ui/react-icons";
 import { listen } from "@tauri-apps/api/event";
 
-// import { ShinkaiLogo } from "../../components/icons";
 import {
   Command,
   CommandGroup,
@@ -19,10 +18,12 @@ import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
   CREATE_JOB_PATH,
+  GENERATE_CODE_PATH,
   ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "../../routes/name";
 import { useAuth } from "../../store/auth";
+import { BotIcon, BoxesIcon, MessageCircleIcon } from "lucide-react";
 
 export function Footer() {
   const [open, setOpen] = React.useState(false);
@@ -67,6 +68,11 @@ export function Footer() {
     navigate(SETTINGS_PATH);
     setOpen(false);
   };
+
+  const goToGenerateCode = () => {
+    navigate(GENERATE_CODE_PATH);
+    setOpen(false);
+  };
   const goToSettings = () => {
     navigate(SETTINGS_PATH);
     setOpen(false);
@@ -96,11 +102,11 @@ export function Footer() {
           break;
         }
         case "5": {
-          goToSettings();
+          goToGenerateCode();
           break;
         }
         case "6": {
-          handleDisconnect();
+          goToSettings();
           break;
         }
         default: {
@@ -140,17 +146,17 @@ export function Footer() {
             <CommandList className="p-0 pt-2">
               <CommandGroup heading="Actions">
                 <CommandItem onSelect={goToCreateJob}>
-                  <LightningBoltIcon className="mr-2" />
+                  <BoxesIcon className="mr-2" />
                   <span>Create Job</span>
                   <CommandShortcut>⌘1</CommandShortcut>
                 </CommandItem>
                 <CommandItem onSelect={goToCreateChat}>
-                  <LightningBoltIcon className="mr-2" />
+                  <MessageCircleIcon className="mr-2" />
                   <span>Create Chat</span>
                   <CommandShortcut>⌘2</CommandShortcut>
                 </CommandItem>
                 <CommandItem onSelect={goToCreateAgent}>
-                  <LightningBoltIcon className="mr-2" />
+                  <BotIcon className="mr-2" />
                   <span>Add Agent</span>
                   <CommandShortcut>⌘3</CommandShortcut>
                 </CommandItem>
@@ -162,15 +168,20 @@ export function Footer() {
                   <span>Profile</span>
                   <CommandShortcut>⌘4</CommandShortcut>
                 </CommandItem>
+                <CommandItem onSelect={goToGenerateCode}>
+                  <TokensIcon className="mr-2 h-4 w-4" />
+                  <span>Generate Code</span>
+                  <CommandShortcut>⌘5</CommandShortcut>
+                </CommandItem>
                 <CommandItem onSelect={goToSettings}>
                   <GearIcon className="mr-2 h-4 w-4" />
                   <span>Settings</span>
-                  <CommandShortcut>⌘5</CommandShortcut>
+                  <CommandShortcut>⌘6</CommandShortcut>
                 </CommandItem>
                 <CommandItem onSelect={handleDisconnect}>
-                  <GearIcon className="mr-2 h-4 w-4" />
+                  <ExitIcon className="mr-2 h-4 w-4" />
                   <span>Disconnect</span>
-                  <CommandShortcut>⌘6</CommandShortcut>
+                  {/*<CommandShortcut>⌘6</CommandShortcut>*/}
                 </CommandItem>
               </CommandGroup>
             </CommandList>
