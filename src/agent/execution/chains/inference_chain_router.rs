@@ -101,7 +101,7 @@ impl JobManager {
                         cron_task_request.task_description,
                         cron_task_request.object_description,
                         0,
-                        1, // TODO: Make this configurable
+                        6, // TODO: Make this configurable
                         None,
                     )
                     .await?;

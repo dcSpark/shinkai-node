@@ -14,6 +14,7 @@ use async_recursion::async_recursion;
 use pddl_parser::problem::Object;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
@@ -195,7 +196,7 @@ pub fn create_llm_caller_tool() -> ShinkaiTool {
 
     let rust_tool = RustTool {
         name: "LLM_caller".to_string(),
-        description: "Calls an LLM with a given prompt and returns the response.".to_string(),
+        description: "Ask an LLM any questions (it won't know current information).".to_string(),
         input_args,
         output_args,
         tool_embedding: Embedding::new("", vec![]), // You need to provide the actual embedding vector here
@@ -242,6 +243,10 @@ impl JobManager {
     ) -> Result<CronCreationChainResponse, AgentError> {
         println!("start_cron_creation_chain>  message: {:?}", job_task);
 
+        if iteration_count > max_iterations {
+            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
+        }
+
         // TODO: we need the vector search for the tools
         // let query = generator.generate_embedding_default(&query_text).await.unwrap();
         // let ret_nodes = JobManager::job_scope_vector_search(
@@ -258,7 +263,6 @@ impl JobManager {
             create_weblink_extractor_tool(),
             create_web_crawler_tool(),
             create_content_summarizer_tool(),
-            create_llm_string_preparer_tool(),
             create_llm_caller_tool(),
         ];
 
@@ -299,6 +303,7 @@ impl JobManager {
 
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
+            cleaned_answer = cleaned_answer.replace('\n', "");
             println!("Chain Final Answer: {:?}", cleaned_answer);
 
             let is_valid = match state.as_ref().map(|s| s.stage.as_str()) {
@@ -307,7 +312,7 @@ impl JobManager {
                 Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).is_ok(),
                 _ => false,
             };
-            eprintln!("is_valid: {:?}", is_valid);
+            shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Info, &format!("is_valid: {:?}", is_valid));
 
             if is_valid {
                 let mut new_state = state.unwrap_or_else(|| CronCreationState {
@@ -382,8 +387,6 @@ impl JobManager {
                 )
                 .await
             }
-        } else if iteration_count > max_iterations {
-            return Err(AgentError::InferenceRecursionLimitReached(job_task.clone()));
         } else {
             let mut new_state = state.clone().unwrap_or_else(|| CronCreationState {
                 stage: "cron".to_string(),

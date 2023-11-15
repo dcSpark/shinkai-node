@@ -319,30 +319,37 @@ impl JobPromptGenerator {
     ) -> Prompt {
         let tools_summary = tools
             .iter()
-            .filter_map(|tool| tool.describe_formatted_tool_summary(true).ok())
+            .filter_map(|tool| tool.describe_formatted_tool_summary(false).ok())
             .collect::<Vec<String>>()
             .join("\n\n");
 
         let mut prompt = Prompt::new();
         prompt.add_content(
             format!(
-                "You are a PDDL planner expert with access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are: --- tools --- {} --- end tools ---",
+                "You are a very helpful assistant with PDDL planner expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
                 tools_summary
             ),
             SubPromptType::System,
         );
 
         prompt.add_content(
-            format!("The current task is to: '{}'. Give me the problem representation to solve this problem using PDDL Representation and using the previous mentioned tools with their names. The response needs to start with: (define (problem ", task),
+            format!(
+                "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---"
+            ),
+            SubPromptType::User,
+        );
+
+        prompt.add_content(
+            format!("The current task is to: '{}'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", task),
             SubPromptType::User,
         );
 
         // if previous.is_some() && previous_error.is_some() {
         //     prompt.add_content(
         //         format!(
-        //             "Here is the previous plan you generated: '{}' double check the formatting because there is an error.",
-        //             previous.unwrap(),
-        //             // previous_error.unwrap()
+        //             "Here is the previous plan you generated: '{}' double check the formatting because there is an error: {}. You can start all over if you are not sure how to fix it.",
+        //             previous.unwrap().replace("\\n", " "),
+        //             previous_error.unwrap()
         //         ),
         //         SubPromptType::User,
         //     );
@@ -356,7 +363,7 @@ impl JobPromptGenerator {
     /// Prompt for having the LLM generate a PDDL plan given some tools
     pub fn pddl_plan_domain_generation_prompt(
         task: String,
-        problem: String,
+        pddl_problem: String,
         tools: Vec<ShinkaiTool>,
         previous: Option<String>,
         previous_error: Option<String>,
@@ -388,7 +395,14 @@ impl JobPromptGenerator {
         // }
 
         prompt.add_content(
-                format!("The current task at hand is to: '{}'. We really need a good plan to solve this problem using a PDDL representation (Domain) and also matching actions with the previous tool names. The response needs to start with: (define (domain ", task),
+            format!(
+                "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---"
+            ),
+            SubPromptType::User,
+        );
+
+        prompt.add_content(
+                format!("The current task at hand is to: '{}'. This is the PDDL (Problem): {}. Implement a plan using PDDL representation using the available tools. (define (domain ", pddl_problem, task),
                 SubPromptType::User,
             );
 
