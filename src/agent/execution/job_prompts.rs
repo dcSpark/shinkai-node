@@ -344,18 +344,27 @@ impl JobPromptGenerator {
             SubPromptType::User,
         );
 
-        // if previous.is_some() && previous_error.is_some() {
-        //     prompt.add_content(
-        //         format!(
-        //             "Here is the previous plan you generated: '{}' double check the formatting because there is an error: {}. You can start all over if you are not sure how to fix it.",
-        //             previous.unwrap().replace("\\n", " "),
-        //             previous_error.unwrap()
-        //         ),
-        //         SubPromptType::User,
-        //     );
-        // }
+        if previous.is_some() && previous_error.is_some() {
+            prompt.add_content(
+                format!(
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field",
+                    previous.unwrap().replace("\\n", " "),
+                    previous_error.unwrap()
+                ),
+                SubPromptType::User,
+            );
+        } else {
+            prompt.add_content(
+                format!(
+                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                ),
+                SubPromptType::User);
+        }
 
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+        );
 
         prompt
     }
@@ -376,23 +385,12 @@ impl JobPromptGenerator {
 
         let mut prompt = Prompt::new();
         prompt.add_content(
-                format!(
-                    "You are a PDDL planner expert with access to a series of tools and your own knowledge. The only tools at your disposal for PDDL planing are: --- tools --- {} --- end tools ---",
-                    tools_summary
-                ),
-                SubPromptType::System,
-            );
-
-        // if previous.is_some() && previous_error.is_some() {
-        //     prompt.add_content(
-        //         format!(
-        //             "Here is the previous plan you generated: '{}' with the error: '{}'",
-        //             previous.unwrap(),
-        //             previous_error.unwrap()
-        //         ),
-        //         SubPromptType::User,
-        //     );
-        // }
+            format!(
+                "You are a very helpful assistant with PDDL planner expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
+                tools_summary
+            ),
+            SubPromptType::System,
+        );
 
         prompt.add_content(
             format!(
@@ -402,11 +400,31 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-                format!("The current task at hand is to: '{}'. This is the PDDL (Problem): {}. Implement a plan using PDDL representation using the available tools. (define (domain ", pddl_problem, task),
+            format!("The current task at hand is to: '{}'. This is the PDDL (Problem): {}. Implement a throughout plan using PDDL representation using the available tools. (define (domain ", pddl_problem, task),
+            SubPromptType::User,
+        );
+
+        if previous.is_some() && previous_error.is_some() {
+            prompt.add_content(
+                format!(
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field",
+                    previous.unwrap().replace("\\n", " "),
+                    previous_error.unwrap()
+                ),
                 SubPromptType::User,
             );
+        } else {
+            prompt.add_content(
+                format!(
+                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                ),
+                SubPromptType::User);
+        }
 
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+        );
 
         prompt
     }

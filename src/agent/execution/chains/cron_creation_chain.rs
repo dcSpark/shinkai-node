@@ -12,9 +12,10 @@ use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
 use async_recursion::async_recursion;
 use pddl_parser::problem::Object;
+use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::embeddings::Embedding;
 use std::result::Result::Ok;
@@ -303,7 +304,8 @@ impl JobManager {
 
         if let Ok(answer_str) = JobManager::extract_inference_json_response(response_json.clone(), "answer") {
             cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
-            cleaned_answer = cleaned_answer.replace('\n', "");
+            let re = Regex::new(r"(\\+n)").unwrap();
+            cleaned_answer = re.replace_all(&cleaned_answer, "").to_string();
             println!("Chain Final Answer: {:?}", cleaned_answer);
 
             let is_valid = match state.as_ref().map(|s| s.stage.as_str()) {
@@ -312,7 +314,11 @@ impl JobManager {
                 Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).is_ok(),
                 _ => false,
             };
-            shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Info, &format!("is_valid: {:?}", is_valid));
+            shinkai_log(
+                ShinkaiLogOption::CronExecution,
+                ShinkaiLogLevel::Info,
+                &format!("is_valid: {:?}", is_valid),
+            );
 
             if is_valid {
                 let mut new_state = state.unwrap_or_else(|| CronCreationState {

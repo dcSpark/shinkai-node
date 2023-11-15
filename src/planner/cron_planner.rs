@@ -1,9 +1,12 @@
 use futures::Future;
-use pddl_parser::domain::domain::Domain;
-use pddl_parser::domain::typed_parameter::TypedParameter;
-use pddl_parser::domain::typing::Type;
-use pddl_parser::error::ParserError;
+use pddl::parsers::Span;
+// use pddl_parser::domain::domain::Domain;
+// use pddl_parser::domain::typed_parameter::TypedParameter;
+// use pddl_parser::domain::typing::Type;
+// use pddl_parser::error::ParserError;
 use pddl_parser::{domain::action::Action, lexer::TokenStream};
+use pddl::{Domain, Problem};
+use pddl::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -66,37 +69,62 @@ impl ShinkaiPlan {
     pub fn process_plan(plan: Arc<Mutex<ShinkaiPlan>>) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let mut plan_guard = plan.lock().await;
-            for action in plan_guard.clone().domain.actions.iter() {
-                match (plan_guard.execute_action)(action, &mut plan_guard.state).await {
-                    Ok(_) => {
-                        println!("Action {} executed successfully", action.name);
-                    }
-                    Err(_) => {
-                        println!("Action {} failed", action.name);
-                    }
-                }
-            }
+            // for action in plan_guard.clone().domain.actions.iter() {
+            //     match (plan_guard.execute_action)(action, &mut plan_guard.state).await {
+            //         Ok(_) => {
+            //             println!("Action {} executed successfully", action.name);
+            //         }
+            //         Err(_) => {
+            //             println!("Action {} failed", action.name);
+            //         }
+            //     }
+            // }
         })
     }
 
     pub fn validate_pddl_domain(pddl: String) -> Result<(), String> {
-        let token_stream: TokenStream = pddl.as_str().into();
-        match Domain::parse(token_stream) {
-            Ok(_) => Ok(()),
+        eprintln!("Validating PDDL domain");
+        let span = Span::new(&pddl);
+        let parse_result = Domain::parse(span);
+        match parse_result {
+            Ok((remainder, _)) => {
+                if remainder.fragment().is_empty() {
+                    eprintln!("OK");
+                    Ok(())
+                } else {
+                    let error_message = format!("PDDL parsing error: Unparsed remainder - {}", remainder.fragment());
+                    eprintln!("{}", error_message);
+                    Err(error_message)
+                }
+            }
             Err(e) => {
-                eprintln!("PDDL parsing error: {:?}", e);
-                Err(format!("PDDL parsing error: {:?}", e))
+                let error_message = format!("PDDL parsing error: {:?}", e);
+                eprintln!("{}", error_message);
+                Err(error_message)
             }
         }
     }
-
+    
     pub fn validate_pddl_problem(pddl: String) -> Result<(), String> {
-        let token_stream: TokenStream = pddl.as_str().into();
-        match pddl_parser::problem::Problem::parse(token_stream) {
-            Ok(_) => Ok(()),
+        eprintln!("Validating PDDL problem");
+        let span = Span::new(&pddl);
+        eprintln!("Parsing PDDL problem with span: {:?}", span);
+        let parse_result = Problem::parse(span);
+        match parse_result {
+            Ok((remainder, _)) => {
+                if remainder.fragment().is_empty() {
+                    eprintln!("OK");
+                    Ok(())
+                } else {
+                    let error_message = format!("PDDL parsing error: Unparsed remainder - {}", remainder.fragment());
+                    eprintln!("{}", error_message);
+                    Err(error_message)
+                }
+            }
             Err(e) => {
-                eprintln!("PDDL parsing error: {:?}", e);
-                Err(format!("PDDL parsing error: {:?}", e))
+                let error_message = format!("PDDL parsing error: {:?}", e);
+                eprintln!("{}", error_message);
+                Err(error_message)
             }
         }
     }
