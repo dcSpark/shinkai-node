@@ -326,7 +326,7 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
         prompt.add_content(
             format!(
-                "You are a very helpful assistant with PDDL planner expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
+                "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
                 tools_summary
             ),
             SubPromptType::System,
@@ -347,7 +347,7 @@ impl JobPromptGenerator {
         if previous.is_some() && previous_error.is_some() {
             prompt.add_content(
                 format!(
-                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field",
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field if you are able to, if you are not certain, then start all over.",
                     previous.unwrap().replace("\\n", " "),
                     previous_error.unwrap()
                 ),
@@ -386,7 +386,7 @@ impl JobPromptGenerator {
         let mut prompt = Prompt::new();
         prompt.add_content(
             format!(
-                "You are a very helpful assistant with PDDL planner expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
+                "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
                 tools_summary
             ),
             SubPromptType::System,
@@ -407,7 +407,7 @@ impl JobPromptGenerator {
         if previous.is_some() && previous_error.is_some() {
             prompt.add_content(
                 format!(
-                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field",
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field if you are able to, if you are not certain, then start all over.",
                     previous.unwrap().replace("\\n", " "),
                     previous_error.unwrap()
                 ),

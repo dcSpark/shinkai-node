@@ -1,0 +1,9 @@
+[package]
+name = "pddl-ish-parser"
+version = "0.0.1"
+edition = "2018"
+license = "MIT"
+authors = ["Nico Arqueros <nico@shinkai.com>"]
+
+[dependencies]
+nom = "7.1.3"
