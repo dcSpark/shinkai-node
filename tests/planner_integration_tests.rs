@@ -134,7 +134,7 @@ fn planner_integration_test() {
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
-                    api_key: Some("".to_string()),
+                    api_key: Some("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".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
@@ -321,10 +321,13 @@ fn planner_integration_test() {
                 )
                 .await;
                 assert_eq!(inboxes.len(), 1);
+                eprintln!("inboxes: {:?}", inboxes);
             }
-            tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+            tokio::time::sleep(Duration::from_secs(6 * 60)).await;
 
             panic!("stop");
+
+            // TODO: check that the response contains a valid CRON and a valid PDDL
 
             // {
             //     tokio::time::sleep(Duration::from_secs(1000)).await;

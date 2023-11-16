@@ -22,14 +22,17 @@ pub fn parse_problem(input: &str) -> Result<(&str, Problem), ParserError> {
         description: format!("{}", err),
         code: get_error_context(input),
     })?;
+    eprintln!("Input: {:?}", input);
     let (input, name) = take_until(")")(input).map_err(|err: nom::Err<nom::error::Error<&str>>| ParserError {
         description: format!("{}", err),
         code: get_error_context(input),
     })?;
+    eprintln!("Name: {:?}", name);
     let (input, _) = tag(")")(input).map_err(|err: nom::Err<nom::error::Error<&str>>| ParserError {
         description: format!("{}", err),
         code: get_error_context(input),
     })?;
+    eprintln!("Input: {:?}", input);
     let (input, domain) = parse_domain(input)?;
     eprintln!("Domain: {:?}", domain);
     let (input, objects) = parse_objects(input)?;
@@ -39,6 +42,7 @@ pub fn parse_problem(input: &str) -> Result<(&str, Problem), ParserError> {
     let (input, goal) = parse_goals(input)?;
     eprintln!("Goals: {:?}", goal);
     let (input, actions) = many0(parse_action_nom)(input)?;
+    eprintln!("Actions: {:?}", actions);
 
     Ok((
         input,
@@ -76,7 +80,7 @@ fn parse_objects(input: &str) -> Result<(&str, Vec<String>), ParserError> {
         tag("(:objects"),
         many0(preceded(
             multispace1::<&str, ParserError>,
-            tuple((take_until(" -"), tag(" -"), alt((take_until("\n"), take_until(")"))))),
+            tuple((take_until(" - "), (take_until("\n")))),
         )),
         preceded(multispace0, tag(")")),
     )(input)
@@ -88,7 +92,7 @@ fn parse_objects(input: &str) -> Result<(&str, Vec<String>), ParserError> {
     eprintln!("Parsed objects after res: {:?}", res);
     let objects = res
         .into_iter()
-        .map(|(name, _, typ)| {
+        .map(|(name, typ)| {
             let object_name = name.trim().replace("-", "_");
             let object_type = typ.trim().trim_end_matches(')').trim();
             format!("{} - {}", object_name, object_type)
@@ -121,10 +125,12 @@ fn parse_goals(input: &str) -> Result<(&str, Vec<String>), ParserError> {
         code: get_error_context(input),
     })?;
 
-    let (input, _) = multispace1::<&str, nom::error::Error<&str>>(input)
-        .map_err(|err: nom::Err<nom::error::Error<&str>>| ParserError {
-            description: format!("{}", err),
-            code: get_error_context(input),
+    let (input, _) =
+        multispace1::<&str, nom::error::Error<&str>>(input).map_err(|err: nom::Err<nom::error::Error<&str>>| {
+            ParserError {
+                description: format!("{}", err),
+                code: get_error_context(input),
+            }
         })?;
 
     // Capture everything until the next closing parenthesis that marks the end of the goals section
@@ -185,6 +191,61 @@ mod tests {
                 Err(e) => {
                     panic!("Error parsing objects: {:?}", e);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_objects_complex() {
+        let input = r#"(:objects
+        website-url - url
+        all-hyperlinks - links
+        ai-news-links - links
+    )
+
+    (:init
+        (website-known website-url)
+    )
+
+    (:goal
+        (and
+            (all-links-extracted website-url all-hyperlinks)
+            (relevant-links-found all-hyperlinks ai-news-links)
+        )
+    )
+
+    (:action extract-html
+        :parameters (?url - url)
+        :precondition (website-known ?url)
+        :effect (html-content-available ?url)
+    )
+
+    (:action extract-links
+        :parameters (?url - url)
+        :precondition (html-content-available ?url)
+        :effect (all-links-extracted ?url all-hyperlinks)
+    )
+
+    (:action summarize-and-filter-links
+        :parameters (?links - links)
+        :precondition (all-links-extracted website-url ?links)
+        :effect (relevant-links-found ?links ai-news-links)
+    )"#;
+
+        let expected = vec![
+            "website_url - url".to_string(),
+            "all_hyperlinks - links".to_string(),
+            "ai_news_links - links".to_string(),
+        ];
+
+        let result = parse_objects(input);
+        match result {
+            Ok((remaining_input, objects)) => {
+                assert_eq!(objects, expected);
+                // assert remaining_input is as expected
+            }
+            Err(e) => {
+                panic!("Error parsing objects: {:?}", e);
             }
         }
     }

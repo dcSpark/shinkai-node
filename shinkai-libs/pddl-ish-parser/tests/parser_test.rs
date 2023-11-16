@@ -1,5 +1,5 @@
 use pddl_ish_parser::parser::{
-    action::{parse_action, Action},
+    action::{parse_action, Action, parse_parameters, parse_preconditions, precondition},
     parameter::Parameter,
 };
 
@@ -88,9 +88,69 @@ fn test_parse_action_invalid_format() {
 }
 
 #[test]
+fn test_parse_parameter() {
+    let input = "(?url - url)";
+    let expected = vec![
+        Parameter {
+            name: "?url - url".to_string(),
+        },
+    ];
+
+    assert_eq!(parse_parameters(input).unwrap().1, expected);
+}
+
+#[test]
+fn test_parse_parameters() {
+    let input = "(?url - url ?another - another)";
+    let expected = vec![
+        Parameter {
+            name: "?url - url".to_string(),
+        },
+        Parameter {
+            name: "?another - another".to_string(),
+        },
+    ];
+
+    assert_eq!(parse_parameters(input).unwrap().1, expected);
+}
+
+#[test]
+fn test_precondition() {
+    let input = "all-links-extracted website-url ?links";
+    let expected = "all-links-extracted website-url ?links".to_string();
+
+    assert_eq!(precondition(input).unwrap().1, expected);
+
+    let input_b = "all-links-extracted ?links";
+    let expected_b = "all-links-extracted ?links".to_string();
+
+    assert_eq!(precondition(input_b).unwrap().1, expected_b);
+}
+
+#[test]
+fn test_parse_precondition() {
+    let input = "(website-known ?url)";
+    let expected = vec![
+        "website-known ?url".to_string(),
+    ];
+
+    assert_eq!(parse_preconditions(input).unwrap().1, expected);
+}
+
+#[test]
+fn test_parse_preconditions() {
+    let input = "(website-known ?url another-precondition ?another)";
+    let expected = vec![
+        "website-known ?url".to_string(),
+        "another-precondition ?another".to_string(),
+    ];
+
+    assert_eq!(parse_preconditions(input).unwrap().1, expected);
+}
+
+#[test]
 fn test_parse_extract_html_action() {
-    let input = r#"
-        (:action extract-html
+    let input = r#"(:action extract-html
             :parameters (?url - url)
             :precondition (website-known ?url)
             :effect (html-content-available ?url)
@@ -102,9 +162,11 @@ fn test_parse_extract_html_action() {
         parameters: vec![Parameter {
             name: "?url - url".to_string(),
         }],
-        preconditions: vec!["(website-known ?url)".to_string()],
-        effects: vec!["(html-content-available ?url)".to_string()],
+        preconditions: vec!["website-known ?url".to_string()],
+        effects: vec!["html-content-available ?url".to_string()],
     };
+
+    eprintln!("Parsing input: {:?}", parse_action(input));
 
     assert_eq!(parse_action(input).unwrap().1, expected);
 }
