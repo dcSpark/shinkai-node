@@ -139,7 +139,7 @@ const GenerateCodePage = () => {
     <SimpleLayout title="Generate Registration Code">
       <Form {...form}>
         <form
-          className="flex flex-col justify-between space-y-3"
+          className="flex flex-col justify-between space-y-5"
           onSubmit={form.handleSubmit(onSubmit)}
         >
           <div className="flex grow flex-col space-y-2">
@@ -240,15 +240,12 @@ function QrCodeModal({
   generatedSetupData: GeneratedSetupData | undefined;
 }) {
   const [saved, setSaved] = useState(false);
-  // eslint-disable-next-line unicorn/consistent-function-scoping
   const downloadCode = async () => {
     const canvas = document.querySelector("#registration-code-qr");
     if (canvas instanceof HTMLCanvasElement) {
       /*
-     Tauri has this feature in the roadmap, but it's not available yet.
-     https://github.com/tauri-apps/tauri/issues/4633
-
-
+       Tauri has this feature in the roadmap, but it's not available yet.
+       https://github.com/tauri-apps/tauri/issues/4633
        const downloadLink = document.createElement("a");
        downloadLink.href = pngUrl;
        downloadLink.download = `registration-code-shinkai.png`;
@@ -256,7 +253,6 @@ function QrCodeModal({
        console.log(downloadLink);
        downloadLink.click();
        downloadLink.remove();
-
      */
       try {
         const pngUrl = canvas.toDataURL();
@@ -293,7 +289,13 @@ function QrCodeModal({
               {saved ? <Check /> : <DownloadIcon className="h-4 w-4" />}
               {saved ? "Saved" : "Download"}
             </Button>
-            <Button className="flex gap-1" variant="ghost">
+            <Button
+              onClick={() => {
+                onOpenChange(false);
+              }}
+              className="flex gap-1"
+              variant="ghost"
+            >
               I saved it, close
             </Button>
           </div>
