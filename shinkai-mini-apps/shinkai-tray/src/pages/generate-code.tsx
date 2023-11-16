@@ -1,4 +1,16 @@
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { DownloadIcon } from "@radix-ui/react-icons";
+import { save } from "@tauri-apps/api/dialog";
+import { BaseDirectory, writeBinaryFile } from "@tauri-apps/api/fs";
+import { Check } from "lucide-react";
+import { z } from "zod";
+
+import { useCreateRegistrationCode } from "../api/mutations/createRegistrationCode/useCreateRegistrationCode.ts";
 import { Button } from "../components/ui/button.tsx";
+import { Dialog, DialogContent } from "../components/ui/dialog.tsx";
 import {
   Form,
   FormControl,
@@ -7,7 +19,8 @@ import {
   FormLabel,
   FormMessage,
 } from "../components/ui/form.tsx";
-import SimpleLayout from "./layout/simple-layout.tsx";
+import { Input } from "../components/ui/input.tsx";
+import QRCode from "../components/ui/qr-code.tsx";
 import {
   Select,
   SelectContent,
@@ -15,11 +28,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select.tsx";
-import { Input } from "../components/ui/input.tsx";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import QRCode from "../components/ui/qr-code.tsx";
+import { SetupData, useAuth } from "../store/auth.ts";
+import SimpleLayout from "./layout/simple-layout.tsx";
+
+const saveImage = async (dataUrl: string) => {
+  const suggestedFilename = "registration-code-shinkai.png";
+  await save({ defaultPath: BaseDirectory.Download + "/" + suggestedFilename });
+  await writeBinaryFile(
+    suggestedFilename,
+    await fetch(dataUrl).then((response) => response.arrayBuffer()),
+    { dir: BaseDirectory.Download }
+  );
+};
 
 enum IdentityType {
   Profile = "profile",
@@ -45,7 +65,16 @@ const permissionOptions = [
   PermissionType.None,
 ];
 
+type GeneratedSetupData = Partial<
+  SetupData & { registration_code: string; identity_type: string }
+>;
 const GenerateCodePage = () => {
+  const auth = useAuth((state) => state.auth);
+  const [qrCodeModalOpen, setQrCodeModalOpen] = useState(false);
+  const [generatedSetupData, setGeneratedSetupData] = useState<
+    GeneratedSetupData | undefined
+  >();
+
   const form = useForm<z.infer<typeof generateCodeSchema>>({
     resolver: zodResolver(generateCodeSchema),
     defaultValues: {
@@ -55,10 +84,56 @@ const GenerateCodePage = () => {
     },
   });
 
+  const { mutateAsync: createRegistrationCode, isPending } = useCreateRegistrationCode({
+    onSuccess: (registrationCode) => {
+      const formValues = form.getValues();
+      const setupData: GeneratedSetupData = {
+        registration_code: registrationCode,
+        permission_type: formValues.permissionType,
+        identity_type: formValues.identityType,
+        profile: formValues.profile,
+        node_address: auth?.node_address,
+        shinkai_identity: auth?.shinkai_identity,
+        node_encryption_pk: auth?.node_encryption_pk,
+        node_signature_pk: auth?.node_signature_pk,
+        ...(formValues.identityType === IdentityType.Device &&
+        formValues.profile === auth?.profile
+          ? {
+              profile_encryption_pk: auth.profile_encryption_pk,
+              profile_encryption_sk: auth.profile_encryption_sk,
+              profile_identity_pk: auth.profile_identity_pk,
+              profile_identity_sk: auth.profile_identity_sk,
+            }
+          : {}),
+      };
+      setGeneratedSetupData(setupData);
+      setQrCodeModalOpen(true);
+    },
+  });
+
   const { identityType } = form.watch();
 
   const onSubmit = async (data: z.infer<typeof generateCodeSchema>) => {
-    console.log("qwqweqwe", data);
+    await createRegistrationCode({
+      permissionsType: data.permissionType,
+      identityType: data.identityType,
+      setupPayload: {
+        my_device_encryption_sk: auth?.my_device_encryption_sk ?? "",
+        my_device_identity_sk: auth?.my_device_identity_sk ?? "",
+        profile_encryption_sk: auth?.profile_encryption_sk ?? "",
+        profile_identity_sk: auth?.profile_identity_sk ?? "",
+        node_encryption_pk: auth?.node_encryption_pk ?? "",
+        permission_type: auth?.permission_type ?? "",
+        registration_name: auth?.registration_name ?? "",
+        profile: auth?.profile ?? "",
+        shinkai_identity: auth?.shinkai_identity ?? "",
+        node_address: auth?.node_address ?? "",
+        //TODO: remove from network lib these unused params
+        registration_code: "",
+        identity_type: "",
+      },
+      profileName: data.profile,
+    });
   };
   return (
     <SimpleLayout title="Generate Registration Code">
@@ -95,8 +170,6 @@ const GenerateCodePage = () => {
 
             {identityType === IdentityType.Device && (
               <FormField
-                control={form.control}
-                name="profile"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Profile</FormLabel>
@@ -106,6 +179,8 @@ const GenerateCodePage = () => {
                     <FormMessage />
                   </FormItem>
                 )}
+                control={form.control}
+                name="profile"
               />
             )}
 
@@ -134,14 +209,96 @@ const GenerateCodePage = () => {
               name="permissionType"
             />
           </div>
-          <Button className="w-full" type="submit">
+          <Button
+            className="w-full"
+            disabled={isPending}
+            isLoading={isPending}
+            type="submit"
+          >
             Generate Code
           </Button>
         </form>
       </Form>
-      <QRCode value={"https://www.shinkai.com"} size={180} />
+      <QrCodeModal
+        generatedSetupData={generatedSetupData}
+        onOpenChange={setQrCodeModalOpen}
+        open={qrCodeModalOpen}
+      />
     </SimpleLayout>
   );
 };
 
 export default GenerateCodePage;
+
+function QrCodeModal({
+  open,
+  onOpenChange,
+  generatedSetupData,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  generatedSetupData: GeneratedSetupData | undefined;
+}) {
+  const [saved, setSaved] = useState(false);
+  // eslint-disable-next-line unicorn/consistent-function-scoping
+  const downloadCode = async () => {
+    const canvas = document.querySelector("#registration-code-qr");
+    if (canvas instanceof HTMLCanvasElement) {
+      /*
+     Tauri has this feature in the roadmap, but it's not available yet.
+     https://github.com/tauri-apps/tauri/issues/4633
+
+
+       const downloadLink = document.createElement("a");
+       downloadLink.href = pngUrl;
+       downloadLink.download = `registration-code-shinkai.png`;
+       document.body.append(downloadLink);
+       console.log(downloadLink);
+       downloadLink.click();
+       downloadLink.remove();
+
+     */
+      try {
+        const pngUrl = canvas.toDataURL();
+        await saveImage(pngUrl);
+        setSaved(true);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setTimeout(() => {
+          setSaved(false);
+        }, 3000);
+      }
+    }
+  };
+
+  return (
+    <Dialog onOpenChange={onOpenChange} open={open}>
+      <DialogContent>
+        <div className="flex flex-col items-center py-4">
+          {/* eslint-disable-next-line react/no-unescaped-entities */}
+          <h2 className="mb-1 text-lg font-semibold">Here's your QR Code</h2>
+          <p className="mb-5 text-center text-xs text-foreground">
+            Scan the QR code with your Shinkai app or download it to register your device.
+          </p>
+          <div className="mb-7 overflow-hidden rounded-lg shadow-2xl">
+            <QRCode
+              id="registration-code-qr"
+              size={190}
+              value={JSON.stringify(generatedSetupData)}
+            />
+          </div>
+          <div className="flex gap-4">
+            <Button className="flex gap-1" onClick={downloadCode}>
+              {saved ? <Check /> : <DownloadIcon className="h-4 w-4" />}
+              {saved ? "Saved" : "Download"}
+            </Button>
+            <Button className="flex gap-1" variant="ghost">
+              I saved it, close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
