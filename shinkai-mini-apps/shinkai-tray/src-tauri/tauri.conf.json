@@ -26,6 +26,23 @@
       "window": {
         "startDragging": true,
         "close": true
+      },
+      "notification": {
+        "all": true
+      },
+      "os": {
+        "all": true
+      },
+      "dialog": {
+        "all": true,
+        "ask": true,
+        "confirm": true,
+        "message": true,
+        "open": true,
+        "save": true
+      },
+      "path": {
+        "all": true
       }
     },
     "bundle": {

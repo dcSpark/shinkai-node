@@ -52,6 +52,8 @@ const CreateChatPage = () => {
       my_device_encryption_sk: auth.my_device_encryption_sk,
       my_device_identity_sk: auth.my_device_identity_sk,
       node_encryption_pk: auth.node_encryption_pk,
+      profile_encryption_sk: auth.profile_encryption_sk,
+      profile_identity_sk: auth.profile_identity_sk,
     });
   };
   return (
