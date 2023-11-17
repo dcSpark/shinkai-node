@@ -386,7 +386,7 @@ fn db_inbox() {
 
     // Test get_smart_inboxes_for_profile
     let smart_inboxes = shinkai_db
-        .get_smart_inboxes_for_profile(node1_identity.clone())
+        .get_all_smart_inboxes_for_profile(node1_identity.clone())
         .unwrap();
     assert_eq!(smart_inboxes.len(), 3);
 
@@ -436,7 +436,7 @@ fn db_inbox() {
     shinkai_db.update_smart_inbox_name(inbox_to_update, new_name).unwrap();
 
     // Get smart_inboxes again
-    let updated_smart_inboxes = shinkai_db.get_smart_inboxes_for_profile(node1_identity).unwrap();
+    let updated_smart_inboxes = shinkai_db.get_all_smart_inboxes_for_profile(node1_identity).unwrap();
 
     // Check if the name of the updated inbox has been changed
     for smart_inbox in updated_smart_inboxes {
