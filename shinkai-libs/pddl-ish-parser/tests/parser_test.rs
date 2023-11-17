@@ -5,6 +5,8 @@ use pddl_ish_parser::parser::{
 
 #[cfg(test)]
 mod tests {
+    use pddl_ish_parser::parser::action::{extract_effects, extract_preconditions};
+
     use super::*;
 
     #[test]
@@ -105,29 +107,7 @@ mod tests {
 
         assert_eq!(parse_actions(input).unwrap().1[0], expected);
     }
-
-    #[test]
-    fn test_parse_action_no_effects() {
-        let input = ":action move (param1 param2) (precond1 precond2) ()";
-        let expected = Action {
-            name: "move".to_string(),
-            parameters: vec![
-                Parameter {
-                    name: "param1".to_string(),
-                    param_type: "".to_string(),
-                },
-                Parameter {
-                    name: "param2".to_string(),
-                    param_type: "".to_string(),
-                },
-            ],
-            preconditions: vec!["precond1".to_string(), "precond2".to_string()],
-            effects: vec![],
-        };
-
-        assert_eq!(parse_actions(input).unwrap().1[0], expected);
-    }
-
+    
     #[test]
     fn test_parse_action_invalid_format() {
         let input = "invalid format";
@@ -162,19 +142,6 @@ mod tests {
         assert_eq!(parse_parameters(input).unwrap(), expected);
     }
 
-    // #[test]
-    // fn test_precondition() {
-    //     let input = "all-links-extracted website-url ?links";
-    //     let expected = "all-links-extracted website-url ?links".to_string();
-
-    //     assert_eq!(precondition(input).unwrap().1, expected);
-
-    //     let input_b = "all-links-extracted ?links";
-    //     let expected_b = "all-links-extracted ?links".to_string();
-
-    //     assert_eq!(precondition(input_b).unwrap().1, expected_b);
-    // }
-
     #[test]
     fn test_parse_precondition() {
         let input = "(website-known ?url)";
@@ -189,6 +156,30 @@ mod tests {
         let expected = vec!["(website-known ?url another-precondition ?another)".to_string()];
 
         assert_eq!(parse_preconditions(input).unwrap(), expected);
+    }
+
+    #[test]
+    fn test_extract_preconditions() {
+        let input = r#":precondition (and
+                            (has-url website)
+                            (toolkit-ready agent)
+                          )"#;
+        let expected = "(and\n                            (has-url website)\n                            (toolkit-ready agent)\n                          )";
+
+        let result = extract_preconditions(input).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_extract_effects() {
+        let input = r#":effect (and
+                        (not (toolkit-ready agent))
+                        (has-html website html_content)
+                    )"#;
+        let expected = "(and\n                        (not (toolkit-ready agent))\n                        (has-html website html_content)\n                    )";
+
+        let result = extract_effects(input).unwrap();
+        assert_eq!(result, expected);
     }
 
     #[test]

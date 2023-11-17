@@ -43,33 +43,21 @@ fn extract_parameters(input: &str) -> Result<String, ParserError> {
         .to_string())
 }
 
-fn extract_preconditions(input: &str) -> Result<String, ParserError> {
-    let re = Regex::new(r":precondition\s*(?P<preconditions>.*)").expect("Failed to compile preconditions regex");
-    let preconditions = re
-        .captures(input)
-        .and_then(|caps| caps.name("preconditions"))
-        .map(|m| m.as_str())
-        .ok_or_else(|| ParserError::new("Error parsing preconditions".to_string(), get_error_context(input)))?
-        .to_string();
-
-    extract_balanced(&preconditions, '(', ')')
+pub fn extract_preconditions(input: &str) -> Result<String, ParserError> {
+    let start = input.find(":precondition").ok_or_else(|| ParserError::new("Keyword :precondition not found".to_string(), get_error_context(input)))? + ":precondition".len();
+    let block = extract_balanced(&input[start..], '(', ')')?;
+    Ok(block.trim().to_string())
 }
 
-fn extract_effects(input: &str) -> Result<String, ParserError> {
-    let re = Regex::new(r":effect\s*(?P<effects>.*)").expect("Failed to compile effects regex");
-    let effects = re
-        .captures(input)
-        .and_then(|caps| caps.name("effects"))
-        .map(|m| m.as_str())
-        .ok_or_else(|| ParserError::new("Error parsing effects".to_string(), get_error_context(input)))?
-        .to_string();
-
-    extract_balanced(&effects, '(', ')')
+pub fn extract_effects(input: &str) -> Result<String, ParserError> {
+    let start = input.find(":effect").ok_or_else(|| ParserError::new("Keyword :effect not found".to_string(), get_error_context(input)))? + ":effect".len();
+    let block = extract_balanced(&input[start..], '(', ')')?;
+    Ok(block.trim().to_string())
 }
 
 pub fn parse_parameters(input: &str) -> Result<Vec<Parameter>, ParserError> {
-    // Regex pattern to match `?name - type` patterns within the parentheses
-    let re = Regex::new(r"\?\s*(\w+)\s*-\s*(\w+)").unwrap();
+    // Regex pattern to match `?name - type` and `name - type` patterns within the parentheses
+    let re = Regex::new(r"\??\s*(\w+)\s*-\s*(\w+)").unwrap();
     let mut parameters = Vec::new();
 
     for caps in re.captures_iter(input) {
@@ -97,6 +85,10 @@ pub fn parse_effects(input: &str) -> Result<Vec<String>, ParserError> {
 
 // Function to parse an action from a PDDL file
 pub fn parse_actions(input: &str) -> Result<(&str, Vec<Action>), ParserError> {
+    if !input.contains("(:action") {
+        return Err(ParserError::new("Invalid format".to_string(), get_error_context(input)));
+    }
+    
     eprintln!("Parsing actions from input: {:?}", input);
     let actions_str = input.split("(:action").skip(1); // Skip the first split as it will be empty
     let mut actions = Vec::new();
