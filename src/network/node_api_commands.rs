@@ -41,10 +41,11 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string,
-            encryption_secret_key_to_string, string_to_encryption_public_key, EncryptionMethod,
+            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+            string_to_encryption_public_key, EncryptionMethod,
         },
-        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key}, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
+        shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+        signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
 use std::pin::Pin;
@@ -715,7 +716,11 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Info,
-            format!("registration code usage> first device needs registration code?: {:?}", self.first_device_needs_registration_code).as_str(),
+            format!(
+                "registration code usage> first device needs registration code?: {:?}",
+                self.first_device_needs_registration_code
+            )
+            .as_str(),
         );
 
         let main_profile_exists = match db.main_profile_exists(self.node_profile_name.get_node_name().as_str()) {
@@ -735,7 +740,11 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
-            format!("registration code usage> main_profile_exists: {:?}", main_profile_exists).as_str(),
+            format!(
+                "registration code usage> main_profile_exists: {:?}",
+                main_profile_exists
+            )
+            .as_str(),
         );
 
         if self.first_device_needs_registration_code == false {
@@ -917,7 +926,7 @@ impl Node {
                                 if main_profile_exists == false && self.initial_agent.is_some() {
                                     std::mem::drop(identity_manager);
                                     self.internal_add_agent(self.initial_agent.clone().unwrap()).await?;
-                                }                                
+                                }
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
@@ -1337,6 +1346,76 @@ impl Node {
         }
     }
 
+    pub async fn api_update_job_to_finished(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // Validate the message
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender) = match validation_result {
+            Ok((msg, sender)) => (msg, sender),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Extract the job ID from the message content
+        let job_id = msg.get_message_content()?;
+
+        // Check that the message is coming from someone with the right permissions to do this action
+        match sender {
+            Identity::Standard(std_identity) => {
+                if std_identity.permission_type == IdentityPermissions::Admin {
+                    // Update the job to finished in the database
+                    match self.db.lock().await.update_job_to_finished(job_id) {
+                        Ok(_) => {
+                            let _ = res.send(Ok(())).await;
+                            Ok(())
+                        }
+                        Err(err) => {
+                            let _ = res
+                                .send(Err(APIError {
+                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                    error: "Internal Server Error".to_string(),
+                                    message: format!("{}", err),
+                                }))
+                                .await;
+                            Ok(())
+                        }
+                    }
+                } else {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::FORBIDDEN.as_u16(),
+                            error: "Don't have access".to_string(),
+                            message: "Permission denied. You don't have enough permissions to update this job."
+                                .to_string(),
+                        }))
+                        .await;
+                    Ok(())
+                }
+            }
+            _ => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: format!(
+                            "Invalid identity type. Only StandardIdentity is allowed. Value: {:?}",
+                            sender
+                        )
+                        .to_string(),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn api_get_all_profiles(
         &self,
         res: Sender<Result<Vec<StandardIdentity>, APIError>>,
@@ -1603,13 +1682,13 @@ impl Node {
                 return Ok(());
             }
         };
-    
+
         // Decrypt the message
         let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
-    
+
         // Extract the content of the message
         let hex_blake3_hash = decrypted_msg.get_message_content()?;
-    
+
         match self.db.lock().await.get_all_filenames_from_inbox(hex_blake3_hash) {
             Ok(filenames) => {
                 let _ = res.send(Ok(filenames)).await;
@@ -1682,8 +1761,11 @@ impl Node {
             ShinkaiLogLevel::Debug,
             format!(
                 "api_add_file_to_inbox_with_symmetric_key> filename: {}, hex_blake3_hash: {}, decrypted_file.len(): {}",
-                filename, hex_blake3_hash, decrypted_file.len()
-            ).as_str()
+                filename,
+                hex_blake3_hash,
+                decrypted_file.len()
+            )
+            .as_str(),
         );
 
         match self

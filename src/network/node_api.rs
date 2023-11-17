@@ -251,7 +251,9 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         warp::path!("v1" / "get_filenames_for_file_inbox")
             .and(warp::post())
             .and(warp::body::json::<ShinkaiMessage>())
-            .and_then(move |message: ShinkaiMessage| get_filenames_message_handler(node_commands_sender.clone(), message))
+            .and_then(move |message: ShinkaiMessage| {
+                get_filenames_message_handler(node_commands_sender.clone(), message)
+            })
     };
 
     // POST v1/mark_as_read_up_to
@@ -318,6 +320,17 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             )
     };
 
+    // POST v1/update_job_to_finished
+    let update_job_to_finished = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "update_job_to_finished")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| {
+                update_job_to_finished_handler(node_commands_sender.clone(), message)
+            })
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
@@ -346,6 +359,7 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(create_files_inbox_with_symmetric_key)
         .or(add_file_to_inbox_with_symmetric_key)
         .or(get_filenames)
+        .or(update_job_to_finished)
         .recover(handle_rejection)
         .with(log)
         .with(cors);
@@ -617,6 +631,21 @@ async fn update_smart_inbox_name_handler(
         node_commands_sender,
         message,
         |node_commands_sender, message, res_sender| NodeCommand::APIUpdateSmartInboxName {
+            msg: message,
+            res: res_sender,
+        },
+    )
+    .await
+}
+
+async fn update_job_to_finished_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
+        node_commands_sender,
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateJobToFinished {
             msg: message,
             res: res_sender,
         },
