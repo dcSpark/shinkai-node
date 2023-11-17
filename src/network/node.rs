@@ -112,6 +112,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<Vec<ShinkaiMessage>, APIError>>,
     },
+    APIUpdateJobToFinished {
+        msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    },
     GetLastMessagesFromInbox {
         inbox_name: String,
         limit: usize,
@@ -414,6 +418,7 @@ impl Node {
                             Some(NodeCommand::APIAddFileToInboxWithSymmetricKey { filename, file, public_key, encrypted_nonce, res }) => self.api_add_file_to_inbox_with_symmetric_key(filename, file, public_key, encrypted_nonce, res).await?,
                             Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
+                            Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
                             _ => break,
                         }
                     }

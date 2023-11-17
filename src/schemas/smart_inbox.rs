@@ -6,4 +6,5 @@ pub struct SmartInbox {
     pub inbox_id: String,
     pub custom_name: String,
     pub last_message: Option<ShinkaiMessage>,
+    pub is_finished: bool,
 }

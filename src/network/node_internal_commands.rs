@@ -159,7 +159,7 @@ impl Node {
                 return Vec::new();
             }
         };
-        let result = match self.db.lock().await.get_smart_inboxes_for_profile(standard_identity) {
+        let result = match self.db.lock().await.get_all_smart_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
                 error!("Failed to get inboxes for profile: {}", e);
