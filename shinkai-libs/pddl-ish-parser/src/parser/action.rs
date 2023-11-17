@@ -55,12 +55,15 @@ pub fn parse_actions(input: &str) -> Result<(&str, Vec<Action>), ParserError> {
         // eprintln!("Parsed name: {:?}", name);
 
         let parameters_str = extract_parameters(&action_body)?;
-        let preconditions_str = extract_preconditions(&action_body)?;
-        let effects_str = extract_effects(&action_body)?;
-
         let parameters = parse_parameters(&parameters_str)?;
-        let preconditions = parse_preconditions(&preconditions_str)?;
+        let effects_str = extract_effects(&action_body)?;
         let effects = parse_effects(&effects_str)?;
+
+        let preconditions_str = match extract_preconditions(&action_body) {
+            Ok(preconditions) => preconditions,
+            Err(_) => String::from("()"), // Default to empty string if precondition is not found
+        };
+        let preconditions = parse_preconditions(&preconditions_str)?;
 
         actions.push(Action {
             name,

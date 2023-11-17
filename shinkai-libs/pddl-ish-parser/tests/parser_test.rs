@@ -6,7 +6,11 @@ use pddl_ish_parser::parser::{
 #[cfg(test)]
 mod tests {
 
-    use pddl_ish_parser::parser::{parameter::parse_parameters, precondition::{parse_preconditions, extract_preconditions}, effect::extract_effects};
+    use pddl_ish_parser::parser::{
+        effect::extract_effects,
+        parameter::parse_parameters,
+        precondition::{extract_preconditions, parse_preconditions},
+    };
 
     use super::*;
 
@@ -214,13 +218,12 @@ mod tests {
             :precondition (website-known ?url)
             :effect (html-content-available ?url)
         )
-
+    
         (:action extract-links
             :parameters (?url - url)
-            :precondition (html-content-available ?url)
             :effect (all-links-extracted ?url all-hyperlinks)
         )
-
+    
         (:action summarize-and-filter-links
             :parameters (?links - links)
             :precondition (all-links-extracted website-url ?links)
@@ -246,7 +249,7 @@ mod tests {
                     name: "url".to_string(),
                     param_type: "url".to_string(),
                 }],
-                preconditions: vec!["(html-content-available ?url)".to_string()],
+                preconditions: vec![],
                 effects: vec!["(all-links-extracted ?url all-hyperlinks)".to_string()],
             },
             Action {

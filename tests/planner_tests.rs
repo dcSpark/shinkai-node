@@ -23,6 +23,7 @@ mod tests {
 
             (:action fetchHtml
                 :parameters (?url - url)
+                :precondition (not (htmlFetched ?url))
                 :effect (htmlFetched ?url)
             )
 
