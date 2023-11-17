@@ -2,11 +2,10 @@
 mod tests {
     use super::*;
     use futures::Future;
-    use pddl_parser::domain::action::Action;
-    use pddl_parser::domain::domain::Domain;
-    use pddl_parser::domain::typed_parameter::TypedParameter;
-    use pddl_parser::domain::typing::Type;
-    use pddl_parser::error::ParserError;
+    use pddl_ish_parser::models::{domain::Domain, problem::Problem};
+    use pddl_ish_parser::parser::action::Action;
+    use pddl_ish_parser::parser::parameter::Parameter;
+    use pddl_ish_parser::parser::{domain_parser::parse_domain, problem_parser::parse_problem};
     use std::{io::Cursor, path::PathBuf};
     use std::{pin::Pin, sync::Arc};
     use tokio::sync::Mutex;
@@ -70,18 +69,15 @@ mod tests {
 
     #[test]
     fn test_ai_news_summary_pddl() {
-        let res = Domain::parse(DOMAIN_PDDL.into());
+        let res = parse_domain(DOMAIN_PDDL);
         match res {
-            Ok(domain) => {
+            Ok((_, domain)) => {
                 println!("Parsed domain: {:?}", domain);
                 let first_action = domain.actions.get(0);
                 assert!(first_action.is_some(), "No actions found in the domain.");
                 println!("\n\n First action: {:?}", first_action.unwrap());
             }
-            Err(e) => match e {
-                ParserError::UnsupportedRequirement(_) => {}
-                _ => panic!("Error with error: {:?}", e),
-            },
+            Err(e) => panic!("Error with error: {:?}", e),
         }
     }
 
@@ -95,17 +91,17 @@ mod tests {
 
     #[test]
     fn test_execute_actions() {
-        let res = Domain::parse(DOMAIN_PDDL.into());
+        let res = parse_domain(DOMAIN_PDDL);
         let mut state = SharedState::default();
         match res {
-            Ok(domain) => {
+            Ok((_, domain)) => {
                 for (i, action) in domain.actions.iter().enumerate() {
                     if i == 0 {
                         // Pass a dummy parameter to the first action
                         let mut parameters = action.parameters.clone();
-                        parameters.push(TypedParameter {
+                        parameters.push(Parameter {
                             name: "https://news.ycombinator.com".to_string(),
-                            type_: Type::Simple("url".to_string()),
+                            param_type: "url".to_string(),
                         });
                         state.html_fetched = fetch_html(&parameters);
                     } else {
@@ -113,10 +109,7 @@ mod tests {
                     }
                 }
             }
-            Err(e) => match e {
-                ParserError::UnsupportedRequirement(_) => {}
-                _ => panic!("Error with error: {:?}", e),
-            },
+            Err(e) => panic!("Error with error: {:?}", e),
         }
     }
 
@@ -131,22 +124,22 @@ mod tests {
         }
     }
 
-    fn fetch_html(_parameters: &[TypedParameter]) -> Option<String> {
+    fn fetch_html(_parameters: &[Parameter]) -> Option<String> {
         println!("Fetching HTML... {:?}", _parameters);
         Some("HTML content".to_string())
     }
 
-    fn extract_links(_parameters: &[TypedParameter], html: &Option<String>) -> Option<Vec<String>> {
+    fn extract_links(_parameters: &[Parameter], html: &Option<String>) -> Option<Vec<String>> {
         println!("Extracting links from HTML... {:?}", html);
         Some(vec!["Link1".to_string(), "Link2".to_string()])
     }
 
-    fn fetch_content(_parameters: &[TypedParameter], links: &Option<Vec<String>>) -> Option<String> {
+    fn fetch_content(_parameters: &[Parameter], links: &Option<Vec<String>>) -> Option<String> {
         println!("Fetching content from links... {:?}", links);
         Some("Content".to_string())
     }
 
-    fn generate_summary(_parameters: &[TypedParameter], content: &Option<String>) -> Option<String> {
+    fn generate_summary(_parameters: &[Parameter], content: &Option<String>) -> Option<String> {
         println!("Generating summary from content... {:?}", content);
         Some("Summary".to_string())
     }

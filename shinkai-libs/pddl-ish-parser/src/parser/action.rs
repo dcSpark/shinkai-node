@@ -20,8 +20,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, PartialEq)]
-// Define the Action struct
+#[derive(Debug, PartialEq, Clone)]
 pub struct Action {
     pub name: String,
     pub parameters: Vec<Parameter>,

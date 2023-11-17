@@ -6,12 +6,11 @@ use crate::agent::job::{Job, JobId, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::ShinkaiDB;
-use crate::planner::cron_planner::ShinkaiPlan;
+use crate::planner::shinkai_plan::ShinkaiPlan;
 use crate::tools::argument::ToolArgument;
 use crate::tools::router::ShinkaiTool;
 use crate::tools::rust_tools::RustTool;
 use async_recursion::async_recursion;
-use pddl_parser::problem::Object;
 use regex::Regex;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -271,26 +270,26 @@ impl JobManager {
             None | Some("cron") => {
                 let filled_cron_prompt =
                     JobPromptGenerator::cron_expression_generation_prompt(cron_description.clone());
-                (filled_cron_prompt, "cron_expression", "pddl_problem")
+                (filled_cron_prompt, "cron_expression", "pddl_domain")
             }
             Some("pddl_problem") => {
                 let filled_pddl_problem_prompt = JobPromptGenerator::pddl_plan_problem_generation_prompt(
                     task_description.clone(),
+                    state.as_ref().unwrap().pddl_plan_domain.clone().unwrap(),
                     ret_nodes.clone(),
                     state.as_ref().and_then(|s| s.previous.clone()),
                     state.as_ref().and_then(|s| s.previous_error.clone()),
                 );
-                (filled_pddl_problem_prompt, "pddl_plan_problem", "pddl_domain")
+                (filled_pddl_problem_prompt, "pddl_plan_problem", "")
             }
             Some("pddl_domain") => {
                 let filled_pddl_domain_prompt = JobPromptGenerator::pddl_plan_domain_generation_prompt(
                     task_description.clone(),
-                    state.as_ref().unwrap().pddl_plan_problem.clone().unwrap(),
                     ret_nodes,
                     state.as_ref().and_then(|s| s.previous.clone()),
                     state.as_ref().and_then(|s| s.previous_error.clone()),
                 );
-                (filled_pddl_domain_prompt, "pddl_plan_domain", "")
+                (filled_pddl_domain_prompt, "pddl_plan_domain", "pddl_problem")
             }
             _ => {
                 return Err(AgentError::InvalidCronCreationChainStage(
@@ -310,8 +309,8 @@ impl JobManager {
 
             let is_valid = match state.as_ref().map(|s| s.stage.as_str()) {
                 None | Some("cron") => CronManager::is_valid_cron_expression(&cleaned_answer),
-                Some("pddl_domain") => ShinkaiPlan::validate_pddl_domain(cleaned_answer.clone()).is_ok(),
                 Some("pddl_problem") => ShinkaiPlan::validate_pddl_problem(cleaned_answer.clone()).is_ok(),
+                Some("pddl_domain") => ShinkaiPlan::validate_pddl_domain(cleaned_answer.clone()).is_ok(),
                 _ => false,
             };
             shinkai_log(
@@ -333,8 +332,8 @@ impl JobManager {
                 new_state.previous = None;
                 new_state.previous_error = None;
                 match new_state.stage.as_str() {
-                    "pddl_problem" => new_state.cron_expression = Some(cleaned_answer.clone()),
-                    "pddl_domain" => new_state.pddl_plan_problem = Some(cleaned_answer.clone()),
+                    "pddl_domain" => new_state.cron_expression = Some(cleaned_answer.clone()),
+                    "pddl_problem" => new_state.pddl_plan_domain = Some(cleaned_answer.clone()),
                     _ => (),
                 };
 

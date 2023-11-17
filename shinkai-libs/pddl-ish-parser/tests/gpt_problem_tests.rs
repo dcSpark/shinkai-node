@@ -192,50 +192,181 @@ fn test_parse_news_finding_pddl_problem() {
         init: vec![],
         goal: vec![],
         actions: vec![
-            Action {
-                name: "fetch-html".to_string(),
-                parameters: vec![
-                    Parameter {
-                        name: "agent".to_string(),
-                        param_type: "toolkit".to_string(),
+                    Action {
+                        name: "fetch-html".to_string(),
+                        parameters: vec![
+                            Parameter {
+                                name: "agent".to_string(),
+                                param_type: "toolkit".to_string(),
+                            },
+                            Parameter {
+                                name: "website".to_string(),
+                                param_type: "url".to_string(),
+                            },
+                        ],
+                        preconditions: vec!["(and\n                            (has-url website)\n                            (toolkit-ready agent)\n                          )".to_string()],
+                        effects: vec!["(and\n                        (not (toolkit-ready agent))\n                        (has-html website html_content)\n                    )".to_string()],
                     },
-                    Parameter {
-                        name: "website".to_string(),
-                        param_type: "url".to_string(),
+                    Action {
+                        name: "extract-links".to_string(),
+                        parameters: vec![
+                            Parameter {
+                                name: "agent".to_string(),
+                                param_type: "toolkit".to_string(),
+                            },
+                            Parameter {
+                                name: "html_content".to_string(),
+                                param_type: "html".to_string(),
+                            },
+                        ],
+                        preconditions: vec!["(and\n                            (has-html website html_content)\n                            (not (toolkit-ready agent))\n                          )".to_string()],
+                        effects: vec!["(and\n                        (has-links html_content links)\n                        (toolkit-ready agent)\n                    )".to_string()],
+                    },
+                    Action {
+                        name: "summarize-content".to_string(),
+                        parameters: vec![
+                            Parameter {
+                                name: "agent".to_string(),
+                                param_type: "toolkit".to_string(),
+                            },
+                            Parameter {
+                                name: "links".to_string(),
+                                param_type: "hyperlink_list".to_string(),
+                            },
+                        ],
+                        preconditions: vec!["(and\n                            (has-links html_content links)\n                            (toolkit-ready agent)\n                          )".to_string()],
+                        effects: vec!["(and\n                        (has-ai-news-summaries summaries)\n                        (toolkit-ready agent)\n                    )".to_string()]
                     },
                 ],
-                preconditions: vec!["(and\n                            (has-url website)\n                            (toolkit-ready agent)\n                          )".to_string()],
-                effects: vec!["(and\n                        (not (toolkit-ready agent))\n                        (has-html website html_content)\n                    )".to_string()],
+    };
+
+    let result = parse_problem(input);
+    match result {
+        Ok((remaining_input, parsed_problem)) => {
+            println!("{:?}", parsed_problem);
+            assert_eq!(parsed_problem, expected);
+        }
+        Err(e) => {
+            println!("Error parsing problem: {:?}", e);
+            assert!(false, "Parsing failed");
+        }
+    }
+}
+
+#[test]
+fn test_parse_robot_cleanup_pddl_problem() {
+    let input = r#"(define (problem robot-cleanup-task)
+        ; This is the problem definition for a robot performing cleanup tasks
+        (:domain robot-cleanup)
+        ; The domain 'robot-cleanup' defines the general rules and actions for robot cleanup tasks.
+        (:objects
+            room1 - room
+            trash1 - trash
+            robot1 - robot
+            ; Objects are defined with their types. We have one room, one trash object, and one robot.
+        )
+        (:init
+            (at robot1 room1)
+            (trash-in trash1 room1)
+            (clean room1)
+            ; The initial state: robot is in room1, trash1 is in room1, and room1 is clean.
+        )
+        (:goal
+            (clean room1)
+            ; The goal is to have the room clean.
+        )
+        (:action move
+            :parameters (?r - robot ?from - room ?to - room)
+            :precondition (at ?r ?from)
+            :effect (and (not (at ?r ?from)) (at ?r ?to))
+            ; Action for moving the robot from one room to another.
+        )
+        (:action pick-up
+            :parameters (?r - robot ?t - trash ?room - room)
+            :precondition (and (at ?r ?room) (trash-in ?t ?room))
+            :effect (and (not (trash-in ?t ?room)) (holding ?r ?t))
+            ; Action for picking up trash in the same room as the robot.
+        )
+        (:action dispose-of
+            :parameters (?r - robot ?t - trash)
+            :precondition (holding ?r ?t)
+            :effect (and (not (holding ?r ?t)) (clean (room-of ?t)))
+            ; Action for disposing of the trash, which results in a clean room.
+        )
+    )"#;
+
+    let expected = Problem {
+        name: "robot-cleanup-task".to_string(),
+        domain: "robot-cleanup".to_string(),
+        objects: vec![
+            Object {
+                name: "room1".to_string(),
+                object_type: "room".to_string(),
+            },
+            Object {
+                name: "trash1".to_string(),
+                object_type: "trash".to_string(),
+            },
+            Object {
+                name: "robot1".to_string(),
+                object_type: "robot".to_string(),
+            },
+        ],
+        init: vec![],
+        goal: vec![],
+        actions: vec![
+            Action {
+                name: "move".to_string(),
+                parameters: vec![
+                    Parameter {
+                        name: "r".to_string(),
+                        param_type: "robot".to_string(),
+                    },
+                    Parameter {
+                        name: "from".to_string(),
+                        param_type: "room".to_string(),
+                    },
+                    Parameter {
+                        name: "to".to_string(),
+                        param_type: "room".to_string(),
+                    },
+                ],
+                preconditions: vec!["(at ?r ?from)".to_string()],
+                effects: vec!["(and (not (at ?r ?from)) (at ?r ?to))".to_string()],
             },
             Action {
-                name: "extract-links".to_string(),
+                name: "pick-up".to_string(),
                 parameters: vec![
                     Parameter {
-                        name: "agent".to_string(),
-                        param_type: "toolkit".to_string(),
+                        name: "r".to_string(),
+                        param_type: "robot".to_string(),
                     },
                     Parameter {
-                        name: "html_content".to_string(),
-                        param_type: "html".to_string(),
+                        name: "t".to_string(),
+                        param_type: "trash".to_string(),
+                    },
+                    Parameter {
+                        name: "room".to_string(),
+                        param_type: "room".to_string(),
                     },
                 ],
-                preconditions: vec!["(and (has-html website html_content) (not (toolkit-ready agent)))".to_string()],
-                effects: vec!["(and (has-links html_content links) (toolkit-ready agent))".to_string()],
+                preconditions: vec!["(and (at ?r ?room) (trash-in ?t ?room))".to_string()],
+                effects: vec!["(and (not (trash-in ?t ?room)) (holding ?r ?t))".to_string()],
             },
             Action {
-                name: "summarize-content".to_string(),
+                name: "dispose-of".to_string(),
                 parameters: vec![
                     Parameter {
-                        name: "agent".to_string(),
-                        param_type: "toolkit".to_string(),
+                        name: "r".to_string(),
+                        param_type: "robot".to_string(),
                     },
                     Parameter {
-                        name: "links".to_string(),
-                        param_type: "hyperlink_list".to_string(),
+                        name: "t".to_string(),
+                        param_type: "trash".to_string(),
                     },
                 ],
-                preconditions: vec!["(and (has-links html_content links) (toolkit-ready agent))".to_string()],
-                effects: vec!["(and (has-ai-news-summaries summaries) (toolkit-ready agent))".to_string()],
+                preconditions: vec!["(holding ?r ?t)".to_string()],
+                effects: vec!["(and (not (holding ?r ?t)) (clean (room-of ?t)))".to_string()],
             },
         ],
     };

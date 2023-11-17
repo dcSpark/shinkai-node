@@ -1,1 +1,1 @@
-pub mod cron_planner;
+pub mod shinkai_plan;

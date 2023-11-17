@@ -5,7 +5,7 @@ use crate::models::parser_error::ParserError;
 use super::error_context::get_error_context;
 
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Object {
     pub name: String,
     pub object_type: String,

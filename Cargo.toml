@@ -55,9 +55,8 @@ async-recursion = "1.0.5"
 rustube = "0.6.0"
 scraper = "0.18.1"
 cron-parser = "0.8.1"
-pddl-parser = "0.1.1"
-pddl = "0.0.7"
 thiserror = "1.0.50"
+pddl-ish-parser= { path = "./shinkai-libs/pddl-ish-parser" }
 
 [dependencies.rocksdb]
 version = "0.21.0"

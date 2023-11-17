@@ -1,18 +1,13 @@
 use futures::Future;
-use pddl::parsers::Span;
-// use pddl_parser::domain::domain::Domain;
-// use pddl_parser::domain::typed_parameter::TypedParameter;
-// use pddl_parser::domain::typing::Type;
-// use pddl_parser::error::ParserError;
-use pddl_parser::{domain::action::Action, lexer::TokenStream};
-use pddl::{Domain, Problem};
-use pddl::Parser;
+use pddl_ish_parser::models::domain::Domain;
+use pddl_ish_parser::parser::action::Action;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use std::{io::Cursor, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
-
+use pddl_ish_parser::parser::problem_parser::parse_problem;
+use pddl_ish_parser::parser::domain_parser::parse_domain;
 use crate::agent::execution::job_prompts::Prompt;
 
 pub type ExecuteActionFn =
@@ -84,18 +79,10 @@ impl ShinkaiPlan {
 
     pub fn validate_pddl_domain(pddl: String) -> Result<(), String> {
         eprintln!("Validating PDDL domain");
-        let span = Span::new(&pddl);
-        let parse_result = Domain::parse(span);
-        match parse_result {
-            Ok((remainder, _)) => {
-                if remainder.fragment().is_empty() {
-                    eprintln!("OK");
-                    Ok(())
-                } else {
-                    let error_message = format!("PDDL parsing error: Unparsed remainder - {}", remainder.fragment());
-                    eprintln!("{}", error_message);
-                    Err(error_message)
-                }
+        match parse_domain(&pddl) {
+            Ok((_, _)) => {
+                eprintln!("OK");
+                Ok(())
             }
             Err(e) => {
                 let error_message = format!("PDDL parsing error: {:?}", e);
@@ -107,19 +94,10 @@ impl ShinkaiPlan {
     
     pub fn validate_pddl_problem(pddl: String) -> Result<(), String> {
         eprintln!("Validating PDDL problem");
-        let span = Span::new(&pddl);
-        eprintln!("Parsing PDDL problem with span: {:?}", span);
-        let parse_result = Problem::parse(span);
-        match parse_result {
-            Ok((remainder, _)) => {
-                if remainder.fragment().is_empty() {
-                    eprintln!("OK");
-                    Ok(())
-                } else {
-                    let error_message = format!("PDDL parsing error: Unparsed remainder - {}", remainder.fragment());
-                    eprintln!("{}", error_message);
-                    Err(error_message)
-                }
+        match parse_problem(&pddl) {
+            Ok((_, _)) => {
+                eprintln!("OK");
+                Ok(())
             }
             Err(e) => {
                 let error_message = format!("PDDL parsing error: {:?}", e);

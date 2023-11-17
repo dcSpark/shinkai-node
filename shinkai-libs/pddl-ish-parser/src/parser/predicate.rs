@@ -4,7 +4,7 @@ use crate::models::parser_error::ParserError;
 
 use super::{error_context::get_error_context, parameter::Parameter, utils::extract_balanced};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Predicate {
     pub name: String,
     pub parameters: Vec<Parameter>,

@@ -313,6 +313,7 @@ impl JobPromptGenerator {
     /// Prompt for having the LLM generate a PDDL plan given some tools
     pub fn pddl_plan_problem_generation_prompt(
         task: String,
+        pddl_domain: String,
         tools: Vec<ShinkaiTool>,
         previous: Option<String>,
         previous_error: Option<String>,
@@ -340,7 +341,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!("The current task is to: '{}'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", task),
+            format!("The current task is to: '{}'. This is the PDDL (Problem): {}. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", pddl_domain, task),
             SubPromptType::User,
         );
 
@@ -372,7 +373,6 @@ impl JobPromptGenerator {
     /// Prompt for having the LLM generate a PDDL plan given some tools
     pub fn pddl_plan_domain_generation_prompt(
         task: String,
-        pddl_problem: String,
         tools: Vec<ShinkaiTool>,
         previous: Option<String>,
         previous_error: Option<String>,
@@ -400,7 +400,7 @@ impl JobPromptGenerator {
         );
 
         prompt.add_content(
-            format!("The current task at hand is to: '{}'. This is the PDDL (Problem): {}. Implement a throughout plan using PDDL representation using the available tools. (define (domain ", pddl_problem, task),
+            format!("The current task at hand is to: '{}'. Implement a throughout plan using PDDL representation using the available tools. (define (domain ", task),
             SubPromptType::User,
         );
 
