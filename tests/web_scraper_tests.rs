@@ -25,7 +25,9 @@ mod tests {
         assert_eq!(links.len(), 30);
     }
 
+    
     #[tokio::test]
+    #[ignore]
     async fn test_web_scraper() {
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));

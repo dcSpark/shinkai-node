@@ -33,9 +33,11 @@ pub fn parse_problem(original_input: &str) -> Result<(String, Problem), ParserEr
         code: get_error_context(input),
     })?;
     let (_, domain) = parse_problem_domain(input)?;
+    // eprintln!("domain: {:?}", domain);
     let (_, objects) = parse_objects(&input_no_comments)?;
-
+    // eprintln!("objects: {:?}", objects);
     let (_, actions) = parse_actions(&input_no_comments)?;
+    // eprintln!("actions: {:?}", actions);
 
     Ok((
         input_no_comments.clone(),

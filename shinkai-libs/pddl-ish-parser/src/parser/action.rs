@@ -40,7 +40,8 @@ fn extract_name(input: &str) -> Result<String, ParserError> {
 // Function to parse an action from a PDDL file
 pub fn parse_actions(input: &str) -> Result<(&str, Vec<Action>), ParserError> {
     if !input.contains("(:action") {
-        return Err(ParserError::new("Invalid format".to_string(), get_error_context(input)));
+        // eprintln!("No actions found in input: {:?}", input);
+        return Ok((input, Vec::new()));
     }
 
     // eprintln!("Parsing actions from input: {:?}", input);

@@ -383,3 +383,60 @@ fn test_parse_robot_cleanup_pddl_problem() {
         }
     }
 }
+
+#[test]
+fn test_parse_news_extraction_pddl_problem() {
+    let input = r#"(define (problem find-ai-news)
+        (:domain news-extraction)
+        (:objects
+            website - website
+            content - text
+            news_link - hyperlink
+        )
+
+        (:init
+            (website-content-fetched website)
+            (all-hyperlinks-extracted website)
+        )
+
+        (:goal
+            (and
+                (ai-news-summarized news_link)
+            )
+        )
+    )"#;
+
+    let expected = Problem {
+        name: "find-ai-news".to_string(),
+        domain: "news-extraction".to_string(),
+        objects: vec![
+            Object {
+                name: "website".to_string(),
+                object_type: "website".to_string(),
+            },
+            Object {
+                name: "content".to_string(),
+                object_type: "text".to_string(),
+            },
+            Object {
+                name: "news_link".to_string(),
+                object_type: "hyperlink".to_string(),
+            },
+        ],
+        init: vec![],
+        goal: vec![],
+        actions: vec![],
+    };
+
+    let result = parse_problem(input);
+    match result {
+        Ok((remaining_input, parsed_problem)) => {
+            println!("{:?}", parsed_problem);
+            assert_eq!(parsed_problem, expected);
+        }
+        Err(e) => {
+            println!("Error parsing problem: {:?}", e);
+            assert!(false, "Parsing failed");
+        }
+    }
+}

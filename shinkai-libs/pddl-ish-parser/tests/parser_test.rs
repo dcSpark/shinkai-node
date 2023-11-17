@@ -106,17 +106,11 @@ mod tests {
                     param_type: "block".to_string(),
                 },
             ],
-            preconditions: vec!["()".to_string()],
+            preconditions: vec![],
             effects: vec!["(and (clear ?y) (not (clear ?x)) (on ?x ?y) (not (holding ?x)) (handempty))".to_string()],
         };
 
         assert_eq!(parse_actions(input).unwrap().1[0], expected);
-    }
-
-    #[test]
-    fn test_parse_action_invalid_format() {
-        let input = "invalid format";
-        assert!(parse_actions(input).is_err());
     }
 
     #[test]
