@@ -134,7 +134,7 @@ fn planner_integration_test() {
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
-                    api_key: Some("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".to_string()),
+                    api_key: Some("".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
@@ -323,18 +323,9 @@ fn planner_integration_test() {
                 assert_eq!(inboxes.len(), 1);
                 eprintln!("inboxes: {:?}", inboxes);
             }
-            tokio::time::sleep(Duration::from_secs(6 * 60)).await;
-
-            panic!("stop");
-
-            // TODO: check that the response contains a valid CRON and a valid PDDL
-
-            // {
-            //     tokio::time::sleep(Duration::from_secs(1000)).await;
-            // }
             {
                 eprintln!("Waiting for the Job to finish");
-                for _ in 0..50 {
+                for _ in 0..10 {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
@@ -351,8 +342,8 @@ fn planner_integration_test() {
                             Ok(job_message) => {
                                 eprintln!("message_content: {}", message_content);
                                 if job_message.content != job_message_content {
-                                    assert!(true);
-                                    break;
+                                    // assert!(true);
+                                    // break;
                                 }
                             }
                             Err(_) => {
@@ -363,7 +354,7 @@ fn planner_integration_test() {
                             // nothing
                         }
                     }
-                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    tokio::time::sleep(Duration::from_secs(20)).await;
                 }
             }
         })

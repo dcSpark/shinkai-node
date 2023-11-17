@@ -340,8 +340,8 @@ impl JobManager {
                 if new_state.stage.is_empty() {
                     return Ok(CronCreationChainResponse {
                         cron_expression: new_state.cron_expression.unwrap(),
-                        pddl_plan_problem: new_state.pddl_plan_problem.unwrap(),
-                        pddl_plan_domain: cleaned_answer,
+                        pddl_plan_problem: cleaned_answer,
+                        pddl_plan_domain: new_state.pddl_plan_domain.unwrap(),
                     });
                 } else {
                     Self::start_cron_creation_chain(

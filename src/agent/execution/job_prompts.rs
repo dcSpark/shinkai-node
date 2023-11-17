@@ -340,8 +340,9 @@ impl JobPromptGenerator {
             SubPromptType::User,
         );
 
+        // This is the PDDL (Problem): {}.
         prompt.add_content(
-            format!("The current task is to: '{}'. This is the PDDL (Problem): {}. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", pddl_domain, task),
+            format!("The current task is to: '{}'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", task),
             SubPromptType::User,
         );
 

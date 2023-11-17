@@ -202,8 +202,7 @@ mod tests {
             effects: vec!["(html-content-available ?url)".to_string()],
         };
 
-        eprintln!("Parsing input: {:?}", parse_actions(input));
-
+        // eprintln!("Parsing input: {:?}", parse_actions(input));
         assert_eq!(parse_actions(input).unwrap().1[0], expected);
     }
 

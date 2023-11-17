@@ -34,11 +34,11 @@ pub fn parse_domain(original_input: &str) -> Result<(String, Domain), ParserErro
         .ok_or_else(|| ParserError::new("Error parsing requirements".to_string(), get_error_context(input_no_comments.as_str())))?;
 
     let (_, actions) = parse_actions(&input)?;
-    eprintln!("actions: {:?}", actions);
+    // eprintln!("actions: {:?}", actions);
     let (_, predicates) = parse_predicates(&input)?;
-    eprintln!("predicates: {:?}", predicates);
+    // eprintln!("predicates: {:?}", predicates);
     let (_, domain_types) = parse_domain_types(&input)?;
-    eprintln!("domain_types: {:?}", domain_types);
+    // eprintln!("domain_types: {:?}", domain_types);
 
     Ok((
         input_no_comments,

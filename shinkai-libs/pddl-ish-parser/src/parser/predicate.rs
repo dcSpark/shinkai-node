@@ -11,7 +11,7 @@ pub struct Predicate {
 }
 
 pub fn parse_predicate_line(line: &str) -> Option<Predicate> {
-    eprintln!("line: {:?}", line);
+    // eprintln!("line: {:?}", line);
     let parts: Vec<&str> = line.split_whitespace().collect();
 
     let name = parts[0].trim_matches('(').to_string();

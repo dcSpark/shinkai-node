@@ -17,7 +17,7 @@ pub fn parse_problem(original_input: &str) -> Result<(String, Problem), ParserEr
     // Remove comments
     let re = Regex::new(r";.*").unwrap();
     let input_no_comments = re.replace_all(original_input, "").to_string();
-    eprintln!("input_no_comments: {:?}", input_no_comments);
+    // eprintln!("input_no_comments: {:?}", input_no_comments);
     let input = input_no_comments.as_str();
 
     let (input, _) = tag("(define (problem ")(input).map_err(|err: nom::Err<nom::error::Error<&str>>| ParserError {
