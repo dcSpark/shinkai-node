@@ -75,7 +75,7 @@ impl From<AgentError> for CronManagerError {
 }
 
 const NUM_THREADS: usize = 2;
-const CRON_INTERVAL_TIME: u64 = 60 * 10;
+const CRON_INTERVAL_TIME: u64 = 60 * 1;
 
 impl CronManager {
     pub async fn new(
