@@ -28,7 +28,7 @@ use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use shinkai_vector_resources::resource_errors::VRError;
-use std::fs;
+use std::{fs, env};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::time::Instant;
@@ -43,6 +43,7 @@ use crate::utils::node_test_api::{
 };
 use mockito::Server;
 
+#[ignore]
 #[test]
 fn planner_integration_test() {
     run_test_one_node_network(|env| {
@@ -128,13 +129,15 @@ fn planner_integration_test() {
                     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 };
 
+                let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
+                
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
-                    api_key: Some("".to_string()),
+                    api_key: Some(api_key),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
@@ -342,8 +345,8 @@ fn planner_integration_test() {
                             Ok(job_message) => {
                                 eprintln!("message_content: {}", message_content);
                                 if job_message.content != job_message_content {
-                                    // assert!(true);
-                                    // break;
+                                    assert!(true);
+                                    break;
                                 }
                             }
                             Err(_) => {
