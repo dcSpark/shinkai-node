@@ -26,6 +26,17 @@
       "window": {
         "startDragging": true,
         "close": true
+      },
+      "dialog": {
+        "all": true,
+        "ask": true,
+        "confirm": true,
+        "message": true,
+        "open": true,
+        "save": true
+      },
+      "path": {
+        "all": true
       }
     },
     "bundle": {
