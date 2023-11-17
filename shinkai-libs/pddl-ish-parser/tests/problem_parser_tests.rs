@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use pddl_ish_parser::parser::{object::Object, problem_parser::{parse_objects, parse_domain}};
+    use pddl_ish_parser::parser::{object::{Object, parse_objects}, problem_parser::{parse_domain}};
 
     use super::*;
 

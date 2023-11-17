@@ -1,11 +1,12 @@
 use pddl_ish_parser::parser::{
-    action::{parse_actions, parse_parameters, parse_preconditions, Action},
+    action::{parse_actions, Action},
     parameter::Parameter,
 };
 
 #[cfg(test)]
 mod tests {
-    use pddl_ish_parser::parser::action::{extract_effects, extract_preconditions};
+
+    use pddl_ish_parser::parser::{parameter::parse_parameters, precondition::{parse_preconditions, extract_preconditions}, effect::extract_effects};
 
     use super::*;
 
@@ -107,7 +108,7 @@ mod tests {
 
         assert_eq!(parse_actions(input).unwrap().1[0], expected);
     }
-    
+
     #[test]
     fn test_parse_action_invalid_format() {
         let input = "invalid format";
