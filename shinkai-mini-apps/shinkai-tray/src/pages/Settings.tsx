@@ -1,8 +1,10 @@
+import SimpleLayout from "./layout/simple-layout.tsx";
+
 const SettingsPage = () => {
   return (
-    <div>
-      <h1>Settings</h1>
-    </div>
+    <SimpleLayout title="Settings">
+      <p>Manage your account settings preferences.</p>
+    </SimpleLayout>
   );
 };
 

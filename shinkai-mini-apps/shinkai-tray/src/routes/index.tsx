@@ -4,8 +4,8 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { ApiConfig } from "@shinkai_network/shinkai-message-ts/api";
 import { invoke } from "@tauri-apps/api/tauri";
 
-import OnboardingPage from "../pages/Onboarding";
-import SettingsPage from "../pages/Settings";
+import OnboardingPage from "../pages/onboarding.tsx";
+import SettingsPage from "../pages/settings";
 import ChatConversation from "../pages/chat/chat-conversation";
 import EmptyMessage from "../pages/chat/empty-message";
 import ChatLayout from "../pages/chat/layout";
@@ -18,9 +18,11 @@ import {
   ADD_AGENT_PATH,
   CREATE_CHAT_PATH,
   CREATE_JOB_PATH,
+  GENERATE_CODE_PATH,
   ONBOARDING_PATH,
   SETTINGS_PATH,
 } from "./name";
+import GenerateCodePage from "../pages/generate-code.tsx";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const auth = useAuth((state) => state.auth);
@@ -99,6 +101,14 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
           path={SETTINGS_PATH}
+        />
+        <Route
+          element={
+            <ProtectedRoute>
+              <GenerateCodePage />
+            </ProtectedRoute>
+          }
+          path={GENERATE_CODE_PATH}
         />
       </Route>
       <Route element={<Navigate to={"inboxes/"} replace />} path="/" />

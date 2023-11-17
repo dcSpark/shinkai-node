@@ -182,14 +182,18 @@ const ChatConversation = () => {
       isSendingTextMessageWithFilesForInbox
     )
       return true;
+
     const lastMessage = data?.pages?.at(-1)?.at(-1);
+
     if (!lastMessage) return false;
     const isLocal = isLocalMessage(
       lastMessage,
       auth?.shinkai_identity ?? "",
       auth?.profile ?? ""
     );
+
     if (isJobInbox(inboxId) && isLocal) return true;
+
     return false;
   }, [
     isSendingMessageToJob,
