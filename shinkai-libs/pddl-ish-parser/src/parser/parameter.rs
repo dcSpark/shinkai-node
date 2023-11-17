@@ -2,7 +2,7 @@ use regex::Regex;
 use crate::models::parser_error::ParserError;
 use super::error_context::get_error_context;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Parameter {
     pub name: String,
     pub param_type: String,

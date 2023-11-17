@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use pddl_ish_parser::parser::{object::{Object, parse_objects}, problem_parser::{parse_domain}};
+    use pddl_ish_parser::parser::{object::{Object, parse_objects}, problem_parser::{parse_problem_domain}};
 
     use super::*;
 
@@ -33,7 +33,7 @@ mod tests {
     fn test_parse_domain() {
         let input = "    (:domain web-processing)\n    (:objects ...";
         let expected = "web-processing".to_string();
-        let (_, domain) = parse_domain(input).unwrap();
+        let (_, domain) = parse_problem_domain(input).unwrap();
         assert_eq!(domain, expected);
     }
 

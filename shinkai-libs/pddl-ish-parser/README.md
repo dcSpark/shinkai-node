@@ -31,6 +31,15 @@ fn main() {
         Ok((_, problem)) => println!("{:?}", problem),
         Err(e) => eprintln!("Error parsing problem: {:?}", e),
     }
+
+    let domain_input = r#"(define (domain your-domain)
+        ...
+    )"#;
+
+    match parse_domain_types(domain_input) {
+        Ok((_, domain_types)) => println!("Parsed domain types: {:?}", domain_types),
+        Err(e) => eprintln!("Error parsing domain types: {:?}", e),
+    }
 }
 ```
 
