@@ -309,6 +309,150 @@ impl JobPromptGenerator {
 
         prompt
     }
+
+    /// Prompt for having the LLM generate a PDDL plan given some tools
+    pub fn pddl_plan_problem_generation_prompt(
+        task: String,
+        pddl_domain: String,
+        tools: Vec<ShinkaiTool>,
+        previous: Option<String>,
+        previous_error: Option<String>,
+    ) -> Prompt {
+        let tools_summary = tools
+            .iter()
+            .filter_map(|tool| tool.describe_formatted_tool_summary(false).ok())
+            .collect::<Vec<String>>()
+            .join("\n\n");
+
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
+                tools_summary
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            format!(
+                "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---"
+            ),
+            SubPromptType::User,
+        );
+
+        // This is the PDDL (Problem): {}.
+        prompt.add_content(
+            format!("The current task is to: '{}'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", task),
+            SubPromptType::User,
+        );
+
+        if previous.is_some() && previous_error.is_some() {
+            prompt.add_content(
+                format!(
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field if you are able to, if you are not certain, then start all over.",
+                    previous.unwrap().replace("\\n", " "),
+                    previous_error.unwrap()
+                ),
+                SubPromptType::User,
+            );
+        } else {
+            prompt.add_content(
+                format!(
+                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                ),
+                SubPromptType::User);
+        }
+
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+        );
+
+        prompt
+    }
+
+    /// Prompt for having the LLM generate a PDDL plan given some tools
+    pub fn pddl_plan_domain_generation_prompt(
+        task: String,
+        tools: Vec<ShinkaiTool>,
+        previous: Option<String>,
+        previous_error: Option<String>,
+    ) -> Prompt {
+        let tools_summary = tools
+            .iter()
+            .filter_map(|tool| tool.describe_formatted_tool_summary(true).ok())
+            .collect::<Vec<String>>()
+            .join("\n\n");
+
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- {} ---end_tools---",
+                tools_summary
+            ),
+            SubPromptType::System,
+        );
+
+        prompt.add_content(
+            format!(
+                "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---"
+            ),
+            SubPromptType::User,
+        );
+
+        prompt.add_content(
+            format!("The current task at hand is to: '{}'. Implement a throughout plan using PDDL representation using the available tools. (define (domain ", task),
+            SubPromptType::User,
+        );
+
+        if previous.is_some() && previous_error.is_some() {
+            prompt.add_content(
+                format!(
+                    "Here is the previous plan you generated: '{}' but it has an error: {}. Take a deep breath and think step by step, explain how to fix it in the explanation field and then fix it in answer field if you are able to, if you are not certain, then start all over.",
+                    previous.unwrap().replace("\\n", " "),
+                    previous_error.unwrap()
+                ),
+                SubPromptType::User,
+            );
+        } else {
+            prompt.add_content(
+                format!(
+                    "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                ),
+                SubPromptType::User);
+        }
+
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+        );
+
+        prompt
+    }
+
+    /// Prompt for having the description of a cron translated to a cron expression
+    pub fn cron_expression_generation_prompt(description: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!(
+                "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
+            ),
+            SubPromptType::System,
+        );
+
+        // TODO: consider differences in timezones
+        prompt.add_content(
+            format!(
+                "The current task at hand is create a cron expression using the following description:\n\n`{}`",
+                description
+            ),
+            SubPromptType::User,
+        );
+
+        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+
+        prompt
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -514,7 +658,7 @@ impl Prompt {
 
         if !user_content_added && first_user_content.is_some() {
             let remaining_tokens = limit - current_length;
-            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens-3]);
+            let truncated_content = format!("{}...", &first_user_content.unwrap()[..remaining_tokens - 3]);
             if let Some(position) = first_user_content_position {
                 messages.insert(position, truncated_content.to_string());
             }

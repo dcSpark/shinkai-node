@@ -16,7 +16,7 @@ export LOG_SIMPLE="true"
 
 export INITIAL_AGENT_NAME="my_gpt"
 export INITIAL_AGENT_URL="https://api.openai.com"
-export INITIAL_AGENT_MODEL="openai:gpt-3.5-turbo-1106"
+export INITIAL_AGENT_MODEL="openai:gpt-4-1106-preview"
 
 # Add these lines to enable all log options
 export LOG_ALL=1

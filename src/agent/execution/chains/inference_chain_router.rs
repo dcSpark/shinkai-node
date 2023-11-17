@@ -2,6 +2,7 @@ use crate::agent::agent::Agent;
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
 use crate::agent::job_manager::JobManager;
+use crate::cron_tasks::web_scrapper::CronTaskRequest;
 use crate::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -11,10 +12,13 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
+use super::cron_creation_chain::CronCreationChainResponse;
+
 pub enum InferenceChain {
     QAChain,
     ToolExecutionChain,
     CodingChain,
+    CronCreationChain,
 }
 
 impl JobManager {
@@ -63,6 +67,59 @@ impl JobManager {
             _ => {}
         };
 
+        Ok((inference_response_content, new_execution_context))
+    }
+
+    // TODO: Delete this
+    // TODO: Merge this with the above function. We are not doing that right now bc we need to decide how to select Chains.
+    // Could it be based on the first message of the Job?
+    pub async fn alt_inference_chain_router(
+        db: Arc<Mutex<ShinkaiDB>>,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        job_message: JobMessage,
+        cron_task_request: CronTaskRequest,
+        prev_execution_context: HashMap<String, String>,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<(CronCreationChainResponse, HashMap<String, String>), AgentError> {
+        // TODO: this part is very similar to the above function so it is easier to merge them.
+        let chosen_chain = InferenceChain::CronCreationChain;
+        let mut inference_response_content = CronCreationChainResponse::default();
+        let mut new_execution_context = HashMap::new();
+
+        match chosen_chain {
+            InferenceChain::CronCreationChain => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = JobManager::start_cron_creation_chain(
+                        db,
+                        full_job,
+                        job_message.content.clone(),
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        cron_task_request.cron_description,
+                        cron_task_request.task_description,
+                        cron_task_request.object_description,
+                        0,
+                        6, // TODO: Make this configurable
+                        None,
+                    )
+                    .await?;
+                    eprintln!("Inference response content: {:?}", inference_response_content);
+
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone().cron_expression);
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_problem);
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_domain);
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            // Add other chains here
+            _ => {}
+        }
         Ok((inference_response_content, new_execution_context))
     }
 }

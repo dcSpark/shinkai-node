@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::tools::error::ToolError;
 use serde_json::json;
 use serde_json::Value as JsonValue;
@@ -8,6 +10,7 @@ pub struct ToolArgument {
     pub arg_type: String,
     pub description: String,
     pub is_optional: bool,
+    pub wrapper_type: String,
     pub ebnf: String,
 }
 
@@ -23,12 +26,14 @@ impl ToolArgument {
             .as_bool()
             .ok_or(ToolError::ParseError("isOptional".to_string()))?;
         let ebnf = json["ebnf"].as_str().ok_or(ToolError::ParseError("ebnf".to_string()))?;
+        let wrapper_type = json["wrapperType"].as_str().unwrap_or("none");
 
         Ok(Self {
             name: name.to_string(),
             arg_type: arg_type.to_string(),
             description: description.to_string(),
             is_optional,
+            wrapper_type: wrapper_type.to_string(),
             ebnf: ebnf.to_string(),
         })
     }
@@ -72,5 +77,60 @@ impl ToolArgument {
         ebnf_result.push_str("}\n");
         ebnf_result.push_str(&ebnf_arg_definitions);
         ebnf_result
+    }
+
+    pub fn lite_csv_generate_ebnf_for_args(args: Vec<ToolArgument>, ebnf_output: bool) -> String {
+        let mut csv_result = String::new();
+
+        for input_arg in args {
+            let name = &input_arg.name;
+            let ebnf = input_arg.labled_ebnf();
+
+            if ebnf_output {
+                csv_result.push_str(&format!("{},{}", name, ebnf));
+            } else {
+                csv_result.push_str(name);
+            }
+
+            csv_result.push('\n');
+        }
+
+        csv_result
+    }
+
+    // Lite Representation
+    pub fn lite_xml_generate_ebnf_for_args(args: Vec<ToolArgument>, add_arg_descriptions: bool) -> String {
+        let mut xml_args = String::new();
+
+        for arg in args {
+            let arg_xml = if add_arg_descriptions {
+                format!(
+                    "<arg name=\"{}\" type=\"{}\" description=\"{}\"/>",
+                    arg.name, arg.arg_type, arg.description
+                )
+            } else {
+                format!("<arg name=\"{}\" type=\"{}\"/>", arg.name, arg.arg_type)
+            };
+            xml_args.push_str(&arg_xml);
+        }
+
+        xml_args
+    }
+
+    pub fn json_generate_ebnf_for_args(args: Vec<ToolArgument>, ebnf_output: bool) -> Vec<HashMap<String, String>> {
+        let mut json_result = Vec::new();
+
+        for input_arg in args {
+            let mut arg_map = HashMap::new();
+            arg_map.insert("name".to_string(), input_arg.name.clone());
+
+            if ebnf_output {
+                arg_map.insert("ebnf".to_string(), input_arg.labled_ebnf());
+            }
+
+            json_result.push(arg_map);
+        }
+
+        json_result
     }
 }

@@ -36,6 +36,7 @@ pub enum AgentError {
     JobDequeueFailed(String),
     ShinkaiMessage(ShinkaiMessageError),
     InboxNameError(InboxNameError),
+    InvalidCronCreationChainStage(String),
 }
 
 impl fmt::Display for AgentError {
@@ -84,6 +85,7 @@ impl fmt::Display for AgentError {
             AgentError::JobDequeueFailed(s) => write!(f, "Job dequeue failed: {}", s),
             AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
             AgentError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
+            AgentError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
         }
     }
 }
