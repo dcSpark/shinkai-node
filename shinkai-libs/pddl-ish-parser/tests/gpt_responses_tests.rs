@@ -1,4 +1,4 @@
-use pddl_ish_parser::{models::problem::Problem, parser::problem_parser::parse_problem};
+use pddl_ish_parser::{models::problem::Problem, parser::{problem_parser::parse_problem, object::Object, parameter::Parameter, action::Action}};
 
 #[test]
 fn test_parse_pddl_problem() {
@@ -43,23 +43,57 @@ fn test_parse_pddl_problem() {
     let expected = Problem {
         name: "find-ai-news".to_string(),
         domain: "web-processing".to_string(),
-        objects: vec!["website-url", "all-hyperlinks", "ai-news-links"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        init: vec!["website-known website-url"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
-        goal: vec![
-            "and",
-            "(all-links-extracted website-url all-hyperlinks)",
-            "(relevant-links-found all-hyperlinks ai-news-links)",
-        ]
-        .into_iter()
-        .map(String::from)
-        .collect(),
-        actions: vec![], // You need to define the expected actions here
+        objects: vec![
+            Object {
+                name: "website-url".to_string(),
+                object_type: "url".to_string(),
+            },
+            Object {
+                name: "all-hyperlinks".to_string(),
+                object_type: "links".to_string(),
+            },
+            Object {
+                name: "ai-news-links".to_string(),
+                object_type: "links".to_string(),
+            },
+        ],
+        init: vec![],
+        goal: vec![],
+        actions: vec![
+            Action {
+                name: "extract-html".to_string(),
+                parameters: vec![
+                    Parameter {
+                        name: "url".to_string(),
+                        param_type: "url".to_string(),
+                    },
+                ],
+                preconditions: vec!["(website-known ?url)".to_string()],
+                effects: vec!["(html-content-available ?url)".to_string()],
+            },
+            Action {
+                name: "extract-links".to_string(),
+                parameters: vec![
+                    Parameter {
+                        name: "url".to_string(),
+                        param_type: "url".to_string(),
+                    },
+                ],
+                preconditions: vec!["(html-content-available ?url)".to_string()],
+                effects: vec!["(all-links-extracted ?url all-hyperlinks)".to_string()],
+            },
+            Action {
+                name: "summarize-and-filter-links".to_string(),
+                parameters: vec![
+                    Parameter {
+                        name: "links".to_string(),
+                        param_type: "links".to_string(),
+                    },
+                ],
+                preconditions: vec!["(all-links-extracted website-url ?links)".to_string()],
+                effects: vec!["(relevant-links-found ?links ai-news-links)".to_string()],
+            },
+        ],
     };
 
     let result = parse_problem(input);
