@@ -1858,13 +1858,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57bcfdad1b858c2db7c38303a6d2ad4dfaf5eb53dfeb0910128b2c26d6158503"
 
 [[package]]
-name = "llama_tokenizer"
-version = "0.1.0"
-dependencies = [
- "base64 0.13.1",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2293,7 +2286,9 @@ dependencies = [
 
 [[package]]
 name = "pddl-ish-parser"
-version = "0.0.3"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a19b4275b6801ee48a54b740339da39c5e5d38254d876e1677bd1e7097188c40"
 dependencies = [
  "nom",
  "regex",
@@ -3226,7 +3221,6 @@ dependencies = [
  "image",
  "keyphrases",
  "lazy_static",
- "llama_tokenizer",
  "log",
  "mockito",
  "ordered-float",
