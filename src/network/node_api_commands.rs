@@ -1373,6 +1373,9 @@ impl Node {
                     // Update the job to finished in the database
                     match self.db.lock().await.update_job_to_finished(job_id) {
                         Ok(_) => {
+                            // Scan for .kai files here
+                            // Can internal :thinking:
+                            
                             let _ = res.send(Ok(())).await;
                             Ok(())
                         }

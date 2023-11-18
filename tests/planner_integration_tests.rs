@@ -27,6 +27,7 @@ use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
+use shinkai_node::planner::kai_files::{KaiSchemaType, KaiFile};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::{fs, env};
 use std::net::{IpAddr, Ipv4Addr};
@@ -220,10 +221,16 @@ fn planner_integration_test() {
                     task_description: "Find all the news related to AI in a website".to_string(),
                     object_description: Some("".to_string()),
                 };
-
-                // Serialize the struct to a JSON string
-                let json_string = serde_json::to_string(&cron_request).unwrap();
-
+            
+                // Create a KaiFile from the CronTaskRequest
+                let kai_file = KaiFile {
+                    schema: KaiSchemaType::CronJobRequest(cron_request),
+                    shinkai_profile: None,
+                };
+            
+                // Serialize the KaiFile to a JSON string
+                let json_string = kai_file.to_json_str().unwrap();
+            
                 // Convert the JSON string to a Vec<u8>
                 let file_data: Vec<u8> = json_string.into_bytes();
 
@@ -328,6 +335,7 @@ fn planner_integration_test() {
             }
             {
                 eprintln!("Waiting for the Job to finish");
+                let mut job_finished = false;
                 for _ in 0..10 {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
@@ -343,9 +351,9 @@ fn planner_integration_test() {
                     match node1_last_messages[0].get_message_content() {
                         Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                             Ok(job_message) => {
-                                eprintln!("message_content: {}", message_content);
                                 if job_message.content != job_message_content {
-                                    assert!(true);
+                                    eprintln!("job_message.content: {}", job_message.content);
+                                    job_finished = true;
                                     break;
                                 }
                             }
@@ -359,6 +367,13 @@ fn planner_integration_test() {
                     }
                     tokio::time::sleep(Duration::from_secs(20)).await;
                 }
+                if !job_finished {
+                    eprintln!("Job didn't finish in time");
+                    panic!("Job didn't finish in time");
+                }
+            }
+            {
+             eprintln!("Alls good!");
             }
         })
     });

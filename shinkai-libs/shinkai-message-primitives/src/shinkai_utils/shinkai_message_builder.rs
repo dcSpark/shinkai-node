@@ -531,6 +531,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_message_from_agent(
         job_id: String,
         content: String,
+        files_inbox: String,
         my_signature_secret_key: SignatureStaticKey,
         node_sender: ProfileName,
         node_receiver: ProfileName,
@@ -539,7 +540,7 @@ impl ShinkaiMessageBuilder {
         let job_message = JobMessage {
             job_id,
             content,
-            files_inbox: "".to_string(),
+            files_inbox,
         };
         let body = serde_json::to_string(&job_message).map_err(|_| "Failed to serialize job message to JSON")?;
 
