@@ -27,12 +27,12 @@ use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use shinkai_node::planner::kai_files::{KaiSchemaType, KaiFile};
+use shinkai_node::planner::kai_files::{KaiFile, KaiSchemaType};
 use shinkai_vector_resources::resource_errors::VRError;
-use std::{fs, env};
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::time::Instant;
+use std::{env, fs};
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
@@ -131,7 +131,7 @@ fn planner_integration_test() {
                 };
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
-                
+
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
@@ -221,16 +221,16 @@ fn planner_integration_test() {
                     task_description: "Find all the news related to AI in a website".to_string(),
                     object_description: Some("".to_string()),
                 };
-            
+
                 // Create a KaiFile from the CronTaskRequest
                 let kai_file = KaiFile {
                     schema: KaiSchemaType::CronJobRequest(cron_request),
                     shinkai_profile: None,
                 };
-            
+
                 // Serialize the KaiFile to a JSON string
                 let json_string = kai_file.to_json_str().unwrap();
-            
+
                 // Convert the JSON string to a Vec<u8>
                 let file_data: Vec<u8> = json_string.into_bytes();
 
@@ -373,7 +373,44 @@ fn planner_integration_test() {
                 }
             }
             {
-             eprintln!("Alls good!");
+                eprintln!("Alls good!");
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone().to_string()).unwrap();
+
+                // Create a ShinkaiMessage for the command
+                let msg = ShinkaiMessageBuilder::new(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .message_raw_content(job_id.clone())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type(MessageSchemaType::APIFinishJob)
+                .internal_metadata_with_inbox(
+                    node1_profile_name.to_string().clone(),
+                    "".to_string(),
+                    inbox_name.to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_intra_sender(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
+
+                // Prepare the response channel
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+
+                // Send the command
+                node1_commands_sender
+                    .send(NodeCommand::APIUpdateJobToFinished { msg, res: res_sender })
+                    .await
+                    .unwrap();
+
+                // Receive the response
+                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
+                eprintln!("response: {:?}", response);
             }
         })
     });

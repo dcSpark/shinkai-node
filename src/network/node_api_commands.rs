@@ -1353,7 +1353,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         // Validate the message
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIFinishJob))
             .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
@@ -1364,18 +1364,46 @@ impl Node {
         };
 
         // Extract the job ID from the message content
-        let job_id = msg.get_message_content()?;
+        // let job_id = msg.get_message_content()?;
+
+        let inbox_name = match InboxName::from_message(&msg.clone()) {
+            Ok(inbox_name) => inbox_name,
+            _ => {
+                let error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to extract inbox name from the message".to_string(),
+                };
+                let _ = res.send(Err(error)).await;
+                return Ok(());
+            }
+        };
+
+        let job_id = match inbox_name.clone() {
+            InboxName::JobInbox { unique_id, .. } => unique_id,
+            _ => {
+                let error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Expected a JobInbox".to_string(),
+                };
+                let _ = res.send(Err(error)).await;
+                return Ok(());
+            }
+        };
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
-                    match self.db.lock().await.update_job_to_finished(job_id) {
+                    let db_lock = self.db.lock().await;
+                    match db_lock.update_job_to_finished(job_id) {
                         Ok(_) => {
                             // Scan for .kai files here
                             // Can internal :thinking:
-                            
+                            let kai_file = db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await?;
+                            eprintln!("api_update_job_to_finished> kai_file: {:?}", kai_file);
                             let _ = res.send(Ok(())).await;
                             Ok(())
                         }
