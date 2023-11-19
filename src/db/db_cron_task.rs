@@ -1,6 +1,6 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::{cmp::Ordering, collections::{HashMap, HashSet}};
 
-use super::{db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 use rocksdb::{IteratorMode, Options};
 use serde::{Deserialize, Serialize};
@@ -137,6 +137,8 @@ impl ShinkaiDB {
                 task_id
             )))?;
 
+        let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
+
         let mut batch = rocksdb::WriteBatch::default();
         batch.put_cf(cf_schedule, &task_id, &cron);
         batch.put_cf(cf_prompt, &task_id, &prompt);
@@ -147,6 +149,7 @@ impl ShinkaiDB {
         let created_at = Utc::now().to_rfc3339();
         batch.put_cf(cf_created_at, &task_id, &created_at);
         batch.put_cf(cf_agent_id, &task_id, &agent_id);
+        batch.put_cf(cf_cron_queues, &task_id, &profile);
 
         self.db.write(batch)?;
         Ok(())
@@ -160,6 +163,7 @@ impl ShinkaiDB {
         let cf_name_crawl_links = format!("{}_cron_task_crawl_links", profile);
         let cf_name_created_at = format!("{}_cron_task_created_at", profile);
         let cf_name_agent_id = format!("{}_cron_task_agent_id", profile);
+        let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
 
         let cf_schedule = self
             .db
@@ -168,7 +172,6 @@ impl ShinkaiDB {
                 "Cron task not found for schedule: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_schedule, &task_id)?;
 
         let cf_prompt = self
             .db
@@ -177,7 +180,6 @@ impl ShinkaiDB {
                 "Cron task not found for prompt: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_prompt, &task_id)?;
 
         let cf_subprompt = self
             .db
@@ -186,7 +188,6 @@ impl ShinkaiDB {
                 "Cron task not found for prompt: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_subprompt, &task_id)?;
 
         let cf_url = self
             .db
@@ -195,7 +196,6 @@ impl ShinkaiDB {
                 "Cron task not found for url: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_url, &task_id)?;
 
         let cf_crawl_links = self
             .db
@@ -204,7 +204,6 @@ impl ShinkaiDB {
                 "Cron task not found for url: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_crawl_links, &task_id)?;
 
         let cf_created_at = self
             .db
@@ -213,7 +212,6 @@ impl ShinkaiDB {
                 "Cron task not found for url: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_created_at, &task_id)?;
 
         let cf_agent_id = self
             .db
@@ -222,12 +220,47 @@ impl ShinkaiDB {
                 "Cron task not found: {}",
                 task_id
             )))?;
-        self.db.delete_cf(cf_agent_id, &task_id)?;
 
+        let mut batch = rocksdb::WriteBatch::default();
+        batch.delete_cf(cf_schedule, &task_id);
+        batch.delete_cf(cf_prompt, &task_id);
+        batch.delete_cf(cf_subprompt, &task_id);
+        batch.delete_cf(cf_url, &task_id);
+        batch.delete_cf(cf_crawl_links, &task_id);
+        batch.delete_cf(cf_created_at, &task_id);
+        batch.delete_cf(cf_agent_id, &task_id);
+        batch.delete_cf(cf_cron_queues, &task_id);
+
+        self.db.write(batch)?;
         Ok(())
     }
 
-    pub fn get_all_cron_tasks(&self, profile: String) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
+    pub fn get_all_cron_tasks_from_all_profiles(&self) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
+        let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
+
+        let mut all_profiles = HashSet::new();
+        for result in self.db.iterator_cf(cf_cron_queues, IteratorMode::Start) {
+            match result {
+                Ok((_, value)) => {
+                    let profile = String::from_utf8(value.to_vec()).unwrap();
+                    all_profiles.insert(profile);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        let mut all_tasks = HashMap::new();
+        for profile in all_profiles {
+            let tasks = self.get_all_cron_tasks_for_profile(profile)?;
+            for (task_id, task) in tasks {
+                all_tasks.insert(task_id, task);
+            }
+        }
+
+        Ok(all_tasks)
+    }
+
+    pub fn get_all_cron_tasks_for_profile(&self, profile: String) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
         let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);

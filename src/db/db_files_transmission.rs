@@ -4,6 +4,7 @@ use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
 use serde_json::to_vec;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     MessageBody, MessageData, ShinkaiBody, ShinkaiData,
@@ -234,7 +235,9 @@ impl ShinkaiDB {
 
         loop {
             // Get a page of messages from the inbox
-            let messages = self.get_last_messages_from_inbox(inbox_name.clone(), page_size, offset_key.clone())?;
+            let mut messages = self.get_last_messages_from_inbox(inbox_name.clone(), page_size, offset_key.clone())?;
+            // Note so messages are from most recent to oldest instead
+            messages.reverse();
 
             // If there are no more messages, break the loop
             if messages.is_empty() {

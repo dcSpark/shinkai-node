@@ -46,16 +46,20 @@ pub struct KaiFileManager;
 
 impl KaiFileManager {
     pub async fn execute(kai_file: KaiFile, node: &Node) -> Result<(), KaiFileManagerError> {
+        eprintln!("KaiFileManager::execute");
         match kai_file.schema {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
                 // Nothing to do
+                eprintln!("KaiSchemaType::CronJobRequest: {:?}", cron_task_request);
             }
             KaiSchemaType::CronJobResponse(cron_task_response) => {
+                eprintln!("KaiSchemaType::CronJobResponse: {:?}", cron_task_response);
                 // Execute code for CronJobResponse
                 // You can use cron_task_response which is of type CronTaskResponse
 
                 match &node.cron_manager {
                     Some(cron_manager) => {
+                        eprintln!("Cron manager found");
                         let random_hash = random_string();
 
                         let url = cron_task_response
@@ -82,11 +86,12 @@ impl KaiFileManager {
                             .await;
                     }
                     None => {
-                        println!("Cron manager not found");
+                        eprintln!("Cron manager not found");
                     }
                 }
             }
         }
+        eprintln!("KaiFileManager::execute: Done (right before OK)");
         Ok(())
     }
 }

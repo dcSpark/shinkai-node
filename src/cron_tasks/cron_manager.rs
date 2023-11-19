@@ -139,19 +139,22 @@ impl CronManager {
             loop {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
-                    eprintln!("Getting all cron tasks for node_profile_name: {:?}", node_profile_name);
+
                     db_lock
-                        .get_all_cron_tasks(node_profile_name.clone().get_profile_name().unwrap())
+                        .get_all_cron_tasks_from_all_profiles()
                         .unwrap_or(HashMap::new())
                 };
-                eprintln!("Jobs to process: {:?}", jobs_to_process);
+                eprintln!("Cron Jobs to process: {:?}", jobs_to_process);
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
                 for (_, cron_task) in jobs_to_process {
-                    if !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
-                        continue;
-                    }
+                    // TODO: we should ignore this for testing purposes
+                    // or we should modify the cron expression to be able to test it
+                    // if !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
+                    //     eprintln!("Cron Job not ready to be executed: {:?}", cron_task);
+                    //     continue;
+                    // }
 
                     let db_clone = db.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);

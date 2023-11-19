@@ -220,7 +220,7 @@ fn planner_integration_test() {
                 let cron_request = CronTaskRequest {
                     cron_description: "Every day at 8pm".to_string(),
                     task_description: "Find all the news related to AI in a website".to_string(),
-                    object_description: Some("".to_string()),
+                    object_description: Some("https://news.ycombinator.com".to_string()),
                 };
 
                 // Create a KaiFile from the CronTaskRequest
@@ -412,6 +412,7 @@ fn planner_integration_test() {
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("APIUpdateJobToFinished response: {:?}", response);
+                tokio::time::sleep(Duration::from_secs(360)).await;
             }
         })
     });

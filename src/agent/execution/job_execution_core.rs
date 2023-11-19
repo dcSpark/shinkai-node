@@ -121,10 +121,10 @@ impl JobManager {
     /// Inserts a KaiFile into a specific inbox
     pub async fn insert_kai_file_into_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
+        file_name_no_ext: String,
         kai_file: KaiFile,
     ) -> Result<String, AgentError> {
-        let random_hash = random_string();
-        let inbox_name = hex::encode(random_hash);
+        let inbox_name = random_string();
 
         // Lock the database
         let mut db = db.lock().await;
@@ -141,7 +141,7 @@ impl JobManager {
                 // Save the KaiFile to the inbox
                 let _ = db.add_file_to_files_message_inbox(
                     inbox_name.clone(),
-                    "kai_file.json".to_string(),
+                    format!("{}.kai", file_name_no_ext).to_string(),
                     kai_file_bytes,
                 )?;
                 return Ok(inbox_name)
@@ -330,7 +330,7 @@ impl JobManager {
                         agent_id: agent.id.clone(), 
                     };
 
-                    let inbox_name_result = JobManager::insert_kai_file_into_inbox(db.clone(), kai_file).await;
+                    let inbox_name_result = JobManager::insert_kai_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
 
                     match inbox_name_result {
                         Ok(inbox_name) => {

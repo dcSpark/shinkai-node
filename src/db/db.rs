@@ -37,6 +37,7 @@ pub enum Topic {
     MessageBoxSymmetricKeysTimes,
     TempFilesInbox,
     JobQueues,
+    CronQueues,
 }
 
 impl Topic {
@@ -66,6 +67,7 @@ impl Topic {
             Self::MessageBoxSymmetricKeysTimes => "message_box_symmetric_keys_times",
             Self::TempFilesInbox => "temp_files_inbox",
             Self::JobQueues => "job_queues",
+            Self::CronQueues => "cron_queues",
         }
     }
 }
@@ -158,6 +160,7 @@ impl ShinkaiDB {
                 Topic::MessageBoxSymmetricKeysTimes.as_str().to_string(),
                 Topic::TempFilesInbox.as_str().to_string(),
                 Topic::JobQueues.as_str().to_string(),
+                Topic::CronQueues.as_str().to_string(),
             ]
         };
 

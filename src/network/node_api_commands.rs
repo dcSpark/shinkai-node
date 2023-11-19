@@ -20,6 +20,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::Sender;
+use async_std::eprint;
 use blake3::Hasher;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::task::{Context, Poll};
@@ -1410,7 +1411,10 @@ impl Node {
                                         message: format!("Failed to parse KaiFile: {}", e),
                                     })?;
 
-                                let _ = KaiFileManager::execute(kai_file, self);
+                                match KaiFileManager::execute(kai_file, self).await {
+                                    Ok(_) => (),
+                                    Err(e) => eprintln!("Error executing KaiFileManager: {:?}", e),
+                                }
                             }
 
                             let _ = res.send(Ok(())).await;
