@@ -17,6 +17,7 @@ use serde_json::{to_string, Error};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::utils::random_string;
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::JobMessage},
@@ -122,13 +123,8 @@ impl JobManager {
         db: Arc<Mutex<ShinkaiDB>>,
         kai_file: KaiFile,
     ) -> Result<String, AgentError> {
-        let mut key = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut key);
-
-        let mut hasher = Hasher::new();
-        hasher.update(&key);
-        let hash = hasher.finalize();
-        let inbox_name = hex::encode(hash.as_bytes());
+        let random_hash = random_string();
+        let inbox_name = hex::encode(random_hash);
 
         // Lock the database
         let mut db = db.lock().await;
@@ -307,7 +303,7 @@ impl JobManager {
                     // Call the inference chain router to choose which chain to use, and call it
                     let (inference_response_content, new_execution_context) = JobManager::alt_inference_chain_router(
                         db.clone(),
-                        agent_found,
+                        agent_found.clone(),
                         full_job.clone(),
                         job_message.clone(),
                         cron_task_request.clone(),
@@ -326,10 +322,12 @@ impl JobManager {
 
                     let agg_response = cron_task_response.to_string();
                     let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
+                    let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
 
                     let kai_file = KaiFile {
                         schema: KaiSchemaType::CronJobResponse(cron_task_response.clone()),
                         shinkai_profile: Some(profile.clone()),
+                        agent_id: agent.id.clone(), 
                     };
 
                     let inbox_name_result = JobManager::insert_kai_file_into_inbox(db.clone(), kai_file).await;

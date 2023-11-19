@@ -131,14 +131,15 @@ impl CronManager {
 
         tokio::spawn(async move {
             shinkai_log(
-                ShinkaiLogOption::JobExecution,
+                ShinkaiLogOption::CronExecution,
                 ShinkaiLogLevel::Info,
-                "Starting job queue processing loop",
+                "Starting cron job queue processing loop",
             );
 
             loop {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
+                    eprintln!("Getting all cron tasks for node_profile_name: {:?}", node_profile_name);
                     db_lock
                         .get_all_cron_tasks(node_profile_name.clone().get_profile_name().unwrap())
                         .unwrap_or(HashMap::new())
@@ -300,7 +301,7 @@ impl CronManager {
         let now = Utc::now();
         let now_rounded = now.with_second(0).unwrap().with_nanosecond(0).unwrap();
         let end_of_interval = now_rounded + chrono::Duration::seconds(cron_time_interval as i64);
-    
+
         // Parse the cron expression
         let next_execution_time = match cron_parser::parse(&cron_task.cron, &now_rounded) {
             Ok(datetime) => datetime,
@@ -314,12 +315,34 @@ impl CronManager {
                 return false;
             }
         };
-    
+
         // Check if the next execution time falls within the range of now and now + cron_time_interval
         next_execution_time >= now && next_execution_time <= end_of_interval
     }
 
     pub fn is_valid_cron_expression(cron_expression: &str) -> bool {
         cron_parser::parse(cron_expression, &Utc::now()).is_ok()
+    }
+
+    // TODO: rename this or refactor it to a manager
+    pub async fn add_cron_task(
+        &self,
+        profile: String,
+        task_id: String,
+        cron: String,
+        prompt: String,
+        subprompt: String,
+        url: String,
+        crawl_links: bool,
+        agent_id: String,
+    ) -> tokio::task::JoinHandle<Result<(), CronManagerError>> {
+        let db = self.db.clone();
+        // Note: needed to avoid a deadlock
+        tokio::spawn(async move {
+            let mut db_lock = db.lock().await;
+            db_lock
+                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
+                .map_err(|e| CronManagerError::SomeError(e.to_string()))
+        })
     }
 }

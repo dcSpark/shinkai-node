@@ -27,6 +27,7 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 
 use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
+use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
@@ -253,12 +254,14 @@ pub struct Node {
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     // The database connection for this node.
     pub db: Arc<Mutex<ShinkaiDB>>,
-    // The job manager
-    pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
     pub initial_agent: Option<SerializedAgent>,
+    // The Job manager
+    pub job_manager: Option<Arc<Mutex<JobManager>>>,
+    // Cron Manager
+    pub cron_manager: Option<Arc<Mutex<CronManager>>>,
 }
 
 impl Node {
@@ -273,7 +276,7 @@ impl Node {
         commands: Receiver<NodeCommand>,
         db_path: String,
         first_device_needs_registration_code: bool,
-        initial_agent: Option<SerializedAgent>
+        initial_agent: Option<SerializedAgent>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -307,6 +310,7 @@ impl Node {
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
+
         Node {
             node_profile_name,
             identity_secret_key,
@@ -320,8 +324,9 @@ impl Node {
             identity_manager,
             db: db_arc,
             job_manager: None,
+            cron_manager: None,
             first_device_needs_registration_code,
-            initial_agent
+            initial_agent,
         }
     }
 
@@ -336,6 +341,20 @@ impl Node {
             )
             .await,
         )));
+
+        eprintln!("\n\n\n self.node_profile_name: {:?}", self.node_profile_name);
+        self.cron_manager = match &self.job_manager {
+            Some(job_manager) => Some(Arc::new(Mutex::new(
+                CronManager::new(
+                    Arc::clone(&self.db),
+                    clone_signature_secret_key(&self.identity_secret_key),
+                    self.node_profile_name.clone(),
+                    Arc::clone(job_manager),
+                )
+                .await))),
+            None => None,
+        };
+
         let listen_future = self.listen_and_reconnect().fuse();
         pin_mut!(listen_future);
 
@@ -723,7 +742,8 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()));
+            &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
+        );
         let mut db = db.lock().await;
         let db_result = db.unsafe_insert_inbox_message(&message_to_save);
         match db_result {
@@ -755,10 +775,7 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Info,
-            &format!(
-                "{} > Got message from {:?}",
-                receiver_address, unsafe_sender_address
-            ),
+            &format!("{} > Got message from {:?}", receiver_address, unsafe_sender_address),
         );
 
         // Extract and validate the message
@@ -785,12 +802,16 @@ impl Node {
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Sender Profile Name: {:?}", receiver_address, sender_profile_name_string),
+            &format!(
+                "{} > Sender Profile Name: {:?}",
+                receiver_address, sender_profile_name_string
+            ),
         );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,
-            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity));
+            &format!("{} > Node Sender Identity: {}", receiver_address, sender_identity),
+        );
         shinkai_log(
             ShinkaiLogOption::Node,
             ShinkaiLogLevel::Debug,

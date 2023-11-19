@@ -18,7 +18,8 @@ pub enum KaiSchemaType {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KaiFile {
     pub schema: KaiSchemaType,
-    pub shinkai_profile: Option<ShinkaiName>
+    pub shinkai_profile: Option<ShinkaiName>,
+    pub agent_id: String
 }
 
 impl KaiFile {

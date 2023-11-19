@@ -9,6 +9,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
+    planner::{kai_manager::KaiFileManager, kai_files::KaiFile},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -1363,9 +1364,6 @@ impl Node {
             }
         };
 
-        // Extract the job ID from the message content
-        // let job_id = msg.get_message_content()?;
-
         let inbox_name = match InboxName::from_message(&msg.clone()) {
             Ok(inbox_name) => inbox_name,
             _ => {
@@ -1400,10 +1398,21 @@ impl Node {
                     let db_lock = self.db.lock().await;
                     match db_lock.update_job_to_finished(job_id) {
                         Ok(_) => {
-                            // Scan for .kai files here
-                            // Can internal :thinking:
                             let kai_file = db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await?;
-                            eprintln!("api_update_job_to_finished> kai_file: {:?}", kai_file);
+
+                            if let Some((_, kai_file_bytes)) = kai_file {
+                                let kai_file_str = String::from_utf8(kai_file_bytes).map_err(|e| NodeError {
+                                    message: format!("Failed to convert bytes to string: {}", e),
+                                })?;
+
+                                let kai_file: KaiFile =
+                                    KaiFile::from_json_str(&kai_file_str).map_err(|e| NodeError {
+                                        message: format!("Failed to parse KaiFile: {}", e),
+                                    })?;
+
+                                let _ = KaiFileManager::execute(kai_file, self);
+                            }
+
                             let _ = res.send(Ok(())).await;
                             Ok(())
                         }

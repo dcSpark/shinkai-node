@@ -62,6 +62,16 @@ fn planner_integration_test() {
 
             // For this test
             let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
+            let agent_name = ShinkaiName::new(
+                format!(
+                    "{}/{}/agent/{}",
+                    node1_identity_name.clone(),
+                    node1_profile_name.clone(),
+                    node1_agent.clone()
+                )
+                .to_string(),
+            )
+            .unwrap();
 
             {
                 // Register a Profile in Node1 and verifies it
@@ -83,16 +93,7 @@ fn planner_integration_test() {
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
-                let agent_name = ShinkaiName::new(
-                    format!(
-                        "{}/{}/agent/{}",
-                        node1_identity_name.clone(),
-                        node1_profile_name.clone(),
-                        node1_agent.clone()
-                    )
-                    .to_string(),
-                )
-                .unwrap();
+                
 
                 let _m = server
                     .mock("POST", "/v1/chat/completions")
@@ -134,7 +135,7 @@ fn planner_integration_test() {
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
-                    full_identity_name: agent_name,
+                    full_identity_name: agent_name.clone(),
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
                     // external_url: Some(server.url()),
@@ -226,6 +227,7 @@ fn planner_integration_test() {
                 let kai_file = KaiFile {
                     schema: KaiSchemaType::CronJobRequest(cron_request),
                     shinkai_profile: None,
+                    agent_id: node1_agent.clone().to_string(),
                 };
 
                 // Serialize the KaiFile to a JSON string
@@ -373,7 +375,6 @@ fn planner_integration_test() {
                 }
             }
             {
-                eprintln!("Alls good!");
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone().to_string()).unwrap();
 
                 // Create a ShinkaiMessage for the command
@@ -410,7 +411,7 @@ fn planner_integration_test() {
 
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("response: {:?}", response);
+                eprintln!("APIUpdateJobToFinished response: {:?}", response);
             }
         })
     });
