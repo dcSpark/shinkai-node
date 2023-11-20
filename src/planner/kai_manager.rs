@@ -81,7 +81,7 @@ impl KaiJobFileManager {
                                 "".to_string(),
                                 url,
                                 true, // TODO: Remove or maybe we should be able to extract this from the PDDL?
-                                "agent_id".to_string(), // Agent should match the one used for the job
+                                kai_file.agent_id,
                             )
                             .await;
                     }
