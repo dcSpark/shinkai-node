@@ -24,7 +24,7 @@ impl VRSource {
 
     /// Creates a VRSource from an external URI or URL
     pub fn new_uri_ref(uri: &str) -> Self {
-        VRSource::Reference(SourceReference::ExternalURI(uri.to_string()))
+        VRSource::new_uri_ref(uri)
     }
 
     /// Creates a VRSource reference to an original source file
@@ -38,7 +38,7 @@ impl VRSource {
 
     /// Creates a VRSource reference using an arbitrary String
     pub fn new_other_ref(other: String) -> Self {
-        VRSource::Reference(SourceReference::Other(other))
+        VRSource::new_other_ref(other)
     }
 
     /// Creates a VRSource which represents no/unknown source.
@@ -63,12 +63,7 @@ impl VRSource {
         let file_name_without_extension = re.replace(file_name, "");
         let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
         // Attempt to auto-detect, else use file extension
-        let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
-            f_type
-        } else {
-            return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
-        };
-
+        let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
             Ok(VRSource::new_uri_ref(&file_name_without_extension))
         } else {
@@ -111,6 +106,7 @@ impl SourceFile {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+/// Type that acts as a reference to external file/content/data
 pub enum SourceReference {
     FileRef(SourceFileReference),
     ExternalURI(String),
@@ -125,12 +121,70 @@ impl SourceReference {
             SourceReference::Other(s) => s.clone(),
         }
     }
+
+    /// Creates a new SourceReference for a file, auto-detecting the file type
+    /// by attempting to parse the extension in the file_name.
+    /// Errors if extension is not found or not implemented yet.
+    pub fn new_file_reference_auto_detect(
+        file_name: String,
+        content_hash: String,
+        file_path: Option<String>,
+    ) -> Result<Self, VRError> {
+        let file_type = SourceFileType::detect_file_type(&file_name)?;
+        Ok(SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type,
+            content_hash,
+            file_path,
+        }))
+    }
+
+    /// Creates a new SourceReference for an image file
+    pub fn new_file_image_reference(
+        file_name: String,
+        image_type: SourceImageType,
+        content_hash: String,
+        file_path: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Image(image_type),
+            content_hash,
+            file_path,
+        })
+    }
+
+    /// Creates a new SourceReference for a document file
+    pub fn new_file_doc_reference(
+        file_name: String,
+        doc_type: SourceDocumentType,
+        content_hash: String,
+        file_path: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Document(doc_type),
+            content_hash,
+            file_path,
+        })
+    }
+
+    /// Creates a new SourceReference for an external URI
+    pub fn new_external_uri(uri: String) -> Self {
+        SourceReference::ExternalURI(uri)
+    }
+
+    /// Creates a new SourceReference for custom use cases
+    pub fn new_other(s: String) -> Self {
+        SourceReference::Other(s)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
+    pub file_path: Option<String>,
     pub content_hash: String,
 }
 
@@ -154,19 +208,23 @@ pub enum SourceFileType {
 impl SourceFileType {
     /// Given an input file_name with an extension,
     /// outputs the correct SourceFileType
-    pub fn detect_file_type(file_name: &str) -> Option<Self> {
+    pub fn detect_file_type(file_name: &str) -> Result<Self, VRError> {
         let re = Regex::new(r"\.([a-zA-Z0-9]+)$").unwrap();
-        let extension = re.captures(file_name)?.get(1)?.as_str();
+        let extension = re
+            .captures(file_name)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str())
+            .ok_or_else(|| VRError::CouldNotDetectFileType(file_name.to_string()))?;
 
         if let Ok(img_type) = SourceImageType::from_str(extension) {
-            return Some(SourceFileType::Image(img_type));
+            return Ok(SourceFileType::Image(img_type));
         }
 
         if let Ok(doc_type) = SourceDocumentType::from_str(extension) {
-            return Some(SourceFileType::Document(doc_type));
+            return Ok(SourceFileType::Document(doc_type));
         }
 
-        None
+        return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
     }
 }
 
@@ -179,6 +237,10 @@ pub enum SourceImageType {
     Tiff,
     Svg,
     Webp,
+    Ico,
+    Heic,
+    Raw,
+    Other(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -197,6 +259,15 @@ pub enum SourceDocumentType {
     Xlsx,
     Ppt,
     Pptx,
+    Xml,
+    Json,
+    Yaml,
+    Ps,
+    Tex,
+    Latex,
+    Ods,
+    Odp,
+    Other(String),
 }
 
 impl fmt::Display for SourceFileType {
@@ -221,6 +292,10 @@ impl fmt::Display for SourceImageType {
                 SourceImageType::Tiff => "tiff",
                 SourceImageType::Svg => "svg",
                 SourceImageType::Webp => "webp",
+                SourceImageType::Ico => "ico",
+                SourceImageType::Heic => "heic",
+                SourceImageType::Raw => "raw",
+                SourceImageType::Other(s) => &format!("{}", s),
             }
         )
     }
@@ -246,6 +321,15 @@ impl fmt::Display for SourceDocumentType {
                 SourceDocumentType::Xlsx => "xlsx",
                 SourceDocumentType::Ppt => "ppt",
                 SourceDocumentType::Pptx => "pptx",
+                SourceDocumentType::Xml => "xml",
+                SourceDocumentType::Json => "json",
+                SourceDocumentType::Yaml => "yaml",
+                SourceDocumentType::Ps => "ps",
+                SourceDocumentType::Tex => "tex",
+                SourceDocumentType::Latex => "latex",
+                SourceDocumentType::Ods => "ods",
+                SourceDocumentType::Odp => "odp",
+                SourceDocumentType::Other(s) => &format!("{}", s),
             }
         )
     }
@@ -263,6 +347,9 @@ impl FromStr for SourceImageType {
             "tiff" => Ok(SourceImageType::Tiff),
             "svg" => Ok(SourceImageType::Svg),
             "webp" => Ok(SourceImageType::Webp),
+            "ico" => Ok(SourceImageType::Ico),
+            "heic" => Ok(SourceImageType::Heic),
+            "raw" => Ok(SourceImageType::Raw),
             _ => Err(()),
         }
     }
@@ -287,6 +374,14 @@ impl FromStr for SourceDocumentType {
             "xlsx" => Ok(SourceDocumentType::Xlsx),
             "ppt" => Ok(SourceDocumentType::Ppt),
             "pptx" => Ok(SourceDocumentType::Pptx),
+            "xml" => Ok(SourceDocumentType::Xml),
+            "json" => Ok(SourceDocumentType::Json),
+            "yaml" => Ok(SourceDocumentType::Yaml),
+            "ps" => Ok(SourceDocumentType::Ps),
+            "tex" => Ok(SourceDocumentType::Tex),
+            "latex" => Ok(SourceDocumentType::Latex),
+            "ods" => Ok(SourceDocumentType::Ods),
+            "odp" => Ok(SourceDocumentType::Odp),
             _ => Err(()),
         }
     }
