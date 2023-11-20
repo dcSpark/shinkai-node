@@ -32,12 +32,12 @@ impl VRSource {
         file_name: String,
         file_type: SourceFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         VRSource::Reference(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
-            file_path,
+            file_location,
             content_hash,
         }))
     }
@@ -115,7 +115,9 @@ impl SourceFile {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// Type that acts as a reference to external file/content/data
 pub enum SourceReference {
+    /// A typed specific file
     FileRef(SourceFileReference),
+    /// An untyped arbitrary external URI
     ExternalURI(String),
     Other(String),
 }
@@ -135,14 +137,14 @@ impl SourceReference {
     pub fn new_file_reference_auto_detect(
         file_name: String,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Result<Self, VRError> {
         let file_type = SourceFileType::detect_file_type(&file_name)?;
         Ok(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
             content_hash,
-            file_path,
+            file_location,
         }))
     }
 
@@ -151,13 +153,13 @@ impl SourceReference {
         file_name: String,
         image_type: ImageFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Image(image_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -166,13 +168,13 @@ impl SourceReference {
         file_name: String,
         doc_type: DocumentFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Document(doc_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -181,13 +183,13 @@ impl SourceReference {
         file_name: String,
         code_type: CodeFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Code(code_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -196,13 +198,13 @@ impl SourceReference {
         file_name: String,
         config_type: ConfigFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::ConfigFileType(config_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -211,13 +213,13 @@ impl SourceReference {
         file_name: String,
         video_type: VideoFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Video(video_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -226,13 +228,13 @@ impl SourceReference {
         file_name: String,
         audio_type: AudioFileType,
         content_hash: String,
-        file_path: Option<String>,
+        file_location: Option<String>,
     ) -> Self {
         SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type: SourceFileType::Audio(audio_type),
             content_hash,
-            file_path,
+            file_location,
         })
     }
 
@@ -261,7 +263,8 @@ impl fmt::Display for SourceReference {
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
-    pub file_path: Option<String>,
+    /// Local path or external URI to file
+    pub file_location: Option<String>,
     pub content_hash: String,
 }
 
@@ -280,10 +283,10 @@ impl fmt::Display for SourceFileReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "File Name: {}, File Type: {}, File Path: {}, Content Hash: {}",
+            "File Name: {}, File Type: {}, File Location: {}, Content Hash: {}",
             self.file_name,
             self.file_type,
-            self.file_path.as_deref().unwrap_or("None"),
+            self.file_location.as_deref().unwrap_or("None"),
             self.content_hash
         )
     }
