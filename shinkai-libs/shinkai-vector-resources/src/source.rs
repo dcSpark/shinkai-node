@@ -238,6 +238,21 @@ impl SourceReference {
         })
     }
 
+    /// Creates a new SourceReference for a Shinkai file
+    pub fn new_file_shinkai_reference(
+        file_name: String,
+        shinkai_type: ShinkaiFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Shinkai(shinkai_type),
+            content_hash,
+            file_location,
+        })
+    }
+
     /// Creates a new SourceReference for an external URI
     pub fn new_external_uri(uri: String) -> Self {
         SourceReference::ExternalURI(uri)
@@ -300,6 +315,7 @@ pub enum SourceFileType {
     ConfigFileType(ConfigFileType),
     Video(VideoFileType),
     Audio(AudioFileType),
+    Shinkai(ShinkaiFileType),
 }
 
 impl SourceFileType {
@@ -337,6 +353,7 @@ impl fmt::Display for SourceFileType {
             SourceFileType::ConfigFileType(config_type) => write!(f, "{}", config_type),
             SourceFileType::Video(video_type) => write!(f, "{}", video_type),
             SourceFileType::Audio(audio_type) => write!(f, "{}", audio_type),
+            SourceFileType::Shinkai(shinkai_type) => write!(f, "{}", shinkai_type),
         }
     }
 }
@@ -735,6 +752,42 @@ impl FromStr for VideoFileType {
             "vob" => Ok(VideoFileType::Vob),
             "m4v" => Ok(VideoFileType::M4v),
             "mpg" => Ok(VideoFileType::Mpg),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ShinkaiFileType {
+    ShinkaiJobExtension,
+    ShinkaiVectorResource,
+    ShinkaiResourceRouter,
+    Other(String),
+}
+
+impl fmt::Display for ShinkaiFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ShinkaiFileType::ShinkaiJobExtension => "jobkai",
+                ShinkaiFileType::ShinkaiVectorResource => "vrkai",
+                ShinkaiFileType::ShinkaiResourceRouter => "routerkai",
+                ShinkaiFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for ShinkaiFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "jobkai" => Ok(ShinkaiFileType::ShinkaiJobExtension),
+            "vrkai" => Ok(ShinkaiFileType::ShinkaiVectorResource),
+            "routerkai" => Ok(ShinkaiFileType::ShinkaiResourceRouter),
             _ => Err(()),
         }
     }
