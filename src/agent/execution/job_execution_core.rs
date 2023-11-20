@@ -20,7 +20,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -454,7 +454,7 @@ impl JobManager {
                     resource: resource,
                     source: SourceFile::new(
                         filename.clone(),
-                        SourceFileType::Document(SourceDocumentType::Pdf),
+                        SourceFileType::Document(DocumentFileType::Pdf),
                         content,
                     ),
                 };

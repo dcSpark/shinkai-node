@@ -3,7 +3,7 @@ use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 pub use crate::source::{
-    SourceDocumentType, SourceFileReference, SourceFileType, SourceImageType, SourceReference, VRSource,
+    DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
 use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
