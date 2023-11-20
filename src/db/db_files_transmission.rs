@@ -258,9 +258,9 @@ impl ShinkaiDB {
                             // Get all file names from the file inbox
                             let file_names = self.get_all_filenames_from_inbox(job_message.files_inbox.clone())?;
 
-                            // Check if any file ends with .kai
+                            // Check if any file ends with .jobkai
                             for file_name in file_names {
-                                if file_name.ends_with(".kai") {
+                                if file_name.ends_with(".jobkai") {
                                     // Get the file content
                                     let file_content =
                                         self.get_file_from_inbox(job_message.files_inbox.clone(), file_name.clone())?;

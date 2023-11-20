@@ -27,7 +27,7 @@ use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use shinkai_node::planner::kai_files::{KaiFile, KaiSchemaType};
+use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -223,14 +223,14 @@ fn planner_integration_test() {
                     object_description: Some("https://news.ycombinator.com".to_string()),
                 };
 
-                // Create a KaiFile from the CronTaskRequest
-                let kai_file = KaiFile {
+                // Create a KaiJobFile from the CronTaskRequest
+                let kai_file = KaiJobFile {
                     schema: KaiSchemaType::CronJobRequest(cron_request),
                     shinkai_profile: None,
                     agent_id: node1_agent.clone().to_string(),
                 };
 
-                // Serialize the KaiFile to a JSON string
+                // Serialize the KaiJobFile to a JSON string
                 let json_string = kai_file.to_json_str().unwrap();
 
                 // Convert the JSON string to a Vec<u8>
@@ -249,7 +249,7 @@ fn planner_integration_test() {
                 // Send the command
                 node1_commands_sender
                     .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: "cron_request.kai".to_string(),
+                        filename: "cron_request.jobkai".to_string(),
                         file: ciphertext,
                         public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
                         encrypted_nonce: nonce_str,

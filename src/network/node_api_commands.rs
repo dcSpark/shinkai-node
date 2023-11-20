@@ -9,7 +9,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
-    planner::{kai_manager::KaiFileManager, kai_files::KaiFile},
+    planner::{kai_manager::KaiJobFileManager, kai_files::KaiJobFile},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -1406,14 +1406,14 @@ impl Node {
                                     message: format!("Failed to convert bytes to string: {}", e),
                                 })?;
 
-                                let kai_file: KaiFile =
-                                    KaiFile::from_json_str(&kai_file_str).map_err(|e| NodeError {
-                                        message: format!("Failed to parse KaiFile: {}", e),
+                                let kai_file: KaiJobFile =
+                                    KaiJobFile::from_json_str(&kai_file_str).map_err(|e| NodeError {
+                                        message: format!("Failed to parse KaiJobFile: {}", e),
                                     })?;
 
-                                match KaiFileManager::execute(kai_file, self).await {
+                                match KaiJobFileManager::execute(kai_file, self).await {
                                     Ok(_) => (),
-                                    Err(e) => eprintln!("Error executing KaiFileManager: {:?}", e),
+                                    Err(e) => eprintln!("Error executing KaiJobFileManager: {:?}", e),
                                 }
                             }
 

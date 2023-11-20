@@ -8,7 +8,7 @@ use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::cron_tasks::web_scrapper::{CronTaskRequest, CronTaskResponse};
 use crate::db::ShinkaiDB;
 use crate::db::db_errors::ShinkaiDBError;
-use crate::planner::kai_files::{KaiFile, KaiSchemaType};
+use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use blake3::Hasher;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use rand::RngCore;
@@ -118,11 +118,11 @@ impl JobManager {
         return Ok(job_id.clone());
     }
 
-    /// Inserts a KaiFile into a specific inbox
-    pub async fn insert_kai_file_into_inbox(
+    /// Inserts a KaiJobFile into a specific inbox
+    pub async fn insert_kai_job_file_into_inbox(
         db: Arc<Mutex<ShinkaiDB>>,
         file_name_no_ext: String,
-        kai_file: KaiFile,
+        kai_file: KaiJobFile,
     ) -> Result<String, AgentError> {
         let inbox_name = random_string();
 
@@ -132,16 +132,16 @@ impl JobManager {
         // Create the inbox
         match db.create_files_message_inbox(inbox_name.clone()) {
             Ok(_) => {
-                // Convert the KaiFile to a JSON string
+                // Convert the KaiJobFile to a JSON string
                 let kai_file_json = to_string(&kai_file)?;
 
                 // Convert the JSON string to bytes
                 let kai_file_bytes = kai_file_json.into_bytes();
 
-                // Save the KaiFile to the inbox
+                // Save the KaiJobFile to the inbox
                 let _ = db.add_file_to_files_message_inbox(
                     inbox_name.clone(),
-                    format!("{}.kai", file_name_no_ext).to_string(),
+                    format!("{}.jobkai", file_name_no_ext).to_string(),
                     kai_file_bytes,
                 )?;
                 return Ok(inbox_name)
@@ -242,7 +242,7 @@ impl JobManager {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
-                format!("Searching for a .kai file in files: {}", job_message.files_inbox.len()).as_str(),
+                format!("Searching for a .jobkai file in files: {}", job_message.files_inbox.len()).as_str(),
             );
 
             // Get the files from the DB
@@ -256,7 +256,7 @@ impl JobManager {
                 }
             };
 
-            // Search for a .kai file
+            // Search for a .jobkai file
             for (filename, content) in files.into_iter() {
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -264,22 +264,22 @@ impl JobManager {
                     &format!("Processing file: {}", filename),
                 );
 
-                if filename.ends_with(".kai") {
+                if filename.ends_with(".jobkai") {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Debug,
-                        &format!("Found a .kai file: {}", filename),
+                        &format!("Found a .jobkai file: {}", filename),
                     );
 
                     let content_str = String::from_utf8(content.clone()).unwrap();
-                    let kai_file_result: Result<KaiFile, serde_json::Error> = KaiFile::from_json_str(&content_str);
+                    let kai_file_result: Result<KaiJobFile, serde_json::Error> = KaiJobFile::from_json_str(&content_str);
                     let kai_file = match kai_file_result {
                         Ok(kai_file) => kai_file,
                         Err(e) => {
                             shinkai_log(
                                 ShinkaiLogOption::JobExecution,
                                 ShinkaiLogLevel::Error,
-                                &format!("Error parsing KaiFile: {}", e),
+                                &format!("Error parsing KaiJobFile: {}", e),
                             );
                             return Err(AgentError::AgentNotFound);
                         }
@@ -291,7 +291,7 @@ impl JobManager {
                             shinkai_log(
                                 ShinkaiLogOption::JobExecution,
                                 ShinkaiLogLevel::Error,
-                                "Unexpected schema type in KaiFile",
+                                "Unexpected schema type in KaiJobFile",
                             );
                             return Err(AgentError::AgentNotFound);
                         }
@@ -324,13 +324,13 @@ impl JobManager {
                     let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
                     let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
 
-                    let kai_file = KaiFile {
+                    let kai_file = KaiJobFile {
                         schema: KaiSchemaType::CronJobResponse(cron_task_response.clone()),
                         shinkai_profile: Some(profile.clone()),
                         agent_id: agent.id.clone(), 
                     };
 
-                    let inbox_name_result = JobManager::insert_kai_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
+                    let inbox_name_result = JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
 
                     match inbox_name_result {
                         Ok(inbox_name) => {
@@ -369,7 +369,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            format!("No .kai files found").as_str(),
+            format!("No .jobkai files found").as_str(),
         );
         Ok(false)
     }

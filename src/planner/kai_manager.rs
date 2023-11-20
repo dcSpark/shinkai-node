@@ -1,52 +1,52 @@
 use shinkai_message_primitives::shinkai_utils::utils::random_string;
 
-use super::kai_files::{KaiFile, KaiSchemaType};
+use super::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::network::Node;
 use std::{error, fmt};
 
 #[derive(Debug)]
-pub enum KaiFileManagerError {
+pub enum KaiJobFileManagerError {
     ProfileNotFound,
     SerdeJsonError(serde_json::Error),
     CustomError(String),
 }
 
-impl fmt::Display for KaiFileManagerError {
+impl fmt::Display for KaiJobFileManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            KaiFileManagerError::ProfileNotFound => write!(f, "Profile not found"),
-            KaiFileManagerError::SerdeJsonError(e) => write!(f, "Serde JSON error: {}", e),
-            KaiFileManagerError::CustomError(e) => write!(f, "Custom error: {}", e),
+            KaiJobFileManagerError::ProfileNotFound => write!(f, "Profile not found"),
+            KaiJobFileManagerError::SerdeJsonError(e) => write!(f, "Serde JSON error: {}", e),
+            KaiJobFileManagerError::CustomError(e) => write!(f, "Custom error: {}", e),
             // Handle other kinds of errors here
         }
     }
 }
 
-impl error::Error for KaiFileManagerError {}
+impl error::Error for KaiJobFileManagerError {}
 
-impl From<serde_json::Error> for KaiFileManagerError {
-    fn from(err: serde_json::Error) -> KaiFileManagerError {
-        KaiFileManagerError::SerdeJsonError(err)
+impl From<serde_json::Error> for KaiJobFileManagerError {
+    fn from(err: serde_json::Error) -> KaiJobFileManagerError {
+        KaiJobFileManagerError::SerdeJsonError(err)
     }
 }
 
-impl From<String> for KaiFileManagerError {
-    fn from(err: String) -> KaiFileManagerError {
-        KaiFileManagerError::CustomError(err)
+impl From<String> for KaiJobFileManagerError {
+    fn from(err: String) -> KaiJobFileManagerError {
+        KaiJobFileManagerError::CustomError(err)
     }
 }
 
-impl From<&str> for KaiFileManagerError {
-    fn from(err: &str) -> KaiFileManagerError {
-        KaiFileManagerError::CustomError(err.to_string())
+impl From<&str> for KaiJobFileManagerError {
+    fn from(err: &str) -> KaiJobFileManagerError {
+        KaiJobFileManagerError::CustomError(err.to_string())
     }
 }
 
-pub struct KaiFileManager;
+pub struct KaiJobFileManager;
 
-impl KaiFileManager {
-    pub async fn execute(kai_file: KaiFile, node: &Node) -> Result<(), KaiFileManagerError> {
-        eprintln!("KaiFileManager::execute");
+impl KaiJobFileManager {
+    pub async fn execute(kai_file: KaiJobFile, node: &Node) -> Result<(), KaiJobFileManagerError> {
+        eprintln!("KaiJobFileManager::execute");
         match kai_file.schema {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
                 // Nothing to do
@@ -66,8 +66,8 @@ impl KaiFileManager {
                             .cron_task_request
                             .object_description
                             .unwrap_or("".to_string());
-                        let profile = match kai_file.shinkai_profile.ok_or(KaiFileManagerError::ProfileNotFound) {
-                            Ok(profile) => profile.extract_profile().map_err(KaiFileManagerError::from)?,
+                        let profile = match kai_file.shinkai_profile.ok_or(KaiJobFileManagerError::ProfileNotFound) {
+                            Ok(profile) => profile.extract_profile().map_err(KaiJobFileManagerError::from)?,
                             Err(e) => return Err(e),
                         };
 
@@ -91,7 +91,7 @@ impl KaiFileManager {
                 }
             }
         }
-        eprintln!("KaiFileManager::execute: Done (right before OK)");
+        eprintln!("KaiJobFileManager::execute: Done (right before OK)");
         Ok(())
     }
 }

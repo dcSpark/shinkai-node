@@ -14,15 +14,15 @@ pub enum KaiSchemaType {
     CronJobResponse(CronTaskResponse),
 }
 
-// Define your KaiFile struct here
+// Define your KaiJobFile struct here
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct KaiFile {
+pub struct KaiJobFile {
     pub schema: KaiSchemaType,
     pub shinkai_profile: Option<ShinkaiName>,
     pub agent_id: String
 }
 
-impl KaiFile {
+impl KaiJobFile {
     pub fn parse_content(&self) -> Result<Value, serde_json::Error> {
         match &self.schema {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
