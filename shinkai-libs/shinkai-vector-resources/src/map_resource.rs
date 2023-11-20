@@ -202,10 +202,7 @@ impl MapVectorResource {
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
-        let node = match data {
-            NodeContent::Text(data_string) => Node::new(key.to_string(), &data_string, metadata.clone(), tag_names),
-            NodeContent::Resource(resource) => Node::new_vector_resource(key.to_string(), &resource, metadata.clone()),
-        };
+        let node = Node::from_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
         self.data_tag_index.add_node(&node);
 
         // Embedding details
@@ -267,14 +264,13 @@ impl MapVectorResource {
         new_tag_names: &Vec<String>,
     ) -> Result<Node, VRError> {
         // Next create the new node, and replace the old node in the nodes list
-        let new_node = match new_data {
-            NodeContent::Text(data_string) => {
-                Node::new(key.to_string(), &data_string, new_metadata.clone(), new_tag_names)
-            }
-            NodeContent::Resource(resource) => {
-                Node::new_vector_resource(key.to_string(), &resource, new_metadata.clone())
-            }
-        };
+        let new_node = Node::from_content(
+            key.to_string(),
+            new_data.clone(),
+            new_metadata.clone(),
+            new_tag_names.clone(),
+        );
+
         let old_node = self
             .nodes
             .insert(key.to_string(), new_node.clone())
