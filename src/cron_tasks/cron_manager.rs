@@ -136,6 +136,8 @@ impl CronManager {
                 "Starting cron job queue processing loop",
             );
 
+            let is_testing = std::env::var("IS_TESTING").unwrap_or_else(|_| String::from("false")) != "false";
+
             loop {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
@@ -149,12 +151,10 @@ impl CronManager {
 
                 // Spawn tasks based on filtered job IDs
                 for (_, cron_task) in jobs_to_process {
-                    // TODO: we should ignore this for testing purposes
-                    // or we should modify the cron expression to be able to test it
-                    // if !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
-                    //     eprintln!("Cron Job not ready to be executed: {:?}", cron_task);
-                    //     continue;
-                    // }
+                    if !is_testing && !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
+                        eprintln!("Cron Job not ready to be executed: {:?}", cron_task);
+                        continue;
+                    }
 
                     let db_clone = db.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
@@ -267,6 +267,9 @@ impl CronManager {
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
         };
+
+        eprintln!("Job Creation: {:?}", job_creation);
+        eprintln!("Cron job: {:?}", cron_job);
 
         // Create Job
         let job_id = job_manager
