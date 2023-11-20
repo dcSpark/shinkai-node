@@ -195,6 +195,10 @@ pub trait VectorResource {
                         resource.as_trait_object().get_embeddings().len()
                     )
                 }
+                NodeContent::ExternalContent(external_content) => {
+                    println!("");
+                    format!("External: {}", external_content)
+                }
             };
             println!("{}: {}", path, data);
         }
@@ -214,7 +218,7 @@ pub trait VectorResource {
                 NodeContent::Resource(ref resource) => {
                     node = resource.as_trait_object().get_node(id.clone())?;
                 }
-                NodeContent::Text(_) => {
+                _ => {
                     if let Some(last) = path.path_ids.last() {
                         if id != last {
                             return Err(VRError::InvalidVRPath(path.clone()));
@@ -535,7 +539,7 @@ pub trait VectorResource {
 
                 current_level_results.extend(sub_results);
             }
-            NodeContent::Text(_) => {
+            _ => {
                 let score = match traversal {
                     TraversalMethod::HierarchicalAverage => {
                         new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32
@@ -605,7 +609,7 @@ pub trait VectorResource {
                         let sub_results = resource.as_trait_object().get_all_syntactic_matches(data_tag_names);
                         matching_nodes.extend(sub_results);
                     }
-                    NodeContent::Text(_) => {
+                    _ => {
                         let resource_header = self.generate_resource_header();
                         let retrieved_node = RetrievedNode {
                             node: node,

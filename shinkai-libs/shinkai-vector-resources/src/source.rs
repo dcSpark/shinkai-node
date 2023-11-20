@@ -24,21 +24,27 @@ impl VRSource {
 
     /// Creates a VRSource from an external URI or URL
     pub fn new_uri_ref(uri: &str) -> Self {
-        VRSource::new_uri_ref(uri)
+        Self::Reference(SourceReference::new_external_uri(uri.to_string()))
     }
 
     /// Creates a VRSource reference to an original source file
-    pub fn new_source_file_ref(file_name: String, file_type: SourceFileType, content_hash: String) -> Self {
+    pub fn new_source_file_ref(
+        file_name: String,
+        file_type: SourceFileType,
+        content_hash: String,
+        file_path: Option<String>,
+    ) -> Self {
         VRSource::Reference(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
+            file_path,
             content_hash,
         }))
     }
 
     /// Creates a VRSource reference using an arbitrary String
-    pub fn new_other_ref(other: String) -> Self {
-        VRSource::new_other_ref(other)
+    pub fn new_other_ref(other: &str) -> Self {
+        Self::Reference(SourceReference::new_other(other.to_string()))
     }
 
     /// Creates a VRSource which represents no/unknown source.
@@ -72,6 +78,7 @@ impl VRSource {
                 file_name_without_extension.to_string(),
                 file_type,
                 content_hash,
+                None,
             ))
         }
     }
@@ -180,6 +187,16 @@ impl SourceReference {
     }
 }
 
+impl fmt::Display for SourceReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceReference::FileRef(reference) => write!(f, "{}", reference),
+            SourceReference::ExternalURI(uri) => write!(f, "{}", uri),
+            SourceReference::Other(s) => write!(f, "{}", s),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SourceFileReference {
     pub file_name: String,
@@ -196,6 +213,19 @@ impl SourceFileReference {
 
     pub fn format_source_string(&self) -> String {
         format!("{}.{}", self.file_name, self.file_type)
+    }
+}
+
+impl fmt::Display for SourceFileReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "File Name: {}, File Type: {}, File Path: {}, Content Hash: {}",
+            self.file_name,
+            self.file_type,
+            self.file_path.as_deref().unwrap_or("None"),
+            self.content_hash
+        )
     }
 }
 
@@ -295,7 +325,7 @@ impl fmt::Display for SourceImageType {
                 SourceImageType::Ico => "ico",
                 SourceImageType::Heic => "heic",
                 SourceImageType::Raw => "raw",
-                SourceImageType::Other(s) => &format!("{}", s),
+                SourceImageType::Other(s) => s.as_str(),
             }
         )
     }
@@ -329,7 +359,7 @@ impl fmt::Display for SourceDocumentType {
                 SourceDocumentType::Latex => "latex",
                 SourceDocumentType::Ods => "ods",
                 SourceDocumentType::Odp => "odp",
-                SourceDocumentType::Other(s) => &format!("{}", s),
+                SourceDocumentType::Other(s) => s.as_str(),
             }
         )
     }
