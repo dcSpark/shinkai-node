@@ -47,18 +47,12 @@ impl JobManager {
 
         // Use the default prompt if not reached final iteration count, else use final prompt
         let filled_prompt = if iteration_count < max_iterations {
-            // Response from the previous job step
-            let previous_job_step_response = if iteration_count == 0 {
-                execution_context.get("previous_step_response").cloned()
-            } else {
-                None
-            };
             JobPromptGenerator::response_prompt_with_vector_search(
                 job_task.clone(),
                 ret_nodes,
                 summary_text,
                 Some(query_text),
-                previous_job_step_response,
+                Some(full_job.step_history.clone()),
             )
         } else {
             JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_nodes, summary_text)

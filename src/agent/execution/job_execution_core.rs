@@ -6,8 +6,8 @@ use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::cron_tasks::web_scrapper::{CronTaskRequest, CronTaskResponse};
-use crate::db::ShinkaiDB;
 use crate::db::db_errors::ShinkaiDBError;
+use crate::db::ShinkaiDB;
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use blake3::Hasher;
 use ed25519_dalek::SecretKey as SignatureStaticKey;
@@ -144,7 +144,7 @@ impl JobManager {
                     format!("{}.jobkai", file_name_no_ext).to_string(),
                     kai_file_bytes,
                 )?;
-                return Ok(inbox_name)
+                return Ok(inbox_name);
             }
             Err(err) => return Err(AgentError::ShinkaiDB(ShinkaiDBError::RocksDBError(err))),
         }
@@ -221,8 +221,11 @@ impl JobManager {
 
         // Save response data to DB
         let shinkai_db = db.lock().await;
-        shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
-        shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
+        shinkai_db.add_step_history(
+            job_message.job_id.clone(),
+            job_message.content,
+            inference_response_content.to_string(),
+        )?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
         shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
@@ -242,7 +245,11 @@ impl JobManager {
             shinkai_log(
                 ShinkaiLogOption::JobExecution,
                 ShinkaiLogLevel::Debug,
-                format!("Searching for a .jobkai file in files: {}", job_message.files_inbox.len()).as_str(),
+                format!(
+                    "Searching for a .jobkai file in files: {}",
+                    job_message.files_inbox.len()
+                )
+                .as_str(),
             );
 
             // Get the files from the DB
@@ -272,7 +279,8 @@ impl JobManager {
                     );
 
                     let content_str = String::from_utf8(content.clone()).unwrap();
-                    let kai_file_result: Result<KaiJobFile, serde_json::Error> = KaiJobFile::from_json_str(&content_str);
+                    let kai_file_result: Result<KaiJobFile, serde_json::Error> =
+                        KaiJobFile::from_json_str(&content_str);
                     let kai_file = match kai_file_result {
                         Ok(kai_file) => kai_file,
                         Err(e) => {
@@ -327,10 +335,12 @@ impl JobManager {
                     let kai_file = KaiJobFile {
                         schema: KaiSchemaType::CronJobResponse(cron_task_response.clone()),
                         shinkai_profile: Some(profile.clone()),
-                        agent_id: agent.id.clone(), 
+                        agent_id: agent.id.clone(),
                     };
 
-                    let inbox_name_result = JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
+                    let inbox_name_result =
+                        JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file)
+                            .await;
 
                     match inbox_name_result {
                         Ok(inbox_name) => {
@@ -343,22 +353,25 @@ impl JobManager {
                                 profile.node_name.clone(),
                             )
                             .unwrap();
-        
+
                             shinkai_log(
                                 ShinkaiLogOption::JobExecution,
                                 ShinkaiLogLevel::Debug,
                                 format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
                             );
-        
+
                             // Save response data to DB
                             let shinkai_db = db.lock().await;
-                            shinkai_db.add_step_history(job_message.job_id.clone(), job_message.clone().content)?;
-                            shinkai_db.add_step_history(job_message.job_id.clone(), agg_response)?;
+                            shinkai_db.add_step_history(
+                                job_message.job_id.clone(),
+                                job_message.content.to_string(),
+                                agg_response.to_string(),
+                            )?;
                             shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
                             shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
-        
+
                             return Ok(true);
-                        },
+                        }
                         Err(err) => {
                             return Err(err);
                         }

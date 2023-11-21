@@ -1,6 +1,8 @@
 use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
-use crate::tools::router::ShinkaiTool;
+use crate::{agent::job::JobStepResult, tools::router::ShinkaiTool};
+use futures::stream::ForEach;
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_vector_resources::vector_resource_types::RetrievedNode;
@@ -73,7 +75,7 @@ impl JobPromptGenerator {
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
         prev_search_text: Option<String>,
-        previous_job_step_response: Option<String>,
+        job_step_history: Option<Vec<JobStepResult>>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
@@ -81,15 +83,11 @@ impl JobPromptGenerator {
             SubPromptType::System,
         );
 
-        if let Some(prev_response) = previous_job_step_response {
-            prompt.add_content(
-                format!(
-                    "Here is previous context provided from answering the user's last question/task: `{}`",
-                    prev_response
-                ),
-                SubPromptType::System,
-            );
+        // Add up to previous 10 step results from history
+        if let Some(step_history) = job_step_history {
+            prompt.add_step_history(step_history, 10);
         }
+
         if let Some(summary) = summary_text {
             prompt.add_content(
                 format!(
@@ -455,19 +453,19 @@ impl JobPromptGenerator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPromptType {
     User,
     System,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
     Content(SubPromptType, String),
     EBNF(SubPromptType, String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prompt {
     pub sub_prompts: Vec<SubPrompt>,
 }
@@ -479,6 +477,14 @@ impl Prompt {
         }
     }
 
+    pub fn to_json(&self) -> Result<String, AgentError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, AgentError> {
+        Ok(serde_json::from_str(json)?)
+    }
+
     /// Adds a content sub-prompt
     pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
         self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
@@ -488,6 +494,35 @@ impl Prompt {
     /// string that specifies the output must match this EBNF string.
     pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
         self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
+    }
+
+    /// Adds multiple pre-prepared sub-prompts
+    pub fn add_sub_prompts(&mut self, sub_prompts: Vec<SubPrompt>) {
+        for sub_prompt in sub_prompts {
+            self.sub_prompts.push(sub_prompt);
+        }
+    }
+
+    /// Adds previous results from step history into the Prompt.
+    /// Currently capped using an integer number of previous historical results to add.
+    /// TODO: Add proper token counting, not just previous number to add
+    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64) {
+        let mut count = 0;
+        let mut sub_prompts_list = Vec::new();
+
+        while let Some(step) = history.pop() {
+            if let Some(prompt) = step.get_result_prompt() {
+                for sub_prompt in prompt.sub_prompts {
+                    sub_prompts_list.push(sub_prompt);
+                }
+                count += 1;
+                if count >= max_previous_history {
+                    break;
+                }
+            }
+        }
+
+        self.add_sub_prompts(sub_prompts_list);
     }
 
     /// Validates that there is at least one EBNF sub-prompt to ensure

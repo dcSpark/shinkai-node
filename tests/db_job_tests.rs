@@ -21,9 +21,17 @@ mod tests {
     use std::collections::HashSet;
 
     use shinkai_message_primitives::{
-        schemas::inbox_name::InboxName, shinkai_utils::{job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair}, shinkai_utils::utils::hash_string,
+        schemas::inbox_name::InboxName,
+        shinkai_utils::utils::hash_string,
+        shinkai_utils::{
+            job_scope::JobScope, shinkai_message_builder::ShinkaiMessageBuilder,
+            signatures::unsafe_deterministic_signature_keypair,
+        },
     };
-    use shinkai_node::{agent::agent, db::db_errors::ShinkaiDBError};
+    use shinkai_node::{
+        agent::{agent, job::JobStepResult},
+        db::db_errors::ShinkaiDBError,
+    };
 
     use super::*;
 
@@ -117,7 +125,6 @@ mod tests {
             InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
                 .unwrap();
         let scope = JobScope::new_default();
-        let step = "step1".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
@@ -125,11 +132,19 @@ mod tests {
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
 
         // Update step history
-        shinkai_db.add_step_history(job_id.clone(), step.clone()).unwrap();
+        shinkai_db
+            .add_step_history(
+                job_id.clone(),
+                "What is 10 + 25".to_string(),
+                "The answer is 35".to_string(),
+            )
+            .unwrap();
 
         // Retrieve the job and check that step history is updated
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-        assert_eq!(job.step_history.last().unwrap(), &step);
+        let last_step = job.step_history.last().unwrap();
+        println!("{:?}", last_step);
+        assert_eq!(last_step.step_revisions.len(), 1);
     }
 
     #[test]
