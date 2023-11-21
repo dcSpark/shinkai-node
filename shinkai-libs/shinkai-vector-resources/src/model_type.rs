@@ -25,7 +25,36 @@ pub enum TextEmbeddingsInference {
     AllMiniLML6v2,
     AllMiniLML12v2,
     MultiQAMiniLML6,
+    BgeLargeEn,
+    BgeBaseEn,
+    EmberV1,
+    GteLarge,
+    GteBase,
+    E5LargeV2,
+    BgeSmallEn,
+    E5BaseV2,
+    MultilingualE5Large,
     Other(String),
+}
+
+impl fmt::Display for TextEmbeddingsInference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TextEmbeddingsInference::AllMiniLML6v2 => write!(f, "sentence-transformers/all-MiniLM-L6-v2"),
+            TextEmbeddingsInference::AllMiniLML12v2 => write!(f, "sentence-transformers/all-MiniLM-L12-v2"),
+            TextEmbeddingsInference::MultiQAMiniLML6 => write!(f, "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"),
+            TextEmbeddingsInference::BgeLargeEn => write!(f, "BAAI/bge-large-en-v1.5"),
+            TextEmbeddingsInference::BgeBaseEn => write!(f, "BAAI/bge-base-en-v1.5"),
+            TextEmbeddingsInference::EmberV1 => write!(f, "llmrails/ember-v1"),
+            TextEmbeddingsInference::GteLarge => write!(f, "thenlper/gte-large"),
+            TextEmbeddingsInference::GteBase => write!(f, "thenlper/gte-base"),
+            TextEmbeddingsInference::E5LargeV2 => write!(f, "intfloat/e5-large-v2"),
+            TextEmbeddingsInference::BgeSmallEn => write!(f, "BAAI/bge-small-en-v1.5"),
+            TextEmbeddingsInference::E5BaseV2 => write!(f, "intfloat/e5-base-v2"),
+            TextEmbeddingsInference::MultilingualE5Large => write!(f, "intfloat/multilingual-e5-large"),
+            TextEmbeddingsInference::Other(name) => write!(f, "sentence-transformers/{}", name),
+        }
+    }
 }
 
 /// Bert.CPP (https://github.com/skeskinen/bert.cpp)
@@ -41,17 +70,6 @@ pub enum BertCPP {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum OpenAI {
     OpenAITextEmbeddingAda002,
-}
-
-impl fmt::Display for TextEmbeddingsInference {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TextEmbeddingsInference::AllMiniLML6v2 => write!(f, "sentence-transformers/all-MiniLM-L6-v2"),
-            TextEmbeddingsInference::AllMiniLML12v2 => write!(f, "sentence-transformers/all-MiniLM-L12-v2"),
-            TextEmbeddingsInference::MultiQAMiniLML6 => write!(f, "sentence-transformers/multi-qa-MiniLM-L6-cos-v1"),
-            TextEmbeddingsInference::Other(name) => write!(f, "sentence-transformers/{}", name),
-        }
-    }
 }
 
 impl fmt::Display for BertCPP {
