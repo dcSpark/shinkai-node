@@ -15,7 +15,7 @@ use async_trait::async_trait;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
-/// choose how the searching algorithm decides to include/ignore Nodes.
+/// choose how the searching algorithm
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalMethod {
     /// Efficiently only goes deeper into Vector Resources if they are the highest scored Nodes at their level.
@@ -193,7 +193,7 @@ pub trait VectorResource {
     /// else starts at root. If resources_only is true, only Vector Resources are returned.
     fn get_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new("", vec![]);
-        let mut nodes = self.vector_search_with_options(
+        let mut nodes = self.vector_seach_customized(
             empty_embedding,
             0,
             TraversalMethod::UnscoredAllNodes,
@@ -270,7 +270,7 @@ pub trait VectorResource {
     /// Performs a vector search that returns the most similar nodes based on the query with
     /// default traversal method/options.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
-        self.vector_search_with_options(
+        self.vector_seach_customized(
             query,
             num_of_results,
             TraversalMethod::Exhaustive,
@@ -283,7 +283,7 @@ pub trait VectorResource {
     /// The input trtaversal_method/options allows the developer to choose how the search moves through the levels.
     /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
     /// held internally at a specific path.
-    fn vector_search_with_options(
+    fn vector_seach_customized(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -295,7 +295,7 @@ pub trait VectorResource {
             match self.get_node_with_path(path.clone()) {
                 Ok(node) => {
                     if let NodeContent::Resource(resource) = node.content {
-                        return resource.as_trait_object()._vector_search_with_options_core(
+                        return resource.as_trait_object()._vector_seach_customized_core(
                             query,
                             num_of_results,
                             traversal_method,
@@ -309,7 +309,7 @@ pub trait VectorResource {
             }
         }
         // Perform the vector search and continue forward
-        let mut results = self._vector_search_with_options_core(
+        let mut results = self._vector_seach_customized_core(
             query.clone(),
             num_of_results,
             traversal_method.clone(),
@@ -355,7 +355,7 @@ pub trait VectorResource {
     }
 
     /// Internal method which is used to keep track of traversal info
-    fn _vector_search_with_options_core(
+    fn _vector_seach_customized_core(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -512,7 +512,7 @@ pub trait VectorResource {
         match &node.content {
             NodeContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
-                let sub_results = resource.as_trait_object()._vector_search_with_options_core(
+                let sub_results = resource.as_trait_object()._vector_seach_customized_core(
                     query.clone(),
                     num_of_results,
                     traversal_method.clone(),
@@ -562,7 +562,7 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedNode> {
-        self.vector_search_with_options(
+        self.vector_seach_customized(
             query,
             num_of_results,
             TraversalMethod::Exhaustive,

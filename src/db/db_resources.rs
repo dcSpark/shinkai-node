@@ -231,7 +231,7 @@ impl ShinkaiDB {
         let mut final_nodes = Vec::new();
         let min_score = top_node.score * (1.0 - tolerance_range);
         for resource in resources {
-            let results = resource.as_trait_object().vector_search_with_options(
+            let results = resource.as_trait_object().vector_seach_customized(
                 query.clone(),
                 1000,
                 TraversalMethod::Exhaustive,

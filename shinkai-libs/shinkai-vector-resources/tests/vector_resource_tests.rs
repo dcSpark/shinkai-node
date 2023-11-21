@@ -182,7 +182,7 @@ fn test_manual_resource_vector_search() {
     // Traversal Tests
     //
     // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         5,
         TraversalMethod::Efficient,
@@ -192,7 +192,7 @@ fn test_manual_resource_vector_search() {
     assert_ne!(fact1, res[0].node.get_text_content().unwrap());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         5,
         TraversalMethod::Exhaustive,
@@ -209,7 +209,7 @@ fn test_manual_resource_vector_search() {
             .name()
     );
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         5,
         TraversalMethod::Exhaustive,
@@ -218,7 +218,7 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     // Perform MinimumScore option with impossible score to ensure it is working properly
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         5,
         TraversalMethod::Exhaustive,
@@ -228,7 +228,7 @@ fn test_manual_resource_vector_search() {
     assert_eq!(res.len(), 0);
 
     // Perform MinimumScore option with low score to ensure it is working properly
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         5,
         TraversalMethod::Exhaustive,
@@ -243,7 +243,7 @@ fn test_manual_resource_vector_search() {
 
     // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         1,
         TraversalMethod::Exhaustive,
@@ -251,7 +251,7 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         1,
         TraversalMethod::Efficient,
@@ -263,7 +263,7 @@ fn test_manual_resource_vector_search() {
     //
     // Path Tests
     //
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         100,
         TraversalMethod::Exhaustive,
@@ -272,7 +272,7 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(res.len(), 6);
     let path = VRPath::from_path_string("/3/");
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         100,
         TraversalMethod::Exhaustive,
@@ -281,7 +281,7 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(res.len(), 4);
     let path = VRPath::from_path_string("/3/doc_key/");
-    let res = fruit_doc.vector_search_with_options(
+    let res = fruit_doc.vector_seach_customized(
         query_embedding1.clone(),
         100,
         TraversalMethod::Exhaustive,
