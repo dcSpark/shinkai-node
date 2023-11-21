@@ -147,13 +147,13 @@ impl DocumentVectorResource {
     /// fetches a specific number of Nodes below and above the most
     /// similar Node.
     ///
-    /// Does not traverse past the top level.
+    /// TODO: Does not traverse past the top level currently.
     pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
+        let search_results = self.vector_search_with_options(query, 1, TraversalMethod::Exhaustive, &vec![], None);
         let most_similar_node = search_results.first().ok_or(VRError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_node
             .node

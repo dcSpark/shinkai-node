@@ -4,7 +4,9 @@ use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, TraversalMethod, VectorResource};
+use shinkai_vector_resources::vector_resource::{
+    NodeContent, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
+};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 
 #[test]
@@ -180,11 +182,23 @@ fn test_manual_resource_vector_search() {
     // Traversal Tests
     //
     // Perform UntilDepth(0) traversal to ensure it is working properly, assert the dog fact1 cant be found
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(0), None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        5,
+        TraversalMethod::Efficient,
+        &vec![TraversalOption::UntilDepth(0)],
+        None,
+    );
     assert_ne!(fact1, res[0].node.get_text_content().unwrap());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(1), None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        5,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::UntilDepth(1)],
+        None,
+    );
     assert_eq!(
         "3 Animal Facts",
         res[0]
@@ -195,7 +209,13 @@ fn test_manual_resource_vector_search() {
             .name()
     );
     // Perform UntilDepth(2) traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 5, &TraversalMethod::UntilDepth(2), None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        5,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::UntilDepth(2)],
+        None,
+    );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
@@ -203,23 +223,52 @@ fn test_manual_resource_vector_search() {
 
     // Perform Exhaustive traversal to ensure it is working properly, assert dog fact1 is found at the correct depth
     // By requesting only 1 result, Efficient traversal does not go deeper, while Exhaustive makes it all the way to the bottom
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Exhaustive, None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        1,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        None,
+    );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 1, &TraversalMethod::Efficient, None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        1,
+        TraversalMethod::Efficient,
+        &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        None,
+    );
     assert_ne!(NodeContent::Text(fact1.to_string()), res[0].node.content);
 
     //
     // Path Tests
     //
-    let res = fruit_doc.vector_search_with_options(query_embedding1.clone(), 100, &TraversalMethod::Exhaustive, None);
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        None,
+    );
     assert_eq!(res.len(), 6);
     let path = VRPath::from_path_string("/3/");
-    let res =
-        fruit_doc.vector_search_with_options(query_embedding1.clone(), 100, &TraversalMethod::Exhaustive, Some(path));
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        Some(path),
+    );
     assert_eq!(res.len(), 4);
     let path = VRPath::from_path_string("/3/doc_key/");
-    let res =
-        fruit_doc.vector_search_with_options(query_embedding1.clone(), 100, &TraversalMethod::Exhaustive, Some(path));
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+        Some(path),
+    );
+
     assert_eq!(res.len(), 3);
 }
 
