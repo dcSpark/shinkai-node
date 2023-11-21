@@ -217,6 +217,26 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(NodeContent::Text(fact1.to_string()), res[0].node.content);
+    // Perform MinimumScore option with impossible score to ensure it is working properly
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        5,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::MinimumScore(0.99)],
+        None,
+    );
+    assert_eq!(res.len(), 0);
+
+    // Perform MinimumScore option with low score to ensure it is working properly
+    let res = fruit_doc.vector_search_with_options(
+        query_embedding1.clone(),
+        5,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::MinimumScore(0.01)],
+        None,
+    );
+    assert!(res.len() > 0);
+
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());

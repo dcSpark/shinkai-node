@@ -31,6 +31,12 @@ pub enum TraversalMethod {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalOption {
+    /// Limits returned result to be within a percentage range (0.0 - 1.0) of the highest scored result.
+    /// For example, you can set a tolerance range of 0.1 which means only nodes with a similarity score
+    /// within 10% of the top result will be returned.
+    ToleranceRangeResults(f32),
+    /// Limits returned results to be greater than a specific score (0.0 - 1.0)
+    MinimumScore(f32),
     /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
     /// Will return BaseVectorResource Nodes if they are the highest scored at the specified depth.
     /// Top/root level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
@@ -299,17 +305,49 @@ pub trait VectorResource {
                 Err(_) => {}
             }
         }
+        // Perform the vector search and continue forward
         let mut results = self._vector_search_with_options_core(
-            query,
+            query.clone(),
             num_of_results,
             traversal_method.clone(),
             traversal_options,
             vec![],
             VRPath::new(),
         );
+
+        // After getting all results from the vector search, perform final filtering
+        // Check if we need to cut results according to tolerance range
+        let tolerance_range_option = traversal_options.iter().find_map(|option| {
+            if let TraversalOption::ToleranceRangeResults(range) = option {
+                Some(*range)
+            } else {
+                None
+            }
+        });
+        if let Some(tolerance_range) = tolerance_range_option {
+            results = self._tolerance_range_results(tolerance_range, &results);
+        }
+
+        // Check if we need to cut results according to the minimum score
+        let min_score_option = traversal_options.iter().find_map(|option| {
+            if let TraversalOption::MinimumScore(score) = option {
+                Some(*score)
+            } else {
+                None
+            }
+        });
+        if let Some(min_score) = min_score_option {
+            results = results
+                .into_iter()
+                .filter(|ret_node| ret_node.score >= min_score)
+                .collect();
+        }
+
+        // Check if we are using traveral method unscored all nodes
         if traversal_method != TraversalMethod::UnscoredAllNodes {
             results.truncate(num_of_results as usize);
         }
+
         results
     }
 
@@ -403,7 +441,6 @@ pub trait VectorResource {
                     // Don't recurse any deeper, just return current Node with BaseVectorResource
                     for option in traversal_options {
                         if let TraversalOption::UntilDepth(d) = option {
-                            println!("Found until depth!");
                             if d == &traversal_path.depth_inclusive() {
                                 let ret_node = RetrievedNode {
                                     node: node.clone(),
@@ -528,42 +565,26 @@ pub trait VectorResource {
         )
     }
 
-    /// * `tolerance_range` - A float between 0 and 1, inclusive, that
-    ///   determines the range of acceptable similarity scores as a percentage
-    ///   of the highest score.
-    fn vector_search_tolerance_ranged(&self, query: Embedding, tolerance_range: f32) -> Vec<RetrievedNode> {
-        // Get top 100 results
-        let results = self.vector_search(query.clone(), 100);
-
+    /// Returns the most similar nodes within a specific range of the provided top similarity score.
+    fn _tolerance_range_results(&self, tolerance_range: f32, results: &Vec<RetrievedNode>) -> Vec<RetrievedNode> {
         // Calculate the top similarity score
         let top_similarity_score = results.first().map_or(0.0, |ret_node| ret_node.score);
 
-        // Find the range of acceptable similarity scores
-        self._vector_search_tolerance_ranged_score(query, tolerance_range, top_similarity_score)
-    }
-
-    /// Performs a vector search using a query embedding and returns
-    /// the most similar nodes within a specific range of the provided top similarity score.
-    ///
-    /// * `top_similarity_score` - A float that represents the top similarity score.
-    fn _vector_search_tolerance_ranged_score(
-        &self,
-        query: Embedding,
-        tolerance_range: f32,
-        top_similarity_score: f32,
-    ) -> Vec<RetrievedNode> {
         // Clamp the tolerance_range to be between 0 and 1
         let tolerance_range = tolerance_range.max(0.0).min(1.0);
-
-        let mut results = self.vector_search(query, 100);
 
         // Calculate the range of acceptable similarity scores
         let lower_bound = top_similarity_score * (1.0 - tolerance_range);
 
         // Filter the results to only include those within the range of the top similarity score
-        results.retain(|ret_node| ret_node.score >= lower_bound && ret_node.score <= top_similarity_score);
+        let mut filtered_results = Vec::new();
+        for ret_node in results {
+            if ret_node.score >= lower_bound && ret_node.score <= top_similarity_score {
+                filtered_results.push(ret_node.clone());
+            }
+        }
 
-        results
+        filtered_results
     }
 
     /// Fetches all nodes which contain tags matching the input name list
