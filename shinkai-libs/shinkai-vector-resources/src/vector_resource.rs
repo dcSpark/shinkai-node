@@ -481,6 +481,7 @@ pub trait VectorResource {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
         for (score, id) in scores {
+            let mut skip_traversing_deeper = false;
             if let Ok(node) = self.get_node(id) {
                 // Check if it's a resource
                 if let NodeContent::Resource(_) = node.content {
@@ -491,6 +492,7 @@ pub trait VectorResource {
                     // Don't recurse any deeper, just return current Node with BaseVectorResource
                     for option in traversal_options {
                         if let TraversalOption::UntilDepth(d) = option {
+                            println!("Found until depth!");
                             if d == &traversal_path.depth_inclusive() {
                                 let ret_node = RetrievedNode {
                                     node: node.clone(),
@@ -499,10 +501,14 @@ pub trait VectorResource {
                                     retrieval_path: traversal_path.clone(),
                                 };
                                 current_level_results.push(ret_node);
-                                continue;
+                                skip_traversing_deeper = true;
+                                break;
                             }
                         }
                     }
+                }
+                if skip_traversing_deeper {
+                    continue;
                 }
 
                 let results = self._recursive_data_extraction(
