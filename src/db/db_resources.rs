@@ -6,7 +6,9 @@ use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VRBase
 use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::vector_resource::{RetrievedNode, VRHeader, VectorResource};
+use shinkai_vector_resources::vector_resource::{
+    RetrievedNode, ScoringMode, TraversalMethod, TraversalOption, VRHeader, VectorResource,
+};
 
 use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
@@ -227,11 +229,17 @@ impl ShinkaiDB {
         // Fetch the nodes that fit in the tolerance range
         let resources = self.vector_search_resources(query.clone(), num_of_resources, profile)?;
         let mut final_nodes = Vec::new();
+        let min_score = top_node.score * (1.0 - tolerance_range);
         for resource in resources {
-            let results = resource.as_trait_object()._vector_search_tolerance_ranged_score(
+            let results = resource.as_trait_object().vector_search_with_options(
                 query.clone(),
-                tolerance_range,
-                top_node.score,
+                1000,
+                TraversalMethod::Exhaustive,
+                &vec![
+                    TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
+                    TraversalOption::MinimumScore(min_score),
+                ],
+                None,
             );
             final_nodes.extend(results);
         }

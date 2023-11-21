@@ -4,7 +4,9 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::{Node, NodeContent, RetrievedNode, TraversalMethod, VRPath, VectorResource};
+use crate::vector_resource::{
+    Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
+};
 use serde_json;
 use std::collections::HashMap;
 
@@ -146,14 +148,21 @@ impl DocumentVectorResource {
     /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of Nodes below and above the most
     /// similar Node.
-    ///
-    /// Does not traverse past the top level.
+    /// TODO: Update to traverse past root depth and properly fetch
+    /// surrounding nodes using path
     pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
+        let search_results = self.vector_search_with_options(
+            query,
+            1,
+            TraversalMethod::Exhaustive,
+            &vec![TraversalOption::UntilDepth(0)],
+            // &vec![TraversalOption::LimitTraversalToType(VRBaseType::Document)],
+            None,
+        );
         let most_similar_node = search_results.first().ok_or(VRError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_node
             .node
