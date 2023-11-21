@@ -1,3 +1,4 @@
+use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
@@ -31,6 +32,8 @@ pub enum TraversalMethod {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalOption {
+    /// Limits traversal into deeper Vector Resources only if they match the provided VRBaseType
+    LimitTraversalToType(VRBaseType),
     /// Limits returned result to be within a percentage range (0.0 - 1.0) of the highest scored result.
     /// For example, you can set a tolerance range of 0.1 which means only nodes with a similarity score
     /// within 10% of the top result will be returned.
@@ -277,7 +280,7 @@ pub trait VectorResource {
     }
 
     /// Performs a vector search that returns the most similar nodes based on the query.
-    /// The input TraversalMethod allows the developer to choose how the search moves through the levels.
+    /// The input trtaversal_method/options allows the developer to choose how the search moves through the levels.
     /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
     /// held internally at a specific path.
     fn vector_search_with_options(
@@ -433,13 +436,12 @@ pub trait VectorResource {
             let mut skip_traversing_deeper = false;
             if let Ok(node) = self.get_node(id) {
                 // Check if it's a resource
-                if let NodeContent::Resource(_) = node.content {
+                if let NodeContent::Resource(node_resource) = node.content.clone() {
                     // Keep track for later sorting efficiency
                     vector_resource_count += 1;
-
-                    // If traversal option includes UntilDepth and we've reached the right level
-                    // Don't recurse any deeper, just return current Node with BaseVectorResource
                     for option in traversal_options {
+                        // If traversal option includes UntilDepth and we've reached the right level
+                        // Don't recurse any deeper, just return current Node with BaseVectorResource
                         if let TraversalOption::UntilDepth(d) = option {
                             if d == &traversal_path.depth_inclusive() {
                                 let ret_node = RetrievedNode {
@@ -451,6 +453,13 @@ pub trait VectorResource {
                                 current_level_results.push(ret_node);
                                 skip_traversing_deeper = true;
                                 break;
+                            }
+                            // If node Resource does not have same base type as LimitTraversalToType then
+                            // then skip going deeper into it
+                            if let TraversalOption::LimitTraversalToType(base_type) = option {
+                                if &node_resource.resource_base_type() != base_type {
+                                    skip_traversing_deeper = true;
+                                }
                             }
                         }
                     }
