@@ -77,7 +77,6 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
     m
 }
 
-#[ignore]
 #[test]
 fn planner_integration_test() {
     run_test_one_node_network(|env| {
@@ -421,7 +420,8 @@ fn planner_integration_test() {
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("APIUpdateJobToFinished response: {:?}", response);
-                tokio::time::sleep(Duration::from_secs(360)).await;
+                assert_eq!(response, (), "Expected APIUpdateJobToFinished response to be ()");
+                // tokio::time::sleep(Duration::from_secs(360)).await;
             }
         })
     });
