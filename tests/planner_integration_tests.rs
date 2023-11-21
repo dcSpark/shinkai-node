@@ -2,6 +2,8 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
+use mockito::{Matcher, Mock};
+use serde_json::Value;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
     AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
 };
@@ -36,6 +38,7 @@ use std::{env, fs};
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
+use serde_json::Value as JsonValue;
 
 mod utils;
 use crate::utils::node_test_api::{
@@ -43,6 +46,36 @@ use crate::utils::node_test_api::{
     api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
 };
 use mockito::Server;
+
+fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response_body: &str) -> Mock {
+    // Parse the response_body into a JSON Value
+    let response_json: serde_json::Value = serde_json::from_str(response_body)
+        .expect("Invalid JSON string provided for response_body");
+
+    // Extract the content field
+    let content = response_json["choices"][0]["message"]["content"]
+        .as_str()
+        .expect("Failed to extract content field from response_body");
+
+    // Validate that content is a valid JSON object
+    match extract_first_json_object(content) {
+        Ok(_) => (),
+        Err(e) => {
+            eprintln!("Failed to extract JSON object from content: {}", content);
+            panic!("Failed to extract JSON object from content: {}", e);
+        }
+    }
+    
+    let m = server
+        .mock("POST", "/v1/chat/completions")
+        .match_header("authorization", "Bearer mockapikey")
+        .match_body(Matcher::JsonString(request_body.to_string()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(&response_body)
+        .create();
+    m
+}
 
 #[ignore]
 #[test]
@@ -93,34 +126,9 @@ fn planner_integration_test() {
             {
                 // Register an Agent
                 eprintln!("\n\nRegister an Agent in Node1 and verify it");
-                
-
-                let _m = server
-                    .mock("POST", "/v1/chat/completions")
-                    .match_header("authorization", "Bearer mockapikey")
-                    .with_status(200)
-                    .with_header("content-type", "application/json")
-                    .with_body(
-                        r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
-                        "total_tokens": 21
-                    }
-                }"#,
-                    )
-                    .create();
+                let _ = create_openai_mock_1(&mut server);
+                let _ = create_openai_mock_2(&mut server);
+                let _ = create_openai_mock_3(&mut server);
 
                 let open_ai = OpenAI {
                     model_type: "gpt-4-1106-preview".to_string(),
@@ -137,9 +145,10 @@ fn planner_integration_test() {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name.clone(),
                     perform_locally: false,
-                    external_url: Some("https://api.openai.com".to_string()),
-                    // external_url: Some(server.url()),
-                    api_key: Some(api_key),
+                    external_url: Some(server.url()),
+                    api_key: Some("mockapikey".to_string()),
+                    // external_url: Some("https://api.openai.com".to_string()),
+                    // api_key: Some(api_key),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
@@ -416,4 +425,189 @@ fn planner_integration_test() {
             }
         })
     });
+}
+
+fn create_openai_mock_1(server: &mut mockito::Server) -> Mock {
+    create_mock_openai(
+        server,
+        r#"{
+            "max_tokens": 4096,
+            "messages": [
+                {
+                    "content": "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
+                    "role": "system"
+                },
+                {
+                    "content": "The current task at hand is create a cron expression using the following description:\n\n`Every day at 8pm`",
+                    "role": "user"
+                },
+                {
+                    "content": "Respond using the following EBNF and absolutely nothing else: '{' 'answer' ':' string '}'  ```json",
+                    "role": "system"
+                }
+            ],
+            "model": "gpt-4-1106-preview",
+            "response_format": {"type": "json_object"},
+            "temperature": 0.7
+        }"#,
+        r#"{
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "\n\n{\"answer\": \"0 20 * * *\"}"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 9,
+                "completion_tokens": 12,
+                "total_tokens": 21
+            }
+        }"#,
+    )
+}
+
+// Note: it's important to escape slashes inside message.content.answer
+fn create_openai_mock_2(server: &mut mockito::Server) -> Mock {
+    create_mock_openai(
+        server,
+        r#"{
+            "max_tokens": 4096,
+            "messages": [
+                {
+                    "content": "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- Toolkit Name: web_link_extractor\nDescription: Extracts all hyperlinks from the provided HTML string.\nInput Name: html\nInput EBNF: html :== \"(.*)\"\nOutput Name: links\nOutput EBNF: links :== \\[\"(.*)\"\\]\n\n\nToolkit Name: html_extractor\nDescription: Fetches HTML content from the specified URL.\nInput Name: url\nInput EBNF: url :== \"http(s)?://([\\w-]+\\.)+[\\w-]+(/[\\w- ./?%&=]*)?\"\nOutput Name: htmlContent\nOutput EBNF: htmlContent :== \"(.*)\"\n\n\nToolkit Name: content_summarizer\nDescription: Generates a concise summary of the provided text content. It could be a website.\nInput Name: text\nInput EBNF: text :== \"(.*)\"\nInput Name: summaryLength\nInput EBNF: summaryLength :== ([0-9]+)\nOutput Name: summary\nOutput EBNF: summary :== \"(.*)\"\n\n\nToolkit Name: LLM_caller\nDescription: Ask an LLM any questions (it won't know current information).\nInput Name: prompt\nInput EBNF: prompt :== \"(.*)\"\nOutput Name: response\nOutput EBNF: response :== \"(.*)\"\n ---end_tools---",
+                    "role": "system"
+                },
+                {
+                    "content": "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---",
+                    "role": "user"
+                },
+                {
+                    "content": "The current task at hand is to: 'Find all the news related to AI in a website'. Implement a throughout plan using PDDL representation using the available tools. (define (domain ",
+                    "role": "user"
+                },
+                {
+                    "content": "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                    "role": "user"
+                },
+                {
+                    "content": "Respond using the following EBNF and absolutely nothing else: '{' 'explanation' ':' string, 'answer' ':' string '}'  ```json",
+                    "role": "system"
+                }
+            ],
+            "model": "gpt-4-1106-preview",
+            "response_format": {"type": "json_object"},
+            "temperature": 0.7
+        }"#,
+        r#"{
+            "id": "chatcmpl-8N4ipmnUHFu8Sx1sVAZSMBPsL2eB9",
+            "object": "chat.completion",
+            "created": 1700510387,
+            "model": "gpt-4-1106-preview",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "{\"explanation\": \"some text there\",\"answer\": \"(define (domain findainews)\\n    (:requirements :strips)\\n\\n    (:types\\n        url\\n        html_content\\n        hyperlink\\n    )\\n\\n    (:predicates\\n        (html_fetched ?url - url)\\n        (links_extracted ?html - html_content)\\n        (link_relevant ?link - hyperlink)\\n        (content_summarized ?link - hyperlink)\\n    )\\n\\n    (:action fetch_html\\n        :parameters (?url - url)\\n        :precondition (not (html_fetched ?url))\\n        :effect (html_fetched ?url)\\n    )\\n\\n    (:action extract_links\\n        :parameters (?html - html_content)\\n        :precondition (html_fetched ?html)\\n        :effect (links_extracted ?html)\\n    )\\n\\n    (:action evaluate_relevance\\n        :parameters (?link - hyperlink)\\n        :precondition (links_extracted ?link)\\n        :effect (link_relevant ?link)\\n    )\\n\\n    (:action summarize_content\\n        :parameters (?link - hyperlink)\\n        :precondition (and (link_relevant ?link) (not (content_summarized ?link)))\\n        :effect (content_summarized ?link)\\n    )\\n)\"}"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 892,
+                "completion_tokens": 664,
+                "total_tokens": 1556
+            },
+            "system_fingerprint": "fp_a24b4d720c"
+        }"#,
+    )
+}
+
+fn create_openai_mock_3(server: &mut mockito::Server) -> Mock {
+    create_mock_openai(
+        server,
+        r#"{
+            "max_tokens": 4096,
+            "messages": [
+                {
+                    "content": "You are an autoregressive language model that has been fine-tuned with instruction-tuning and RLHF. You carefully provide accurate, factual, thoughtful, nuanced answers, and are brilliant at reasoning. If you think there might not be a correct answer, you say so.  Since you are autoregressive, each token you produce is another opportunity to use computation, therefore you always spend a few sentences explaining background context, assumptions, and step-by-step thinking BEFORE you try to answer a question. You are a very helpful assistant with PDDL planning expertise and access to a series of tools. The only tools at your disposal for PDDL planing are: ---tools--- Toolkit Name: web_link_extractor\nDescription: Extracts all hyperlinks from the provided HTML string.\nInput Name: html\n\n\nToolkit Name: html_extractor\nDescription: Fetches HTML content from the specified URL.\nInput Name: url\n\n\nToolkit Name: content_summarizer\nDescription: Generates a concise summary of the provided text content. It could be a website.\nInput Name: text\nInput Name: summaryLength\n\n\nToolkit Name: LLM_caller\nDescription: Ask an LLM any questions (it won't know current information).\nInput Name: prompt\n ---end_tools---",
+                    "role": "system"
+                },
+                {
+                    "content": "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---",
+                    "role": "user"
+                },
+                {
+                    "content": "The current task is to: 'Find all the news related to AI in a website'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ",
+                    "role": "user"
+                },
+                {
+                    "content": "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
+                    "role": "user"
+                },
+                {
+                    "content": "Respond using the following EBNF and absolutely nothing else: '{' 'explanation' ':' string, 'answer' ':' string '}'  ```json",
+                    "role": "system"
+                }
+            ],
+            "model": "gpt-4-1106-preview",
+            "response_format": {"type": "json_object"},
+            "temperature": 0.7
+        }"#,
+        r#"{
+            "id": "chatcmpl-8N4jK4l0Mfxw88I4ZXbUm23QaDZ9z",
+            "object": "chat.completion",
+            "created": 1700510418,
+            "model": "gpt-4-1106-preview",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "{\"explanation\": \"more text.\",\"answer\": \"(define (problem find-ai-news)\\n    (:domain web-news-extraction)\\n    (:objects\\n        website - website\\n        ai_news_articles - article\\n        extracted_links - hyperlink\\n        summarized_content - summary\\n    )\\n\\n    (:init\\n        (unprocessed website)\\n        (available web_link_extractor)\\n        (available html_extractor)\\n        (available content_summarizer)\\n    )\\n    (:goal\\n        (and\\n            (links_extracted website extracted_links)\\n            (content_fetched extracted_links)\\n            (content_summarized ai_news_articles summarized_content)\\n            (ai_related summarized_content)\\n        )\\n    )\\n    (:action extract-links\\n        :parameters (website)\\n        :precondition (unprocessed website)\\n        :effect (links_extracted website extracted_links)\\n    )\\n    (:action fetch-html\\n        :parameters (extracted_links)\\n        :precondition (links_extracted website extracted_links)\\n        :effect (content_fetched extracted_links)\\n    )\\n    (:action summarize-content\\n        :parameters (ai_news_articles)\\n        :precondition (content_fetched extracted_links)\\n        :effect (content_summarized ai_news_articles summarized_content)\\n    )\\n)\"}"
+                },
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 491,
+                "completion_tokens": 533,
+                "total_tokens": 1024
+            },
+            "system_fingerprint": "fp_a24b4d720c"
+        }"#,
+    )
+}
+
+fn extract_first_json_object(s: &str) -> Result<JsonValue, AgentError> {
+    let mut depth = 0;
+    let mut start = None;
+
+    for (i, c) in s.char_indices() {
+        match c {
+            '{' => {
+                if depth == 0 {
+                    start = Some(i);
+                }
+                depth += 1;
+            }
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let json_str = &s[start.unwrap()..=i];
+                    let json_val: JsonValue = serde_json::from_str(json_str)
+                        .map_err(|_| AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))?;
+                    return Ok(json_val);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Err(AgentError::FailedExtractingJSONObjectFromResponse(s.to_string()))
+}
+
+fn json_value_to_string(json_val: &JsonValue) -> String {
+    json_val.to_string()
 }
