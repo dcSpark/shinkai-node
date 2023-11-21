@@ -138,7 +138,7 @@ fn planner_integration_test() {
                     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 };
 
-                let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
+                // let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
