@@ -9,6 +9,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
+    planner::{kai_manager::KaiJobFileManager, kai_files::KaiJobFile},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -19,6 +20,7 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::Sender;
+use async_std::eprint;
 use blake3::Hasher;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use futures::task::{Context, Poll};
@@ -1353,7 +1355,7 @@ impl Node {
     ) -> Result<(), NodeError> {
         // Validate the message
         let validation_result = self
-            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIFinishJob))
             .await;
         let (msg, sender) = match validation_result {
             Ok((msg, sender)) => (msg, sender),
@@ -1363,16 +1365,58 @@ impl Node {
             }
         };
 
-        // Extract the job ID from the message content
-        let job_id = msg.get_message_content()?;
+        let inbox_name = match InboxName::from_message(&msg.clone()) {
+            Ok(inbox_name) => inbox_name,
+            _ => {
+                let error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Failed to extract inbox name from the message".to_string(),
+                };
+                let _ = res.send(Err(error)).await;
+                return Ok(());
+            }
+        };
+
+        let job_id = match inbox_name.clone() {
+            InboxName::JobInbox { unique_id, .. } => unique_id,
+            _ => {
+                let error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: "Expected a JobInbox".to_string(),
+                };
+                let _ = res.send(Err(error)).await;
+                return Ok(());
+            }
+        };
 
         // Check that the message is coming from someone with the right permissions to do this action
         match sender {
             Identity::Standard(std_identity) => {
                 if std_identity.permission_type == IdentityPermissions::Admin {
                     // Update the job to finished in the database
-                    match self.db.lock().await.update_job_to_finished(job_id) {
+                    let db_lock = self.db.lock().await;
+                    match db_lock.update_job_to_finished(job_id) {
                         Ok(_) => {
+                            let kai_file = db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await?;
+
+                            if let Some((_, kai_file_bytes)) = kai_file {
+                                let kai_file_str = String::from_utf8(kai_file_bytes).map_err(|e| NodeError {
+                                    message: format!("Failed to convert bytes to string: {}", e),
+                                })?;
+
+                                let kai_file: KaiJobFile =
+                                    KaiJobFile::from_json_str(&kai_file_str).map_err(|e| NodeError {
+                                        message: format!("Failed to parse KaiJobFile: {}", e),
+                                    })?;
+
+                                match KaiJobFileManager::execute(kai_file, self).await {
+                                    Ok(_) => (),
+                                    Err(e) => eprintln!("Error executing KaiJobFileManager: {:?}", e),
+                                }
+                            }
+
                             let _ = res.send(Ok(())).await;
                             Ok(())
                         }

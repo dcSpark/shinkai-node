@@ -131,24 +131,28 @@ impl CronManager {
 
         tokio::spawn(async move {
             shinkai_log(
-                ShinkaiLogOption::JobExecution,
+                ShinkaiLogOption::CronExecution,
                 ShinkaiLogLevel::Info,
-                "Starting job queue processing loop",
+                "Starting cron job queue processing loop",
             );
+
+            let is_testing = std::env::var("IS_TESTING").unwrap_or_else(|_| String::from("false")) != "false";
 
             loop {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
+
                     db_lock
-                        .get_all_cron_tasks(node_profile_name.clone().get_profile_name().unwrap())
+                        .get_all_cron_tasks_from_all_profiles()
                         .unwrap_or(HashMap::new())
                 };
-                eprintln!("Jobs to process: {:?}", jobs_to_process);
+                eprintln!("Cron Jobs to process: {:?}", jobs_to_process);
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
                 for (_, cron_task) in jobs_to_process {
-                    if !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
+                    if !is_testing && !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
+                        eprintln!("Cron Job not ready to be executed: {:?}", cron_task);
                         continue;
                     }
 
@@ -264,6 +268,9 @@ impl CronManager {
             scope: JobScope::new_default(),
         };
 
+        eprintln!("Job Creation: {:?}", job_creation);
+        eprintln!("Cron job: {:?}", cron_job);
+
         // Create Job
         let job_id = job_manager
             .lock()
@@ -300,7 +307,7 @@ impl CronManager {
         let now = Utc::now();
         let now_rounded = now.with_second(0).unwrap().with_nanosecond(0).unwrap();
         let end_of_interval = now_rounded + chrono::Duration::seconds(cron_time_interval as i64);
-    
+
         // Parse the cron expression
         let next_execution_time = match cron_parser::parse(&cron_task.cron, &now_rounded) {
             Ok(datetime) => datetime,
@@ -314,12 +321,34 @@ impl CronManager {
                 return false;
             }
         };
-    
+
         // Check if the next execution time falls within the range of now and now + cron_time_interval
         next_execution_time >= now && next_execution_time <= end_of_interval
     }
 
     pub fn is_valid_cron_expression(cron_expression: &str) -> bool {
         cron_parser::parse(cron_expression, &Utc::now()).is_ok()
+    }
+
+    // TODO: rename this or refactor it to a manager
+    pub async fn add_cron_task(
+        &self,
+        profile: String,
+        task_id: String,
+        cron: String,
+        prompt: String,
+        subprompt: String,
+        url: String,
+        crawl_links: bool,
+        agent_id: String,
+    ) -> tokio::task::JoinHandle<Result<(), CronManagerError>> {
+        let db = self.db.clone();
+        // Note: needed to avoid a deadlock
+        tokio::spawn(async move {
+            let mut db_lock = db.lock().await;
+            db_lock
+                .add_cron_task(profile, task_id, cron, prompt, subprompt, url, crawl_links, agent_id)
+                .map_err(|e| CronManagerError::SomeError(e.to_string()))
+        })
     }
 }

@@ -238,6 +238,7 @@ mod tests {
         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
             job_id.to_string(),
             "something".to_string(),
+            "".to_string(),
             placeholder_signature_sk,
             "@@node1.shinkai".to_string(),
             "@@node1.shinkai".to_string(),

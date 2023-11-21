@@ -135,6 +135,31 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug planner_integration_tests",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=planner_integration_tests",
+                    "--package=shinkai_node"
+                ],
+                "filter": {
+                    "name": "planner_integration_tests",
+                    "kind": "test"
+                }
+            },
+            "args": ["--ignored", "--nocapture"],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_BACKTRACE": "1",
+                "LOG_SIMPLE": "1",
+                "LOG_ALL": "1",
+                "INITIAL_AGENT_API_KEY": ""
+            }
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug integration test 'network_tests'",
             "cargo": {
                 "args": [

@@ -15,6 +15,7 @@ pub enum MessageSchemaType {
     APIGetMessagesFromInboxRequest,
     APIReadUpToTimeRequest,
     APIAddAgentRequest,
+    APIFinishJob,
     TextContent,
     FormattedMultiContent, // TODO
     SymmetricKeyExchange,
@@ -37,6 +38,7 @@ impl MessageSchemaType {
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
+            "APIFinishJob" => Some(Self::APIFinishJob),
             "" => Some(Self::Empty),
             _ => None,
         }
@@ -56,6 +58,7 @@ impl MessageSchemaType {
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
+            Self::APIFinishJob => "APIFinishJob",
             Self::Empty => "",
         }
     }

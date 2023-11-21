@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::fs;
+use std::{fs, fmt};
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::multipart::{Form, Part};
@@ -15,6 +15,27 @@ pub struct CronTaskRequest {
     pub cron_description: String,
     pub task_description: String,
     pub object_description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CronTaskResponse {
+    pub cron_task_request: CronTaskRequest,
+    pub cron_description: String,
+    pub pddl_plan_problem: String,
+    pub pddl_plan_domain: Option<String>,
+}
+
+impl fmt::Display for CronTaskResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Cron Task Request: {:?}\nCron Description: {}\nPDDL Plan Problem: {}\nPDDL Plan Domain: {}",
+            self.cron_task_request,
+            self.cron_description,
+            self.pddl_plan_problem,
+            self.pddl_plan_domain.as_deref().unwrap_or("None")
+        )
+    }
 }
 
 #[derive(Debug, Clone)]

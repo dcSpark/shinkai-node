@@ -4,8 +4,14 @@ use chrono::Utc;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
 use serde_json::to_vec;
+use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
+use shinkai_message_primitives::shinkai_message::shinkai_message::{
+    MessageBody, MessageData, ShinkaiBody, ShinkaiData,
+};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, JobMessage, MessageSchemaType,
+};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
 };
@@ -167,27 +173,27 @@ impl ShinkaiDB {
             .db
             .get_cf(cf_inbox, &hex_blake3_hash)?
             .ok_or(ShinkaiDBError::InboxNotFound(hex_blake3_hash.clone()))?;
-    
+
         // Check if the column family exists
         let cf_name_encrypted_inbox_str =
             std::str::from_utf8(&cf_name_encrypted_inbox).map_err(|_| ShinkaiDBError::DataNotFound)?; // handle the error appropriately
-    
+
         if self.db.cf_handle(cf_name_encrypted_inbox_str).is_none() {
             return Err(ShinkaiDBError::InboxNotFound(cf_name_encrypted_inbox_str.to_string()));
         }
-    
+
         // Get an iterator over the column family
         let cf_encrypted_inbox = self
             .db
             .cf_handle(&cf_name_encrypted_inbox_str)
             .ok_or(ShinkaiDBError::FailedFetchingCF)?;
         let iter = self.db.iterator_cf(cf_encrypted_inbox, IteratorMode::Start);
-    
+
         // Collect all keys (filenames) in the column family
         let filenames: Result<Vec<String>, _> = iter
             .map(|res| res.map(|(key, _)| String::from_utf8(key.to_vec()).unwrap()))
             .collect();
-    
+
         filenames.map_err(|_| ShinkaiDBError::FailedFetchingValue)
     }
 
@@ -218,5 +224,58 @@ impl ShinkaiDB {
         let file_content = self.db.get_cf(cf_encrypted_inbox, file_name)?;
 
         file_content.ok_or(ShinkaiDBError::DataNotFound)
+    }
+
+    pub async fn get_kai_file_from_inbox(
+        &self,
+        inbox_name: String,
+    ) -> Result<Option<(String, Vec<u8>)>, ShinkaiDBError> {
+        let mut offset_key: Option<String> = None;
+        let page_size = 20;
+
+        loop {
+            // Get a page of messages from the inbox
+            let mut messages = self.get_last_messages_from_inbox(inbox_name.clone(), page_size, offset_key.clone())?;
+            // Note so messages are from most recent to oldest instead
+            messages.reverse();
+
+            // If there are no more messages, break the loop
+            if messages.is_empty() {
+                break;
+            }
+
+            // Iterate over the messages
+            for message in &messages {
+                // Check if the message body is unencrypted
+                if let MessageBody::Unencrypted(body) = &message.body {
+                    // Check if the message data is unencrypted
+                    if let MessageData::Unencrypted(data) = &body.message_data {
+                        // Check if the message is of type JobMessageSchema
+                        if data.message_content_schema == MessageSchemaType::JobMessageSchema {
+                            // Parse the raw content into a JobMessage
+                            let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)?;
+
+                            // Get all file names from the file inbox
+                            let file_names = self.get_all_filenames_from_inbox(job_message.files_inbox.clone())?;
+
+                            // Check if any file ends with .jobkai
+                            for file_name in file_names {
+                                if file_name.ends_with(".jobkai") {
+                                    // Get the file content
+                                    let file_content =
+                                        self.get_file_from_inbox(job_message.files_inbox.clone(), file_name.clone())?;
+                                    return Ok(Some((file_name, file_content)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Set the offset key for the next page to the key of the last message in the current page
+            offset_key = Some(messages.last().unwrap().calculate_message_hash());
+        }
+
+        Ok(None)
     }
 }
