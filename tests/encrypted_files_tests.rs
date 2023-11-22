@@ -514,7 +514,7 @@ fn sandwich_messages_with_files_test() {
                         Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                             Ok(job_message) => {
                                 eprintln!("message_content: {}", message_content);
-                                if job_message.content != job_message_content {
+                                if job_message.content != new_job_message_content {
                                     assert!(true);
                                     break;
                                 }

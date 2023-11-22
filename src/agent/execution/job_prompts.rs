@@ -83,16 +83,17 @@ impl JobPromptGenerator {
         job_step_history: Option<Vec<JobStepResult>>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
-        prompt.add_content(
-            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
-            SubPromptType::System,
-            100
-        );
 
         // Add up to previous 10 step results from history
         if let Some(step_history) = job_step_history {
             prompt.add_step_history(step_history, 10, 98);
         }
+
+        prompt.add_content(
+            "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
+            SubPromptType::System,
+            100
+        );
 
         if let Some(summary) = summary_text {
             prompt.add_content(
@@ -108,7 +109,7 @@ impl JobPromptGenerator {
         // Parses the retrieved nodes into a single string to add to the prompt
         let ret_nodes_content = RetrievedNode::format_ret_nodes_for_prompt(ret_nodes, 3500);
         let search_context = format!(
-            "Here is a list of relevant new content the user provided for you to use while answering: ``` {}```.\n",
+            "Here is a list of relevant new content provided for you to potentially use while answering: ``` {}```.\n",
             ret_nodes_content,
         );
         prompt.add_content(search_context, SubPromptType::User, 97);
@@ -621,6 +622,12 @@ impl Prompt {
         let mut count = 0;
         let mut sub_prompts_list = Vec::new();
 
+        // sub_prompts_list.push(SubPrompt::Content(
+        //     SubPromptType::System,
+        //     "Here are the previous conversation messages:".to_string(),
+        //     priority_value,
+        // ));
+
         while let Some(step) = history.pop() {
             if let Some(prompt) = step.get_result_prompt() {
                 for sub_prompt in prompt.sub_prompts {
@@ -633,7 +640,7 @@ impl Prompt {
             }
         }
 
-        self.add_sub_prompts_with_new_priority(sub_prompts_list, priority_value);
+        self.add_sub_prompts_with_new_priority(sub_prompts_list, capped_priority_value);
     }
 
     /// Removes the first sub-prompt from the end of the sub_prompts list that has the lowest priority value.
