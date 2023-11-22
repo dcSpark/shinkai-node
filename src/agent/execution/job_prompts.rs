@@ -61,9 +61,14 @@ impl JobPromptGenerator {
         prompt.add_content(
             "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
             SubPromptType::System,
+            99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
 
         prompt
     }
@@ -81,11 +86,12 @@ impl JobPromptGenerator {
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
+            100
         );
 
         // Add up to previous 10 step results from history
         if let Some(step_history) = job_step_history {
-            prompt.add_step_history(step_history, 10);
+            prompt.add_step_history(step_history, 10, 98);
         }
 
         if let Some(summary) = summary_text {
@@ -95,6 +101,7 @@ impl JobPromptGenerator {
                     summary
                 ),
                 SubPromptType::System,
+                99
             );
         }
 
@@ -104,16 +111,21 @@ impl JobPromptGenerator {
             "Here is a list of relevant new content the user provided for you to use while answering: ``` {}```.\n",
             ret_nodes_content,
         );
-        prompt.add_content(search_context, SubPromptType::User);
+        prompt.add_content(search_context, SubPromptType::User, 97);
 
-        prompt.add_content(format!("The user has asked: "), SubPromptType::System);
-        prompt.add_content(job_task, SubPromptType::User);
+        prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
+        prompt.add_content(job_task, SubPromptType::User, 100);
 
         prompt.add_content(
             format!("If you have enough information to directly answer the user's question:"),
             SubPromptType::System,
+            100,
         );
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
 
         // Tell the LLM about the previous search term (up to max 3 words to not confuse it) to avoid searching the same
         if let Some(mut prev_search) = prev_search_text {
@@ -121,14 +133,15 @@ impl JobPromptGenerator {
             if words.len() > 3 {
                 prev_search = words[..3].join(" ");
             }
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System);
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to think carefully and drastically improve/extend the existing summary with more information and think of a search query to find new content. Search for keywords more unique & detailed than `{}`:", prev_search), SubPromptType::System, 99);
         } else {
-            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System);
+            prompt.add_content(format!("If you need to acquire more information to properly answer the user, then you will need to create a summary of the current content related to the user's question, and think of a search query to find new content:"), SubPromptType::System, 99);
         }
 
         prompt.add_ebnf(
             String::from(r#"'{' 'search' ':' string, 'summary': 'string' }'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -145,6 +158,7 @@ impl JobPromptGenerator {
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
+            100
         );
 
         if let Some(summary) = summary_text {
@@ -154,6 +168,7 @@ impl JobPromptGenerator {
                     summary
                 ),
                 SubPromptType::User,
+                99,
             );
         }
 
@@ -167,15 +182,20 @@ impl JobPromptGenerator {
         // prompt.add_content(search_context, SubPromptType::System);
 
         let pre_task_text = format!("The user has asked: ");
-        prompt.add_content(pre_task_text, SubPromptType::System);
-        prompt.add_content(job_task, SubPromptType::User);
+        prompt.add_content(pre_task_text, SubPromptType::System, 99);
+        prompt.add_content(job_task, SubPromptType::User, 100);
 
         prompt.add_content(
             format!("Use the content to directly answer the user's question with as much information as is available. Make the answer very readable and easy to understand:"),
             SubPromptType::System,
+            98
         );
 
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
 
         prompt
     }
@@ -186,8 +206,13 @@ impl JobPromptGenerator {
         prompt.add_content(
         format!("Based on the following summary: \n\n{}\n\nYou need to come up with a unique and detailed search term that is different than the provided one: `{}`", summary, search_term),
         SubPromptType::System,
+        100
     );
-        prompt.add_ebnf(String::from(r#"'{' 'search' ':' string }'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'search' ':' string }'"#),
+            SubPromptType::System,
+            100,
+        );
 
         prompt
     }
@@ -199,20 +224,21 @@ impl JobPromptGenerator {
 
         // Iterate through the original prompt and only keep the EBNF subprompts
         for sub_prompt in original_prompt.sub_prompts {
-            if let SubPrompt::EBNF(prompt_type, ebnf) = sub_prompt {
-                prompt.add_ebnf(ebnf, prompt_type);
+            if let SubPrompt::EBNF(prompt_type, ebnf, _) = sub_prompt {
+                prompt.add_ebnf(ebnf, prompt_type, 99);
             }
         }
 
         prompt.add_content(
             format!("Here is the answer to your request: `{}`", non_json_answer),
             SubPromptType::System,
+            100,
         );
         prompt.add_content(
             String::from(
                 r#"No, I need it to be properly formatted as JSON. Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one. ```json"#,
             ),
-            SubPromptType::User,
+            SubPromptType::User, 100
         );
 
         prompt
@@ -224,19 +250,25 @@ impl JobPromptGenerator {
         prompt.add_content(
             "You are an advanced assistant who who is specialized in summarizing information. Do not ask for further context or information in your answer, simply summarize as much information as possible.".to_string(),
             SubPromptType::System,
+            99
         );
 
-        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User);
+        prompt.add_content(format!("Here is content from a document:"), SubPromptType::User, 99);
         for node in nodes {
-            prompt.add_content(format!("{}", node), SubPromptType::User);
+            prompt.add_content(format!("{}", node), SubPromptType::User, 99);
         }
         prompt.add_content(
             format!("Take a deep breath and summarize the content using as many relevant keywords as possible. Aim for 3-4 sentences maximum."),
             SubPromptType::User,
+            100
         );
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
 
-        prompt.add_content(do_not_mention_prompt.to_string(), SubPromptType::System);
+        prompt.add_content(do_not_mention_prompt.to_string(), SubPromptType::System, 99);
 
         prompt
     }
@@ -246,17 +278,20 @@ impl JobPromptGenerator {
         prompt.add_content(
             "You are an assistant running in a system who only has access to a series of tools and your own knowledge to accomplish any task.\n".to_string(),
             SubPromptType::System,
+            99
         );
-        prompt.add_content(format!("{}", job_task), SubPromptType::User);
+        prompt.add_content(format!("{}", job_task), SubPromptType::User, 100);
         prompt.add_content(
             String::from(
                 "Create a plan that the system will need to take in order to fulfill the user's task. Make sure to make separate steps for any sub-task where data, computation, or API access may need to happen from different sources.\n\nKeep each step in the plan extremely concise/high level comprising of a single sentence each. Do not mention anything optional, nothing about error checking or logging or displaying data. Anything related to parsing/formatting can be merged together into a single step. Any calls to APIs, including parsing the resulting data from the API, should be considered as a single step."
             ),
             SubPromptType::System,
+            100
         );
         prompt.add_ebnf(
             String::from("{{'plan': ['string' (, 'string')*]}}"),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -274,16 +309,19 @@ impl JobPromptGenerator {
                 context_string
             ),
             SubPromptType::System,
+            99
         );
 
         prompt.add_content(
             format!("The current task at hand is:\n\n`{}`", task),
             SubPromptType::User,
+            100,
         );
 
         prompt.add_content(
             format!("We have selected the following tool to be used:\n\n{}", tool_summary),
             SubPromptType::System,
+            100,
         );
 
         prompt.add_content(
@@ -291,9 +329,10 @@ impl JobPromptGenerator {
                 "Your goal is to decide whether for each field in the Tool Input EBNF, you have been provided all the needed data to fill it out fully.\nIf all of the data/information to use the tool is available,"
             ),
             SubPromptType::System,
+            100
         );
 
-        prompt.add_ebnf(String::from("{{'prepared': true}}"), SubPromptType::User);
+        prompt.add_ebnf(String::from("{{'prepared': true}}"), SubPromptType::User, 100);
 
         prompt.add_content(
             String::from(
@@ -301,9 +340,10 @@ impl JobPromptGenerator {
                 "If you need to acquire more information in order to use this tool (ex. user's personal data, related facts, info from external APIs, etc.) then you will need to search for other tools that provide you with this data,"
             ),
             SubPromptType::System,
+            100
         );
 
-        prompt.add_ebnf(String::from("{{'tool-search': 'string'}}"), SubPromptType::User);
+        prompt.add_ebnf(String::from("{{'tool-search': 'string'}}"), SubPromptType::User, 100);
 
         prompt
     }
@@ -329,6 +369,7 @@ impl JobPromptGenerator {
                 tools_summary
             ),
             SubPromptType::System,
+            100
         );
 
         prompt.add_content(
@@ -336,12 +377,14 @@ impl JobPromptGenerator {
                 "You always remember that a PDDL is formatted like this (unrelated example): ---start example---(define (problem letseat-simple)\n    (:domain letseat)\n    (:objects\n        arm - robot\n        cupcake - cupcake\n        table - location\n        plate - location\n    )\n\n    (:init\n        (on arm table)\n        (on cupcake table)\n        (arm-empty)\n        (path table plate)\n    )\n    (:goal\n        (on cupcake plate)\n    )\n)---end example---"
             ),
             SubPromptType::User,
+            100
         );
 
         // This is the PDDL (Problem): {}.
         prompt.add_content(
             format!("The current task is to: '{}'. Implement a plan using PDDL representation using the available tools. Make it simple but effective and start your response with: (define (problem ", task),
             SubPromptType::User,
+            100
         );
 
         if previous.is_some() && previous_error.is_some() {
@@ -352,18 +395,20 @@ impl JobPromptGenerator {
                     previous_error.unwrap()
                 ),
                 SubPromptType::User,
+                100
             );
         } else {
             prompt.add_content(
                 format!(
                     "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
                 ),
-                SubPromptType::User);
+                SubPromptType::User, 99);
         }
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -389,6 +434,7 @@ impl JobPromptGenerator {
                 tools_summary
             ),
             SubPromptType::System,
+            100
         );
 
         prompt.add_content(
@@ -396,11 +442,13 @@ impl JobPromptGenerator {
                 "You always remember that a PDDL is formatted like this (unrelated example): --start example---(define (domain letseat)\n    (:requirements :typing)\n\n    (:types\n        location locatable - object\n        bot cupcake - locatable\n        robot - bot\n    )\n\n    (:predicates\n        (on ?obj - locatable ?loc - location)\n        (holding ?arm - locatable ?cupcake - locatable)\n        (arm-empty)\n        (path ?location1 - location ?location2 - location)\n    )\n\n    (:action pick-up\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (on ?cupcake ?loc)\n            (arm-empty)\n        )\n        :effect (and\n            (not (on ?cupcake ?loc))\n            (holding ?arm ?cupcake)\n            (not (arm-empty))\n        )\n    )\n\n    (:action drop\n        :parameters (?arm - bot ?cupcake - locatable ?loc - location)\n        :precondition (and\n            (on ?arm ?loc)\n            (holding ?arm ?cupcake)\n        )\n        :effect (and\n            (on ?cupcake ?loc)\n            (arm-empty)\n            (not (holding ?arm ?cupcake))\n        )\n    )\n\n    (:action move\n        :parameters (?arm - bot ?from - location ?to - location)\n        :precondition (and\n            (on ?arm ?from)\n            (path ?from ?to)\n        )\n        :effect (and\n            (not (on ?arm ?from))\n            (on ?arm ?to)\n        )\n    )\n)---end example---"
             ),
             SubPromptType::User,
+            99
         );
 
         prompt.add_content(
             format!("The current task at hand is to: '{}'. Implement a throughout plan using PDDL representation using the available tools. (define (domain ", task),
             SubPromptType::User,
+            100
         );
 
         if previous.is_some() && previous_error.is_some() {
@@ -411,18 +459,20 @@ impl JobPromptGenerator {
                     previous_error.unwrap()
                 ),
                 SubPromptType::User,
+                99
             );
         } else {
             prompt.add_content(
                 format!(
                     "Take a deep breath and think step by step, explain how to implement this in the explanation field and then put your final answer in the answer field",
                 ),
-                SubPromptType::User);
+                SubPromptType::User, 99);
         }
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -436,6 +486,7 @@ impl JobPromptGenerator {
                 "You are a very helpful assistant that's an expert in translating user requests to cron expressions.",
             ),
             SubPromptType::System,
+            99,
         );
 
         // TODO: consider differences in timezones
@@ -445,9 +496,14 @@ impl JobPromptGenerator {
                 description
             ),
             SubPromptType::User,
+            100,
         );
 
-        prompt.add_ebnf(String::from(r#"'{' 'answer' ':' string '}'"#), SubPromptType::System);
+        prompt.add_ebnf(
+            String::from(r#"'{' 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
 
         prompt
     }
@@ -468,21 +524,32 @@ impl ToString for SubPromptType {
     }
 }
 
+/// Sub-prompts are composed of a 3-element tuple of (SubPromptType, text, priority_value)
+/// Priority_value is a number between 0-100, where the higher it is the less likely it will be
+/// removed if LLM context window limits are reached.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
-    Content(SubPromptType, String),
-    EBNF(SubPromptType, String),
+    Content(SubPromptType, String, u8),
+    EBNF(SubPromptType, String, u8),
 }
 
+/// Struct that represents a prompt to be used for inferencing an LLM
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Prompt {
+    /// Sub-prompts that make up this prompt
     pub sub_prompts: Vec<SubPrompt>,
+    /// The lowest priority value held in sub_prompts
+    pub lowest_priority: u8,
+    /// The highest priority value held in sub_prompts
+    pub highest_priority: u8,
 }
 
 impl Prompt {
     pub fn new() -> Self {
         Self {
             sub_prompts: Vec::new(),
+            lowest_priority: 0,
+            highest_priority: 0,
         }
     }
 
@@ -494,28 +561,63 @@ impl Prompt {
         Ok(serde_json::from_str(json)?)
     }
 
-    /// Adds a content sub-prompt
-    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType) {
-        self.sub_prompts.push(SubPrompt::Content(prompt_type, content));
+    /// Adds a sub-prompt that holds any String content.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_content(&mut self, content: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::Content(prompt_type, content, capped_priority_value as u8);
+        self.add_sub_prompt(sub_prompt);
     }
 
-    /// Adds an ebnf sub-prompt, which when rendered will include a prefixed
-    /// string that specifies the output must match this EBNF string.
-    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType) {
-        self.sub_prompts.push(SubPrompt::EBNF(prompt_type, ebnf));
+    /// Adds an ebnf sub-prompt.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::EBNF(prompt_type, ebnf, capped_priority_value as u8);
+        self.add_sub_prompt(sub_prompt);
     }
 
-    /// Adds multiple pre-prepared sub-prompts
+    /// Adds a single sub-prompt.
+    /// Updates the lowest and highest priority values of self using the
+    /// existing priority value.
+    pub fn add_sub_prompt(&mut self, sub_prompt: SubPrompt) {
+        self.add_sub_prompts(vec![sub_prompt]);
+    }
+
+    /// Adds multiple pre-prepared sub-prompts.
+    /// Updates the lowest and highest priority values of self using the
+    /// existing priority values of the sub_prompts.
     pub fn add_sub_prompts(&mut self, sub_prompts: Vec<SubPrompt>) {
         for sub_prompt in sub_prompts {
+            match &sub_prompt {
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => {
+                    self.lowest_priority = self.lowest_priority.min(*priority);
+                    self.highest_priority = self.highest_priority.max(*priority);
+                }
+            }
             self.sub_prompts.push(sub_prompt);
         }
     }
 
-    /// Adds previous results from step history into the Prompt.
-    /// Currently capped using an integer number of previous historical results to add.
-    /// TODO: Add proper token counting, not just previous number to add
-    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64) {
+    /// Adds multiple pre-prepared sub-prompts with a new priority value.
+    /// The new priority value will be applied to all input sub-prompts.
+    pub fn add_sub_prompts_with_new_priority(&mut self, sub_prompts: Vec<SubPrompt>, new_priority: u8) {
+        let capped_priority_value = std::cmp::min(new_priority, 100) as u8;
+        let mut updated_sub_prompts = Vec::new();
+        for mut sub_prompt in sub_prompts {
+            match &mut sub_prompt {
+                SubPrompt::Content(_, _, priority) => *priority = capped_priority_value,
+                SubPrompt::EBNF(_, _, priority) => *priority = capped_priority_value,
+            }
+            updated_sub_prompts.push(sub_prompt);
+        }
+        self.add_sub_prompts(updated_sub_prompts);
+    }
+
+    /// Adds previous results from step history into the Prompt, up to max_previous_history amount.
+    /// Of note, priority value must be between 0-100.
+    pub fn add_step_history(&mut self, mut history: Vec<JobStepResult>, max_previous_history: u64, priority_value: u8) {
+        let capped_priority_value = std::cmp::min(priority_value, 100) as u8;
         let mut count = 0;
         let mut sub_prompts_list = Vec::new();
 
@@ -531,7 +633,7 @@ impl Prompt {
             }
         }
 
-        self.add_sub_prompts(sub_prompts_list);
+        self.add_sub_prompts_with_new_priority(sub_prompts_list, priority_value);
     }
 
     /// Validates that there is at least one EBNF sub-prompt to ensure
@@ -540,7 +642,7 @@ impl Prompt {
         if !self
             .sub_prompts
             .iter()
-            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _)))
+            .any(|prompt| matches!(prompt, SubPrompt::EBNF(_, _, _)))
         {
             return Err(AgentError::UserPromptMissingEBNFDefinition);
         }
@@ -563,8 +665,8 @@ impl Prompt {
             .sub_prompts
             .iter()
             .map(|sub_prompt| match sub_prompt {
-                SubPrompt::Content(_, content) => content.clone(),
-                SubPrompt::EBNF(_, ebnf) => self.generate_ebnf_response_string(ebnf),
+                SubPrompt::Content(_, content, _) => content.clone(),
+                SubPrompt::EBNF(_, ebnf, _) => self.generate_ebnf_response_string(ebnf),
             })
             .collect::<Vec<String>>()
             .join("\n")
@@ -573,24 +675,20 @@ impl Prompt {
         Ok(content)
     }
 
-    /// Processes all sub-prompts into a single output String in OpenAI's message format.
-    pub fn generate_openai_messages(
+    /// Generates a tuple of a list of ChatCompletionRequestMessages and their token length,
+    /// ready to be used with OpenAI inferencing.
+    fn generate_chat_completion_messages(
         &self,
-        max_prompt_tokens: Option<usize>,
-    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
-        self.check_ebnf_included()?;
-
-        // We take about half of a default total 4097 if none is provided
-        let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
-        let model = "gpt-4";
+        model: &str,
+    ) -> Result<(Vec<ChatCompletionRequestMessage>, usize), AgentError> {
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
         let mut current_length: usize = 0;
 
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
             let (prompt_type, text) = match sub_prompt {
-                SubPrompt::Content(prompt_type, content) => (prompt_type, content.clone()),
-                SubPrompt::EBNF(prompt_type, ebnf) => {
+                SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone()),
+                SubPrompt::EBNF(prompt_type, ebnf, _) => {
                     let ebnf_string = self.generate_ebnf_response_string(ebnf);
                     (prompt_type, ebnf_string)
                 }
@@ -605,12 +703,37 @@ impl Prompt {
 
             let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
                 .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
-            if current_length + new_message_tokens > limit {
-                break;
-            }
 
             tiktoken_messages.push(new_message);
             current_length += new_message_tokens;
+        }
+
+        Ok((tiktoken_messages, current_length))
+    }
+
+    /// Processes all sub-prompts into a single output String in OpenAI's message format.
+    pub fn generate_openai_messages(
+        &self,
+        max_prompt_tokens: Option<usize>,
+    ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
+        self.check_ebnf_included()?;
+
+        // We take about half of a default total 4097 if none is provided
+        let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
+        let model = "gpt-4";
+        let mut sub_prompts_copy = self.sub_prompts.clone();
+        let mut tiktoken_messages = vec![];
+
+        // Keep looping and removing low priority sub-prompts until we are below the limit
+        loop {
+            let (completion_messages, token_count) = self.generate_chat_completion_messages(model)?;
+            if token_count < limit {
+                tiktoken_messages = completion_messages;
+                break;
+            } else {
+                // TODO: add logic to call a method that removes a single lowest priority sub-prompt from the copies
+                //Self::remove_lowest_priority_from_sub_prompts(&mut sub_prompts_copy);
+            }
         }
 
         Ok(tiktoken_messages)
@@ -638,7 +761,7 @@ impl Prompt {
         // First, calculate the total length of EBNF content. We want to add it no matter what or
         // the response will be invalid.
         for sub_prompt in &self.sub_prompts {
-            if let SubPrompt::EBNF(_, ebnf) = sub_prompt {
+            if let SubPrompt::EBNF(_, ebnf, _) = sub_prompt {
                 let new_message = self.generate_ebnf_response_string(ebnf);
                 current_length += new_message.len();
             }
@@ -647,7 +770,7 @@ impl Prompt {
         // Then, process all sub-prompts in their original order
         for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
             match sub_prompt {
-                SubPrompt::Content(prompt_type, content) => {
+                SubPrompt::Content(prompt_type, content, priority_value) => {
                     if content == &*do_not_mention_prompt || content == "" {
                         continue;
                     }
@@ -679,7 +802,7 @@ impl Prompt {
                         SubPromptType::System => system_content_added = true,
                     }
                 }
-                SubPrompt::EBNF(_, ebnf) => {
+                SubPrompt::EBNF(_, ebnf, _) => {
                     let new_message = self.generate_ebnf_response_string(ebnf);
                     messages.push(new_message);
                 }

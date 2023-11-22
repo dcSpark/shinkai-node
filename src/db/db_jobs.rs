@@ -505,8 +505,8 @@ impl ShinkaiDB {
 
         // Create prompt & JobStepResult
         let mut prompt = Prompt::new();
-        prompt.add_content(user_message, SubPromptType::User);
-        prompt.add_content(agent_response, SubPromptType::System);
+        prompt.add_content(user_message, SubPromptType::User, 100);
+        prompt.add_content(agent_response, SubPromptType::System, 100);
         let mut job_step_result = JobStepResult::new();
         job_step_result.add_new_step_revision(prompt);
 
