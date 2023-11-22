@@ -61,13 +61,14 @@ impl LLMProvider for OpenAI {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
 
-                let tiktoken_messages = prompt.generate_openai_messages(None)?;
                 let total_tokens = Self::get_max_tokens(self.model_type.as_str());
+                let tiktoken_messages = prompt.generate_openai_messages(Some(total_tokens / 2))?;
                 let used_tokens = num_tokens_from_messages(
                     Self::normalize_model(&self.model_type.clone()).as_str(),
                     &tiktoken_messages,
-                )
-                .unwrap();
+                )?;
+                let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
+                max_tokens = std::cmp::min(max_tokens, Self::get_max_output_tokens(self.model_type.as_str()));
 
                 let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
                     .into_iter()
@@ -93,9 +94,6 @@ impl LLMProvider for OpenAI {
                     }
                 }
                 let messages_json = serde_json::to_value(&messages)?;
-
-                let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
-                max_tokens = std::cmp::min(max_tokens, Self::get_max_output_tokens(self.model_type.as_str()));
 
                 let payload = json!({
                     "model": self.model_type,
@@ -162,14 +160,24 @@ impl LLMProvider for OpenAI {
         }
     }
 
+    /// Returns the maximum number of tokens supported based on
+    /// the provided model string
     fn get_max_tokens(s: &str) -> usize {
-        get_context_size(Self::normalize_model(s).as_str())
+        // Custom added, since not supported by Tiktoken atm
+        if s == "gpt-4-1106-preview" {
+            128_000
+        } else {
+            let normalized_model = Self::normalize_model(s);
+            get_context_size(normalized_model.as_str())
+        }
     }
 
+    /// Returns a maximum number of output tokens
     fn get_max_output_tokens(s: &str) -> usize {
         4096
     }
 
+    /// Normalizes the model string to one that is supported by Tiktoken crate
     fn normalize_model(s: &str) -> String {
         if s.to_string().starts_with("gpt-4") {
             "gpt-4-32k".to_string()

@@ -1,3 +1,4 @@
+use super::job_prompts::{JobPromptGenerator, Prompt};
 use crate::agent::error::AgentError;
 use crate::agent::job::Job;
 use crate::agent::{agent::Agent, job_manager::JobManager};
@@ -12,8 +13,6 @@ use shinkai_vector_resources::source::{SourceFileType, VRSource};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-
-use super::job_prompts::{JobPromptGenerator, Prompt};
 
 impl JobManager {
     /// Extracts a String using the provided key in the JSON response
@@ -81,7 +80,11 @@ impl JobManager {
         match response {
             Ok(json) => Ok(json),
             Err(AgentError::FailedExtractingJSONObjectFromResponse(text)) => {
-                shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Error, "FailedExtractingJSONObjectFromResponse");
+                shinkai_log(
+                    ShinkaiLogOption::JobExecution,
+                    ShinkaiLogLevel::Error,
+                    "FailedExtractingJSONObjectFromResponse",
+                );
                 match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),
