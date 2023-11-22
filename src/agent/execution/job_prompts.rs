@@ -459,6 +459,15 @@ pub enum SubPromptType {
     System,
 }
 
+impl ToString for SubPromptType {
+    fn to_string(&self) -> String {
+        match self {
+            SubPromptType::User => "user".to_string(),
+            SubPromptType::System => "system".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
     Content(SubPromptType, String),
@@ -571,10 +580,9 @@ impl Prompt {
     ) -> Result<Vec<ChatCompletionRequestMessage>, AgentError> {
         self.check_ebnf_included()?;
 
-        // We assume 2048 tokens max for the prompt which is about half of the total 4097
+        // We take about half of a default total 4097 if none is provided
         let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
         let model = "gpt-4";
-
         let mut tiktoken_messages: Vec<ChatCompletionRequestMessage> = Vec::new();
         let mut current_length: usize = 0;
 
@@ -588,13 +596,8 @@ impl Prompt {
                 }
             };
 
-            let role = match prompt_type {
-                SubPromptType::User => "user".to_string(),
-                SubPromptType::System => "system".to_string(),
-            };
-
             let new_message = ChatCompletionRequestMessage {
-                role: role.clone(),
+                role: prompt_type.to_string(),
                 content: Some(text),
                 name: None,
                 function_call: None,
