@@ -2,14 +2,16 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, GenericAPI, SerializedAgent};
+use async_std::println;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{
+    AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
+};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string,
-    encryption_secret_key_to_string, ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+    ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
@@ -36,8 +38,8 @@ use utils::test_boilerplate::run_test_one_node_network;
 
 mod utils;
 use crate::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main, api_get_all_smart_inboxes_from_profile,
+    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
+    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
 };
 use mockito::Server;
 
@@ -118,7 +120,7 @@ fn sandwich_messages_with_files_test() {
                     .create();
 
                 let open_ai = OpenAI {
-                    model_type: "gpt-3.5-turbo-1106".to_string(),
+                    model_type: "gpt-4-1106-preview".to_string(),
                 };
 
                 let generic_api = GenericAPI {
@@ -129,7 +131,6 @@ fn sandwich_messages_with_files_test() {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
-                    // external_url: Some("https://api.openai.com".to_string()),
                     external_url: Some(server.url()),
                     api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
@@ -435,9 +436,66 @@ fn sandwich_messages_with_files_test() {
                 assert_eq!(inboxes[0].custom_name, "What's Zeko?");
             }
 
-            // {
-            //     tokio::time::sleep(Duration::from_secs(1000)).await;
-            // }
+            {
+                eprintln!("Waiting for the Job to finish");
+                for _ in 0..50 {
+                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                    node1_commands_sender
+                        .send(NodeCommand::FetchLastMessages {
+                            limit: 2,
+                            res: res1_sender,
+                        })
+                        .await
+                        .unwrap();
+                    let node1_last_messages = res1_receiver.recv().await.unwrap();
+                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
+
+                    match node1_last_messages[0].get_message_content() {
+                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
+                            Ok(job_message) => {
+                                eprintln!("message_content: {}", message_content);
+                                if job_message.content != job_message_content {
+                                    assert!(true);
+                                    break;
+                                }
+                            }
+                            Err(_) => {
+                                eprintln!("error: message_content: {}", message_content);
+                            }
+                        },
+                        Err(_) => {
+                            // nothing
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                }
+            }
+
+            println!("Sending next message in convo");
+
+            let new_job_message_content = "Can you output markdown for an FAQ where my previous question is the heading and your response is the text underneath?".to_string();
+            {
+                // Send a Message to the Job for processing
+                eprintln!("\n\nSend a message for the Job");
+                let start = Instant::now();
+                api_message_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    &agent_subidentity.clone(),
+                    &job_id.clone().to_string(),
+                    &new_job_message_content,
+                    "",
+                )
+                .await;
+
+                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
+            }
+
             {
                 eprintln!("Waiting for the Job to finish");
                 for _ in 0..50 {
