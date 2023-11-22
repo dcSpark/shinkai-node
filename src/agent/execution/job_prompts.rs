@@ -636,6 +636,18 @@ impl Prompt {
         self.add_sub_prompts_with_new_priority(sub_prompts_list, priority_value);
     }
 
+    /// Removes the first sub-prompt from the end of the sub_prompts list that has the lowest priority value.
+    /// Used primarily for cutting down prompt when it is too large to fit in context window.
+    pub fn remove_lowest_priority_sub_prompt(&mut self) -> Option<SubPrompt> {
+        let lowest_priority = self.lowest_priority;
+        if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
+            SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => *priority == lowest_priority,
+        }) {
+            return Some(self.sub_prompts.remove(position));
+        }
+        None
+    }
+
     /// Validates that there is at least one EBNF sub-prompt to ensure
     /// the LLM knows what to output.
     pub fn check_ebnf_included(&self) -> Result<(), AgentError> {
@@ -721,18 +733,17 @@ impl Prompt {
         // We take about half of a default total 4097 if none is provided
         let limit = max_prompt_tokens.unwrap_or((2700 as usize).try_into().unwrap());
         let model = "gpt-4";
-        let mut sub_prompts_copy = self.sub_prompts.clone();
+        let mut prompt_copy = self.clone();
         let mut tiktoken_messages = vec![];
 
         // Keep looping and removing low priority sub-prompts until we are below the limit
         loop {
-            let (completion_messages, token_count) = self.generate_chat_completion_messages(model)?;
+            let (completion_messages, token_count) = prompt_copy.generate_chat_completion_messages(model)?;
             if token_count < limit {
                 tiktoken_messages = completion_messages;
                 break;
             } else {
-                // TODO: add logic to call a method that removes a single lowest priority sub-prompt from the copies
-                //Self::remove_lowest_priority_from_sub_prompts(&mut sub_prompts_copy);
+                prompt_copy.remove_lowest_priority_sub_prompt();
             }
         }
 
@@ -742,6 +753,7 @@ impl Prompt {
     // First version of generic. Probably we will need to pass a model name and a max tokens
     // to this function. No any model name will work with the tokenizers so probably we will need
     // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
+    /// TODO: Update to work with priority system for prompt size reducing
     pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
         eprintln!("generate_genericapi_messages subprompts: {:?}", self.sub_prompts);
         self.check_ebnf_included()?;
