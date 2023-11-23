@@ -55,7 +55,12 @@ impl JobManager {
                 Some(full_job.step_history.clone()),
             )
         } else {
-            JobPromptGenerator::response_prompt_with_vector_search_final(job_task.clone(), ret_nodes, summary_text)
+            JobPromptGenerator::response_prompt_with_vector_search_final(
+                job_task.clone(),
+                ret_nodes,
+                summary_text,
+                Some(full_job.step_history.clone()),
+            )
         };
 
         // Inference the agent's LLM with the prompt. If it has an answer, the chain

@@ -71,6 +71,7 @@ mod tests {
                         "What's Zeko?".to_string(),
                         vec![],
                         Some(elements),
+                        None,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -88,7 +89,7 @@ mod tests {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![
                     "Hello!".to_string(),
-                    "what does it mean to have 70B parameters?".to_string()
+                    "what does it mean to have 70B parameters?".to_string(),
                 ];
 
                 for element in elements_list {
@@ -96,6 +97,7 @@ mod tests {
                         element.to_string(),
                         vec![],
                         Some("".to_string()),
+                        None,
                     );
 
                     test_call_api(provider.clone(), &client, url.as_ref(), api_key.as_ref(), prompt).await;
@@ -106,7 +108,6 @@ mod tests {
             }
         }
     }
-
 
     async fn test_call_api(
         provider: AgentLLMInterface,

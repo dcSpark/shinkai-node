@@ -236,7 +236,10 @@ mod tests {
         );
 
         let response = agent
-            .inference(JobPromptGenerator::basic_instant_response_prompt("Hello!".to_string()))
+            .inference(JobPromptGenerator::basic_instant_response_prompt(
+                "Hello!".to_string(),
+                None,
+            ))
             .await;
         match response {
             Ok(res) => assert_eq!(
