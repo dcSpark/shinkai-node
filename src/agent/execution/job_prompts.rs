@@ -112,13 +112,20 @@ impl JobPromptGenerator {
             );
         }
 
-        // Parses the retrieved nodes into a single string to add to the prompt
-        let ret_nodes_content = RetrievedNode::format_ret_nodes_for_prompt(ret_nodes, 3500);
-        let search_context = format!(
-            "Here is a list of relevant new content provided for you to potentially use while answering: ``` {}```.\n",
-            ret_nodes_content,
-        );
-        prompt.add_content(search_context, SubPromptType::User, 97);
+        // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
+        if !ret_nodes.is_empty() {
+            prompt.add_content(
+                "Here is a list of relevant new content provided for you to potentially use while answering:"
+                    .to_string(),
+                SubPromptType::System,
+                97,
+            );
+            for node in ret_nodes {
+                if let Some(content) = node.format_for_prompt(3500) {
+                    prompt.add_content(content, SubPromptType::System, 97);
+                }
+            }
+        }
 
         prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
         prompt.add_content(job_task, SubPromptType::User, 100);
@@ -187,13 +194,20 @@ impl JobPromptGenerator {
         }
 
         // TODO: Either re-introduce this or delete it after testing with more QA in practice.
-        // Parses the retrieved nodes into a single string to add to the prompt
-        // let ret_nodes_content = RetrievedNode::format_ret_nodes_for_prompt(ret_nodes, 2000);
-        // let search_context = format!(
-        //     "Here is a list of relevant content the user provided for you to use while answering: ``` {}```.\n",
-        //     ret_nodes_content,
-        // );
-        // prompt.add_content(search_context, SubPromptType::System);
+        // // Parses the retrieved nodes as individual sub-prompts, to support priority pruning
+        // if !ret_nodes.is_empty() {
+        //     prompt.add_content(
+        //         "Here is a list of relevant new content provided for you to potentially use while answering:"
+        //             .to_string(),
+        //         SubPromptType::System,
+        //         97,
+        //     );
+        //     for node in ret_nodes {
+        //         if let Some(content) = node.format_for_prompt(3500) {
+        //             prompt.add_content(content, SubPromptType::System, 97);
+        //         }
+        //     }
+        // }
 
         let pre_task_text = format!("The user has asked: ");
         prompt.add_content(pre_task_text, SubPromptType::System, 99);

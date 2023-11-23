@@ -77,7 +77,7 @@ impl RetrievedNode {
     /// Formats the data, source, and metadata of all provided `RetrievedNode`s into a bullet-point
     /// list as a single string. This is to be included inside of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
-    pub fn format_ret_nodes_for_prompt(ret_nodes: Vec<RetrievedNode>, max_characters: usize) -> String {
+    pub fn format_ret_nodes_for_prompt_single_string(ret_nodes: Vec<RetrievedNode>, max_characters: usize) -> String {
         if ret_nodes.is_empty() {
             return String::new();
         }
