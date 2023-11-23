@@ -19,6 +19,7 @@ pub enum InferenceChain {
     ToolExecutionChain,
     CodingChain,
     CronCreationChain,
+    CronExecutionChainSummary,
 }
 
 impl JobManager {
@@ -113,6 +114,50 @@ impl JobManager {
                         .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_problem);
                     new_execution_context
                         .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_domain);
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            // Add other chains here
+            _ => {}
+        }
+        Ok((inference_response_content, new_execution_context))
+    }
+
+     pub async fn cron_inference_chain_router_summary(
+        db: Arc<Mutex<ShinkaiDB>>,
+        agent_found: Option<SerializedAgent>,
+        full_job: Job,
+        task_description: String,
+        web_content: String,
+        prev_execution_context: HashMap<String, String>,
+        user_profile: Option<ShinkaiName>,
+    ) -> Result<(String, HashMap<String, String>), AgentError> {
+
+        let chosen_chain = InferenceChain::CronExecutionChainSummary;
+        let mut inference_response_content = String::new();
+        let mut new_execution_context = HashMap::new();
+
+        // Note: Faking it until you merge it
+        match chosen_chain {
+            InferenceChain::CronExecutionChainSummary => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = JobManager::start_cron_execution_chain_for_summary(
+                        db,
+                        full_job,
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        task_description,
+                        web_content,
+                        0,
+                        6, // TODO: Make this configurable
+                    )
+                    .await?;
+                    eprintln!("Inference response content: {:?}", inference_response_content);
+
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone());
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }

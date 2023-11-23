@@ -453,6 +453,35 @@ impl JobPromptGenerator {
 
         prompt
     }
+
+    /// Prompt for having the description of a cron translated to a cron expression
+    pub fn apply_to_website_prompt(description: String, web_content: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(format!("You are a very helpful assistant that's very good at completing a task.",), SubPromptType::System);
+        prompt.add_content(
+            format!("The current task at hand is: `{}`", description),
+            SubPromptType::User,
+        );
+        prompt.add_content(
+            format!(
+                "Implement the task previously mentioned for the following content: ---content---\n`{}`\n---end_content---",
+                web_content
+            ),
+            SubPromptType::User,
+        );
+        prompt.add_content(
+            format!(
+                "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
+            ),
+            SubPromptType::User);
+
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+        );
+
+        prompt
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

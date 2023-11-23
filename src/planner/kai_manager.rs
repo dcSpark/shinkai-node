@@ -52,6 +52,7 @@ impl KaiJobFileManager {
                 // Nothing to do
                 eprintln!("KaiSchemaType::CronJobRequest: {:?}", cron_task_request);
             }
+            KaiSchemaType::CronJob(_) => todo!(),
             KaiSchemaType::CronJobResponse(cron_task_response) => {
                 eprintln!("KaiSchemaType::CronJobResponse: {:?}", cron_task_response);
                 // Execute code for CronJobResponse

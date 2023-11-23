@@ -49,6 +49,7 @@ use crate::{
     agent::{error::AgentError, job_manager::JobManager, queue::job_queue_manager::JobQueueManager},
     cron_tasks::web_scrapper::WebScraper,
     db::{db_cron_task::CronTask, ShinkaiDB},
+    planner::kai_files::{KaiJobFile, KaiSchemaType},
 };
 
 use super::youtube_checker::YoutubeChecker;
@@ -142,17 +143,23 @@ impl CronManager {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
 
-                    db_lock
-                        .get_all_cron_tasks_from_all_profiles()
-                        .unwrap_or(HashMap::new())
+                    db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
                 };
-                eprintln!("Cron Jobs to process: {:?}", jobs_to_process);
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
+                );
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
                 for (_, cron_task) in jobs_to_process {
                     if !is_testing && !Self::should_execute_cron_task(&cron_task, cron_time_interval) {
-                        eprintln!("Cron Job not ready to be executed: {:?}", cron_task);
+                        shinkai_log(
+                            ShinkaiLogOption::CronExecution,
+                            ShinkaiLogLevel::Debug,
+                            format!("Cron Job not ready to be executed: {:?}", cron_task).as_str(),
+                        );
                         continue;
                     }
 
@@ -200,76 +207,25 @@ impl CronManager {
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey,
+        _: SignatureStaticKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
     ) -> Result<bool, CronManagerError> {
-        // TODO: it needs to create a new job per cron task
-        // Should it download the stuff and then connect it to the job? (very likely)
-        eprintln!("Processing job: {:?}", cron_job);
+        shinkai_log(
+            ShinkaiLogOption::CronExecution,
+            ShinkaiLogLevel::Debug,
+            format!("Processing job: {:?}", cron_job).as_str(),
+        );
 
-        // Create a new instance of the WebScraper
-        let scraper = WebScraper {
-            task: cron_job.clone(),
-            // TODO: Move to ENV
-            api_url: "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string(),
+        let kai_file = KaiJobFile {
+            schema: KaiSchemaType::CronJob(cron_job.clone()),
+            shinkai_profile: Some(node_profile_name.clone()),
+            agent_id: cron_job.agent_id.clone(),
         };
 
-        // Call the download_and_parse method of the WebScraper
-        let mut structured_results = Vec::new();
-        // let mut unfiltered_results = Vec::new();
-        match scraper.download_and_parse().await {
-            Ok(content) => {
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    "Web scraping completed successfully",
-                );
-                structured_results.push(content.clone());
-
-                // If crawl_links is true, scan for all the links in content and download_and_parse them as well
-                if cron_job.crawl_links {
-                    let links = WebScraper::extract_links(&content.unfiltered);
-                    eprintln!("Links #: {:?}", links.len());
-                    for link in links.into_iter().take(2) {
-                        // TODO: remove .into_iter().take(2)
-                        let mut scraper_for_link = scraper.clone();
-                        scraper_for_link.task.url = link.clone();
-                        match scraper_for_link.download_and_parse().await {
-                            Ok(content) => {
-                                structured_results.push(content);
-                            }
-                            Err(e) => {
-                                eprintln!("Web scraping failed for link: {:?}, error: {:?}", link, e);
-                                shinkai_log(
-                                    ShinkaiLogOption::CronExecution,
-                                    ShinkaiLogLevel::Error,
-                                    format!("Web scraping failed for link: {:?}, error: {:?}", link, e).as_str(),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                shinkai_log(
-                    ShinkaiLogOption::CronExecution,
-                    ShinkaiLogLevel::Error,
-                    format!("Web scraping failed: {:?}", e).as_str(),
-                );
-                eprintln!("Web scraping failed: {:?}", e);
-                return Err(CronManagerError::SomeError(format!("Web scraping failed: {:?}", e)));
-            }
-        }
-
-        eprintln!("Results #: {:?}", structured_results.len());
-        eprintln!("Creating job");
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
         };
-
-        eprintln!("Job Creation: {:?}", job_creation);
-        eprintln!("Cron job: {:?}", cron_job);
 
         // Create Job
         let job_id = job_manager
@@ -278,28 +234,39 @@ impl CronManager {
             .process_job_creation(job_creation, &cron_job.agent_id)
             .await?;
 
-        eprintln!("Results: {:?} \n\n\n\n\n", structured_results);
-        for result in structured_results {
-            // Concatenate the result with cron_job.prompt
-            let content = format!("{} (try to extract their links from the content) --- website content --- {} --- end website content ---", cron_job.prompt, result.structured);
-            eprintln!("Content: {:?}", content);
-            // panic!("Job ID: {:?}", job_id);
+        // Note(Nico): should we close the job after the processing?
 
-            // Add Message to Job Queue
-            let job_message = JobMessage {
-                job_id: job_id.clone(),
-                content,
-                files_inbox: "".to_string(),
-            };
+        let inbox_name_result =
+            JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_job".to_string(), kai_file).await;
 
-            job_manager
-                .lock()
-                .await
-                .add_job_message_to_job_queue(&job_message, &node_profile_name)
-                .await?;
+        if let Err(e) = inbox_name_result {
+            shinkai_log(
+                ShinkaiLogOption::CronExecution,
+                ShinkaiLogLevel::Error,
+                format!("Failed to insert kai job file into inbox: {:?}", e).as_str(),
+            );
+            return Err(CronManagerError::SomeError(format!(
+                "Failed to insert kai job file into inbox: {:?}",
+                e
+            )));
         }
 
+        // Add Message to Job Queue
+        let job_message = JobMessage {
+            job_id: job_id.clone(),
+            content: "".to_string(),
+            files_inbox: inbox_name_result.unwrap(),
+        };
+
+        job_manager
+            .lock()
+            .await
+            .add_job_message_to_job_queue(&job_message, &node_profile_name)
+            .await?;
+
         Ok(true)
+
+      
     }
 
     pub fn should_execute_cron_task(cron_task: &CronTask, cron_time_interval: u64) -> bool {

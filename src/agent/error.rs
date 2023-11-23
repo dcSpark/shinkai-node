@@ -37,6 +37,7 @@ pub enum AgentError {
     ShinkaiMessage(ShinkaiMessageError),
     InboxNameError(InboxNameError),
     InvalidCronCreationChainStage(String),
+    WebScrapingFailed(String),
 }
 
 impl fmt::Display for AgentError {
@@ -86,6 +87,7 @@ impl fmt::Display for AgentError {
             AgentError::ShinkaiMessage(err) => write!(f, "ShinkaiMessage error: {}", err),
             AgentError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
             AgentError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
+            AgentError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
         }
     }
 }
