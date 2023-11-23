@@ -514,6 +514,7 @@ impl JobPromptGenerator {
 pub enum SubPromptType {
     User,
     System,
+    Assistant,
 }
 
 impl ToString for SubPromptType {
@@ -521,6 +522,7 @@ impl ToString for SubPromptType {
         match self {
             SubPromptType::User => "user".to_string(),
             SubPromptType::System => "system".to_string(),
+            SubPromptType::Assistant => "assistant".to_string(),
         }
     }
 }
@@ -794,7 +796,7 @@ impl Prompt {
                         continue;
                     }
                     let mut new_message = "".to_string();
-                    if prompt_type == &SubPromptType::System {
+                    if prompt_type == &SubPromptType::System || prompt_type == &SubPromptType::Assistant {
                         new_message = format!("{}", content.clone());
                     } else {
                         new_message = format!("- {}", content.clone());
@@ -819,6 +821,7 @@ impl Prompt {
                     match prompt_type {
                         SubPromptType::User => user_content_added = true,
                         SubPromptType::System => system_content_added = true,
+                        SubPromptType::Assistant => system_content_added = true,
                     }
                 }
                 SubPrompt::EBNF(_, ebnf, _) => {
