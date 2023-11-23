@@ -56,8 +56,14 @@ impl JobPromptGenerator {
     }
 
     /// Temporary prompt to just get back a response from the LLM with no tools or context or anything bonus
-    pub fn basic_instant_response_prompt(job_task: String) -> Prompt {
+    pub fn basic_instant_response_prompt(job_task: String, job_step_history: Option<Vec<JobStepResult>>) -> Prompt {
         let mut prompt = Prompt::new();
+
+        // Add up to previous 10 step results from history
+        if let Some(step_history) = job_step_history {
+            prompt.add_step_history(step_history, 10, 98);
+        }
+
         prompt.add_content(
             "You are an assistant running in a system who only has access your own knowledge to answer any question the user provides. The user has asked:\n".to_string(),
             SubPromptType::System,
@@ -154,8 +160,15 @@ impl JobPromptGenerator {
         job_task: String,
         ret_nodes: Vec<RetrievedNode>,
         summary_text: Option<String>,
+        job_step_history: Option<Vec<JobStepResult>>,
     ) -> Prompt {
         let mut prompt = Prompt::new();
+
+        // Add up to previous 10 step results from history
+        if let Some(step_history) = job_step_history {
+            prompt.add_step_history(step_history, 10, 98);
+        }
+
         prompt.add_content(
             "You are an advanced assistant who only has access to the provided content and your own knowledge to answer any question the user provides. Do not ask for further context or information in your answer to the user, but simply tell the user as much information as possible.".to_string(),
             SubPromptType::System,
