@@ -13,13 +13,15 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 use super::cron_creation_chain::CronCreationChainResponse;
+use super::cron_execution_chain::CronExecutionChainResponse;
 
 pub enum InferenceChain {
     QAChain,
     ToolExecutionChain,
     CodingChain,
     CronCreationChain,
-    CronExecutionChainSummary,
+    CronExecutionChainMainTask,
+    CronExecutionChainSubtask,
 }
 
 impl JobManager {
@@ -108,12 +110,18 @@ impl JobManager {
                     .await?;
                     eprintln!("Inference response content: {:?}", inference_response_content);
 
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone().cron_expression);
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_problem);
-                    new_execution_context
-                        .insert("previous_step_response".to_string(), inference_response_content.clone().pddl_plan_domain);
+                    new_execution_context.insert(
+                        "previous_step_response".to_string(),
+                        inference_response_content.clone().cron_expression,
+                    );
+                    new_execution_context.insert(
+                        "previous_step_response".to_string(),
+                        inference_response_content.clone().pddl_plan_problem,
+                    );
+                    new_execution_context.insert(
+                        "previous_step_response".to_string(),
+                        inference_response_content.clone().pddl_plan_domain,
+                    );
                 } else {
                     return Err(AgentError::AgentNotFound);
                 }
@@ -124,25 +132,50 @@ impl JobManager {
         Ok((inference_response_content, new_execution_context))
     }
 
-     pub async fn cron_inference_chain_router_summary(
+    pub async fn cron_inference_chain_router_summary(
         db: Arc<Mutex<ShinkaiDB>>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         task_description: String,
         web_content: String,
+        links: Vec<String>,
         prev_execution_context: HashMap<String, String>,
         user_profile: Option<ShinkaiName>,
+        chosen_chain: InferenceChain,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
-
-        let chosen_chain = InferenceChain::CronExecutionChainSummary;
-        let mut inference_response_content = String::new();
+        let mut inference_response_content: String = String::new();
         let mut new_execution_context = HashMap::new();
 
         // Note: Faking it until you merge it
         match chosen_chain {
-            InferenceChain::CronExecutionChainSummary => {
+            InferenceChain::CronExecutionChainMainTask => {
                 if let Some(agent) = agent_found {
-                    inference_response_content = JobManager::start_cron_execution_chain_for_summary(
+                    let response = JobManager::start_cron_execution_chain_for_main_task(
+                        db,
+                        full_job,
+                        agent,
+                        prev_execution_context,
+                        user_profile,
+                        task_description,
+                        web_content,
+                        links,
+                        0,
+                        6, // TODO: Make this configurable
+                        None,
+                    )
+                    .await?;
+                    inference_response_content = response.summary;
+                    eprintln!("Inference response content: {:?}", inference_response_content);
+
+                    new_execution_context
+                        .insert("previous_step_response".to_string(), inference_response_content.clone());
+                } else {
+                    return Err(AgentError::AgentNotFound);
+                }
+            }
+            InferenceChain::CronExecutionChainSubtask => {
+                if let Some(agent) = agent_found {
+                    inference_response_content = JobManager::start_cron_execution_chain_for_subtask(
                         db,
                         full_job,
                         agent,
@@ -154,6 +187,7 @@ impl JobManager {
                         6, // TODO: Make this configurable
                     )
                     .await?;
+
                     eprintln!("Inference response content: {:?}", inference_response_content);
 
                     new_execution_context

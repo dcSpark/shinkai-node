@@ -11,7 +11,7 @@ pub enum AgentError {
     ReqwestError(reqwest::Error),
     MissingInitialStepInExecutionPlan,
     FailedExtractingJSONObjectFromResponse(String),
-    FailedInferencingLocalLLM,
+    InferenceFailed,
     UserPromptMissingEBNFDefinition,
     NotAJobMessage,
     JobNotFound,
@@ -38,6 +38,7 @@ pub enum AgentError {
     InboxNameError(InboxNameError),
     InvalidCronCreationChainStage(String),
     WebScrapingFailed(String),
+    InvalidCronExecutionChainStage(String)
 }
 
 impl fmt::Display for AgentError {
@@ -53,7 +54,7 @@ impl fmt::Display for AgentError {
             AgentError::FailedExtractingJSONObjectFromResponse(s) => {
                 write!(f, "Could not find JSON Object in the LLM's response: {}", s)
             }
-            AgentError::FailedInferencingLocalLLM => {
+            AgentError::InferenceFailed => {
                 write!(f, "Failed inferencing and getting a valid response from the local LLM")
             }
             AgentError::UserPromptMissingEBNFDefinition => {
@@ -88,6 +89,7 @@ impl fmt::Display for AgentError {
             AgentError::InboxNameError(err) => write!(f, "InboxName error: {}", err),
             AgentError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
             AgentError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
+            AgentError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
         }
     }
 }

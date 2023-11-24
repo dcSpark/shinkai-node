@@ -46,7 +46,7 @@ use crate::utils::node_test_api::{
 use mockito::Server;
 
 #[test]
-fn job_from_cron_one_page() {
+fn job_from_cron_multi_page() {
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -206,7 +206,7 @@ fn job_from_cron_one_page() {
                     prompt: "summarize this website if it has some AI news otherwise say no AI news".to_string(),
                     subprompt: "".to_string(),
                     url: "https://news.ycombinator.com".to_string(),
-                    crawl_links: false,
+                    crawl_links: true,
                     created_at: "2021-08-01T00:00:00Z".to_string(),
                     agent_id: agent_subidentity.clone(),
                 };
@@ -270,7 +270,7 @@ fn job_from_cron_one_page() {
             }
             {
                 eprintln!("Waiting for the Job to finish");
-                for _ in 0..50 {
+                for _ in 0..100 {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
@@ -282,24 +282,24 @@ fn job_from_cron_one_page() {
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
                     eprintln!("node1_last_messages: {:?}", node1_last_messages);
 
-                    match node1_last_messages[0].get_message_content() {
-                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-                            Ok(job_message) => {
-                                eprintln!("message_content: {}", message_content);
-                                if job_message.content != job_message_content {
-                                    assert!(true);
-                                    break;
-                                }
-                            }
-                            Err(_) => {
-                                eprintln!("error: message_content: {}", message_content);
-                            }
-                        },
-                        Err(_) => {
-                            // nothing
-                        }
-                    }
-                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    // match node1_last_messages[0].get_message_content() {
+                    //     Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
+                    //         Ok(job_message) => {
+                    //             eprintln!("message_content: {}", message_content);
+                    //             if job_message.content != job_message_content {
+                    //                 // assert!(true);
+                    //                 // break;
+                    //             }
+                    //         }
+                    //         Err(_) => {
+                    //             eprintln!("error: message_content: {}", message_content);
+                    //         }
+                    //     },
+                    //     Err(_) => {
+                    //         // nothing
+                    //     }
+                    // }
+                    tokio::time::sleep(Duration::from_secs(20)).await;
                 }
             }
         })

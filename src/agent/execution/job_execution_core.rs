@@ -1,3 +1,4 @@
+use super::chains::inference_chain_router::InferenceChain;
 use super::job_prompts::JobPromptGenerator;
 use crate::agent::agent::Agent;
 use crate::agent::error::{self, AgentError};
@@ -311,6 +312,7 @@ impl JobManager {
                             return Ok(true);
                         }
                         KaiSchemaType::CronJob(cron_task) => {
+                            eprintln!("CronJob: {:?}", cron_task);
                             // Handle CronJob
                             JobManager::handle_cron_job(
                                 db.clone(),
@@ -519,7 +521,6 @@ impl JobManager {
         };
 
         // Call the download_and_parse method of the WebScraper
-        let mut structured_results = Vec::new();
         match scraper.download_and_parse().await {
             Ok(content) => {
                 shinkai_log(
@@ -527,53 +528,97 @@ impl JobManager {
                     ShinkaiLogLevel::Debug,
                     "Web scraping completed successfully",
                 );
-                if !cron_job.crawl_links {
-                    eprintln!("Content: {:?}", content.structured);
-                    let (inference_response_content, new_execution_context) =
-                        JobManager::cron_inference_chain_router_summary(
-                            db.clone(),
-                            agent_found.clone(),
-                            full_job.clone(),
-                            cron_job.prompt.clone(),
-                            content.structured.clone(),
-                            prev_execution_context,
-                            Some(profile.clone()),
-                        )
-                        .await?;
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Content: {:?}", content.structured).as_str(),
+                );
+                let links = WebScraper::extract_links(&content.unfiltered);
 
-                    // Create Job
-                    let job_id = full_job.job_id().to_string();
-                    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
-
-                    let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
-                        full_job.clone().job_id.to_string(),
-                        inference_response_content.clone(),
-                        inbox_name.to_string(),
-                        identity_secret_key,
-                        profile.node_name.clone(),
-                        profile.node_name.clone(),
+                let (inference_response_content, new_execution_context) =
+                    JobManager::cron_inference_chain_router_summary(
+                        db.clone(),
+                        agent_found.clone(),
+                        full_job.clone(),
+                        cron_job.prompt.clone(),
+                        content.structured.clone(),
+                        links,
+                        prev_execution_context.clone(),
+                        Some(profile.clone()),
+                        // TODO(Nico): probably the router should do the inference but we are not clear how yet
+                        InferenceChain::CronExecutionChainMainTask,
                     )
-                    .unwrap();
+                    .await?;
+                shinkai_log(
+                    ShinkaiLogOption::CronExecution,
+                    ShinkaiLogLevel::Debug,
+                    format!("Crawl links: {}", cron_job.crawl_links).as_str(),
+                );
+                // Create Job
+                let job_id = full_job.job_id().to_string();
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
 
-                    // Save response data to DB
+                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                    full_job.clone().job_id.to_string(),
+                    inference_response_content.clone(),
+                    inbox_name.to_string(),
+                    clone_signature_secret_key(&identity_secret_key),
+                    profile.node_name.clone(),
+                    profile.node_name.clone(),
+                )
+                .unwrap();
+
+                // Save response data to DB
+                {
                     let shinkai_db = db.lock().await;
                     shinkai_db.add_step_history(job_id.clone(), inference_response_content.clone())?;
                     shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
                     shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                 }
+
                 // If crawl_links is true, scan for all the links in content and download_and_parse them as well
-                else {
-                    let links = WebScraper::extract_links(&content.unfiltered);
+                if cron_job.crawl_links {
+                    let links = WebScraper::extract_links(&inference_response_content);
+                    eprintln!("Extracted Links: {:?}", links);
 
-                    // TODO: match content with links using AI
-                    // Better: find associated links for this content list
-
-                    for link in links.into_iter().take(2) {
+                    for link in links {
                         let mut scraper_for_link = scraper.clone();
                         scraper_for_link.task.url = link.clone();
                         match scraper_for_link.download_and_parse().await {
                             Ok(content) => {
-                                structured_results.push(content);
+                                eprintln!("Link: {:?}", link);
+                                eprintln!("web scrapping result {:?}", content.structured);
+                                let (inference_response_content, new_execution_context) =
+                                    JobManager::cron_inference_chain_router_summary(
+                                        db.clone(),
+                                        agent_found.clone(),
+                                        full_job.clone(),
+                                        cron_job.prompt.clone(),
+                                        content.structured.clone(),
+                                        vec![],
+                                        prev_execution_context.clone(),
+                                        Some(profile.clone()),
+                                        InferenceChain::CronExecutionChainSubtask,
+                                    )
+                                    .await?;
+                                
+                                eprintln!("Inference response content: {:?}", inference_response_content);
+
+                                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+                                    full_job.clone().job_id.to_string(),
+                                    inference_response_content.clone(),
+                                    inbox_name.to_string(),
+                                    clone_signature_secret_key(&identity_secret_key),
+                                    profile.node_name.clone(),
+                                    profile.node_name.clone(),
+                                )
+                                .unwrap();
+
+                                // Save response data to DB
+                                let shinkai_db = db.lock().await;
+                                shinkai_db.add_step_history(job_id.clone(), inference_response_content.clone())?;
+                                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
+                                shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                             }
                             Err(e) => {
                                 eprintln!("Web scraping failed for link: {:?}, error: {:?}", link, e);
@@ -585,44 +630,6 @@ impl JobManager {
                             }
                         }
                     }
-
-                    // TODO: if crawl_links is false, we need to apply AI to the main content
-
-                    eprintln!("Results #: {:?}", structured_results.len());
-                    eprintln!("Creating job");
-                    let job_creation = JobCreationInfo {
-                        scope: JobScope::new_default(),
-                    };
-
-                    eprintln!("Job Creation: {:?}", job_creation);
-                    eprintln!("Cron job: {:?}", cron_job);
-
-                    // // Create Job
-                    // let job_id = job_manager
-                    //     .lock()
-                    //     .await
-                    //     .process_job_creation(job_creation, &cron_job.agent_id)
-                    //     .await?;
-
-                    // eprintln!("Results: {:?} \n\n\n\n\n", structured_results);
-                    // for result in structured_results {
-                    //     // Concatenate the result with cron_job.prompt
-                    //     let content = format!("{} (try to extract their links from the content) --- website content --- {} --- end website content ---", cron_job.prompt, result.structured);
-                    //     eprintln!("Content: {:?}", content);
-
-                    //     // Add Message to Job Queue
-                    //     let job_message = JobMessage {
-                    //         job_id: job_id.clone(),
-                    //         content,
-                    //         files_inbox: "".to_string(),
-                    //     };
-
-                    //     job_manager
-                    //         .lock()
-                    //         .await
-                    //         .add_job_message_to_job_queue(&job_message, &node_profile_name)
-                    //         .await?;
-                    // }
                 }
             }
             Err(e) => {
