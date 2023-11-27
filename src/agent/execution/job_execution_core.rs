@@ -337,6 +337,28 @@ impl JobManager {
                             return Err(AgentError::AgentNotFound);
                         }
                     }
+                } else if filename.ends_with(".png") || filename.ends_with(".jpg") || filename.ends_with(".jpeg") || filename.ends_with(".gif") {
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        &format!("Found an image file: {}", filename),
+                    );
+
+                    // TODO: check if we have a model available to process the image
+
+
+                    // Call a new function
+                    JobManager::handle_image_file(
+                        db.clone(),
+                        agent_found.clone(),
+                        full_job.clone(),
+                        filename,
+                        content,
+                        profile.clone(),
+                        clone_signature_secret_key(&identity_secret_key),
+                    )
+                    .await?;
+                    return Ok(true);
                 }
             }
         }
