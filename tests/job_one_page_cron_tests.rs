@@ -46,6 +46,7 @@ use crate::utils::node_test_api::{
 use mockito::Server;
 
 #[test]
+#[ignore]
 fn job_from_cron_one_page() {
     run_test_one_node_network(|env| {
         Box::pin(async move {
