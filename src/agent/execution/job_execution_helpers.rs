@@ -55,7 +55,7 @@ impl JobManager {
             Ok(res) => res,
             Err(e) => {
                 eprintln!("Task panicked with error: {:?}", e);
-                return Err(AgentError::FailedInferencingLocalLLM);
+                return Err(AgentError::InferenceFailed);
             }
         };
 
@@ -111,7 +111,7 @@ impl JobManager {
             Ok(res) => res?,
             Err(e) => {
                 eprintln!("Task panicked with error: {:?}", e);
-                return Err(AgentError::FailedInferencingLocalLLM);
+                return Err(AgentError::InferenceFailed);
             }
         };
 

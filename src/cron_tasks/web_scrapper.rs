@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::{fs, fmt};
+use std::{fmt, fs};
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use reqwest::multipart::{Form, Part};
@@ -51,12 +51,17 @@ pub struct WebScraperResult {
 }
 
 impl WebScraper {
-    pub async fn download_and_parse(&self) -> Result<WebScraperResult, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let url = if self.task.url.starts_with("http://") || self.task.url.starts_with("https://") {
+    pub async fn download_and_parse(
+        &self,
+    ) -> Result<WebScraperResult, Box<dyn std::error::Error + Send + Sync + 'static>> {
+        let mut url = if self.task.url.starts_with("http://") || self.task.url.starts_with("https://") {
             self.task.url.clone()
         } else {
             format!("http://{}", &self.task.url)
         };
+
+        // Remove trailing slash if it exists
+        url = url.trim_end_matches('/').to_string();
 
         // Download the content
         eprintln!("Downloading: {}", &url);
@@ -90,7 +95,6 @@ impl WebScraper {
 
         // Print the content to the console
         let unfiltered = String::from_utf8_lossy(&content).to_string();
-        // println!("\n\n\n Content: {} \n\n\n", String::from_utf8_lossy(&content));
 
         // Create a multipart form with the file
         let part =

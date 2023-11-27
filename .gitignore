@@ -32,3 +32,5 @@ parse_pdf_to_string_list_output.txt
 zeko_word_listing.txt
 .idea
 tmp_cron_downloads
+shinkai-mini-apps/shinkai-tray/src-tauri/models
+shinkai-mini-apps/shinkai-tray/src-tauri/db

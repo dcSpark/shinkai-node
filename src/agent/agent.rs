@@ -69,7 +69,7 @@ impl Agent {
 
         match handle.await {
             Ok(response) => Ok(response),
-            Err(e) => Err(AgentError::FailedInferencingLocalLLM),
+            Err(e) => Err(AgentError::InferenceFailed),
         }
     }
 

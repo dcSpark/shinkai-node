@@ -421,7 +421,7 @@ fn planner_integration_test() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("APIUpdateJobToFinished response: {:?}", response);
                 assert_eq!(response, (), "Expected APIUpdateJobToFinished response to be ()");
-                // tokio::time::sleep(Duration::from_secs(360)).await;
+                tokio::time::sleep(Duration::from_secs(360)).await;
             }
         })
     });
