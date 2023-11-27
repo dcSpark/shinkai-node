@@ -542,27 +542,32 @@ impl JobPromptGenerator {
         prompt.add_content(
             format!("You are a very helpful assistant that's very good at completing a task.",),
             SubPromptType::System,
+            99,
         );
         prompt.add_content(
             format!("The current task at hand is: `{}`", description),
             SubPromptType::User,
+            100,
         );
         prompt.add_content(
             format!(
-                "Implement the task previously mentioned for the following content: ---content---\n`{}`\n---end_content---",
+                "Implement the task previously mentioned for the following content: ---content---\n `{}` \n---end_content---",
                 web_content
             ),
             SubPromptType::User,
+            100
         );
         prompt.add_content(
             format!(
                 "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
             ),
-            SubPromptType::User);
+            SubPromptType::User,
+            100);
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -574,10 +579,12 @@ impl JobPromptGenerator {
         prompt.add_content(
             format!("You are a very helpful assistant that's very good at completing a task.",),
             SubPromptType::System,
+            100,
         );
         prompt.add_content(
             format!("The current task at hand is: `{}`", description),
             SubPromptType::User,
+            100,
         );
         prompt.add_content(
                 format!(
@@ -585,16 +592,19 @@ impl JobPromptGenerator {
                     summary
                 ),
                 SubPromptType::User,
+                100,
             );
         prompt.add_content(
                 format!(
                     "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field. You can only answer true or false nothing else.",
                 ),
-                SubPromptType::User);
+                SubPromptType::User,
+                100);
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -605,10 +615,12 @@ impl JobPromptGenerator {
         prompt.add_content(
             format!("You are a very helpful assistant that's very good at completing a task.",),
             SubPromptType::System,
+            100,
         );
         prompt.add_content(
             format!("The original task was: ---task---{}---end_task--- and the current task at hand is for you to match the answer and add links to that task accordingly ---task_response--- {} ---end_response---", task_description, summary),
             SubPromptType::User,
+            100,
         );
         prompt.add_content(
                     format!(
@@ -616,16 +628,19 @@ impl JobPromptGenerator {
                         links.join(", ")
                     ),
                     SubPromptType::User,
+                    100,
                 );
         prompt.add_content(
                     format!(
                         "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
                     ),
-                    SubPromptType::User);
+                    SubPromptType::User,
+                    100);
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt
@@ -637,10 +652,12 @@ impl JobPromptGenerator {
         prompt.add_content(
             format!("You are a very helpful assistant that's very good at completing a task.",),
             SubPromptType::System,
+            100,
         );
         prompt.add_content(
             format!("The current main task at hand is: `{}`", description),
             SubPromptType::User,
+            100,
         );
         prompt.add_content(
                 format!(
@@ -648,16 +665,19 @@ impl JobPromptGenerator {
                     web_content
                 ),
                 SubPromptType::User,
+                100,
             );
         prompt.add_content(
                 format!(
                     "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
                 ),
-                SubPromptType::User);
+                SubPromptType::User,
+                100);
 
         prompt.add_ebnf(
             String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
             SubPromptType::System,
+            100,
         );
 
         prompt

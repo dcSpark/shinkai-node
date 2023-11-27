@@ -42,7 +42,7 @@ pub enum AgentError {
     InboxNameError(InboxNameError),
     InvalidCronCreationChainStage(String),
     WebScrapingFailed(String),
-    InvalidCronExecutionChainStage(String)
+    InvalidCronExecutionChainStage(String),
     AnyhowError(AnyhowError),
 }
 

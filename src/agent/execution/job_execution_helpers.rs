@@ -84,6 +84,7 @@ impl JobManager {
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Error,
                     "FailedExtractingJSONObjectFromResponse",
+                );
                 match JobManager::json_not_found_retry(agent.clone(), text.clone(), filled_prompt).await {
                     Ok(json) => Ok(json),
                     Err(e) => Err(e),

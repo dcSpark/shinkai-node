@@ -414,8 +414,7 @@ impl JobManager {
 
                 // Save response data to DB
                 let shinkai_db = db.lock().await;
-                shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
-                shinkai_db.add_step_history(job_message.job_id.clone(), agg_response)?;
+                shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content, agg_response)?;
                 shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
                 shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
@@ -493,7 +492,7 @@ impl JobManager {
                 // Save response data to DB
                 {
                     let shinkai_db = db.lock().await;
-                    shinkai_db.add_step_history(job_id.clone(), inference_response_content.clone())?;
+                    shinkai_db.add_step_history(job_id.clone(), "".to_string(), inference_response_content.clone())?;
                     shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
                     shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                 }
@@ -523,7 +522,7 @@ impl JobManager {
                                         InferenceChain::CronExecutionChainSubtask,
                                     )
                                     .await?;
-                                
+
                                 eprintln!("Inference response content: {:?}", inference_response_content);
 
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
@@ -538,7 +537,11 @@ impl JobManager {
 
                                 // Save response data to DB
                                 let shinkai_db = db.lock().await;
-                                shinkai_db.add_step_history(job_id.clone(), inference_response_content.clone())?;
+                                shinkai_db.add_step_history(
+                                    job_id.clone(),
+                                    "".to_string(),
+                                    inference_response_content.clone(),
+                                )?;
                                 shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
                                 shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                             }
