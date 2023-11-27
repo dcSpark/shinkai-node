@@ -2,7 +2,9 @@ use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
-use crate::source::VRSource;
+pub use crate::source::{
+    DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
+};
 use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
 use std::collections::HashMap;
@@ -75,7 +77,7 @@ impl RetrievedNode {
     /// Formats the data, source, and metadata of all provided `RetrievedNode`s into a bullet-point
     /// list as a single string. This is to be included inside of a prompt to an LLM.
     /// Includes `max_characters` to allow specifying a hard-cap maximum that will be respected.
-    pub fn format_ret_nodes_for_prompt(ret_nodes: Vec<RetrievedNode>, max_characters: usize) -> String {
+    pub fn format_ret_nodes_for_prompt_single_string(ret_nodes: Vec<RetrievedNode>, max_characters: usize) -> String {
         if ret_nodes.is_empty() {
             return String::new();
         }
@@ -204,19 +206,75 @@ impl Node {
         Self::new_vector_resource(id.to_string(), vector_resource, metadata)
     }
 
-    /// Attempts to return the text content from the Node. Errors if content is a BaseVectorResource
-    pub fn get_text_content(&self) -> Result<String, VRError> {
-        match &self.content {
-            NodeContent::Text(s) => Ok(s.clone()),
-            NodeContent::Resource(_) => Err(VRError::ContentIsNonMatchingType),
+    /// Create a new ExternalContent-holding Node with a provided String id
+    pub fn new_external_content(
+        id: String,
+        external_content: &SourceReference,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Self {
+        Node {
+            id,
+            content: NodeContent::ExternalContent(external_content.clone()),
+            metadata,
+            data_tag_names: vec![],
         }
     }
 
-    /// Attempts to return the BaseVectorResource from the Node. Errors if content is text
+    /// Create a new ExternalContent-holding Node with a provided u64 id, which gets converted to string internally
+    pub fn new_external_content_with_integer_id(
+        id: u64,
+        external_content: &SourceReference,
+        metadata: Option<HashMap<String, String>>,
+    ) -> Self {
+        Self::new_external_content(id.to_string(), external_content, metadata)
+    }
+
+    /// Creates a new Node from given content with a String id.
+    pub fn from_content(
+        id: String,
+        content: NodeContent,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: Vec<String>,
+    ) -> Self {
+        Self {
+            id,
+            content,
+            metadata,
+            data_tag_names,
+        }
+    }
+
+    /// Creates a new Node from given content with a u64 id
+    pub fn from_content_with_integer_id(
+        id: u64,
+        content: NodeContent,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: Vec<String>,
+    ) -> Self {
+        Self::from_content(id.to_string(), content, metadata, data_tag_names)
+    }
+
+    /// Attempts to return the text content from the Node. Errors if is different type
+    pub fn get_text_content(&self) -> Result<String, VRError> {
+        match &self.content {
+            NodeContent::Text(s) => Ok(s.clone()),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return the BaseVectorResource from the Node. Errors if is different type
     pub fn get_vector_resource_content(&self) -> Result<BaseVectorResource, VRError> {
         match &self.content {
-            NodeContent::Text(_) => Err(VRError::ContentIsNonMatchingType),
             NodeContent::Resource(resource) => Ok(resource.clone()),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return the ExternalContent from the Node. Errors if content is not ExternalContent
+    pub fn get_external_content(&self) -> Result<SourceReference, VRError> {
+        match &self.content {
+            NodeContent::ExternalContent(external_content) => Ok(external_content.clone()),
+            _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
 }
@@ -226,12 +284,12 @@ impl Node {
 pub enum NodeContent {
     Text(String),
     Resource(BaseVectorResource),
+    ExternalContent(SourceReference),
 }
 
 /// Struct which holds descriptive information about a given Vector Resource.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRHeader {
-    /// The identifier
     pub resource_name: String,
     pub resource_id: String,
     pub resource_base_type: VRBaseType,

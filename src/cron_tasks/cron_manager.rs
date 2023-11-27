@@ -142,7 +142,6 @@ impl CronManager {
             loop {
                 let jobs_to_process: HashMap<String, CronTask> = {
                     let mut db_lock = db.lock().await;
-
                     db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
                 };
                 shinkai_log(
@@ -226,6 +225,9 @@ impl CronManager {
         let job_creation = JobCreationInfo {
             scope: JobScope::new_default(),
         };
+
+        eprintln!("Job Creation: {:?}", job_creation);
+        eprintln!("Cron job: {:?}", cron_job);
 
         // Create Job
         let job_id = job_manager

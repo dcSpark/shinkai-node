@@ -1,5 +1,9 @@
 use crate::db::db_errors::ShinkaiDBError;
-use shinkai_message_primitives::{schemas::{shinkai_name::ShinkaiNameError, inbox_name::InboxNameError}, shinkai_message::shinkai_message_error::ShinkaiMessageError};
+use anyhow::Error as AnyhowError;
+use shinkai_message_primitives::{
+    schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
+    shinkai_message::shinkai_message_error::ShinkaiMessageError,
+};
 use shinkai_vector_resources::resource_errors::VRError;
 use std::fmt;
 use tokio::task::JoinError;
@@ -39,6 +43,7 @@ pub enum AgentError {
     InvalidCronCreationChainStage(String),
     WebScrapingFailed(String),
     InvalidCronExecutionChainStage(String)
+    AnyhowError(AnyhowError),
 }
 
 impl fmt::Display for AgentError {
@@ -90,7 +95,14 @@ impl fmt::Display for AgentError {
             AgentError::InvalidCronCreationChainStage(s) => write!(f, "Invalid cron creation chain stage: {}", s),
             AgentError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
             AgentError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
+            AgentError::AnyhowError(err) => write!(f, "{}", err),
         }
+    }
+}
+
+impl From<AnyhowError> for AgentError {
+    fn from(error: AnyhowError) -> Self {
+        AgentError::AnyhowError(error)
     }
 }
 

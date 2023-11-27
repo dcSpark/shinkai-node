@@ -4,7 +4,9 @@ use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::{Node, NodeContent, RetrievedNode, TraversalMethod, VRPath, VectorResource};
+use crate::vector_resource::{
+    Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
+};
 use serde_json;
 use std::collections::HashMap;
 
@@ -146,14 +148,21 @@ impl DocumentVectorResource {
     /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of Nodes below and above the most
     /// similar Node.
-    ///
-    /// Does not traverse past the top level.
+    /// TODO: Update to traverse past root depth and properly fetch
+    /// surrounding nodes using path
     pub fn vector_search_proximity(
         &self,
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        let search_results = self.vector_search_with_options(query, 1, &TraversalMethod::UntilDepth(0), None);
+        let search_results = self.vector_seach_customized(
+            query,
+            1,
+            TraversalMethod::Exhaustive,
+            &vec![TraversalOption::UntilDepth(0)],
+            // &vec![TraversalOption::LimitTraversalToType(VRBaseType::Document)],
+            None,
+        );
         let most_similar_node = search_results.first().ok_or(VRError::VectorResourceEmpty)?;
         let most_similar_id = most_similar_node
             .node
@@ -260,12 +269,7 @@ impl DocumentVectorResource {
         tag_names: &Vec<String>,
     ) {
         let id = self.node_count + 1;
-        let node = match data {
-            NodeContent::Text(text) => Node::new_with_integer_id(id, &text, metadata.clone(), tag_names),
-            NodeContent::Resource(resource) => {
-                Node::new_vector_resource_with_integer_id(id, &resource, metadata.clone())
-            }
-        };
+        let node = Node::from_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
         self.data_tag_index.add_node(&node);
 
         // Embedding details
@@ -350,12 +354,8 @@ impl DocumentVectorResource {
         let index = (id - 1) as usize;
 
         // Next create the new node, and replace the old node in the nodes list
-        let new_node = match new_data {
-            NodeContent::Text(text) => Node::new_with_integer_id(id, &text, new_metadata.clone(), new_tag_names),
-            NodeContent::Resource(resource) => {
-                Node::new_vector_resource_with_integer_id(id, &resource, new_metadata.clone())
-            }
-        };
+        let new_node =
+            Node::from_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
 
         // Then deletion of old node from index and addition of new node

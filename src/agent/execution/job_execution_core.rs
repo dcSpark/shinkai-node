@@ -30,7 +30,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::{SourceDocumentType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, VRSource};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -227,8 +227,11 @@ impl JobManager {
 
         // Save response data to DB
         let shinkai_db = db.lock().await;
-        shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content)?;
-        shinkai_db.add_step_history(job_message.job_id.clone(), inference_response_content.to_string())?;
+        shinkai_db.add_step_history(
+            job_message.job_id.clone(),
+            job_message.content,
+            inference_response_content.to_string(),
+        )?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
         shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
@@ -334,86 +337,6 @@ impl JobManager {
                             return Err(AgentError::AgentNotFound);
                         }
                     }
-                    // old code. Remove when the rest is working
-
-                    // // TODO: this needs to be refactored to include for a different path with a diff router for Cron
-                    // let cron_task_request = match kai_file.schema {
-                    //     KaiSchemaType::CronJobRequest(cron_task_request) => cron_task_request,
-                    //     _ => {
-                    //         shinkai_log(
-                    //             ShinkaiLogOption::JobExecution,
-                    //             ShinkaiLogLevel::Error,
-                    //             "Unexpected schema type in KaiJobFile",
-                    //         );
-                    //         return Err(AgentError::AgentNotFound);
-                    //     }
-                    // };
-
-                    // // Setup initial data to get ready to call a specific inference chain
-                    // let prev_execution_context = full_job.clone().execution_context.clone();
-
-                    // // Call the inference chain router to choose which chain to use, and call it
-                    // let (inference_response_content, new_execution_context) = JobManager::alt_inference_chain_router(
-                    //     db.clone(),
-                    //     agent_found.clone(),
-                    //     full_job.clone(),
-                    //     job_message.clone(),
-                    //     cron_task_request.clone(),
-                    //     prev_execution_context,
-                    //     Some(profile.clone()),
-                    // )
-                    // .await?;
-
-                    // // Prepare data to save inference response to the DB
-                    // let cron_task_response = CronTaskResponse {
-                    //     cron_task_request: cron_task_request,
-                    //     cron_description: inference_response_content.cron_expression.to_string(),
-                    //     pddl_plan_problem: inference_response_content.pddl_plan_problem.to_string(),
-                    //     pddl_plan_domain: Some(inference_response_content.pddl_plan_domain.to_string()),
-                    // };
-
-                    // let agg_response = cron_task_response.to_string();
-                    // let identity_secret_key_clone = clone_signature_secret_key(&identity_secret_key);
-                    // let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
-
-                    // let kai_file = KaiJobFile {
-                    //     schema: KaiSchemaType::CronJobResponse(cron_task_response.clone()),
-                    //     shinkai_profile: Some(profile.clone()),
-                    //     agent_id: agent.id.clone(),
-                    // };
-
-                    // let inbox_name_result = JobManager::insert_kai_job_file_into_inbox(db.clone(), "cron_request".to_string(), kai_file).await;
-
-                    // match inbox_name_result {
-                    //     Ok(inbox_name) => {
-                    //         let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
-                    //             full_job.clone().job_id.to_string(),
-                    //             agg_response.clone(),
-                    //             inbox_name,
-                    //             identity_secret_key_clone,
-                    //             profile.node_name.clone(),
-                    //             profile.node_name.clone(),
-                    //         )
-                    //         .unwrap();
-
-                    //         shinkai_log(
-                    //             ShinkaiLogOption::JobExecution,
-                    //             ShinkaiLogLevel::Debug,
-                    //             format!("process_inference_chain> shinkai_message: {:?}", shinkai_message).as_str(),
-                    //         );
-
-                    //         // Save response data to DB
-                    //         let shinkai_db = db.lock().await;
-                    //         shinkai_db.add_step_history(job_message.job_id.clone(), job_message.clone().content)?;
-                    //         shinkai_db.add_step_history(job_message.job_id.clone(), agg_response)?;
-                    //         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
-                    //         shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
-
-                    //         return Ok(true);
-                    //     },
-                    //     Err(err) => {
-                    //         return Err(err);
-                    //     }
                 }
             }
         }
@@ -557,7 +480,6 @@ impl JobManager {
                 // Create Job
                 let job_id = full_job.job_id().to_string();
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
-
                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                     full_job.clone().job_id.to_string(),
                     inference_response_content.clone(),
@@ -641,7 +563,6 @@ impl JobManager {
                 return Err(AgentError::WebScrapingFailed("Your error message".into()));
             }
         }
-
         Ok(())
     }
 
@@ -795,7 +716,7 @@ impl JobManager {
                     resource: resource,
                     source: SourceFile::new(
                         filename.clone(),
-                        SourceFileType::Document(SourceDocumentType::Pdf),
+                        SourceFileType::Document(DocumentFileType::Pdf),
                         content,
                     ),
                 };

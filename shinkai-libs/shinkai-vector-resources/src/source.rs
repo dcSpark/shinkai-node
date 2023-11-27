@@ -24,21 +24,27 @@ impl VRSource {
 
     /// Creates a VRSource from an external URI or URL
     pub fn new_uri_ref(uri: &str) -> Self {
-        VRSource::Reference(SourceReference::ExternalURI(uri.to_string()))
+        Self::Reference(SourceReference::new_external_uri(uri.to_string()))
     }
 
     /// Creates a VRSource reference to an original source file
-    pub fn new_source_file_ref(file_name: String, file_type: SourceFileType, content_hash: String) -> Self {
+    pub fn new_source_file_ref(
+        file_name: String,
+        file_type: SourceFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
         VRSource::Reference(SourceReference::FileRef(SourceFileReference {
             file_name,
             file_type,
+            file_location,
             content_hash,
         }))
     }
 
     /// Creates a VRSource reference using an arbitrary String
-    pub fn new_other_ref(other: String) -> Self {
-        VRSource::Reference(SourceReference::Other(other))
+    pub fn new_other_ref(other: &str) -> Self {
+        Self::Reference(SourceReference::new_other(other.to_string()))
     }
 
     /// Creates a VRSource which represents no/unknown source.
@@ -63,12 +69,7 @@ impl VRSource {
         let file_name_without_extension = re.replace(file_name, "");
         let content_hash = UnstructuredParser::generate_data_hash(file_buffer);
         // Attempt to auto-detect, else use file extension
-        let file_type = if let Some(f_type) = SourceFileType::detect_file_type(file_name) {
-            f_type
-        } else {
-            return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
-        };
-
+        let file_type = SourceFileType::detect_file_type(file_name)?;
         if file_name.starts_with("http") {
             Ok(VRSource::new_uri_ref(&file_name_without_extension))
         } else {
@@ -77,6 +78,7 @@ impl VRSource {
                 file_name_without_extension.to_string(),
                 file_type,
                 content_hash,
+                None,
             ))
         }
     }
@@ -111,8 +113,11 @@ impl SourceFile {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+/// Type that acts as a reference to external file/content/data
 pub enum SourceReference {
+    /// A typed specific file
     FileRef(SourceFileReference),
+    /// An untyped arbitrary external URI
     ExternalURI(String),
     Other(String),
 }
@@ -125,12 +130,156 @@ impl SourceReference {
             SourceReference::Other(s) => s.clone(),
         }
     }
+
+    /// Creates a new SourceReference for a file, auto-detecting the file type
+    /// by attempting to parse the extension in the file_name.
+    /// Errors if extension is not found or not implemented yet.
+    pub fn new_file_reference_auto_detect(
+        file_name: String,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Result<Self, VRError> {
+        let file_type = SourceFileType::detect_file_type(&file_name)?;
+        Ok(SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type,
+            content_hash,
+            file_location,
+        }))
+    }
+
+    /// Creates a new SourceReference for an image file
+    pub fn new_file_image_reference(
+        file_name: String,
+        image_type: ImageFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Image(image_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for a document file
+    pub fn new_file_doc_reference(
+        file_name: String,
+        doc_type: DocumentFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Document(doc_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for a code file
+    pub fn new_file_code_reference(
+        file_name: String,
+        code_type: CodeFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Code(code_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for a config file
+    pub fn new_file_config_reference(
+        file_name: String,
+        config_type: ConfigFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::ConfigFileType(config_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for a video file
+    pub fn new_file_video_reference(
+        file_name: String,
+        video_type: VideoFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Video(video_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for an audio file
+    pub fn new_file_audio_reference(
+        file_name: String,
+        audio_type: AudioFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Audio(audio_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for a Shinkai file
+    pub fn new_file_shinkai_reference(
+        file_name: String,
+        shinkai_type: ShinkaiFileType,
+        content_hash: String,
+        file_location: Option<String>,
+    ) -> Self {
+        SourceReference::FileRef(SourceFileReference {
+            file_name,
+            file_type: SourceFileType::Shinkai(shinkai_type),
+            content_hash,
+            file_location,
+        })
+    }
+
+    /// Creates a new SourceReference for an external URI
+    pub fn new_external_uri(uri: String) -> Self {
+        SourceReference::ExternalURI(uri)
+    }
+
+    /// Creates a new SourceReference for custom use cases
+    pub fn new_other(s: String) -> Self {
+        SourceReference::Other(s)
+    }
+}
+
+impl fmt::Display for SourceReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceReference::FileRef(reference) => write!(f, "{}", reference),
+            SourceReference::ExternalURI(uri) => write!(f, "{}", uri),
+            SourceReference::Other(s) => write!(f, "{}", s),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
+    /// Local path or external URI to file
+    pub file_location: Option<String>,
     pub content_hash: String,
 }
 
@@ -145,33 +294,72 @@ impl SourceFileReference {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum SourceFileType {
-    Document(SourceDocumentType),
-    Image(SourceImageType),
-}
-
-impl SourceFileType {
-    /// Given an input file_name with an extension,
-    /// outputs the correct SourceFileType
-    pub fn detect_file_type(file_name: &str) -> Option<Self> {
-        let re = Regex::new(r"\.([a-zA-Z0-9]+)$").unwrap();
-        let extension = re.captures(file_name)?.get(1)?.as_str();
-
-        if let Ok(img_type) = SourceImageType::from_str(extension) {
-            return Some(SourceFileType::Image(img_type));
-        }
-
-        if let Ok(doc_type) = SourceDocumentType::from_str(extension) {
-            return Some(SourceFileType::Document(doc_type));
-        }
-
-        None
+impl fmt::Display for SourceFileReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "File Name: {}, File Type: {}, File Location: {}, Content Hash: {}",
+            self.file_name,
+            self.file_type,
+            self.file_location.as_deref().unwrap_or("None"),
+            self.content_hash
+        )
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum SourceImageType {
+pub enum SourceFileType {
+    Document(DocumentFileType),
+    Image(ImageFileType),
+    Code(CodeFileType),
+    ConfigFileType(ConfigFileType),
+    Video(VideoFileType),
+    Audio(AudioFileType),
+    Shinkai(ShinkaiFileType),
+}
+
+impl SourceFileType {
+    /// Given an input file_name with an extension, outputs the correct SourceFileType
+    /// or an error if the extension cannot be found or is not supported yet
+    pub fn detect_file_type(file_name: &str) -> Result<Self, VRError> {
+        let re = Regex::new(r"\.([a-zA-Z0-9]+)$").unwrap();
+        let extension = if file_name.starts_with('.') {
+            file_name
+        } else {
+            re.captures(file_name)
+                .and_then(|cap| cap.get(1))
+                .map(|m| m.as_str())
+                .ok_or_else(|| VRError::CouldNotDetectFileType(file_name.to_string()))?
+        };
+
+        if let Ok(img_type) = ImageFileType::from_str(extension) {
+            return Ok(SourceFileType::Image(img_type));
+        }
+
+        if let Ok(doc_type) = DocumentFileType::from_str(extension) {
+            return Ok(SourceFileType::Document(doc_type));
+        }
+
+        return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
+    }
+}
+
+impl fmt::Display for SourceFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SourceFileType::Document(doc_type) => write!(f, "{}", doc_type),
+            SourceFileType::Image(img_type) => write!(f, "{}", img_type),
+            SourceFileType::Code(code_type) => write!(f, "{}", code_type),
+            SourceFileType::ConfigFileType(config_type) => write!(f, "{}", config_type),
+            SourceFileType::Video(video_type) => write!(f, "{}", video_type),
+            SourceFileType::Audio(audio_type) => write!(f, "{}", audio_type),
+            SourceFileType::Shinkai(shinkai_type) => write!(f, "{}", shinkai_type),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ImageFileType {
     Png,
     Jpeg,
     Gif,
@@ -179,10 +367,56 @@ pub enum SourceImageType {
     Tiff,
     Svg,
     Webp,
+    Ico,
+    Heic,
+    Raw,
+    Other(String),
+}
+
+impl fmt::Display for ImageFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ImageFileType::Png => "png",
+                ImageFileType::Jpeg => "jpeg",
+                ImageFileType::Gif => "gif",
+                ImageFileType::Bmp => "bmp",
+                ImageFileType::Tiff => "tiff",
+                ImageFileType::Svg => "svg",
+                ImageFileType::Webp => "webp",
+                ImageFileType::Ico => "ico",
+                ImageFileType::Heic => "heic",
+                ImageFileType::Raw => "raw",
+                ImageFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for ImageFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "png" => Ok(ImageFileType::Png),
+            "jpeg" => Ok(ImageFileType::Jpeg),
+            "gif" => Ok(ImageFileType::Gif),
+            "bmp" => Ok(ImageFileType::Bmp),
+            "tiff" => Ok(ImageFileType::Tiff),
+            "svg" => Ok(ImageFileType::Svg),
+            "webp" => Ok(ImageFileType::Webp),
+            "ico" => Ok(ImageFileType::Ico),
+            "heic" => Ok(ImageFileType::Heic),
+            "raw" => Ok(ImageFileType::Raw),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum SourceDocumentType {
+pub enum DocumentFileType {
     Pdf,
     Md,
     Txt,
@@ -197,96 +431,363 @@ pub enum SourceDocumentType {
     Xlsx,
     Ppt,
     Pptx,
+    Xml,
+    Json,
+    Yaml,
+    Ps,
+    Tex,
+    Latex,
+    Ods,
+    Odp,
+    Other(String),
 }
 
-impl fmt::Display for SourceFileType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SourceFileType::Document(doc_type) => write!(f, "{}", doc_type),
-            SourceFileType::Image(img_type) => write!(f, "{}", img_type),
-        }
-    }
-}
-
-impl fmt::Display for SourceImageType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                SourceImageType::Png => "png",
-                SourceImageType::Jpeg => "jpeg",
-                SourceImageType::Gif => "gif",
-                SourceImageType::Bmp => "bmp",
-                SourceImageType::Tiff => "tiff",
-                SourceImageType::Svg => "svg",
-                SourceImageType::Webp => "webp",
-            }
-        )
-    }
-}
-
-impl fmt::Display for SourceDocumentType {
+impl fmt::Display for DocumentFileType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                SourceDocumentType::Pdf => "pdf",
-                SourceDocumentType::Md => "md",
-                SourceDocumentType::Txt => "txt",
-                SourceDocumentType::Epub => "epub",
-                SourceDocumentType::Doc => "doc",
-                SourceDocumentType::Docx => "docx",
-                SourceDocumentType::Rtf => "rtf",
-                SourceDocumentType::Odt => "odt",
-                SourceDocumentType::Html => "html",
-                SourceDocumentType::Csv => "csv",
-                SourceDocumentType::Xls => "xls",
-                SourceDocumentType::Xlsx => "xlsx",
-                SourceDocumentType::Ppt => "ppt",
-                SourceDocumentType::Pptx => "pptx",
+                DocumentFileType::Pdf => "pdf",
+                DocumentFileType::Md => "md",
+                DocumentFileType::Txt => "txt",
+                DocumentFileType::Epub => "epub",
+                DocumentFileType::Doc => "doc",
+                DocumentFileType::Docx => "docx",
+                DocumentFileType::Rtf => "rtf",
+                DocumentFileType::Odt => "odt",
+                DocumentFileType::Html => "html",
+                DocumentFileType::Csv => "csv",
+                DocumentFileType::Xls => "xls",
+                DocumentFileType::Xlsx => "xlsx",
+                DocumentFileType::Ppt => "ppt",
+                DocumentFileType::Pptx => "pptx",
+                DocumentFileType::Xml => "xml",
+                DocumentFileType::Json => "json",
+                DocumentFileType::Yaml => "yaml",
+                DocumentFileType::Ps => "ps",
+                DocumentFileType::Tex => "tex",
+                DocumentFileType::Latex => "latex",
+                DocumentFileType::Ods => "ods",
+                DocumentFileType::Odp => "odp",
+                DocumentFileType::Other(s) => s.as_str(),
             }
         )
     }
 }
 
-impl FromStr for SourceImageType {
+impl FromStr for DocumentFileType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "png" => Ok(SourceImageType::Png),
-            "jpeg" => Ok(SourceImageType::Jpeg),
-            "gif" => Ok(SourceImageType::Gif),
-            "bmp" => Ok(SourceImageType::Bmp),
-            "tiff" => Ok(SourceImageType::Tiff),
-            "svg" => Ok(SourceImageType::Svg),
-            "webp" => Ok(SourceImageType::Webp),
+            "pdf" => Ok(DocumentFileType::Pdf),
+            "md" => Ok(DocumentFileType::Md),
+            "txt" => Ok(DocumentFileType::Txt),
+            "epub" => Ok(DocumentFileType::Epub),
+            "doc" => Ok(DocumentFileType::Doc),
+            "docx" => Ok(DocumentFileType::Docx),
+            "rtf" => Ok(DocumentFileType::Rtf),
+            "odt" => Ok(DocumentFileType::Odt),
+            "html" => Ok(DocumentFileType::Html),
+            "csv" => Ok(DocumentFileType::Csv),
+            "xls" => Ok(DocumentFileType::Xls),
+            "xlsx" => Ok(DocumentFileType::Xlsx),
+            "ppt" => Ok(DocumentFileType::Ppt),
+            "pptx" => Ok(DocumentFileType::Pptx),
+            "xml" => Ok(DocumentFileType::Xml),
+            "json" => Ok(DocumentFileType::Json),
+            "yaml" => Ok(DocumentFileType::Yaml),
+            "ps" => Ok(DocumentFileType::Ps),
+            "tex" => Ok(DocumentFileType::Tex),
+            "latex" => Ok(DocumentFileType::Latex),
+            "ods" => Ok(DocumentFileType::Ods),
+            "odp" => Ok(DocumentFileType::Odp),
             _ => Err(()),
         }
     }
 }
 
-impl FromStr for SourceDocumentType {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum CodeFileType {
+    Python,
+    Java,
+    JavaScript,
+    TypeScript,
+    C,
+    Cpp,
+    CppHeader,
+    CSharp,
+    Go,
+    Rust,
+    Swift,
+    Kotlin,
+    Php,
+    Ruby,
+    Other(String),
+}
+
+impl fmt::Display for CodeFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                CodeFileType::Python => "py",
+                CodeFileType::Java => "java",
+                CodeFileType::JavaScript => "js",
+                CodeFileType::TypeScript => "ts",
+                CodeFileType::C => "c",
+                CodeFileType::Cpp => "cpp",
+                CodeFileType::CppHeader => "h",
+                CodeFileType::CSharp => "cs",
+                CodeFileType::Go => "go",
+                CodeFileType::Rust => "rs",
+                CodeFileType::Swift => "swift",
+                CodeFileType::Kotlin => "kt",
+                CodeFileType::Php => "php",
+                CodeFileType::Ruby => "rb",
+                CodeFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for CodeFileType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "pdf" => Ok(SourceDocumentType::Pdf),
-            "md" => Ok(SourceDocumentType::Md),
-            "txt" => Ok(SourceDocumentType::Txt),
-            "epub" => Ok(SourceDocumentType::Epub),
-            "doc" => Ok(SourceDocumentType::Doc),
-            "docx" => Ok(SourceDocumentType::Docx),
-            "rtf" => Ok(SourceDocumentType::Rtf),
-            "odt" => Ok(SourceDocumentType::Odt),
-            "html" => Ok(SourceDocumentType::Html),
-            "csv" => Ok(SourceDocumentType::Csv),
-            "xls" => Ok(SourceDocumentType::Xls),
-            "xlsx" => Ok(SourceDocumentType::Xlsx),
-            "ppt" => Ok(SourceDocumentType::Ppt),
-            "pptx" => Ok(SourceDocumentType::Pptx),
+            "py" => Ok(CodeFileType::Python),
+            "java" => Ok(CodeFileType::Java),
+            "js" => Ok(CodeFileType::JavaScript),
+            "ts" => Ok(CodeFileType::TypeScript),
+            "c" => Ok(CodeFileType::C),
+            "cpp" => Ok(CodeFileType::Cpp),
+            "h" => Ok(CodeFileType::CppHeader),
+            "cs" => Ok(CodeFileType::CSharp),
+            "go" => Ok(CodeFileType::Go),
+            "rs" => Ok(CodeFileType::Rust),
+            "swift" => Ok(CodeFileType::Swift),
+            "kt" => Ok(CodeFileType::Kotlin),
+            "php" => Ok(CodeFileType::Php),
+            "rb" => Ok(CodeFileType::Ruby),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ConfigFileType {
+    Toml,
+    Ini,
+    Eslint,
+    Prettier,
+    Webpack,
+    Dockerfile,
+    Gitignore,
+    Other(String),
+}
+
+impl fmt::Display for ConfigFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ConfigFileType::Toml => "toml",
+                ConfigFileType::Ini => "ini",
+                ConfigFileType::Eslint => ".eslintrc",
+                ConfigFileType::Prettier => ".prettierrc",
+                ConfigFileType::Webpack => "webpack.config.js",
+                ConfigFileType::Dockerfile => "Dockerfile",
+                ConfigFileType::Gitignore => ".gitignore",
+                ConfigFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for ConfigFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "toml" => Ok(ConfigFileType::Toml),
+            "ini" => Ok(ConfigFileType::Ini),
+            ".eslintrc" => Ok(ConfigFileType::Eslint),
+            ".prettierrc" => Ok(ConfigFileType::Prettier),
+            "webpack.config.js" => Ok(ConfigFileType::Webpack),
+            "Dockerfile" => Ok(ConfigFileType::Dockerfile),
+            ".gitignore" => Ok(ConfigFileType::Gitignore),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum AudioFileType {
+    Mp3,
+    Wav,
+    Ogg,
+    Flac,
+    Aac,
+    Wma,
+    Alac,
+    Ape,
+    Dsf,
+    M4a,
+    Opus,
+    Ra,
+    Au,
+    Aiff,
+    Other(String),
+}
+
+impl fmt::Display for AudioFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                AudioFileType::Mp3 => "mp3",
+                AudioFileType::Wav => "wav",
+                AudioFileType::Ogg => "ogg",
+                AudioFileType::Flac => "flac",
+                AudioFileType::Aac => "aac",
+                AudioFileType::Wma => "wma",
+                AudioFileType::Alac => "alac",
+                AudioFileType::Ape => "ape",
+                AudioFileType::Dsf => "dsf",
+                AudioFileType::M4a => "m4a",
+                AudioFileType::Opus => "opus",
+                AudioFileType::Ra => "ra",
+                AudioFileType::Au => "au",
+                AudioFileType::Aiff => "aiff",
+                AudioFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for AudioFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "mp3" => Ok(AudioFileType::Mp3),
+            "wav" => Ok(AudioFileType::Wav),
+            "ogg" => Ok(AudioFileType::Ogg),
+            "flac" => Ok(AudioFileType::Flac),
+            "aac" => Ok(AudioFileType::Aac),
+            "wma" => Ok(AudioFileType::Wma),
+            "alac" => Ok(AudioFileType::Alac),
+            "ape" => Ok(AudioFileType::Ape),
+            "dsf" => Ok(AudioFileType::Dsf),
+            "m4a" => Ok(AudioFileType::M4a),
+            "opus" => Ok(AudioFileType::Opus),
+            "ra" => Ok(AudioFileType::Ra),
+            "au" => Ok(AudioFileType::Au),
+            "aiff" => Ok(AudioFileType::Aiff),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum VideoFileType {
+    Mp4,
+    Mkv,
+    Avi,
+    Flv,
+    Mov,
+    Wmv,
+    Mpeg,
+    Webm,
+    Ogv,
+    Vob,
+    M4v,
+    Mpg,
+    Other(String),
+}
+
+impl fmt::Display for VideoFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                VideoFileType::Mp4 => "mp4",
+                VideoFileType::Mkv => "mkv",
+                VideoFileType::Avi => "avi",
+                VideoFileType::Flv => "flv",
+                VideoFileType::Mov => "mov",
+                VideoFileType::Wmv => "wmv",
+                VideoFileType::Mpeg => "mpeg",
+                VideoFileType::Webm => "webm",
+                VideoFileType::Ogv => "ogv",
+                VideoFileType::Vob => "vob",
+                VideoFileType::M4v => "m4v",
+                VideoFileType::Mpg => "mpg",
+                VideoFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for VideoFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "mp4" => Ok(VideoFileType::Mp4),
+            "mkv" => Ok(VideoFileType::Mkv),
+            "avi" => Ok(VideoFileType::Avi),
+            "flv" => Ok(VideoFileType::Flv),
+            "mov" => Ok(VideoFileType::Mov),
+            "wmv" => Ok(VideoFileType::Wmv),
+            "mpeg" => Ok(VideoFileType::Mpeg),
+            "webm" => Ok(VideoFileType::Webm),
+            "ogv" => Ok(VideoFileType::Ogv),
+            "vob" => Ok(VideoFileType::Vob),
+            "m4v" => Ok(VideoFileType::M4v),
+            "mpg" => Ok(VideoFileType::Mpg),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum ShinkaiFileType {
+    ShinkaiJobExtension,
+    ShinkaiVectorResource,
+    ShinkaiResourceRouter,
+    Other(String),
+}
+
+impl fmt::Display for ShinkaiFileType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ShinkaiFileType::ShinkaiJobExtension => "jobkai",
+                ShinkaiFileType::ShinkaiVectorResource => "vrkai",
+                ShinkaiFileType::ShinkaiResourceRouter => "routerkai",
+                ShinkaiFileType::Other(s) => s.as_str(),
+            }
+        )
+    }
+}
+
+impl FromStr for ShinkaiFileType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "jobkai" => Ok(ShinkaiFileType::ShinkaiJobExtension),
+            "vrkai" => Ok(ShinkaiFileType::ShinkaiVectorResource),
+            "routerkai" => Ok(ShinkaiFileType::ShinkaiResourceRouter),
             _ => Err(()),
         }
     }

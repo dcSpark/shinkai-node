@@ -171,8 +171,7 @@ fn test_unstructured_parse_epub_vector_resource() {
         );
     }
     assert_eq!(
-        "This document contains tests which are fundamental to the accessibility of Reading Systems for users with disabilities. This is one test book in a suite of EPUBs for testing accessibility; the other books cover additional fundamental tests
-        as well as advanced tests.",
+        "This document contains tests which are fundamental to the\naccessibility of Reading Systems for users with disabilities. This is\none test book in a suite of EPUBs for testing accessibility; the other\nbooks cover additional fundamental tests as well as advanced tests.",
         res[0].node.get_text_content().unwrap()
     );
 }

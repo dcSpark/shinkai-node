@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::agent::job::{Job, JobLike};
+use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
+use crate::agent::job::{Job, JobLike, JobStepResult};
 use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -221,7 +222,7 @@ impl ShinkaiDB {
             String,
             String,
             InboxName,
-            Option<Vec<String>>,
+            Option<Vec<JobStepResult>>,
             Vec<String>,
             HashMap<String, String>,
         ),
@@ -272,7 +273,7 @@ impl ShinkaiDB {
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
 
         let mut conversation_inbox: Option<InboxName> = None;
-        let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
+        let mut step_history: Option<Vec<JobStepResult>> = if fetch_step_history { Some(Vec::new()) } else { None };
         let conversation_inbox_value = self
             .db
             .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
@@ -281,13 +282,14 @@ impl ShinkaiDB {
         conversation_inbox = Some(InboxName::new(inbox_name)?);
 
         // Reads all of the step history by iterating
-        let mut step_history: Option<Vec<String>> = if fetch_step_history { Some(Vec::new()) } else { None };
+        let mut step_history: Option<Vec<JobStepResult>> = if fetch_step_history { Some(Vec::new()) } else { None };
         if let Some(ref mut step_history) = step_history {
             let iter = self.db.iterator_cf(cf_job_id_step_history, IteratorMode::Start);
             for item in iter {
                 let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-                let step = std::str::from_utf8(&value)?.to_string();
-                step_history.push(step);
+                let step_json_string = std::str::from_utf8(&value)?.to_string();
+                let step_res = JobStepResult::from_json(&step_json_string)?;
+                step_history.push(step_res);
             }
         }
 
@@ -487,15 +489,32 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Adds a String to a job's step history
-    pub fn add_step_history(&self, job_id: String, content: String) -> Result<(), ShinkaiDBError> {
+    /// Adds a new JobStepResult to a job's step history
+    pub fn add_step_history(
+        &self,
+        job_id: String,
+        user_message: String,
+        agent_response: String,
+    ) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("{}_step_history", &job_id);
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
         let current_time = ShinkaiTime::generate_time_now();
-        self.db.put_cf(cf_handle, current_time.as_bytes(), content.as_bytes())?;
+
+        // Create prompt & JobStepResult
+        let mut prompt = Prompt::new();
+        prompt.add_content(user_message, SubPromptType::User, 100);
+        prompt.add_content(agent_response, SubPromptType::Assistant, 100);
+        let mut job_step_result = JobStepResult::new();
+        job_step_result.add_new_step_revision(prompt);
+
+        // Convert to json and save to DB
+        let json = job_step_result
+            .to_json()
+            .map_err(|e| ShinkaiDBError::DataConversionError(e.to_string()))?;
+        self.db.put_cf(cf_handle, current_time.as_bytes(), json.as_bytes())?;
         Ok(())
     }
 
