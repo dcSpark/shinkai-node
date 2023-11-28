@@ -25,10 +25,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
-use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
@@ -225,6 +223,9 @@ pub enum NodeCommand {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
     },
+    APIPrivateDevops {
+        res: Sender<Result<String, APIError>>,
+    }
 }
 
 // A type alias for a string that represents a profile name.
