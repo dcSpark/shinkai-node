@@ -288,7 +288,11 @@ impl JobManager {
                             return Err(AgentError::AgentNotFound);
                         }
                     }
-                } else if filename.ends_with(".png") || filename.ends_with(".jpg") || filename.ends_with(".jpeg") || filename.ends_with(".gif") {
+                } else if filename.ends_with(".png")
+                    || filename.ends_with(".jpg")
+                    || filename.ends_with(".jpeg")
+                    || filename.ends_with(".gif")
+                {
                     shinkai_log(
                         ShinkaiLogOption::JobExecution,
                         ShinkaiLogLevel::Debug,
@@ -308,18 +312,23 @@ impl JobManager {
                             "Agent does not have ImageAnalysis capability".to_string(),
                         ));
                     }
-                    
+
+                    let task = job_message.content.clone();
+                    let file_extension = filename.split('.').last().unwrap_or("jpg");
+
                     // Call a new function
-                    // JobManager::handle_image_file(
-                    //     db.clone(),
-                    //     agent_found.clone(),
-                    //     full_job.clone(),
-                    //     filename,
-                    //     content,
-                    //     profile.clone(),
-                    //     clone_signature_secret_key(&identity_secret_key),
-                    // )
-                    // .await?;
+                    JobManager::handle_image_file(
+                        db.clone(),
+                        agent_found.clone(),
+                        full_job.clone(),
+                        task,
+                        content,
+                        profile.clone(),
+                        clone_signature_secret_key(&identity_secret_key),
+                        file_extension.to_string(),
+                    )
+                    .await?;
+                    eprintln!("Image file processed");
                     return Ok(true);
                 }
             }

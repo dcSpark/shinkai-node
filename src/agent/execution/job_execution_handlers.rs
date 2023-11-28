@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use ed25519_dalek::SecretKey as SignatureStaticKey;
 use serde_json::to_string;
@@ -250,56 +250,56 @@ impl JobManager {
         db: Arc<Mutex<ShinkaiDB>>,
         agent_found: Option<SerializedAgent>,
         full_job: Job,
-        filename: String,
+        task: String,
         content: Vec<u8>,
         profile: ShinkaiName,
         identity_secret_key: SignatureStaticKey,
+        file_extension: String,
     ) -> Result<(), AgentError> {
         let prev_execution_context = full_job.execution_context.clone();
+        let base64_image = format!("data:image/{};base64,{}", file_extension, base64::encode(&content));
 
-        // Convert the image content to a base64 string
-        let processed_image = base64::encode(&content);
+        // TODO: fix the new_execution_context
+        let (inference_response_content, new_execution_context) = JobManager::image_analysis_chain(
+            db.clone(),
+            full_job.clone(),
+            agent_found.clone(),
+            prev_execution_context.clone(),
+            Some(profile.clone()),
+            task.clone(),
+            base64_image,
+            0,
+            3,
+        )
+        .await?;
 
-        // TODO: call the image chain router to choose which chain to use, and call it
+        let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
+            full_job.job_id.to_string(),
+            inference_response_content.clone().to_string(),
+            "".to_string(),
+            clone_signature_secret_key(&identity_secret_key),
+            profile.node_name.clone(),
+            profile.node_name.clone(),
+        )
+        .unwrap();
 
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            format!("process_image_file> shinkai_message: {:?}", shinkai_message).as_str(),
+        );
 
-        // Prepare data to save processed image to the DB
-        let kai_file = KaiJobFile {
-            schema: KaiSchemaType::ImageFile(processed_image.clone()),
-            shinkai_profile: Some(profile.clone()),
-            agent_id: agent_found.ok_or(AgentError::AgentNotFound)?.id.clone(),
-        };
+        // Save response data to DB
+        let shinkai_db = db.lock().await;
+        shinkai_db.add_step_history(
+            full_job.job_id.clone(),
+            "".to_string(),
+            inference_response_content.to_string(),
+        )?;
+        shinkai_db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message)?;
+        shinkai_db.set_job_execution_context(&full_job.job_id.clone(), prev_execution_context)?;
 
-        let inbox_name_result = Self::insert_kai_job_file_into_inbox(db.clone(), filename, kai_file).await;
-
-        match inbox_name_result {
-            Ok(inbox_name) => {
-                let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
-                    full_job.job_id.to_string(),
-                    processed_image.to_string(),
-                    inbox_name,
-                    clone_signature_secret_key(&identity_secret_key),
-                    profile.node_name.clone(),
-                    profile.node_name.clone(),
-                )
-                .unwrap();
-
-                shinkai_log(
-                    ShinkaiLogOption::JobExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("process_image_file> shinkai_message: {:?}", shinkai_message).as_str(),
-                );
-
-                // Save response data to DB
-                let shinkai_db = db.lock().await;
-                shinkai_db.add_step_history(full_job.job_id.clone(), "".to_string(), processed_image.to_string())?;
-                shinkai_db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message)?;
-                shinkai_db.set_job_execution_context(&full_job.job_id.clone(), prev_execution_context)?;
-
-                Ok(())
-            }
-            Err(err) => Err(err),
-        }
+        Ok(())
     }
 
     /// Inserts a KaiJobFile into a specific inbox

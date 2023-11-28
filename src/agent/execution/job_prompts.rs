@@ -683,8 +683,8 @@ impl JobPromptGenerator {
         prompt
     }
 
-      /// Prompt for having the description of a cron translated to a cron expression
-      pub fn image_generation(description: String, image: String) -> Prompt {
+    /// Prompt for having the description of a cron translated to a cron expression
+    pub fn image_to_text_analysis(description: String, image: String) -> Prompt {
         let mut prompt = Prompt::new();
         prompt.add_content(
             format!("You are a very helpful assistant that's very good at completing a task.",),
@@ -696,23 +696,24 @@ impl JobPromptGenerator {
             SubPromptType::User,
             100,
         );
-        prompt.add_content(
-                format!(
-                    "This is one of the links extracted from that task. Implement your best guess of what it needs to be done based on that task previously mentioned, summarize the following content if you can't be sure of your guess: ---content---\n`{}`\n---end_content---",
-                    web_content
-                ),
-                SubPromptType::User,
-                100,
-            );
-        prompt.add_content(
-                format!(
-                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
-                ),
-                SubPromptType::User,
-                100);
+        prompt.add_asset(
+            SubPromptAssetType::Image,
+            image,
+            String::from("auto"),
+            SubPromptType::User,
+            100,
+        );
+
+        // TODO(Nico): Add later when Vision allows for json formatting
+        // prompt.add_content(
+        //         format!(
+        //             "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
+        //         ),
+        //         SubPromptType::User,
+        //         100);
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            String::from(r#"'{' 'answer' ':' string '}'"#), // 'explanation' ':' string, 
             SubPromptType::System,
             100,
         );
@@ -738,7 +739,13 @@ impl ToString for SubPromptType {
     }
 }
 
-pub type SubPromptAssetType = String;
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SubPromptAssetType {
+    Image,
+    Video,
+    Audio,
+}
+
 pub type SubPromptAssetContent = String;
 pub type SubPromptAssetDetail = String;
 
@@ -748,7 +755,13 @@ pub type SubPromptAssetDetail = String;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
     Content(SubPromptType, String, u8),
-    Asset(SubPromptType, SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail, u8),
+    Asset(
+        SubPromptType,
+        SubPromptAssetType,
+        SubPromptAssetContent,
+        SubPromptAssetDetail,
+        u8,
+    ),
     EBNF(SubPromptType, String, u8),
 }
 
@@ -788,6 +801,27 @@ impl Prompt {
         self.add_sub_prompt(sub_prompt);
     }
 
+    /// Adds a sub-prompt that holds an Asset.
+    /// Of note, priority value must be between 0-100, where higher is greater priority
+    pub fn add_asset(
+        &mut self,
+        asset_type: SubPromptAssetType,
+        asset_content: SubPromptAssetContent,
+        asset_detail: SubPromptAssetDetail,
+        prompt_type: SubPromptType,
+        priority_value: u8,
+    ) {
+        let capped_priority_value = std::cmp::min(priority_value, 100);
+        let sub_prompt = SubPrompt::Asset(
+            prompt_type,
+            asset_type,
+            asset_content,
+            asset_detail,
+            capped_priority_value as u8,
+        );
+        self.add_sub_prompt(sub_prompt);
+    }
+
     /// Adds an ebnf sub-prompt.
     /// Of note, priority value must be between 0-100, where higher is greater priority
     pub fn add_ebnf(&mut self, ebnf: String, prompt_type: SubPromptType, priority_value: u8) {
@@ -813,6 +847,10 @@ impl Prompt {
                     self.lowest_priority = self.lowest_priority.min(*priority);
                     self.highest_priority = self.highest_priority.max(*priority);
                 }
+                SubPrompt::Asset(_, _, _, _, priority) => {
+                    self.lowest_priority = self.lowest_priority.min(*priority);
+                    self.highest_priority = self.highest_priority.max(*priority);
+                }
             }
             self.sub_prompts.push(sub_prompt);
         }
@@ -825,8 +863,10 @@ impl Prompt {
         let mut updated_sub_prompts = Vec::new();
         for mut sub_prompt in sub_prompts {
             match &mut sub_prompt {
-                SubPrompt::Content(_, _, priority) => *priority = capped_priority_value,
-                SubPrompt::EBNF(_, _, priority) => *priority = capped_priority_value,
+                SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => {
+                    *priority = capped_priority_value
+                }
+                SubPrompt::Asset(_, _, _, _, priority) => *priority = capped_priority_value,
             }
             updated_sub_prompts.push(sub_prompt);
         }
@@ -867,6 +907,7 @@ impl Prompt {
         let lowest_priority = self.lowest_priority;
         if let Some(position) = self.sub_prompts.iter().rposition(|sub_prompt| match sub_prompt {
             SubPrompt::Content(_, _, priority) | SubPrompt::EBNF(_, _, priority) => *priority == lowest_priority,
+            SubPrompt::Asset(_, _, _, _, priority) => *priority == lowest_priority,
         }) {
             return Some(self.sub_prompts.remove(position));
         }
@@ -904,6 +945,9 @@ impl Prompt {
             .map(|sub_prompt| match sub_prompt {
                 SubPrompt::Content(_, content, _) => content.clone(),
                 SubPrompt::EBNF(_, ebnf, _) => self.generate_ebnf_response_string(ebnf),
+                SubPrompt::Asset(_, asset_type, asset_content, asset_detail, _) => {
+                    format!("Asset Type: {:?}, Content: ..., Detail: {:?}", asset_type, asset_detail)
+                }
             })
             .collect::<Vec<String>>()
             .join("\n")
@@ -923,26 +967,33 @@ impl Prompt {
 
         // Process all sub-prompts in their original order
         for sub_prompt in &self.sub_prompts {
-            let (prompt_type, text) = match sub_prompt {
-                SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone()),
+            let (prompt_type, content, type_) = match sub_prompt {
+                SubPrompt::Content(prompt_type, content, _) => (prompt_type, content.clone(), "text"),
                 SubPrompt::EBNF(prompt_type, ebnf, _) => {
                     let ebnf_string = self.generate_ebnf_response_string(ebnf);
-                    (prompt_type, ebnf_string)
+                    (prompt_type, ebnf_string, "text")
+                }
+                SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, _) => {
+                    (prompt_type, asset_content.to_string(), "image")
                 }
             };
 
             let new_message = ChatCompletionRequestMessage {
                 role: prompt_type.to_string(),
-                content: Some(text),
-                name: None,
+                content: Some(content),
+                name: if type_ == "text" { None } else { Some(type_.to_string()) },
                 function_call: None,
             };
 
-            let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
-                .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
+            // Only count tokens for non-image content
+            if type_ != "image" {
+                let new_message_tokens = num_tokens_from_messages(model, &[new_message.clone()])
+                    .map_err(|e| AgentError::TokenizationError(e.to_string()))?;
+
+                current_length += new_message_tokens;
+            }
 
             tiktoken_messages.push(new_message);
-            current_length += new_message_tokens;
         }
 
         Ok((tiktoken_messages, current_length))
@@ -980,7 +1031,6 @@ impl Prompt {
     // a new function to get the max tokens for a given model or a fallback (maybe just length / 3).
     /// TODO: Update to work with priority system for prompt size reducing
     pub fn generate_genericapi_messages(&self, max_prompt_tokens: Option<usize>) -> Result<String, AgentError> {
-        eprintln!("generate_genericapi_messages subprompts: {:?}", self.sub_prompts);
         self.check_ebnf_included()?;
 
         // TODO: Update to Llama tokenizer here
@@ -1007,6 +1057,9 @@ impl Prompt {
         // Then, process all sub-prompts in their original order
         for (i, sub_prompt) in self.sub_prompts.iter().enumerate() {
             match sub_prompt {
+                SubPrompt::Asset(_, _, _, _, _) => {
+                    // Ignore Asset
+                }
                 SubPrompt::Content(prompt_type, content, priority_value) => {
                     if content == &*do_not_mention_prompt || content == "" {
                         continue;
