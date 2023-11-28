@@ -682,6 +682,43 @@ impl JobPromptGenerator {
 
         prompt
     }
+
+      /// Prompt for having the description of a cron translated to a cron expression
+      pub fn image_generation(description: String, image: String) -> Prompt {
+        let mut prompt = Prompt::new();
+        prompt.add_content(
+            format!("You are a very helpful assistant that's very good at completing a task.",),
+            SubPromptType::System,
+            100,
+        );
+        prompt.add_content(
+            format!("The current main task at hand is: `{}`", description),
+            SubPromptType::User,
+            100,
+        );
+        prompt.add_content(
+                format!(
+                    "This is one of the links extracted from that task. Implement your best guess of what it needs to be done based on that task previously mentioned, summarize the following content if you can't be sure of your guess: ---content---\n`{}`\n---end_content---",
+                    web_content
+                ),
+                SubPromptType::User,
+                100,
+            );
+        prompt.add_content(
+                format!(
+                    "Remember to take a deep breath first and think step by step, explain how to implement the task in the explanation field and then put the result of the task in the answer field",
+                ),
+                SubPromptType::User,
+                100);
+
+        prompt.add_ebnf(
+            String::from(r#"'{' 'explanation' ':' string, 'answer' ':' string '}'"#),
+            SubPromptType::System,
+            100,
+        );
+
+        prompt
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -701,12 +738,17 @@ impl ToString for SubPromptType {
     }
 }
 
+pub type SubPromptAssetType = String;
+pub type SubPromptAssetContent = String;
+pub type SubPromptAssetDetail = String;
+
 /// Sub-prompts are composed of a 3-element tuple of (SubPromptType, text, priority_value)
 /// Priority_value is a number between 0-100, where the higher it is the less likely it will be
 /// removed if LLM context window limits are reached.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum SubPrompt {
     Content(SubPromptType, String, u8),
+    Asset(SubPromptType, SubPromptAssetType, SubPromptAssetContent, SubPromptAssetDetail, u8),
     EBNF(SubPromptType, String, u8),
 }
 
