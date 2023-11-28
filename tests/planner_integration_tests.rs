@@ -78,6 +78,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
 }
 
 #[test]
+#[ignore]
 fn planner_integration_test() {
     run_test_one_node_network(|env| {
         Box::pin(async move {

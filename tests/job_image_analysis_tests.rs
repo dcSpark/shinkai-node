@@ -1,17 +1,13 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
     AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-    ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair, EncryptionMethod,
+    clone_static_secret_key
 };
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
@@ -19,32 +15,25 @@ use shinkai_message_primitives::shinkai_utils::file_encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key,
 };
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::agent::agent;
-use shinkai_node::agent::error::AgentError;
+use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
-use shinkai_node::network::Node;
-use shinkai_vector_resources::resource_errors::VRError;
-use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use std::time::Instant;
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
+use std::env;
+use std::time::Duration;
 use utils::test_boilerplate::run_test_one_node_network;
 
 mod utils;
 use crate::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
+    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
 #[test]
-fn sandwich_messages_with_files_test() {
+#[ignore]
+fn job_image_analysis() {
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -120,19 +109,17 @@ fn sandwich_messages_with_files_test() {
                     .create();
 
                 let open_ai = OpenAI {
-                    model_type: "gpt-4-1106-preview".to_string(),
+                    model_type: "gpt-4-vision-preview".to_string(),
                 };
 
-                let generic_api = GenericAPI {
-                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
-                };
+                let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
                     external_url: Some("https://api.openai.com".to_string()),
-                    api_key: Some("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".to_string()),
+                    api_key: Some(api_key),
                     // external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
@@ -171,22 +158,6 @@ fn sandwich_messages_with_files_test() {
                 .await;
             }
             {
-                // api_get_all_inboxes_from_profile
-                eprintln!("\n\nGet All Profiles");
-                let inboxes = api_get_all_inboxes_from_profile(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    node1_identity_name.clone().as_str(),
-                )
-                .await;
-                assert_eq!(inboxes.len(), 1);
-            }
-            // Send message (APICreateFilesInboxWithSymmetricKey) from Device subidentity to Node 1
-            {
                 eprintln!("\n\n### Sending message (APICreateFilesInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
                 let message_content = aes_encryption_key_to_string(symmetrical_sk.clone());
@@ -210,16 +181,9 @@ fn sandwich_messages_with_files_test() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive messages");
             }
             {
-                eprintln!("\n\n### Sending Second message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-
-                // Prepare the file to be read
-                let filename = "files/Zeko_Mina_Rollup.pdf";
-                let file_path = Path::new(filename.clone());
-
-                // Read the file into a buffer
-                let file_data = std::fs::read(&file_path)
-                    .map_err(|_| VRError::FailedPDFParsing)
-                    .unwrap();
+                eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
+                let file_path = "files/blue_64x64.png";
+                let file_data = std::fs::read(file_path).expect("Failed to read file");
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
@@ -234,7 +198,7 @@ fn sandwich_messages_with_files_test() {
                 // Send the command
                 node1_commands_sender
                     .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: filename.to_string(),
+                        filename: "samurai_undewater.png".to_string(),
                         file: ciphertext,
                         public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
                         encrypted_nonce: nonce_str,
@@ -245,73 +209,9 @@ fn sandwich_messages_with_files_test() {
 
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                eprintln!("response: {}", response);
+                eprintln!("response: {:?}", response);
             }
-            {
-                // Get filenames in inbox
-                let message_content = hash_of_aes_encryption_key_hex(symmetrical_sk);
-                let msg = ShinkaiMessageBuilder::new(
-                    node1_profile_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_encryption_pk,
-                )
-                .message_raw_content(message_content.clone())
-                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
-                .message_schema_type(MessageSchemaType::TextContent)
-                .internal_metadata(
-                    node1_profile_name.to_string().clone(),
-                    "".to_string(),
-                    EncryptionMethod::None,
-                )
-                .external_metadata_with_intra_sender(
-                    node1_identity_name.to_string(),
-                    node1_identity_name.to_string().clone(),
-                    node1_profile_name.to_string().clone(),
-                )
-                .build()
-                .unwrap();
-
-                let (res_sender, res_receiver) = async_channel::bounded(1);
-                // Send the command
-                node1_commands_sender
-                    .send(NodeCommand::APIGetFilenamesInInbox { msg, res: res_sender })
-                    .await
-                    .unwrap();
-
-                // Receive the response
-                let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                assert_eq!(response, vec!["files/Zeko_Mina_Rollup.pdf"]);
-            }
-            // {
-            //     let _m = server
-            //         .mock("POST", "/v1/chat/completions")
-            //         .match_header("authorization", "Bearer mockapikey")
-            //         .with_status(200)
-            //         .with_header("content-type", "application/json")
-            //         .with_body(
-            //             r#"{
-            //         "id": "chatcmpl-123",
-            //         "object": "chat.completion",
-            //         "created": 1677652288,
-            //         "choices": [{
-            //             "index": 0,
-            //             "message": {
-            //                 "role": "assistant",
-            //                 "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-            //             },
-            //             "finish_reason": "stop"
-            //         }],
-            //         "usage": {
-            //             "prompt_tokens": 9,
-            //             "completion_tokens": 12,
-            //             "total_tokens": 21
-            //         }
-            //     }"#,
-            //         )
-            //         .create();
-            // }
-
-            let job_message_content = "What's Zeko?".to_string();
+            let job_message_content = "describe the image".to_string();
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for the Job");
@@ -334,23 +234,6 @@ fn sandwich_messages_with_files_test() {
                 eprintln!("Time elapsed in api_message_job is: {:?}", duration);
             }
             {
-                // api_get_all_smart_inboxes_from_profile
-                eprintln!("\n\n Get All Smart Inboxes");
-                let inboxes = api_get_all_smart_inboxes_from_profile(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    node1_identity_name.clone().as_str(),
-                )
-                .await;
-                assert_eq!(inboxes.len(), 1);
-                assert_eq!(inboxes[0].custom_name, "What's Zeko?");
-            }
-
-            {
                 eprintln!("Waiting for the Job to finish");
                 for _ in 0..50 {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
@@ -367,68 +250,8 @@ fn sandwich_messages_with_files_test() {
                     match node1_last_messages[0].get_message_content() {
                         Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
                             Ok(job_message) => {
-                                eprintln!("message_content: {}", message_content);
+                                // eprintln!("message_content: {}", message_content);
                                 if job_message.content != job_message_content {
-                                    assert!(true);
-                                    break;
-                                }
-                            }
-                            Err(_) => {
-                                eprintln!("error: message_content: {}", message_content);
-                            }
-                        },
-                        Err(_) => {
-                            // nothing
-                        }
-                    }
-                    tokio::time::sleep(Duration::from_secs(10)).await;
-                }
-            }
-
-            println!("Sending next message in convo");
-
-            let new_job_message_content = "Can you output markdown for an FAQ where my previous question is the heading and your response is the text underneath?".to_string();
-            {
-                // Send a Message to the Job for processing
-                eprintln!("\n\nSend a message for the Job");
-                let start = Instant::now();
-                api_message_job(
-                    node1_commands_sender.clone(),
-                    clone_static_secret_key(&node1_profile_encryption_sk),
-                    node1_encryption_pk.clone(),
-                    clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone().as_str(),
-                    node1_profile_name.clone().as_str(),
-                    &agent_subidentity.clone(),
-                    &job_id.clone().to_string(),
-                    &new_job_message_content,
-                    "",
-                )
-                .await;
-
-                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            }
-
-            {
-                eprintln!("Waiting for the Job to finish");
-                for _ in 0..50 {
-                    let (res1_sender, res1_receiver) = async_channel::bounded(1);
-                    node1_commands_sender
-                        .send(NodeCommand::FetchLastMessages {
-                            limit: 2,
-                            res: res1_sender,
-                        })
-                        .await
-                        .unwrap();
-                    let node1_last_messages = res1_receiver.recv().await.unwrap();
-                    eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-                    match node1_last_messages[0].get_message_content() {
-                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-                            Ok(job_message) => {
-                                eprintln!("message_content: {}", message_content);
-                                if job_message.content != new_job_message_content {
                                     assert!(true);
                                     break;
                                 }

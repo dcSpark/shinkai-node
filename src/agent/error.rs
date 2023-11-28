@@ -44,6 +44,7 @@ pub enum AgentError {
     WebScrapingFailed(String),
     InvalidCronExecutionChainStage(String),
     AnyhowError(AnyhowError),
+    AgentMissingCapabilities(String),
 }
 
 impl fmt::Display for AgentError {
@@ -96,6 +97,7 @@ impl fmt::Display for AgentError {
             AgentError::WebScrapingFailed(err) => write!(f, "Web scraping failed: {}", err),
             AgentError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
             AgentError::AnyhowError(err) => write!(f, "{}", err),
+            AgentError::AgentMissingCapabilities(s) => write!(f, "Agent is missing capabilities: {}", s),
         }
     }
 }
