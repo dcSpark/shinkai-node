@@ -12,20 +12,21 @@ use crate::db::db_cron_task::CronTask;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CronTaskRequest {
+    pub crawl_links: bool,
     pub cron_description: String,
     pub task_description: String,
     pub object_description: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct CronTaskResponse {
+pub struct CronTaskRequestResponse {
     pub cron_task_request: CronTaskRequest,
     pub cron_description: String,
     pub pddl_plan_problem: String,
     pub pddl_plan_domain: Option<String>,
 }
 
-impl fmt::Display for CronTaskResponse {
+impl fmt::Display for CronTaskRequestResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

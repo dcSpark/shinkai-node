@@ -1,7 +1,7 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
-use chrono::format;
-use futures::Stream;
+use futures::Future;
+use futures::FutureExt;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use futures::TryStreamExt;
@@ -14,9 +14,11 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use warp::fs::file;
+use std::pin::Pin;
+use std::sync::Arc;
+use warp::filters::BoxedFilter;
+use warp::reply::Reply;
 use warp::Buf;
 use warp::Filter;
 
@@ -70,7 +72,19 @@ impl From<&str> for APIError {
     }
 }
 
-pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr) {
+impl warp::reject::Reject for APIError {}
+
+#[derive(Clone, Debug)]
+pub struct ExtraAPIConfig {
+    pub cron_devops_api_enabled: bool,
+    pub cron_devops_api_token: String,
+}
+
+pub async fn run_api(
+    node_commands_sender: Sender<NodeCommand>,
+    address: SocketAddr,
+    extra_config: Option<ExtraAPIConfig>,
+) {
     println!("Starting Node API server at: {}", &address);
 
     let log = warp::log::custom(|info| {
@@ -331,12 +345,43 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
             })
     };
 
+    // GET v1/private_devops_cron_list
+    let extra_config_clone = Arc::new(extra_config.clone());
+    let private_devops_cron_list = {
+        let node_commands_sender = node_commands_sender.clone();
+        let extra_config = extra_config_clone.clone();
+        warp::path!("v1" / "private_devops_cron_list")
+            .and(warp::get())
+            .and(warp::header::<String>("Authorization"))
+            .and_then(move |auth_header: String| {
+                let token = auth_header.strip_prefix("Bearer ").unwrap_or("");
+                let binding = "".to_string();
+                let expected_token = (*extra_config)
+                    .as_ref()
+                    .map(|config| &config.cron_devops_api_token)
+                    .unwrap_or(&binding);
+                if token == expected_token {
+                    Box::pin(private_devops_cron_list_handler(node_commands_sender.clone()))
+                        as Pin<Box<dyn Future<Output = Result<_, _>> + Send>>
+                } else {
+                    Box::pin(async {
+                        Err(warp::reject::custom(APIError::new(
+                            StatusCode::UNAUTHORIZED,
+                            "Unauthorized",
+                            "Invalid token",
+                        )))
+                    })
+                        as Pin<Box<dyn Future<Output = Result<Box<dyn warp::Reply>, warp::Rejection>> + Send>>
+                }
+            })
+    };
+
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
-        .allow_headers(vec!["Content-Type"]); // allow the Content-Type header
+        .allow_headers(vec!["Content-Type", "Authorization"]); // allow the Content-Type and Authorization headers
 
-    let routes = ping_all
+    let routes_without_private = ping_all
         .or(send_msg)
         .or(get_peers)
         .or(identity_name_to_external_profile_data)
@@ -362,7 +407,25 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
         .or(update_job_to_finished)
         .recover(handle_rejection)
         .with(log)
-        .with(cors);
+        .with(cors)
+        .boxed();
+
+    let routes_without_private = routes_without_private.boxed();
+
+    let noop_route = warp::any()
+        .map(warp::reply)
+        .and_then(|reply| async move { Ok::<_, warp::Rejection>(Box::new(reply) as Box<dyn warp::Reply>) })
+        .boxed();
+
+    let routes = if let Some(config) = extra_config.clone() {
+        if config.cron_devops_api_enabled {
+            routes_without_private.or(private_devops_cron_list).boxed()
+        } else {
+            routes_without_private.or(noop_route).boxed()
+        }
+    } else {
+        routes_without_private.or(noop_route).boxed()
+    };
 
     warp::serve(routes).run(address).await;
 
@@ -402,6 +465,34 @@ where
     }
 }
 
+async fn handle_node_command_without_message<T, U>(
+    node_commands_sender: Sender<NodeCommand>,
+    command: T,
+) -> Result<Box<dyn warp::Reply>, warp::Rejection>
+where
+    T: FnOnce(Sender<NodeCommand>, Sender<Result<U, APIError>>) -> NodeCommand,
+    U: Serialize,
+{
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .clone()
+        .send(command(node_commands_sender, res_sender))
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(message) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&json!({"status": "success", "data": message})),
+            StatusCode::OK,
+        )) as Box<dyn warp::Reply>),
+        Err(error) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&json!({"status": "error", "error": error})),
+            StatusCode::from_u16(error.code).unwrap(),
+        )) as Box<dyn warp::Reply>),
+    }
+}
+
 async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
     match node_commands_sender.send(NodeCommand::PingAll).await {
         Ok(_) => Ok(warp::reply::json(&json!({
@@ -411,6 +502,18 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
             "error": "Error occurred while pinging all nodes"
         }))),
     }
+}
+
+async fn private_devops_cron_list_handler(
+    node_commands_sender: Sender<NodeCommand>,
+) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    handle_node_command_without_message(
+        node_commands_sender,
+        |node_commands_sender, res_sender| NodeCommand::APIPrivateDevopsCronList {
+            res: res_sender,
+        },
+    )
+    .await
 }
 
 async fn send_msg_handler(

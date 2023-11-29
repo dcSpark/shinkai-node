@@ -9,6 +9,7 @@ use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use network::Node;
+use network::node_api::ExtraAPIConfig;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -141,9 +142,14 @@ fn main() {
             let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
 
+        let extra_api_config = ExtraAPIConfig {
+            cron_devops_api_enabled: node_env.cron_devops_api_enabled,
+            cron_devops_api_token: node_env.cron_devops_api_token.clone(),
+        };
+
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
+            node_api::run_api(node_commands_sender, node_env.api_listen_address, Some(extra_api_config)).await;
         });
 
         let _ = tokio::try_join!(api_server, node_task);

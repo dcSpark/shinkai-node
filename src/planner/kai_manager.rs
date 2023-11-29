@@ -1,4 +1,4 @@
-use shinkai_message_primitives::shinkai_utils::utils::random_string;
+use shinkai_message_primitives::shinkai_utils::{utils::random_string, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel}};
 
 use super::kai_files::{KaiJobFile, KaiSchemaType};
 use crate::network::Node;
@@ -46,24 +46,23 @@ pub struct KaiJobFileManager;
 
 impl KaiJobFileManager {
     pub async fn execute(kai_file: KaiJobFile, node: &Node) -> Result<(), KaiJobFileManagerError> {
-        eprintln!("KaiJobFileManager::execute");
         match kai_file.schema {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
                 // Nothing to do
-                eprintln!("KaiSchemaType::CronJobRequest: {:?}", cron_task_request);
+                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("CronJobRequest: {:?}", cron_task_request).as_str());
             }
             KaiSchemaType::CronJob(_) => {
                 // Add your logic for CronJob here, or ignore it
-                eprintln!("KaiSchemaType::CronJob variant matched but not handled");
+                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "KaiSchemaType::CronJob variant matched but not handled");
             }
-            KaiSchemaType::CronJobResponse(cron_task_response) => {
-                eprintln!("KaiSchemaType::CronJobResponse: {:?}", cron_task_response);
+            KaiSchemaType::CronJobRequestResponse(cron_task_response) => {
+                shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("CronJobResponse: {:?}", cron_task_response).as_str());
                 // Execute code for CronJobResponse
                 // You can use cron_task_response which is of type CronTaskResponse
 
                 match &node.cron_manager {
                     Some(cron_manager) => {
-                        eprintln!("Cron manager found");
+                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "Cron manager found");
                         let random_hash = random_string();
 
                         let url = cron_task_response
@@ -84,18 +83,18 @@ impl KaiJobFileManager {
                                 cron_task_response.cron_task_request.task_description,
                                 "".to_string(),
                                 url,
-                                true, // TODO: Remove or maybe we should be able to extract this from the PDDL?
+                                cron_task_response.cron_task_request.crawl_links, // Note(Nico): maybe we should update this depending on the PDDL plan?
                                 kai_file.agent_id,
                             )
                             .await;
                     }
                     None => {
-                        eprintln!("Cron manager not found");
+                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "Cron manager not found");
                     }
                 }
             }
         }
-        eprintln!("KaiJobFileManager::execute: Done (right before OK)");
+        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "KaiJobFileManager::execute: Done (right before OK)");
         Ok(())
     }
 }

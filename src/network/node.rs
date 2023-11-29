@@ -25,10 +25,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-use crate::agent::error::AgentError;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
-use crate::db::db_errors::ShinkaiDBError;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
 use crate::managers::identity_manager::{self};
@@ -225,6 +223,9 @@ pub enum NodeCommand {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
     },
+    APIPrivateDevopsCronList {
+        res: Sender<Result<String, APIError>>,
+    }
 }
 
 // A type alias for a string that represents a profile name.
@@ -438,6 +439,7 @@ impl Node {
                             Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
                             Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
+                            Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
                             _ => break,
                         }
                     }

@@ -2,7 +2,7 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
 
-use shinkai_message_primitives::schemas::agents::serialized_agent::{SerializedAgent, AgentLLMInterface};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, SerializedAgent};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone)]
@@ -10,10 +10,13 @@ pub struct NodeEnvironment {
     pub global_identity_name: String,
     pub listen_address: SocketAddr,
     pub api_listen_address: SocketAddr,
+    pub ws_address: SocketAddr,
     pub ping_interval: u64,
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
+    pub cron_devops_api_token: String,
+    pub cron_devops_api_enabled: bool,
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
@@ -39,20 +42,17 @@ pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
         .expect("Failed to parse agent model e.g. openai:gpt-3.5-turbo-1106");
 
     if initial_agent_name.is_empty()
-    || initial_agent_api_key.is_empty()
-    || initial_agent_url.is_empty()
-    || initial_agent_model.is_empty() {
+        || initial_agent_api_key.is_empty()
+        || initial_agent_url.is_empty()
+        || initial_agent_model.is_empty()
+    {
         return None;
     }
 
     let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_model);
     let agent = SerializedAgent {
         id: initial_agent_name.clone(),
-        full_identity_name: ShinkaiName::new(format!(
-            "{}/main/agent/{}",
-            global_identity, initial_agent_name
-        ))
-        .unwrap(),
+        full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_name)).unwrap(),
         perform_locally: false,
         external_url: Some(initial_agent_url),
         api_key: Some(initial_agent_api_key),
@@ -113,6 +113,16 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse needs registration code");
 
+    let cron_devops_api_enabled: bool = env::var("CRON_DEVOPS_API_ENABLED")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse()
+        .expect("Failed to parse CRON_DEVOPS_API_ENABLED");
+
+    let cron_devops_api_token: String = env::var("CRON_DEVOPS_API_TOKEN")
+        .unwrap_or_else(|_| "".to_string())
+        .parse()
+        .expect("Failed to parse CRON_DEVOPS_API_TOKEN");
+
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
@@ -121,9 +131,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         global_identity_name,
         listen_address,
         api_listen_address,
+        ws_address: SocketAddr::new(ip, ws_port),
         ping_interval,
         starting_num_qr_profiles,
         starting_num_qr_devices,
         first_device_needs_registration_code,
+        cron_devops_api_token,
+        cron_devops_api_enabled,
     }
 }
