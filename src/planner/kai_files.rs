@@ -2,7 +2,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::Value;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
-use crate::{cron_tasks::web_scrapper::{CronTaskRequest, CronTaskResponse}, db::db_cron_task::CronTask};
+use crate::{cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse}, db::db_cron_task::CronTask};
 
 // Define your schema types here
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -11,7 +11,7 @@ pub enum KaiSchemaType {
     #[serde(rename = "cronjobrequest")]
     CronJobRequest(CronTaskRequest),
     #[serde(rename = "cronjobresponse")]
-    CronJobResponse(CronTaskResponse),
+    CronJobRequestResponse(CronTaskRequestResponse),
     #[serde(rename = "cronjob")]
     CronJob(CronTask),
 }
@@ -30,7 +30,7 @@ impl KaiJobFile {
             KaiSchemaType::CronJobRequest(cron_task_request) => {
                 serde_json::to_value(cron_task_request)
             },
-            KaiSchemaType::CronJobResponse(cron_task_response) => {
+            KaiSchemaType::CronJobRequestResponse(cron_task_response) => {
                 serde_json::to_value(cron_task_response)
             },
             KaiSchemaType::CronJob(cron_job) => {

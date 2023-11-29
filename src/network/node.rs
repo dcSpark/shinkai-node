@@ -223,7 +223,7 @@ pub enum NodeCommand {
         full_profile_name: String,
         res: Sender<Result<Vec<SerializedAgent>, String>>,
     },
-    APIPrivateDevops {
+    APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
     }
 }
@@ -439,6 +439,7 @@ impl Node {
                             Some(NodeCommand::APIGetAllSmartInboxesForProfile { msg, res }) => self.api_get_all_smart_inboxes_for_profile(msg, res).await?,
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
                             Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
+                            Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
                             _ => break,
                         }
                     }

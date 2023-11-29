@@ -465,6 +465,34 @@ where
     }
 }
 
+async fn handle_node_command_without_message<T, U>(
+    node_commands_sender: Sender<NodeCommand>,
+    command: T,
+) -> Result<Box<dyn warp::Reply>, warp::Rejection>
+where
+    T: FnOnce(Sender<NodeCommand>, Sender<Result<U, APIError>>) -> NodeCommand,
+    U: Serialize,
+{
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+    node_commands_sender
+        .clone()
+        .send(command(node_commands_sender, res_sender))
+        .await
+        .map_err(|_| warp::reject::reject())?;
+    let result = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    match result {
+        Ok(message) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&json!({"status": "success", "data": message})),
+            StatusCode::OK,
+        )) as Box<dyn warp::Reply>),
+        Err(error) => Ok(Box::new(warp::reply::with_status(
+            warp::reply::json(&json!({"status": "error", "error": error})),
+            StatusCode::from_u16(error.code).unwrap(),
+        )) as Box<dyn warp::Reply>),
+    }
+}
+
 async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
     match node_commands_sender.send(NodeCommand::PingAll).await {
         Ok(_) => Ok(warp::reply::json(&json!({
@@ -479,8 +507,13 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
 async fn private_devops_cron_list_handler(
     node_commands_sender: Sender<NodeCommand>,
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    // TODO: Implement this function
-    Ok(Box::new(warp::reply::json(&"OK".to_string())))
+    handle_node_command_without_message(
+        node_commands_sender,
+        |node_commands_sender, res_sender| NodeCommand::APIPrivateDevopsCronList {
+            res: res_sender,
+        },
+    )
+    .await
 }
 
 async fn send_msg_handler(

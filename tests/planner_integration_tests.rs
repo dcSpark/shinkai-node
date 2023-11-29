@@ -4,6 +4,7 @@ use aes_gcm::KeyInit;
 use async_channel::{bounded, Receiver, Sender};
 use mockito::{Matcher, Mock};
 use serde_json::Value;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
     AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
 };
@@ -26,11 +27,13 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::agent::agent;
 use shinkai_node::agent::error::AgentError;
 use shinkai_node::cron_tasks::web_scrapper::CronTaskRequest;
+use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use shinkai_vector_resources::resource_errors::VRError;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::time::Instant;
@@ -38,7 +41,6 @@ use std::{env, fs};
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use utils::test_boilerplate::run_test_one_node_network;
-use serde_json::Value as JsonValue;
 
 mod utils;
 use crate::utils::node_test_api::{
@@ -49,8 +51,8 @@ use mockito::Server;
 
 fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response_body: &str) -> Mock {
     // Parse the response_body into a JSON Value
-    let response_json: serde_json::Value = serde_json::from_str(response_body)
-        .expect("Invalid JSON string provided for response_body");
+    let response_json: serde_json::Value =
+        serde_json::from_str(response_body).expect("Invalid JSON string provided for response_body");
 
     // Extract the content field
     let content = response_json["choices"][0]["message"]["content"]
@@ -65,7 +67,7 @@ fn create_mock_openai(server: &mut mockito::Server, request_body: &str, response
             panic!("Failed to extract JSON object from content: {}", e);
         }
     }
-    
+
     let m = server
         .mock("POST", "/v1/chat/completions")
         .match_header("authorization", "Bearer mockapikey")
@@ -139,16 +141,16 @@ fn planner_integration_test() {
                     model_type: "togethercomputer/llama-2-70b-chat".to_string(),
                 };
 
-                // let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
+                let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name.clone(),
                     perform_locally: false,
-                    external_url: Some(server.url()),
-                    api_key: Some("mockapikey".to_string()),
-                    // external_url: Some("https://api.openai.com".to_string()),
-                    // api_key: Some(api_key),
+                    // external_url: Some(server.url()),
+                    // api_key: Some("mockapikey".to_string()),
+                    external_url: Some("https://api.openai.com".to_string()),
+                    api_key: Some(api_key),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
@@ -227,6 +229,7 @@ fn planner_integration_test() {
                 eprintln!("\n\n### Sending Message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
 
                 let cron_request = CronTaskRequest {
+                    crawl_links: false,
                     cron_description: "Every day at 8pm".to_string(),
                     task_description: "Find all the news related to AI in a website".to_string(),
                     object_description: Some("https://news.ycombinator.com".to_string()),
@@ -423,6 +426,27 @@ fn planner_integration_test() {
                 eprintln!("APIUpdateJobToFinished response: {:?}", response);
                 assert_eq!(response, (), "Expected APIUpdateJobToFinished response to be ()");
                 tokio::time::sleep(Duration::from_secs(360)).await;
+            }
+            // Test APIPrivateDevopsCronList
+            {
+                eprintln!("Testing APIPrivateDevopsCronList");
+                let (res_sender, res_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIPrivateDevopsCronList { res: res_sender })
+                    .await
+                    .unwrap();
+                let response = res_receiver.recv().await.unwrap();
+                eprintln!("response: {:?}", response);
+                match response {
+                    Ok(tasks_json) => {
+                        let tasks_map: HashMap<String, CronTask> = serde_json::from_str(&tasks_json).unwrap();
+                        let tasks: Vec<CronTask> = tasks_map.into_iter().map(|(_, task)| task).collect();
+                        assert!(!tasks.is_empty(), "No cron tasks were returned");
+                    }
+                    Err(err) => {
+                        panic!("APIPrivateDevopsCronList returned an error: {}", err.message);
+                    }
+                }
             }
         })
     });

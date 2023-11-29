@@ -18,7 +18,7 @@ use crate::{
     agent::{
         error::AgentError, execution::chains::inference_chain_router::InferenceChain, job::Job, job_manager::JobManager,
     },
-    cron_tasks::web_scrapper::{CronTaskRequest, CronTaskResponse, WebScraper},
+    cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
     planner::kai_files::{KaiJobFile, KaiSchemaType},
 };
@@ -50,7 +50,7 @@ impl JobManager {
         .await?;
 
         // Prepare data to save inference response to the DB
-        let cron_task_response = CronTaskResponse {
+        let cron_task_response = CronTaskRequestResponse {
             cron_task_request: cron_task_request,
             cron_description: inference_response_content.cron_expression.to_string(),
             pddl_plan_problem: inference_response_content.pddl_plan_problem.to_string(),
@@ -62,7 +62,7 @@ impl JobManager {
         let agent = agent_found.ok_or(AgentError::AgentNotFound)?;
 
         let kai_file = KaiJobFile {
-            schema: KaiSchemaType::CronJobResponse(cron_task_response.clone()),
+            schema: KaiSchemaType::CronJobRequestResponse(cron_task_response.clone()),
             shinkai_profile: Some(profile.clone()),
             agent_id: agent.id.clone(),
         };
