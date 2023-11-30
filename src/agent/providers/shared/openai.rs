@@ -13,6 +13,8 @@ use serde_json::Value as JsonValue;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::Prompt;
 use crate::managers::agents_capabilities_manager::AgentsCapabilitiesManager;
+use crate::managers::agents_capabilities_manager::PromptResult;
+use crate::managers::agents_capabilities_manager::PromptResultEnum;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -102,7 +104,7 @@ pub struct ApiPayload {
     max_tokens: usize,
 }
 
-pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<JsonValue, AgentError> {
+pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<PromptResult, AgentError> {
     let tiktoken_messages = prompt.generate_openai_messages(Some(total_tokens / 2))?;
 
     let filtered_tiktoken_messages: Vec<_> = tiktoken_messages
@@ -152,5 +154,8 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, pr
         }
     }
     let messages_json = serde_json::to_value(&messages)?;
-    Ok(messages_json)
+    Ok(PromptResult {
+        value: PromptResultEnum::Value(messages_json),
+        remaining_tokens: max_tokens,
+    })
 }

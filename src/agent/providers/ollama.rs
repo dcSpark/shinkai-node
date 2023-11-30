@@ -1,4 +1,4 @@
-use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResult};
+use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResult, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::shared::ollama::OllamaAPIResponse;
@@ -33,15 +33,10 @@ impl LLMProvider for Ollama {
                     model_type: self.model_type.clone(),
                 };
                 let model = AgentLLMInterface::Ollama(ollama);
-                let max_tokens = AgentsCapabilitiesManager::get_max_tokens(&model);
                 let messages_result = AgentsCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
-                let messages_string = match messages_result {
-                    PromptResult::Text(s) => s,
-                    _ => {
-                        return Err(AgentError::UnexpectedPromptResult(
-                            "Expected a Text result from route_prompt_with_model".to_string(),
-                        ))
-                    }
+                let messages_string = match messages_result.value {
+                    PromptResultEnum::Text(v) => v,
+                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
                 };
 
                 shinkai_log(
@@ -49,13 +44,6 @@ impl LLMProvider for Ollama {
                     ShinkaiLogLevel::Info,
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
-
-                // panic!();
-                // let max_tokens = std::cmp::max(5, 4097 - used_characters);
-
-                // TODO: implement diff tokenizers depending on the model
-                let mut max_tokens = Self::get_max_tokens(self.model_type.as_str());
-                max_tokens = std::cmp::max(5, max_tokens - (messages_string.len() / 2));
 
                 let payload = json!({
                     "model": self.model_type,
@@ -98,10 +86,21 @@ impl LLMProvider for Ollama {
                 match data_resp {
                     Ok(data) => {
                         let response_string = data.response.to_string();
-                        // Unescape the JSON string
-                        let cleaned_json_str = response_string.replace("\\\"", "\"").replace("\\n", "\n");
-                        eprintln!("response_string: {:?}", cleaned_json_str);
-                        Self::extract_first_json_object(&cleaned_json_str)
+                        match serde_json::from_str::<JsonValue>(&response_string) {
+                            Ok(deserialized_json) => {
+                                let response_string = deserialized_json.to_string();
+                                eprintln!("response_string: {:?}", response_string);
+                                Self::extract_first_json_object(&response_string)
+                            },
+                            Err(e) => {
+                                shinkai_log(
+                                    ShinkaiLogOption::JobExecution,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Failed to deserialize response: {:?}", e).as_str(),
+                                );
+                                Err(AgentError::SerdeError(e))
+                            }
+                        }
                     }
                     Err(e) => {
                         shinkai_log(

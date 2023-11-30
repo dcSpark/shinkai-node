@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json;
 use shinkai_message_primitives::{schemas::agents::serialized_agent::AgentLLMInterface, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel}};
-use crate::agent::{execution::job_prompts::Prompt, error::AgentError};
+use crate::{agent::{execution::job_prompts::Prompt, error::AgentError}, managers::agents_capabilities_manager::{PromptResult, PromptResultEnum}};
 
 #[derive(Serialize, Deserialize)]
 pub struct TogetherAPIResponse {
@@ -38,7 +38,7 @@ pub struct Choice {
     pub text: String,
 }
 
-pub fn llama_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<String, AgentError> {
+pub fn llama_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<PromptResult, AgentError> {
     let mut messages_string = prompt.generate_genericapi_messages(None)?;
     if !messages_string.ends_with(" ```") {
         messages_string.push_str(" ```json");
@@ -50,5 +50,8 @@ pub fn llama_prepare_messages(model: &AgentLLMInterface, model_type: String, pro
         format!("Messages JSON: {:?}", messages_string).as_str(),
     );
 
-    Ok(messages_string)
+    Ok(PromptResult {
+        value: PromptResultEnum::Text(messages_string.clone()),
+        remaining_tokens: total_tokens - messages_string.len(),
+    })
 }

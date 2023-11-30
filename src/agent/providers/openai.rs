@@ -1,4 +1,4 @@
-use crate::managers::agents_capabilities_manager::AgentsCapabilitiesManager;
+use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::shared::openai::{MessageContent, OpenAIApiMessage, OpenAIResponse, openai_prepare_messages};
@@ -30,15 +30,19 @@ impl LLMProvider for OpenAI {
                 let model = AgentLLMInterface::OpenAI(open_ai);
                 let max_tokens = AgentsCapabilitiesManager::get_max_tokens(&model);
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
-                let messages_json = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
+                let messages_json = match result.value {
+                    PromptResultEnum::Value(v) => v,
+                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
+                };
 
                 let mut payload = json!({
                     "model": self.model_type,
                     "messages": messages_json,
                     "temperature": 0.7,
-                    "max_tokens": max_tokens,
+                    "max_tokens": result.remaining_tokens,
                 });
-
+                
                 // Openai doesn't support json_object response format for vision models. wut?
                 if !self.model_type.contains("vision") {
                     payload["response_format"] = json!({ "type": "json_object" });

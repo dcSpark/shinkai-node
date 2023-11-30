@@ -47,6 +47,7 @@ pub enum AgentError {
     AgentMissingCapabilities(String),
     UnexpectedPromptResult(String),
     AgentsCapabilitiesManagerError(AgentsCapabilitiesManagerError),
+    UnexpectedPromptResultVariant(String)
 }
 
 impl fmt::Display for AgentError {
@@ -102,6 +103,7 @@ impl fmt::Display for AgentError {
             AgentError::AgentMissingCapabilities(s) => write!(f, "Agent is missing capabilities: {}", s),
             AgentError::UnexpectedPromptResult(s) => write!(f, "Unexpected prompt result: {}", s),
             AgentError::AgentsCapabilitiesManagerError(err) => write!(f, "AgentsCapabilitiesManager error: {}", err),
+            AgentError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
         }
     }
 }

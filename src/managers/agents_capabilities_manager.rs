@@ -30,7 +30,13 @@ impl From<AgentError> for AgentsCapabilitiesManagerError {
 impl std::error::Error for AgentsCapabilitiesManagerError {}
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum PromptResult {
+pub struct PromptResult {
+    pub value: PromptResultEnum,
+    pub remaining_tokens: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PromptResultEnum {
     Text(String),
     Value(serde_json::Value),
 }
@@ -227,7 +233,7 @@ impl AgentsCapabilitiesManager {
                 if openai.model_type.starts_with("gpt-") {
                     let total_tokens = Self::get_max_tokens(model);
                     let tiktoken_messages = openai_prepare_messages(model, openai.clone().model_type, prompt, total_tokens)?;
-                    Ok(PromptResult::Value(tiktoken_messages))
+                    Ok(tiktoken_messages)
                 } else {
                     Err(AgentsCapabilitiesManagerError::NotImplemented(
                         openai.model_type.clone(),
@@ -238,7 +244,7 @@ impl AgentsCapabilitiesManager {
                 if genericapi.model_type.starts_with("togethercomputer/llama-2") {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string = llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;
-                    Ok(PromptResult::Text(messages_string))
+                    Ok(messages_string)
                 } else {
                     Err(AgentsCapabilitiesManagerError::NotImplemented(
                         genericapi.model_type.clone(),
@@ -255,7 +261,7 @@ impl AgentsCapabilitiesManager {
                 if ollama.model_type.starts_with("mistral") {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string = llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
-                    Ok(PromptResult::Text(messages_string))
+                    Ok(messages_string)
                 } else {
                     Err(AgentsCapabilitiesManagerError::NotImplemented(
                         ollama.model_type.clone(),
