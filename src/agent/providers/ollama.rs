@@ -1,8 +1,8 @@
 use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResult};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::LLMProvider;
 use super::shared::ollama::OllamaAPIResponse;
+use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,11 @@ impl LLMProvider for Ollama {
                 let messages_result = AgentsCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
                 let messages_string = match messages_result {
                     PromptResult::Text(s) => s,
-                    _ => return Err(AgentError::UnexpectedPromptResult("Expected a Text result from route_prompt_with_model".to_string())),
+                    _ => {
+                        return Err(AgentError::UnexpectedPromptResult(
+                            "Expected a Text result from route_prompt_with_model".to_string(),
+                        ))
+                    }
                 };
 
                 shinkai_log(
@@ -94,7 +98,10 @@ impl LLMProvider for Ollama {
                 match data_resp {
                     Ok(data) => {
                         let response_string = data.response.to_string();
-                        Self::extract_first_json_object(&response_string)
+                        // Unescape the JSON string
+                        let cleaned_json_str = response_string.replace("\\\"", "\"").replace("\\n", "\n");
+                        eprintln!("response_string: {:?}", cleaned_json_str);
+                        Self::extract_first_json_object(&cleaned_json_str)
                     }
                     Err(e) => {
                         shinkai_log(

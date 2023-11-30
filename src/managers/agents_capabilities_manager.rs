@@ -251,7 +251,17 @@ impl AgentsCapabilitiesManager {
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(AgentsCapabilitiesManagerError::NotImplemented(
                 shinkai_backend.model_type.clone(),
             )),
-            AgentLLMInterface::Ollama(_) => Err(AgentsCapabilitiesManagerError::NotImplemented("Ollama".to_string())),
+            AgentLLMInterface::Ollama(ollama) => {
+                if ollama.model_type.starts_with("mistral") {
+                    let total_tokens = Self::get_max_tokens(model);
+                    let messages_string = llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
+                    Ok(PromptResult::Text(messages_string))
+                } else {
+                    Err(AgentsCapabilitiesManagerError::NotImplemented(
+                        ollama.model_type.clone(),
+                    ))
+                }
+            },
         }
     }
 
