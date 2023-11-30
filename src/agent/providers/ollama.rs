@@ -1,31 +1,44 @@
+use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResult};
+
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::LLMProvider;
-use super::shared::togetherai::TogetherAPIResponse;
+use super::shared::ollama::OllamaAPIResponse;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, Ollama};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use tiktoken_rs::get_chat_completion_max_tokens;
+use tiktoken_rs::num_tokens_from_messages;
 
 #[async_trait]
-impl LLMProvider for GenericAPI {
+impl LLMProvider for Ollama {
     async fn call_api(
         &self,
         client: &Client,
         url: Option<&String>,
-        api_key: Option<&String>,
+        api_key: Option<&String>, // Note: not required
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "/inference");
-                let mut messages_string = prompt.generate_genericapi_messages(None)?;
-                if !messages_string.ends_with(" ```") {
-                    messages_string.push_str(" ```json");
-                }
+                let url = format!("{}{}", base_url, "/api/generate");
+                // TODO: we need a router to handle the different models. Maybe in agents_capabilities_manager.rs
+                // assume api_key is empty
+
+                let ollama = Ollama {
+                    model_type: self.model_type.clone(),
+                };
+                let model = AgentLLMInterface::Ollama(ollama);
+                let max_tokens = AgentsCapabilitiesManager::get_max_tokens(&model);
+                let messages_result = AgentsCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
+                let messages_string = match messages_result {
+                    PromptResult::Text(s) => s,
+                    _ => return Err(AgentError::UnexpectedPromptResult("Expected a Text result from route_prompt_with_model".to_string())),
+                };
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -42,21 +55,11 @@ impl LLMProvider for GenericAPI {
 
                 let payload = json!({
                     "model": self.model_type,
-                    "max_tokens": max_tokens,
                     "prompt": messages_string,
-                    "request_type": "language-model-inference",
-                    "temperature": 0.7,
-                    "top_p": 0.7,
-                    "top_k": 50,
-                    "repetition_penalty": 1,
-                    "stream_tokens": false,
-                    "stop": [
-                        "[/INST]",
-                        "</s>"
-                    ],
-                    "negative_prompt": "",
-                    "safety_model": "",
-                    "repetitive_penalty": 1,
+                    "format": "json",
+                    "stream": false,
+                    // Include any other optional parameters as needed
+                    // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
                 });
 
                 shinkai_log(
@@ -86,21 +89,12 @@ impl LLMProvider for GenericAPI {
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
 
-                let data_resp: Result<TogetherAPIResponse, _> = serde_json::from_str(&response_text);
+                let data_resp: Result<OllamaAPIResponse, _> = serde_json::from_str(&response_text);
 
                 match data_resp {
                     Ok(data) => {
-                        // Comment(Nico): maybe we could go over all the choices and check for the ones that can convert to json with our format
-                        // and from those the longest one. I haven't see multiple choices so far though.
-                        let mut response_string: String = data
-                            .output
-                            .choices
-                            .first()
-                            .map(|choice| choice.text.clone())
-                            .unwrap_or_else(|| String::new());
-
-                        let json_part = Self::json_string_cleanup(&response_string);
-                        Self::extract_first_json_object(&json_part)
+                        let response_string = data.response.to_string();
+                        Self::extract_first_json_object(&response_string)
                     }
                     Err(e) => {
                         shinkai_log(

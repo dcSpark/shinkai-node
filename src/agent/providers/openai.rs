@@ -1,110 +1,16 @@
-use std::collections::HashMap;
-use std::fmt;
+use crate::managers::agents_capabilities_manager::AgentsCapabilitiesManager;
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
+use super::shared::openai::{MessageContent, OpenAIApiMessage, OpenAIResponse, openai_prepare_messages};
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::de::Deserializer;
-use serde::de::Error;
-use serde::de::{MapAccess, Visitor};
-use serde::ser::{SerializeMap, SerializeStruct, Serializer};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self, Map};
-use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tiktoken_rs::model::get_context_size;
-use tiktoken_rs::num_tokens_from_messages;
-
-#[derive(Debug, Deserialize)]
-pub struct Response {
-    id: String,
-    object: String,
-    created: u64,
-    choices: Vec<Choice>,
-    usage: Usage,
-}
-
-#[derive(Debug, Deserialize)]
-struct Choice {
-    index: i32,
-    message: OpenAIApiMessage,
-}
-
-#[derive(Debug, Clone)]
-pub enum MessageContent {
-    Text(String),
-    ImageUrl { url: String },
-}
-
-impl Serialize for MessageContent {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match self {
-            MessageContent::Text(text) => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "text")?;
-                map.serialize_entry("text", text)?;
-                map.end()
-            }
-            MessageContent::ImageUrl { url } => {
-                let mut map = serializer.serialize_map(Some(2))?;
-                map.serialize_entry("type", "image_url")?;
-                let url_map: HashMap<String, &String> = [("url".to_string(), url)].iter().cloned().collect();
-                map.serialize_entry("image_url", &url_map)?;
-                map.end()
-            }
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for MessageContent {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        // Note: very ugly patch
-        let s: String = Deserialize::deserialize(deserializer)?;
-        Ok(MessageContent::Text(s))
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct OpenAIApiMessage {
-    pub role: String,
-    pub content: MessageContent,
-}
-
-impl Serialize for OpenAIApiMessage {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut map = serializer.serialize_struct("OpenAIApiMessage", 2)?;
-        map.serialize_field("role", &self.role)?;
-        map.serialize_field("content", &[&self.content])?;
-        map.end()
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct Usage {
-    prompt_tokens: i32,
-    completion_tokens: i32,
-    total_tokens: i32,
-}
-
-#[derive(Serialize)]
-struct ApiPayload {
-    model: String,
-    messages: String, // Maybe it'd be better to have Vec<Message> here?
-    temperature: f64,
-    max_tokens: usize,
-}
 
 #[async_trait]
 impl LLMProvider for OpenAI {
@@ -118,57 +24,13 @@ impl LLMProvider for OpenAI {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/v1/chat/completions");
-
-                let total_tokens = Self::get_max_tokens(self.model_type.as_str());
-                let tiktoken_messages = prompt.generate_openai_messages(Some(total_tokens / 2))?;
-
-                let filtered_tiktoken_messages: Vec<_> = tiktoken_messages
-                    .clone()
-                    .into_iter()
-                    .filter(|message| message.name.as_deref() != Some("image"))
-                    .collect();
-
-                let used_tokens = num_tokens_from_messages(
-                    Self::normalize_model(&self.model_type.clone()).as_str(),
-                    &filtered_tiktoken_messages,
-                )?;
-                let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
-                max_tokens = std::cmp::min(max_tokens, Self::get_max_output_tokens(self.model_type.as_str()));
-
-                let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
-                    .into_iter()
-                    .filter_map(|message| {
-                        if let Some(content) = message.content {
-                            let message_content = match &message.name {
-                                Some(name) if name == "image" => MessageContent::ImageUrl { url: content },
-                                _ => MessageContent::Text(content),
-                            };
-
-                            Some(OpenAIApiMessage {
-                                role: message.role,
-                                content: message_content,
-                            })
-                        } else {
-                            eprintln!(
-                                "Warning: Message with role '{}' has no content. Ignoring.",
-                                message.role
-                            );
-                            None
-                        }
-                    })
-                    .collect();
-
-                if let Some(last_message) = messages.last_mut() {
-                    match &mut last_message.content {
-                        MessageContent::Text(text) => {
-                            if !text.ends_with(" ```") {
-                                text.push_str(" ```json");
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                let messages_json = serde_json::to_value(&messages)?;
+                let open_ai = OpenAI {
+                    model_type: self.model_type.clone(),
+                };
+                let model = AgentLLMInterface::OpenAI(open_ai);
+                let max_tokens = AgentsCapabilitiesManager::get_max_tokens(&model);
+                // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
+                let messages_json = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
 
                 let mut payload = json!({
                     "model": self.model_type,
@@ -214,7 +76,7 @@ impl LLMProvider for OpenAI {
                 match data_resp {
                     Ok(value) => {
                         if self.model_type.contains("vision") {
-                            let data: Response = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()
@@ -223,14 +85,14 @@ impl LLMProvider for OpenAI {
                                         // Unescape the JSON string
                                         let cleaned_json_str = text.replace("\\\"", "\"").replace("\\n", "\n");
                                         Some(cleaned_json_str)
-                                    },
+                                    }
                                     MessageContent::ImageUrl { .. } => None,
                                 })
                                 .collect::<Vec<String>>()
                                 .join(" ");
                             Self::extract_first_json_object(&response_string)
                         } else {
-                            let data: Response = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
+                            let data: OpenAIResponse = serde_json::from_value(value).map_err(AgentError::SerdeError)?;
                             let response_string: String = data
                                 .choices
                                 .iter()

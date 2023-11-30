@@ -89,6 +89,16 @@ impl Agent {
                     .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
                     .await
             }
+            AgentLLMInterface::Ollama(ollama) => {
+                ollama
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .await
+            }
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => {
+                shinkai_backend
+                    .call_api(&self.client, self.external_url.as_ref(), self.api_key.as_ref(), prompt)
+                    .await
+            }
             AgentLLMInterface::LocalLLM(local_llm) => {
                 self.inference_locally(prompt.generate_single_output_string()?).await
             }
