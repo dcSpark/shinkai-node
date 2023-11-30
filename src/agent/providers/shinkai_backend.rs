@@ -1,19 +1,19 @@
 use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::shared::openai::{MessageContent, OpenAIApiMessage, OpenAIResponse, openai_prepare_messages};
+use super::shared::openai::{MessageContent, OpenAIResponse, openai_prepare_messages};
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
 use serde_json::Value as JsonValue;
 use serde_json::{self, Map};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tiktoken_rs::model::get_context_size;
 
 #[async_trait]
-impl LLMProvider for OpenAI {
+impl LLMProvider for ShinkaiBackend {
     async fn call_api(
         &self,
         client: &Client,
@@ -23,7 +23,8 @@ impl LLMProvider for OpenAI {
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
-                let url = format!("{}{}", base_url, "/v1/chat/completions");
+                // TODO: Update URL
+                let url = format!("{}/ai-proxy/{}", base_url, "https://api.openai.com/v1/chat/completions");
                 let open_ai = OpenAI {
                     model_type: self.model_type.clone(),
                 };
@@ -42,7 +43,7 @@ impl LLMProvider for OpenAI {
                     "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
-                
+
                 // Openai doesn't support json_object response format for vision models. wut?
                 if !self.model_type.contains("vision") {
                     payload["response_format"] = json!({ "type": "json_object" });
@@ -54,10 +55,13 @@ impl LLMProvider for OpenAI {
                     format!("Call API Body: {:?}", payload).as_str(),
                 );
 
+                let bearer = format!("Bearer {}", key);
+                // TODO: add auth to header
                 let res = client
                     .post(url)
                     .bearer_auth(key)
                     .header("Content-Type", "application/json")
+                    .header("Authorization", bearer)
                     .json(&payload)
                     .send()
                     .await?;
@@ -77,6 +81,7 @@ impl LLMProvider for OpenAI {
 
                 let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
+                // TODO: refactor parsing logic so it's reusable
                 match data_resp {
                     Ok(value) => {
                         if self.model_type.contains("vision") {

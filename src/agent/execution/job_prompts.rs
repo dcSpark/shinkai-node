@@ -1,4 +1,4 @@
-use super::super::{error::AgentError, providers::openai::OpenAIApiMessage};
+use super::super::{error::AgentError};
 use crate::{agent::job::JobStepResult, tools::router::ShinkaiTool};
 use futures::stream::ForEach;
 use lazy_static::lazy_static;

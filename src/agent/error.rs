@@ -1,4 +1,4 @@
-use crate::db::db_errors::ShinkaiDBError;
+use crate::{db::db_errors::ShinkaiDBError, managers::agents_capabilities_manager::AgentsCapabilitiesManagerError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -45,6 +45,9 @@ pub enum AgentError {
     InvalidCronExecutionChainStage(String),
     AnyhowError(AnyhowError),
     AgentMissingCapabilities(String),
+    UnexpectedPromptResult(String),
+    AgentsCapabilitiesManagerError(AgentsCapabilitiesManagerError),
+    UnexpectedPromptResultVariant(String)
 }
 
 impl fmt::Display for AgentError {
@@ -98,6 +101,9 @@ impl fmt::Display for AgentError {
             AgentError::InvalidCronExecutionChainStage(s) => write!(f, "Invalid cron execution chain stage: {}", s),
             AgentError::AnyhowError(err) => write!(f, "{}", err),
             AgentError::AgentMissingCapabilities(s) => write!(f, "Agent is missing capabilities: {}", s),
+            AgentError::UnexpectedPromptResult(s) => write!(f, "Unexpected prompt result: {}", s),
+            AgentError::AgentsCapabilitiesManagerError(err) => write!(f, "AgentsCapabilitiesManager error: {}", err),
+            AgentError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
         }
     }
 }
@@ -170,5 +176,11 @@ impl From<ShinkaiMessageError> for AgentError {
 impl From<InboxNameError> for AgentError {
     fn from(error: InboxNameError) -> Self {
         AgentError::InboxNameError(error)
+    }
+}
+
+impl From<AgentsCapabilitiesManagerError> for AgentError {
+    fn from(error: AgentsCapabilitiesManagerError) -> Self {
+        AgentError::AgentsCapabilitiesManagerError(error)
     }
 }

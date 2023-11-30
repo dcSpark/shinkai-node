@@ -23,12 +23,26 @@ pub enum AgentLLMInterface {
     OpenAI(OpenAI),
     #[serde(rename = "genericapi")]
     GenericAPI(GenericAPI),
+    #[serde(rename = "ollama")]
+    Ollama(Ollama),
+    #[serde(rename = "shinkai-backend")]
+    ShinkaiBackend(ShinkaiBackend),
     #[serde(rename = "local-llm")]
     LocalLLM(LocalLLM),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct LocalLLM {}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct Ollama {
+    pub model_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct ShinkaiBackend {
+    pub model_type: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct OpenAI {
@@ -50,8 +64,13 @@ impl FromStr for AgentLLMInterface {
         } else if s.starts_with("genericapi:") {
             let model_type = s.strip_prefix("genericapi:").unwrap_or("").to_string();
             Ok(AgentLLMInterface::GenericAPI(GenericAPI { model_type }))
+        } else if s.starts_with("ollama:") {
+            let model_type = s.strip_prefix("ollama:").unwrap_or("").to_string();
+            Ok(AgentLLMInterface::Ollama(Ollama { model_type }))
+        } else if s.starts_with("shinkai-backend:") {
+            let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
+            Ok(AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }))
         } else {
-            // TODO: nothing else for now
             Err(())
         }
     }

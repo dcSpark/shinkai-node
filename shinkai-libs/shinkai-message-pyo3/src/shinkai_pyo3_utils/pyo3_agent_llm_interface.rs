@@ -3,7 +3,9 @@ use pyo3::types::PyDict;
 use shinkai_message_primitives::schemas::agents::serialized_agent::AgentLLMInterface;
 use shinkai_message_primitives::schemas::agents::serialized_agent::GenericAPI;
 use shinkai_message_primitives::schemas::agents::serialized_agent::LocalLLM;
+use shinkai_message_primitives::schemas::agents::serialized_agent::Ollama;
 use shinkai_message_primitives::schemas::agents::serialized_agent::OpenAI;
+use shinkai_message_primitives::schemas::agents::serialized_agent::ShinkaiBackend;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -25,8 +27,17 @@ impl PyAgentLLMInterface {
             Ok(Self {
                 inner: AgentLLMInterface::GenericAPI(GenericAPI { model_type }),
             })
-        } 
-        else {
+        } else if s.starts_with("ollama:") {
+            let model_type = s.strip_prefix("ollama:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: AgentLLMInterface::Ollama(Ollama { model_type }),
+            })
+        } else if s.starts_with("shinkai-backend:") {
+            let model_type = s.strip_prefix("shinkai-backend:").unwrap_or("").to_string();
+            Ok(Self {
+                inner: AgentLLMInterface::ShinkaiBackend(ShinkaiBackend { model_type }),
+            })
+        } else {
             Ok(Self {
                 inner: AgentLLMInterface::LocalLLM(LocalLLM {}),
             })
@@ -64,6 +75,8 @@ impl PyAgentLLMInterface {
         match &self.inner {
             AgentLLMInterface::OpenAI(open_ai) => Ok(format!("openai:{}", open_ai.model_type)),
             AgentLLMInterface::GenericAPI(generic_ai) => Ok(format!("genericapi:{}", generic_ai.model_type)),
+            AgentLLMInterface::Ollama(ollama) => Ok(format!("ollama:{}", ollama.model_type)),
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Ok(format!("shinkai-backend:{}", shinkai_backend.model_type)),
             AgentLLMInterface::LocalLLM(_) => Ok("LocalLLM".to_string()),
         }
     }
