@@ -93,10 +93,17 @@ impl Node {
         res: Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let db = self.db.lock().await;
-        let code = db
-            .generate_registration_new_code(permissions, code_type)
-            .unwrap_or_else(|_| "".to_string());
-        let _ = res.send(code).await.map_err(|_| ());
+        let code = match db.generate_registration_new_code(permissions, code_type) {
+            Ok(code) => code,
+            Err(e) => {
+                error!("Failed to generate registration new code: {}", e);
+                "".to_string()
+            }
+        };
+        if let Err(e) = res.send(code).await {
+            error!("Failed to send code: {}", e);
+            return Err(Box::new(e));
+        }
         Ok(())
     }
 

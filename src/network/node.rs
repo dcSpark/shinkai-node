@@ -258,7 +258,7 @@ pub struct Node {
     // First device needs registration code
     pub first_device_needs_registration_code: bool,
     // Initial Agent to auto-add on first registration
-    pub initial_agent: Option<SerializedAgent>,
+    pub initial_agents: Vec<SerializedAgent>,
     // The Job manager
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
@@ -277,7 +277,7 @@ impl Node {
         commands: Receiver<NodeCommand>,
         db_path: String,
         first_device_needs_registration_code: bool,
-        initial_agent: Option<SerializedAgent>,
+        initial_agents: Vec<SerializedAgent>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -311,7 +311,6 @@ impl Node {
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-
         Node {
             node_profile_name,
             identity_secret_key,
@@ -327,7 +326,7 @@ impl Node {
             job_manager: None,
             cron_manager: None,
             first_device_needs_registration_code,
-            initial_agent,
+            initial_agents,
         }
     }
 
@@ -343,7 +342,7 @@ impl Node {
             .await,
         )));
 
-        eprintln!("\n\n\n self.node_profile_name: {:?}", self.node_profile_name);
+        shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, &format!("Starting node with name: {}", self.node_profile_name));
         self.cron_manager = match &self.job_manager {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(

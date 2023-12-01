@@ -89,7 +89,7 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             false,
-            None
+            vec![]
         );
 
         eprintln!("Starting Node");

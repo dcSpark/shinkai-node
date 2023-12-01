@@ -14,9 +14,9 @@ export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
 
-export INITIAL_AGENT_NAME="my_gpt"
-export INITIAL_AGENT_URL="https://api.openai.com"
-export INITIAL_AGENT_MODEL="openai:gpt-4-1106-preview"
+export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"
+export INITIAL_AGENT_URLS="https://api.openai.com,https://api.openai.com"
+export INITIAL_AGENT_MODELS="openai:gpt-4-1106-preview,openai:gpt-4-vision-preview"
 
 # Add these lines to enable all log options
 export LOG_ALL=1
