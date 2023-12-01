@@ -4,6 +4,7 @@ use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic};
 use chrono::Utc;
 use rocksdb::{IteratorMode, Options};
 use serde::{Deserialize, Serialize};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CronTask {
@@ -32,7 +33,7 @@ impl Ord for CronTask {
 impl ShinkaiDB {
     pub fn add_cron_task(
         &mut self,
-        profile: String,
+        profile: ShinkaiName,
         task_id: String,
         cron: String,
         prompt: String,
@@ -41,6 +42,8 @@ impl ShinkaiDB {
         crawl_links: bool,
         agent_id: String,
     ) -> Result<(), ShinkaiDBError> {
+        let profile = profile.get_profile_name().ok_or(ShinkaiDBError::InvalidProfileName("Invalid profile name".to_string()))?;
+
         let cf_name_schedule = format!("{}_cron_task_schedule", profile);
         let cf_name_prompt = format!("{}_cron_task_prompt", profile);
         let cf_name_subprompt = format!("{}_cron_task_subprompt", profile);
@@ -235,28 +238,29 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn get_all_cron_tasks_from_all_profiles(&self) -> Result<HashMap<String, CronTask>, ShinkaiDBError> {
+    pub fn get_all_cron_tasks_from_all_profiles(&self) -> Result<HashMap<String, Vec<(String, CronTask)>>, ShinkaiDBError> {
         let cf_cron_queues = self.get_cf_handle(Topic::CronQueues)?;
-
+    
         let mut all_profiles = HashSet::new();
         for result in self.db.iterator_cf(cf_cron_queues, IteratorMode::Start) {
             match result {
                 Ok((_, value)) => {
                     let profile = String::from_utf8(value.to_vec()).unwrap();
+                    eprintln!("get_all_cron_tasks_from_all_profiles profile: {:?}", profile);
                     all_profiles.insert(profile);
                 }
                 Err(e) => return Err(e.into()),
             }
         }
-
+    
         let mut all_tasks = HashMap::new();
-        for profile in all_profiles {
-            let tasks = self.get_all_cron_tasks_for_profile(profile)?;
+        for profile in all_profiles.clone() {
+            let tasks = self.get_all_cron_tasks_for_profile(profile.clone())?;
             for (task_id, task) in tasks {
-                all_tasks.insert(task_id, task);
+                all_tasks.entry(profile.clone()).or_insert_with(Vec::new).push((task_id, task));
             }
         }
-
+    
         Ok(all_tasks)
     }
 

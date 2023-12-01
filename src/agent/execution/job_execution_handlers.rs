@@ -20,7 +20,7 @@ use crate::{
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    planner::kai_files::{KaiJobFile, KaiSchemaType},
+    planner::{kai_files::{KaiJobFile, KaiSchemaType}, kai_manager::KaiJobFileManager},
 };
 
 impl JobManager {
@@ -154,11 +154,10 @@ impl JobManager {
                 );
                 // Create Job
                 let job_id = full_job.job_id.to_string();
-                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                     full_job.clone().job_id.to_string(),
                     inference_response_content.clone(),
-                    inbox_name.to_string(),
+                    "".to_string(),
                     clone_signature_secret_key(&identity_secret_key),
                     profile.node_name.clone(),
                     profile.node_name.clone(),
@@ -204,7 +203,7 @@ impl JobManager {
                                 let shinkai_message = ShinkaiMessageBuilder::job_message_from_agent(
                                     full_job.clone().job_id.to_string(),
                                     inference_response_content.clone(),
-                                    inbox_name.to_string(),
+                                    "".to_string(),
                                     clone_signature_secret_key(&identity_secret_key),
                                     profile.node_name.clone(),
                                     profile.node_name.clone(),

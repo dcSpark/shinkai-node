@@ -26,9 +26,6 @@ impl LLMProvider for Ollama {
         if let Some(base_url) = url {
             if let Some(key) = api_key {
                 let url = format!("{}{}", base_url, "/api/generate");
-                // TODO: we need a router to handle the different models. Maybe in agents_capabilities_manager.rs
-                // assume api_key is empty
-
                 let ollama = Ollama {
                     model_type: self.model_type.clone(),
                 };

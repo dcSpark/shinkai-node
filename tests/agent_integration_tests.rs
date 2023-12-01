@@ -1,5 +1,5 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent, Ollama, ShinkaiBackend};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
@@ -107,15 +107,28 @@ fn node_agent_registration() {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
 
+        let ollama = Ollama {
+            model_type: "mistral".to_string(),
+        };
+
+        let shinkai_backend = ShinkaiBackend {
+            model_type: "gpt-4-1106-preview".to_string(),
+        };
+
         let agent = SerializedAgent {
             id: node1_agent.clone().to_string(),
             full_identity_name: agent_name,
             perform_locally: false,
+            // external_url: Some("http://localhost:3000".to_string()),
+            // external_url: Some("http://localhost:11434".to_string()),
             // external_url: Some("https://api.openai.com".to_string()),
             external_url: Some(server.url()),
             // api_key: Some("api_key".to_string()),
             api_key: Some("mockapikey".to_string()),
+            // api_key: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjE3LCJpYXQiOjE3MDEzMTg5ODZ9.jTLpbsAVITowuCMYdNgTyUHikGRlLjEqqOYHWMRNSz4".to_string()),
             model: AgentLLMInterface::OpenAI(open_ai),
+            // model: AgentLLMInterface::Ollama(ollama),
+            // model: AgentLLMInterface::ShinkaiBackend(shinkai_backend),
             toolkit_permissions: vec![],
             storage_bucket_permissions: vec![],
             allowed_message_senders: vec![],

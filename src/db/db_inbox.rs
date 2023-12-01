@@ -2,7 +2,7 @@ use chrono::DateTime;
 use rand::distributions::Standard;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime},
+    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
@@ -329,14 +329,23 @@ impl ShinkaiDB {
         identity: &StandardIdentity,
         perm: InboxPermission,
     ) -> Result<(), ShinkaiDBError> {
-        let profile_name =
-            identity
-                .full_identity_name
-                .get_profile_name()
-                .clone()
-                .ok_or(ShinkaiDBError::InvalidIdentityName(
-                    identity.full_identity_name.to_string(),
-                ))?;
+        // Call the new function with the extracted profile name
+        let shinkai_profile = identity.full_identity_name.extract_profile()?;
+        self.add_permission_with_profile(inbox_name, shinkai_profile, perm)
+    }
+
+    pub fn add_permission_with_profile(
+        &mut self,
+        inbox_name: &str,
+        profile: ShinkaiName,
+        perm: InboxPermission,
+    ) -> Result<(), ShinkaiDBError> {
+        let profile_name = profile
+            .get_profile_name()
+            .clone()
+            .ok_or(ShinkaiDBError::InvalidIdentityName(
+                profile.to_string(),
+            ))?;
 
         // Fetch column family for identity
         let cf_identity =
@@ -344,14 +353,14 @@ impl ShinkaiDB {
                 .cf_handle(Topic::ProfilesIdentityKey.as_str())
                 .ok_or(ShinkaiDBError::IdentityNotFound(format!(
                     "Identity not found for: {}",
-                    identity.full_identity_name
+                    profile_name
                 )))?;
 
         // Check if the identity exists
-        if self.db.get_cf(cf_identity, profile_name.clone())?.is_none() {
+        if self.db.get_cf(cf_identity, profile_name.clone().to_string())?.is_none() {
             return Err(ShinkaiDBError::IdentityNotFound(format!(
                 "Identity not found for: {}",
-                identity.full_identity_name
+                profile_name
             )));
         }
 
@@ -365,7 +374,7 @@ impl ShinkaiDB {
                 inbox_name
             )))?;
         let perm_val = perm.to_i32().to_string(); // Convert permission to i32 and then to String
-        self.db.put_cf(cf, profile_name.clone(), perm_val)?;
+        self.db.put_cf(cf, profile_name.to_string(), perm_val)?;
         Ok(())
     }
 
@@ -585,7 +594,7 @@ impl ShinkaiDB {
                 inbox_id: inbox_id.clone(),
                 custom_name,
                 last_message,
-                is_finished
+                is_finished,
             };
 
             smart_inboxes.push(smart_inbox);

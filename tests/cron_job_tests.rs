@@ -116,7 +116,7 @@ mod tests {
         {
             let mut db_lock = db.lock().await;
             match db_lock.add_cron_task(
-                node_profile_name.clone().get_profile_name().unwrap().to_string(),
+                node_profile_name.clone(),
                 "task1".to_string(),
                 "* * * * * * *".to_string(),
                 "List all the topics related to AI".to_string(),
@@ -135,13 +135,15 @@ mod tests {
              db: Arc<Mutex<ShinkaiDB>>,
              identity_sk: SignatureStaticKey,
              job_manager: Arc<Mutex<JobManager>>,
-             node_profile_name: ShinkaiName| {
+             node_profile_name: ShinkaiName,
+             profile: String | {
                 Box::pin(CronManager::process_job_message_queued(
                     job,
                     db,
                     identity_sk,
                     job_manager.clone(),
                     node_profile_name.clone(),
+                    profile,
                 )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
             };
 

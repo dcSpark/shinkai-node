@@ -86,7 +86,7 @@ mod tests {
 
         // TODO: mock up the other 30 websites lol
         // TODO: let's modify this so it only returns one link
-        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key, job_manager, node_profile_name).await;
+        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key, job_manager, node_profile_name, "main_profile".to_string()).await;
 
         // let result = scraper.download_and_parse().await;
         eprintln!("result: {:?}", result);
