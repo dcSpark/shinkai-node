@@ -62,22 +62,23 @@ impl KaiJobFileManager {
 
                 match &node.cron_manager {
                     Some(cron_manager) => {
-                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, "Cron manager found");
                         let random_hash = random_string();
 
                         let url = cron_task_response
                             .cron_task_request
                             .object_description
                             .unwrap_or("".to_string());
+
                         let profile = match kai_file.shinkai_profile.ok_or(KaiJobFileManagerError::ProfileNotFound) {
                             Ok(profile) => profile.extract_profile().map_err(KaiJobFileManagerError::from)?,
                             Err(e) => return Err(e),
                         };
 
+                        shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("Cron manager found. Adding cron task for profile: {:?}", profile.clone().to_string()).as_str());
                         let cron_manager = cron_manager.lock().await;
                         cron_manager
                             .add_cron_task(
-                                profile.to_string(),
+                                profile,
                                 random_hash,
                                 cron_task_response.cron_description,
                                 cron_task_response.cron_task_request.task_description,

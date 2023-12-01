@@ -9,7 +9,7 @@ use crate::{
     db::db_errors::ShinkaiDBError,
     managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
-    planner::{kai_manager::KaiJobFileManager, kai_files::KaiJobFile},
+    planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
@@ -1421,13 +1421,26 @@ impl Node {
                             Ok(())
                         }
                         Err(err) => {
-                            let _ = res
-                                .send(Err(APIError {
-                                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                                    error: "Internal Server Error".to_string(),
-                                    message: format!("{}", err),
-                                }))
-                                .await;
+                            match err {
+                                ShinkaiDBError::SomeError(_) => {
+                                    let _ = res
+                                        .send(Err(APIError {
+                                            code: StatusCode::BAD_REQUEST.as_u16(),
+                                            error: "Bad Request".to_string(),
+                                            message: format!("{}", err),
+                                        }))
+                                        .await;
+                                }
+                                _ => {
+                                    let _ = res
+                                        .send(Err(APIError {
+                                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                                            error: "Internal Server Error".to_string(),
+                                            message: format!("{}", err),
+                                        }))
+                                        .await;
+                                }
+                            }
                             Ok(())
                         }
                     }

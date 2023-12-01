@@ -470,7 +470,19 @@ impl ShinkaiDB {
         let cf_handle = self
             .db
             .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
+            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?;
+
+        // Check if the job is already finished
+        let is_finished_value = self
+            .db
+            .get_cf(cf_handle, JobInfo::IsFinished.to_str().as_bytes())?
+            .ok_or(ShinkaiDBError::DataNotFound)?;
+        let is_finished = std::str::from_utf8(&is_finished_value)?.to_string() == "true";
+
+        if is_finished {
+            return Err(ShinkaiDBError::SomeError(format!("Job {} is already finished", job_id)));
+        }
+
         let mut batch = WriteBatch::default();
         batch.put_cf(cf_handle, JobInfo::IsFinished.to_str().as_bytes(), b"true");
         self.db.write(batch)?;

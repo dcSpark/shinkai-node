@@ -507,7 +507,7 @@ fn test_permission_errors() {
         result.unwrap_err(),
         ShinkaiDBError::IdentityNotFound(format!(
             "Identity not found for: {}",
-            nonexistent_identity.full_identity_name.clone().to_string()
+            nonexistent_identity.clone().full_identity_name.get_profile_name().unwrap().to_string()
         ))
     );
 

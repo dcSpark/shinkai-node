@@ -249,10 +249,18 @@ impl JobManager {
                             return Err(AgentError::AgentNotFound);
                         }
                     };
-                    shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Debug, format!("KaiJobFile: {:?}", kai_file).as_str());
+                    shinkai_log(
+                        ShinkaiLogOption::JobExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("KaiJobFile: {:?}", kai_file).as_str(),
+                    );
                     match kai_file.schema {
                         KaiSchemaType::CronJobRequest(cron_task_request) => {
-                            shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Debug, format!("CronJobRequest: {:?}", cron_task_request).as_str());
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Debug,
+                                format!("CronJobRequest: {:?}", cron_task_request).as_str(),
+                            );
                             // Handle CronJobRequest
                             JobManager::handle_cron_job_request(
                                 db.clone(),
@@ -267,7 +275,11 @@ impl JobManager {
                             return Ok(true);
                         }
                         KaiSchemaType::CronJob(cron_task) => {
-                            shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Debug, format!("CronJob: {:?}", cron_task).as_str());
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Debug,
+                                format!("CronJob: {:?}", cron_task).as_str(),
+                            );
                             // Handle CronJob
                             JobManager::handle_cron_job(
                                 db.clone(),
