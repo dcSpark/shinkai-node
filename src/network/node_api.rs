@@ -927,7 +927,8 @@ async fn use_registration_code_handler(
 }
 
 async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
-    Ok(warp::reply::json(&json!({ "status": "ok" })))
+    let version = env!("CARGO_PKG_VERSION");
+    Ok(warp::reply::json(&json!({ "status": "ok", "version": version })))
 }
 
 async fn get_all_subidentities_handler(
