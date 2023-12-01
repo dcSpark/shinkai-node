@@ -19,50 +19,53 @@ pub struct NodeEnvironment {
     pub cron_devops_api_enabled: bool,
 }
 
-pub fn fetch_agent_env(global_identity: String) -> Option<SerializedAgent> {
-    // Agent
-    let initial_agent_name: String = env::var("INITIAL_AGENT_NAME")
+pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
+    let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
         .unwrap_or_else(|_| "".to_string())
-        .parse()
-        .expect("Failed to parse agent name");
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
 
-    let initial_agent_api_key: String = env::var("INITIAL_AGENT_API_KEY")
+    let initial_agent_api_keys: Vec<String> = env::var("INITIAL_AGENT_API_KEYS")
         .unwrap_or_else(|_| "".to_string())
-        .parse()
-        .expect("Failed to parse agent api key");
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
 
-    let initial_agent_url: String = env::var("INITIAL_AGENT_URL")
+    let initial_agent_urls: Vec<String> = env::var("INITIAL_AGENT_URLS")
         .unwrap_or_else(|_| "".to_string())
-        .parse()
-        .expect("Failed to parse agent url e.g. https://api.openai.com");
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
 
-    let initial_agent_model: String = env::var("INITIAL_AGENT_MODEL")
+    let initial_agent_models: Vec<String> = env::var("INITIAL_AGENT_MODELS")
         .unwrap_or_else(|_| "".to_string())
-        .parse()
-        .expect("Failed to parse agent model e.g. openai:gpt-3.5-turbo-1106");
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
 
-    if initial_agent_name.is_empty()
-        || initial_agent_api_key.is_empty()
-        || initial_agent_url.is_empty()
-        || initial_agent_model.is_empty()
-    {
-        return None;
+    let mut agents = Vec::new();
+
+    for i in 0..initial_agent_names.len() {
+        let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_models[i]);
+
+        let agent = SerializedAgent {
+            id: initial_agent_names[i].clone(),
+            full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_names[i]))
+                .unwrap(),
+            perform_locally: false,
+            external_url: Some(initial_agent_urls[i].clone()),
+            api_key: Some(initial_agent_api_keys[i].clone()),
+            model: model.expect("Failed to parse agent model"),
+            toolkit_permissions: vec![],
+            storage_bucket_permissions: vec![],
+            allowed_message_senders: vec![],
+        };
+
+        agents.push(agent);
     }
 
-    let model: Result<AgentLLMInterface, _> = AgentLLMInterface::from_str(&initial_agent_model);
-    let agent = SerializedAgent {
-        id: initial_agent_name.clone(),
-        full_identity_name: ShinkaiName::new(format!("{}/main/agent/{}", global_identity, initial_agent_name)).unwrap(),
-        perform_locally: false,
-        external_url: Some(initial_agent_url),
-        api_key: Some(initial_agent_api_key),
-        model: model.expect("Failed to parse agent model"),
-        toolkit_permissions: vec![],
-        storage_bucket_permissions: vec![],
-        allowed_message_senders: vec![],
-    };
-
-    Some(agent)
+    agents
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {

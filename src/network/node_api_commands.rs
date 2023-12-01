@@ -925,9 +925,11 @@ impl Node {
                         let mut identity_manager = self.identity_manager.lock().await;
                         match identity_manager.add_device_subidentity(device_identity).await {
                             Ok(_) => {
-                                if main_profile_exists == false && self.initial_agent.is_some() {
+                                if main_profile_exists == false && !self.initial_agents.is_empty() {
                                     std::mem::drop(identity_manager);
-                                    self.internal_add_agent(self.initial_agent.clone().unwrap()).await?;
+                                    for agent in &self.initial_agents {
+                                        self.internal_add_agent(agent.clone()).await?;
+                                    }
                                 }
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {

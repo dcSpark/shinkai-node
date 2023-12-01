@@ -1,5 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent, Ollama, ShinkaiBackend};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{
+    AgentLLMInterface, Ollama, OpenAI, SerializedAgent, ShinkaiBackend,
+};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
@@ -145,7 +147,7 @@ fn node_agent_registration() {
             node1_commands_receiver,
             node1_db_path,
             true,
-            Some(agent),
+            vec![agent],
         );
 
         let node1_handler = tokio::spawn(async move {

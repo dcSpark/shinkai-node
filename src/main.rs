@@ -58,12 +58,12 @@ fn main() {
     let node_keys = generate_or_load_keys();
     let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key);
-    let initial_agent = fetch_agent_env(global_identity_name.clone());
+    let initial_agents = fetch_agent_env(global_identity_name.clone());
 
     shinkai_log(
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
-        format!("Initial Agent: {:?}", initial_agent).as_str(),
+        format!("Initial Agent: {:?}", initial_agents).as_str(),
     );
 
     let identity_secret_key_string =
@@ -114,7 +114,7 @@ fn main() {
                 node_commands_receiver,
                 db_path,
                 node_env.first_device_needs_registration_code,
-                initial_agent
+                initial_agents
             )
             .await
         }),
