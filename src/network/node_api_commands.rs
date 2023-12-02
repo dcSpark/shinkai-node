@@ -1350,6 +1350,47 @@ impl Node {
         }
     }
 
+
+    pub async fn api_add_toolkit(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let hex_blake3_hash = msg.get_message_content()?;
+
+        match self.db.lock().await.get_all_files_from_inbox(hex_blake3_hash) {
+            Ok(files) => {
+                // Here, files is a Vec<(String, Vec<u8>)>, where each tuple represents a file.
+                // The first element of the tuple is the filename, and the second element is the file data.
+                // You can process the files as needed here.
+    
+                let _ = res.send(Ok("Files retrieved successfully".to_string())).await;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+                Ok(())
+            }
+        }
+    }
+
     pub async fn api_update_job_to_finished(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1526,7 +1567,7 @@ impl Node {
             }
         };
 
-        eprintln!("api_job_message> msg: {:?}", msg);
+        shinkai_log(ShinkaiLogOption::DetailedAPI, ShinkaiLogLevel::Debug, format!("api_job_message> msg: {:?}", msg).as_str());
         // TODO: add permissions to check if the sender has the right permissions to send the job message
 
         match self.internal_job_message(msg).await {

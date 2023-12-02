@@ -225,7 +225,11 @@ pub enum NodeCommand {
     },
     APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
-    }
+    },
+    APIAddToolkit {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -439,6 +443,7 @@ impl Node {
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
                             Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
                             Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
+                            Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
                             _ => break,
                         }
                     }

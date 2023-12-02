@@ -151,6 +151,15 @@ pub async fn run_api(
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
+    // POST v1/add_toolkit
+    let add_toolkit = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_toolkit")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| add_toolkit_handler(node_commands_sender.clone(), message))
+    };
+
     // GET v1/shinkai_health
     let shinkai_health = warp::path!("v1" / "shinkai_health")
         .and(warp::get())
@@ -405,6 +414,7 @@ pub async fn run_api(
         .or(add_file_to_inbox_with_symmetric_key)
         .or(get_filenames)
         .or(update_job_to_finished)
+        .or(add_toolkit)
         .recover(handle_rejection)
         .with(log)
         .with(cors)
@@ -507,9 +517,21 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
 async fn private_devops_cron_list_handler(
     node_commands_sender: Sender<NodeCommand>,
 ) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    handle_node_command_without_message(
+    handle_node_command_without_message(node_commands_sender, |node_commands_sender, res_sender| {
+        NodeCommand::APIPrivateDevopsCronList { res: res_sender }
+    })
+    .await
+}
+
+async fn add_toolkit_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
         node_commands_sender,
-        |node_commands_sender, res_sender| NodeCommand::APIPrivateDevopsCronList {
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIAddToolkit {
+            msg: message,
             res: res_sender,
         },
     )
