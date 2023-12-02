@@ -12,7 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 lazy_static! {
-    pub static ref DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT: &'static str = "3555";
+    pub static ref DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT: &'static str = "3000";
 }
 
 /// The resulting data from execution a JS tool
@@ -127,6 +127,7 @@ impl JSToolkitExecutor {
 
     // Submits a get request to the JS Toolkit Executor
     fn submit_get_request(&self, endpoint: &str) -> Result<JsonValue, ToolError> {
+        eprintln!("Submitting GET request to: {}", endpoint);
         let client = Client::new();
         let address = match self {
             JSToolkitExecutor::Local(process) => &process.address,
@@ -135,6 +136,7 @@ impl JSToolkitExecutor {
 
         let response = client.get(&format!("{}{}", address, endpoint)).send()?;
 
+        eprintln!("Response: {:?}", response);
         Ok(response.json()?)
     }
 

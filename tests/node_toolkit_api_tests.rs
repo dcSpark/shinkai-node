@@ -209,124 +209,83 @@ fn node_toolkit_api() {
 
                 // Receive the response
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
-                assert_eq!(response, vec!["files/packaged-shinkai-toolkit.js", "files/toolkit-setup.json"]);
+                assert_eq!(
+                    response,
+                    vec!["files/packaged-shinkai-toolkit.js", "files/toolkit-setup.json"]
+                );
             }
-            // panic!("stop");
-            
-            // {
-            //     // Send a Message to the Job for processing
-            //     eprintln!("\n\nSend a message for the Job");
-            //     let start = Instant::now();
-            //     api_message_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //         &job_id.clone().to_string(),
-            //         &job_message_content,
-            //         &hash_of_aes_encryption_key_hex(symmetrical_sk),
-            //     )
-            //     .await;
-            //
-            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            // }
-            // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     for _ in 0..50 {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 2,
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
+            {
+                // Send a Message to the Job for processing
+                eprintln!("\n\nAdd Toolkit");
+                let message_content = hash_of_aes_encryption_key_hex(symmetrical_sk);
+                let msg = ShinkaiMessageBuilder::new(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node1_profile_name.to_string().clone(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_intra_sender(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
 
-            //         match node1_last_messages[0].get_message_content() {
-            //             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-            //                 Ok(job_message) => {
-            //                     eprintln!("message_content: {}", message_content);
-            //                     if job_message.content != job_message_content {
-            //                         assert!(true);
-            //                         break;
-            //                     }
-            //                 }
-            //                 Err(_) => {
-            //                     eprintln!("error: message_content: {}", message_content);
-            //                 }
-            //             },
-            //             Err(_) => {
-            //                 // nothing
-            //             }
-            //         }
-            //         tokio::time::sleep(Duration::from_secs(10)).await;
-            //     }
-            // }
-            // println!("Sending next message in convo");
-            //
-            // let new_job_message_content = "Can you output markdown for an FAQ where my previous question is the heading and your response is the text underneath?".to_string();
-            // {
-            //     // Send a Message to the Job for processing
-            //     eprintln!("\n\nSend a message for the Job");
-            //     let start = Instant::now();
-            //     api_message_job(
-            //         node1_commands_sender.clone(),
-            //         clone_static_secret_key(&node1_profile_encryption_sk),
-            //         node1_encryption_pk.clone(),
-            //         clone_signature_secret_key(&node1_profile_identity_sk),
-            //         node1_identity_name.clone().as_str(),
-            //         node1_profile_name.clone().as_str(),
-            //         &agent_subidentity.clone(),
-            //         &job_id.clone().to_string(),
-            //         &new_job_message_content,
-            //         "",
-            //     )
-            //     .await;
+                let (res_registration_sender, res_registraton_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIAddToolkit {
+                        msg,
+                        res: res_registration_sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = res_registraton_receiver.recv().await.unwrap();
+                eprintln!("resp: {:?}", resp);
+            }
+            {
+                // Send a Message to the Job for processing
+                eprintln!("\n\nList Toolkits");
+                let message_content = hash_of_aes_encryption_key_hex(symmetrical_sk);
+                let msg = ShinkaiMessageBuilder::new(
+                    node1_profile_encryption_sk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_encryption_pk,
+                )
+                .message_raw_content(message_content.clone())
+                .body_encryption(EncryptionMethod::DiffieHellmanChaChaPoly1305)
+                .message_schema_type(MessageSchemaType::TextContent)
+                .internal_metadata(
+                    node1_profile_name.to_string().clone(),
+                    "".to_string(),
+                    EncryptionMethod::None,
+                )
+                .external_metadata_with_intra_sender(
+                    node1_identity_name.to_string(),
+                    node1_identity_name.to_string().clone(),
+                    node1_profile_name.to_string().clone(),
+                )
+                .build()
+                .unwrap();
 
-            //     let duration = start.elapsed(); // Get the time elapsed since the start of the timer
-            //     eprintln!("Time elapsed in api_message_job is: {:?}", duration);
-            // }
-            //
-            // {
-            //     eprintln!("Waiting for the Job to finish");
-            //     for _ in 0..50 {
-            //         let (res1_sender, res1_receiver) = async_channel::bounded(1);
-            //         node1_commands_sender
-            //             .send(NodeCommand::FetchLastMessages {
-            //                 limit: 2,
-            //                 res: res1_sender,
-            //             })
-            //             .await
-            //             .unwrap();
-            //         let node1_last_messages = res1_receiver.recv().await.unwrap();
-            //         eprintln!("node1_last_messages: {:?}", node1_last_messages);
-
-            //         match node1_last_messages[0].get_message_content() {
-            //             Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-            //                 Ok(job_message) => {
-            //                     eprintln!("message_content: {}", message_content);
-            //                     if job_message.content != new_job_message_content {
-            //                         assert!(true);
-            //                         break;
-            //                     }
-            //                 }
-            //                 Err(_) => {
-            //                     eprintln!("error: message_content: {}", message_content);
-            //                 }
-            //             },
-            //             Err(_) => {
-            //                 // nothing
-            //             }
-            //         }
-            //         tokio::time::sleep(Duration::from_secs(10)).await;
-            //     }
-            // }
+                let (res_list_sender, res_list_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::APIListToolkits {
+                        msg,
+                        res: res_list_sender,
+                    })
+                    .await
+                    .unwrap();
+                let resp = res_list_receiver.recv().await.unwrap();
+                eprintln!("resp: {:?}", resp);
+            }
         })
     });
 }

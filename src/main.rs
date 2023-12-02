@@ -114,7 +114,8 @@ fn main() {
                 node_commands_receiver,
                 db_path,
                 node_env.first_device_needs_registration_code,
-                initial_agents
+                initial_agents,
+                node_env.js_toolkit_executor_remote.clone(),
             )
             .await
         }),

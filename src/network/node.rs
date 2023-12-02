@@ -230,6 +230,10 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<String, APIError>>,
     },
+    APIListToolkits {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -267,6 +271,8 @@ pub struct Node {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
+    // JS Toolkit Executor Remote
+    pub js_toolkit_executor_remote: Option<String>,
 }
 
 impl Node {
@@ -282,6 +288,7 @@ impl Node {
         db_path: String,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
+        js_toolkit_executor_remote: Option<String>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -331,6 +338,7 @@ impl Node {
             cron_manager: None,
             first_device_needs_registration_code,
             initial_agents,
+            js_toolkit_executor_remote,
         }
     }
 
@@ -444,6 +452,7 @@ impl Node {
                             Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
                             Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
                             Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
+                            Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
                             _ => break,
                         }
                     }
