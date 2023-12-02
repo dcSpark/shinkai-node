@@ -1,7 +1,7 @@
 use crate::tools::error::ToolError;
 use crate::tools::js_toolkit::JSToolkit;
 use lazy_static::lazy_static;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -45,30 +45,30 @@ pub enum JSToolkitExecutor {
 impl JSToolkitExecutor {
     /// Starts the JS Toolkit Executor locally at default path `./files/shinkai-toolkit-executor.js`
     /// Primarily intended for local testing (executor should be sandboxed for production)
-    pub fn new_local() -> Result<Self, ToolError> {
-        let executor = JSToolkitExecutor::new_local_custom_path("./files/shinkai-toolkit-executor.js")?;
+    pub async fn new_local() -> Result<Self, ToolError> {
+        let executor = JSToolkitExecutor::new_local_custom_path("./files/shinkai-toolkit-executor.js").await?;
         Ok(executor)
     }
 
     /// Starts the JS Toolkit Executor locally at a custom path
     /// Primarily intended for local testing (executor should be sandboxed for production)
-    pub fn new_local_custom_path(executor_file_path: &str) -> Result<Self, ToolError> {
+    pub async fn new_local_custom_path(executor_file_path: &str) -> Result<Self, ToolError> {
         let executor = JSToolkitExecutorProcess::start(executor_file_path)
             .map_err(|_| ToolError::JSToolkitExecutorFailedStarting)?;
-        executor.submit_health_check()?;
+        executor.submit_health_check().await?;
         Ok(executor)
     }
 
     /// Establishes connection to a remotely ran JS Toolkit Executor
-    pub fn new_remote(address: String) -> Result<Self, ToolError> {
+    pub async fn new_remote(address: String) -> Result<Self, ToolError> {
         let executor = JSToolkitExecutor::Remote(RemoteJSToolkitExecutor { address });
-        executor.submit_health_check()?;
+        executor.submit_health_check().await?;
         Ok(executor)
     }
 
     /// Submits a health check request to /health_check and checks the response
-    pub fn submit_health_check(&self) -> Result<(), ToolError> {
-        let response = self.submit_get_request("/health_check")?;
+    pub async fn submit_health_check(&self) -> Result<(), ToolError> {
+        let response = self.submit_get_request("/health_check").await?;
         if let Some(_) = response.get("status") {
             Ok(())
         } else {
@@ -78,21 +78,23 @@ impl JSToolkitExecutor {
 
     /// Submits a toolkit json request to the JS Toolkit Executor
     /// and parses the response into a JSToolkit struct
-    pub fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
+    pub async fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())?;
+        let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new()).await?;
         JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
 
     /// Submits a headers validation request to the JS Toolkit Executor.
     /// If header validation is successful returns `Ok(())`, else returns error with reason.
-    pub fn submit_headers_validation_request(
+    pub async fn submit_headers_validation_request(
         &self,
         toolkit_js_code: &str,
         header_values: &HashMap<String, String>,
     ) -> Result<(), ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        let response = self.submit_post_request("/validate_headers", &input_data_json, header_values)?;
+        eprintln!("Submitting headers validation request: {:?}", input_data_json);
+        eprintln!("Headers: {:?}", header_values);
+        let response = self.submit_post_request("/validate_headers", &input_data_json, header_values).await?;
         if let Some(JsonValue::Bool(result)) = response.get("result") {
             if *result {
                 return Ok(());
@@ -108,7 +110,7 @@ impl JSToolkitExecutor {
     }
 
     // Submits a tool execution request to the JS Toolkit Executor
-    pub fn submit_tool_execution_request(
+    pub async fn submit_tool_execution_request(
         &self,
         tool_name: &str,
         input_data: &JsonValue,
@@ -120,28 +122,28 @@ impl JSToolkitExecutor {
             "input": input_data,
             "source": toolkit_js_code
         });
-        let response = self.submit_post_request("/execute_tool", &input_data_json, header_values)?;
+        let response = self.submit_post_request("/execute_tool", &input_data_json, header_values).await?;
         let tool_execution_result: ToolExecutionResult = serde_json::from_value(response)?;
         Ok(tool_execution_result)
     }
 
     // Submits a get request to the JS Toolkit Executor
-    fn submit_get_request(&self, endpoint: &str) -> Result<JsonValue, ToolError> {
+    async fn submit_get_request(&self, endpoint: &str) -> Result<JsonValue, ToolError> {
         eprintln!("Submitting GET request to: {}", endpoint);
-        let client = Client::new();
+        let client = reqwest::Client::new();
         let address = match self {
             JSToolkitExecutor::Local(process) => &process.address,
             JSToolkitExecutor::Remote(remote) => &remote.address,
         };
 
-        let response = client.get(&format!("{}{}", address, endpoint)).send()?;
+        let response = client.get(&format!("{}{}", address, endpoint)).send().await?;
 
         eprintln!("Response: {:?}", response);
-        Ok(response.json()?)
+        Ok(response.json().await?)
     }
 
     // Submits a post request to the JS Toolkit Executor
-    fn submit_post_request(
+    async fn submit_post_request(
         &self,
         endpoint: &str,
         input_data_json: &JsonValue,
@@ -162,9 +164,9 @@ impl JSToolkitExecutor {
             request_builder = request_builder.header(key, value);
         }
 
-        let response = request_builder.send()?;
+        let response = request_builder.send().await?;
 
-        Ok(response.json()?)
+        Ok(response.json().await?)
     }
 }
 

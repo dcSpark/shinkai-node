@@ -1443,14 +1443,11 @@ impl Node {
 
         let header_file: HashMap<String, String> = header_file.into_iter().map(|(k, v)| (k, v.to_string())).collect();
 
-        eprintln!("here");
-        eprintln!("remote address: {:?}", self.js_toolkit_executor_remote);
         // initialize the executor (locally or remotely depending on ENV)
         let executor_result = match &self.js_toolkit_executor_remote {
-            Some(remote_address) => JSToolkitExecutor::new_remote(remote_address.clone()),
-            None => JSToolkitExecutor::new_local(),
+            Some(remote_address) => JSToolkitExecutor::new_remote(remote_address.clone()).await,
+            None => JSToolkitExecutor::new_local().await,
         };
-        eprintln!("api_add_toolkit> executor result");
 
         let executor = match executor_result {
             Ok(executor) => executor,
@@ -1466,7 +1463,7 @@ impl Node {
         };
 
         // Validate headers
-        let header_check = executor.submit_headers_validation_request(&toolkit_file.clone(), &header_file.clone());
+        let header_check = executor.submit_headers_validation_request(&toolkit_file.clone(), &header_file.clone()).await;
         if let Err(err) = header_check {
             eprintln!("api_add_toolkit> header check error: {}", err);
             let api_error = APIError {
@@ -1479,7 +1476,7 @@ impl Node {
         }
 
         // Validate and convert to Toolkit
-        let toolkit = executor.submit_toolkit_json_request(&toolkit_file);
+        let toolkit = executor.submit_toolkit_json_request(&toolkit_file).await;
         if let Err(err) = toolkit {
             let api_error = APIError {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -1523,7 +1520,7 @@ impl Node {
                 &profile.clone(),
                 &header_file.clone(),
                 &executor,
-            );
+            ).await;
             if let Err(err) = set_header_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

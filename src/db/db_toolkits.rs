@@ -79,11 +79,15 @@ impl ShinkaiDB {
 
     /// Fetches the `InstalledJSToolkitMap` from the DB (for the provided profile)
     pub fn get_installed_toolkit_map(&self, profile: &ShinkaiName) -> Result<InstalledJSToolkitMap, ShinkaiDBError> {
-        let bytes = self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::shinkai_db_key(), profile)?;
-        let json_str = std::str::from_utf8(&bytes)?;
-
-        let toolkit_map: InstalledJSToolkitMap = from_str(json_str)?;
-        Ok(toolkit_map)
+        match self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::shinkai_db_key(), profile) {
+            Ok(bytes) => {
+                let json_str = std::str::from_utf8(&bytes)?;
+                let toolkit_map: InstalledJSToolkitMap = from_str(json_str)?;
+                Ok(toolkit_map)
+            },
+            Err(ShinkaiDBError::FailedFetchingValue) => Ok(InstalledJSToolkitMap::new()), // Return an empty map
+            Err(e) => Err(e), // Propagate other errors
+        }
     }
 
     /// Fetches the `JSToolkit` from the DB (for the provided profile and toolkit name)
@@ -118,7 +122,7 @@ impl ShinkaiDB {
     /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter. Of note,
     /// this function validates the toolkit headers values are available in DB (or errors), thus after installing
     /// a toolkit they must be set before calling activate.
-    pub fn activate_toolkit(
+    pub async fn activate_toolkit(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
@@ -134,7 +138,7 @@ impl ShinkaiDB {
         // 2. Check that the toolkit headers are set and validate
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         let header_values = self.get_toolkit_header_values(toolkit_name, profile)?;
-        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values)?;
+        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values).await?;
 
         // 3. Propagate the internal tools to the ToolRouter
         // TODO: Use a write batch for 3/4
@@ -182,7 +186,7 @@ impl ShinkaiDB {
 
     /// Sets the toolkit's header values in the db (to be used when a tool in the toolkit is executed).
     /// Of note, this replaces any previous header values that were in the DB.
-    pub fn set_toolkit_header_values(
+    pub async fn set_toolkit_header_values(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
@@ -191,7 +195,7 @@ impl ShinkaiDB {
     ) -> Result<(), ShinkaiDBError> {
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         // 1. Test the header values by using them with the validation function in the JS toolkit executor
-        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values)?;
+        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values).await?;
 
         // 2. Validate that the header_values keys cover the header definitions in the toolkit.
         // If so, save the header values in the db

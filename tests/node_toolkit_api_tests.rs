@@ -104,7 +104,7 @@ fn node_toolkit_api() {
                 eprintln!("\n\n### Uploading Header\n\n");
 
                 // Prepare the file to be read
-                let filename_header = "files/toolkit-setup.json";
+                let filename_header = "files/example-toolkit-setup.json";
                 let file_path_header = Path::new(filename_header.clone());
 
                 // Read the file into a buffer
@@ -142,7 +142,7 @@ fn node_toolkit_api() {
                 eprintln!("\n\n### Uploading content\n\n");
 
                 // Prepare the file to be read
-                let filename_header = "files/packaged-shinkai-toolkit.js";
+                let filename_header = "files/example-packaged-shinkai-toolkit.js";
                 let file_path_header = Path::new(filename_header.clone());
 
                 // Read the file into a buffer
@@ -211,7 +211,7 @@ fn node_toolkit_api() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 assert_eq!(
                     response,
-                    vec!["files/packaged-shinkai-toolkit.js", "files/toolkit-setup.json"]
+                    vec!["files/example-packaged-shinkai-toolkit.js", "files/example-toolkit-setup.json"]
                 );
             }
             {
