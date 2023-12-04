@@ -1,7 +1,7 @@
 use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::shared::openai::{MessageContent, OpenAIResponse, openai_prepare_messages};
+use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -25,6 +25,7 @@ impl LLMProvider for ShinkaiBackend {
             if let Some(key) = api_key {
                 // TODO: Update URL
                 let url = format!("{}/ai-proxy/{}", base_url, "https://api.openai.com/v1/chat/completions");
+                eprintln!("URL: {}", url);
                 let open_ai = OpenAI {
                     model_type: self.model_type.clone(),
                 };
@@ -34,7 +35,11 @@ impl LLMProvider for ShinkaiBackend {
                 let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
-                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
+                    _ => {
+                        return Err(AgentError::UnexpectedPromptResultVariant(
+                            "Expected Value variant in PromptResultEnum".to_string(),
+                        ))
+                    }
                 };
 
                 let mut payload = json!({
@@ -55,16 +60,19 @@ impl LLMProvider for ShinkaiBackend {
                     format!("Call API Body: {:?}", payload).as_str(),
                 );
 
-                let bearer = format!("Bearer {}", key);
-                // TODO: add auth to header
-                let res = client
+                let request = client
                     .post(url)
                     .bearer_auth(key)
                     .header("Content-Type", "application/json")
-                    .header("Authorization", bearer)
-                    .json(&payload)
-                    .send()
-                    .await?;
+                    .json(&payload);
+
+                shinkai_log(
+                    ShinkaiLogOption::DetailedAPI,
+                    ShinkaiLogLevel::Debug,
+                    format!("Request Details: {:?}", request).as_str(),
+                );
+
+                let res = request.send().await?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
