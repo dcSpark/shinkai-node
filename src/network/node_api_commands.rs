@@ -1,3 +1,4 @@
+use serde_json::Value as JsonValue;
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use super::{
@@ -1427,7 +1428,7 @@ impl Node {
                 return Ok(());
             }
         };
-        let header_values = JSToolkit::header_values_json_to_hashmap(header_values_json)?;
+        let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
 
         // initialize the executor (locally or remotely depending on ENV)
         let executor_result = match &self.js_toolkit_executor_remote {

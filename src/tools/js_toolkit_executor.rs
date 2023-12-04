@@ -81,7 +81,7 @@ impl JSToolkitExecutor {
     pub async fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         let response = self
-            .submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())
+            .submit_post_request("/toolkit_json", &input_data_json, &JsonValue::Null)
             .await?;
         JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
@@ -91,7 +91,7 @@ impl JSToolkitExecutor {
     pub async fn submit_headers_validation_request(
         &self,
         toolkit_js_code: &str,
-        header_values: &HashMap<String, String>,
+        header_values: &JsonValue,
     ) -> Result<(), ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         eprintln!("Submitting headers validation request: {:?}", input_data_json);
@@ -119,7 +119,7 @@ impl JSToolkitExecutor {
         tool_name: &str,
         input_data: &JsonValue,
         toolkit_js_code: &str,
-        header_values: &HashMap<String, String>,
+        header_values: &JsonValue,
     ) -> Result<ToolExecutionResult, ToolError> {
         let input_data_json = serde_json::json!({
             "tool": tool_name,
@@ -153,7 +153,7 @@ impl JSToolkitExecutor {
         &self,
         endpoint: &str,
         input_data_json: &JsonValue,
-        header_values: &HashMap<String, String>,
+        header_values: &JsonValue,
     ) -> Result<JsonValue, ToolError> {
         let client = Client::new();
         let address = match self {
@@ -166,8 +166,11 @@ impl JSToolkitExecutor {
             .header("Content-Type", "application/json")
             .json(input_data_json);
 
-        for (key, value) in header_values {
-            request_builder = request_builder.header(key, value);
+        if let JsonValue::Object(headers) = header_values {
+            for (key, value) in headers {
+                let value_str = value.to_string();
+                request_builder = request_builder.header(key, &value_str);
+            }
         }
 
         let response = request_builder.send().await?;

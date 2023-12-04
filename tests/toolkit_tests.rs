@@ -27,12 +27,15 @@ fn default_toolkit_json() -> JsonValue {
     parsed_json
 }
 
-fn default_toolkit_header_values() -> HashMap<String, String> {
-    let mut header_values = HashMap::new();
-    header_values.insert("x-shinkai-api-key".to_string(), "example".to_string());
-    header_values.insert("x-shinkai-example-bool".to_string(), "true".to_string());
+fn default_toolkit_header_values() -> JsonValue {
+    let mut header_values = serde_json::Map::new();
+    header_values.insert(
+        "x-shinkai-api-key".to_string(),
+        JsonValue::String("example".to_string()),
+    );
+    header_values.insert("x-shinkai-example-bool".to_string(), JsonValue::Bool(true));
 
-    header_values
+    JsonValue::Object(header_values)
 }
 
 fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {

@@ -210,18 +210,6 @@ impl JSToolkit {
         })
     }
 
-    /// Given a JSON String, converts it into a Hashmap<String, String>.
-    /// Used for preparing the header values received from frontend for saving to DB & use.
-    pub fn header_values_json_to_hashmap(json: String) -> Result<HashMap<String, String>, ToolError> {
-        let parsed: HashMap<String, JsonValue> = serde_json::from_str(&json).map_err(ToolError::from)?;
-        let mut result = HashMap::new();
-        for (k, v) in parsed {
-            result.insert(k, v.to_string());
-        }
-        Ok(result)
-    }
-
-    /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
     }
