@@ -15,7 +15,7 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::js_toolkit_executor::JSToolkitExecutor,
+    tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
@@ -1414,8 +1414,8 @@ impl Node {
         }
         let toolkit_file = toolkit_file.unwrap();
 
-        // get and validate header_file
-        let header_file = match String::from_utf8(header_file.unwrap().1.clone()) {
+        // Get and validate header values file
+        let header_values_json = match String::from_utf8(header_file.unwrap().1.clone()) {
             Ok(s) => s,
             Err(err) => {
                 let api_error = APIError {
@@ -1427,21 +1427,7 @@ impl Node {
                 return Ok(());
             }
         };
-
-        let header_file: HashMap<String, serde_json::Value> = match serde_json::from_str(&header_file) {
-            Ok(map) => map,
-            Err(e) => {
-                let api_error = APIError {
-                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-                    error: "Internal Server Error".to_string(),
-                    message: format!("{}", e),
-                };
-                let _ = res.send(Err(api_error)).await;
-                return Ok(());
-            }
-        };
-
-        let header_file: HashMap<String, String> = header_file.into_iter().map(|(k, v)| (k, v.to_string())).collect();
+        let header_values = JSToolkit::header_values_json_to_hashmap(header_values_json)?;
 
         // initialize the executor (locally or remotely depending on ENV)
         let executor_result = match &self.js_toolkit_executor_remote {
@@ -1463,7 +1449,9 @@ impl Node {
         };
 
         // Validate headers
-        let header_check = executor.submit_headers_validation_request(&toolkit_file.clone(), &header_file.clone()).await;
+        let header_check = executor
+            .submit_headers_validation_request(&toolkit_file.clone(), &header_values.clone())
+            .await;
         if let Err(err) = header_check {
             eprintln!("api_add_toolkit> header check error: {}", err);
             let api_error = APIError {
@@ -1514,13 +1502,15 @@ impl Node {
                 return Ok(());
             }
 
-            eprintln!("api_add_toolkit> profile set header values: {:?}", header_file);
-            let set_header_result = db_lock.set_toolkit_header_values(
-                &toolkit.name.clone(),
-                &profile.clone(),
-                &header_file.clone(),
-                &executor,
-            ).await;
+            eprintln!("api_add_toolkit> profile set header values: {:?}", header_values);
+            let set_header_result = db_lock
+                .set_toolkit_header_values(
+                    &toolkit.name.clone(),
+                    &profile.clone(),
+                    &header_values.clone(),
+                    &executor,
+                )
+                .await;
             if let Err(err) = set_header_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),

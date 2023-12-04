@@ -80,7 +80,9 @@ impl JSToolkitExecutor {
     /// and parses the response into a JSToolkit struct
     pub async fn submit_toolkit_json_request(&self, toolkit_js_code: &str) -> Result<JSToolkit, ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        let response = self.submit_post_request("/toolkit_json", &input_data_json, &HashMap::new()).await?;
+        let response = self
+            .submit_post_request("/toolkit_json", &input_data_json, &HashMap::new())
+            .await?;
         JSToolkit::from_toolkit_json(&response, toolkit_js_code)
     }
 
@@ -94,7 +96,9 @@ impl JSToolkitExecutor {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
         eprintln!("Submitting headers validation request: {:?}", input_data_json);
         eprintln!("Headers: {:?}", header_values);
-        let response = self.submit_post_request("/validate_headers", &input_data_json, header_values).await?;
+        let response = self
+            .submit_post_request("/validate_headers", &input_data_json, header_values)
+            .await?;
         if let Some(JsonValue::Bool(result)) = response.get("result") {
             if *result {
                 return Ok(());
@@ -122,7 +126,9 @@ impl JSToolkitExecutor {
             "input": input_data,
             "source": toolkit_js_code
         });
-        let response = self.submit_post_request("/execute_tool", &input_data_json, header_values).await?;
+        let response = self
+            .submit_post_request("/execute_tool", &input_data_json, header_values)
+            .await?;
         let tool_execution_result: ToolExecutionResult = serde_json::from_value(response)?;
         Ok(tool_execution_result)
     }

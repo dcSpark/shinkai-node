@@ -157,6 +157,7 @@ impl JSToolkit {
         key
     }
 
+    /// Given a toolkit definition json, create a JSToolkit
     pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse
         let name = parsed_json["toolkitName"]
@@ -207,6 +208,17 @@ impl JSToolkit {
             activated: false,
             headers_set: false,
         })
+    }
+
+    /// Given a JSON String, converts it into a Hashmap<String, String>.
+    /// Used for preparing the header values received from frontend for saving to DB & use.
+    pub fn header_values_json_to_hashmap(json: String) -> Result<HashMap<String, String>, ToolError> {
+        let parsed: HashMap<String, JsonValue> = serde_json::from_str(&json).map_err(ToolError::from)?;
+        let mut result = HashMap::new();
+        for (k, v) in parsed {
+            result.insert(k, v.to_string());
+        }
+        Ok(result)
     }
 
     /// Convert to json
