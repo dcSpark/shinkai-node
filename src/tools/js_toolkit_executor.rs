@@ -173,6 +173,8 @@ impl JSToolkitExecutor {
             }
         }
 
+        println!("{:?}", request_builder);
+
         let response = request_builder.send().await?;
 
         Ok(response.json().await?)
