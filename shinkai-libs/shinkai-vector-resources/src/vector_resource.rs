@@ -10,6 +10,7 @@ use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
+use crate::source::VRLocation;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 use async_trait::async_trait;
@@ -180,8 +181,10 @@ pub trait VectorResource {
         VRHeader::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
     }
 
-    /// Generates a VRHeader out of the VectorResource
-    fn generate_resource_header(&self) -> VRHeader {
+    /// Generates a VRHeader out of the VectorResource.
+    /// Allows specifying a resource_location to identify where the VectorResource is
+    /// being stored.
+    fn generate_resource_header(&self, resource_location: Option<VRLocation>) -> VRHeader {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
@@ -195,6 +198,7 @@ pub trait VectorResource {
             self.source(),
             self.created_datetime(),
             self.last_modified_datetime(),
+            resource_location,
         )
     }
 
@@ -467,7 +471,7 @@ pub trait VectorResource {
                                 let ret_node = RetrievedNode {
                                     node: node.clone(),
                                     score,
-                                    resource_header: self.generate_resource_header(),
+                                    resource_header: self.generate_resource_header(None),
                                     retrieval_path: traversal_path.clone(),
                                 };
                                 current_level_results.push(ret_node);
@@ -548,7 +552,7 @@ pub trait VectorResource {
                     current_level_results.push(RetrievedNode {
                         node: node.clone(),
                         score,
-                        resource_header: self.generate_resource_header(),
+                        resource_header: self.generate_resource_header(None),
                         retrieval_path: new_traversal_path,
                     });
                 }
@@ -566,7 +570,7 @@ pub trait VectorResource {
                 current_level_results.push(RetrievedNode {
                     node: node.clone(),
                     score,
-                    resource_header: self.generate_resource_header(),
+                    resource_header: self.generate_resource_header(None),
                     retrieval_path: new_traversal_path,
                 });
             }
@@ -614,37 +618,6 @@ pub trait VectorResource {
         }
 
         filtered_results
-    }
-
-    /// Fetches all nodes which contain tags matching the input name list
-    /// (including fetching inside all depths of Vector Resources exhaustively)
-    /// TODO: Fix the retrieval path/depth to be proper on retrieved nodes
-    fn get_all_syntactic_matches(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedNode> {
-        // Fetch all nodes with matching data tags
-        let mut matching_nodes = vec![];
-        let ids = self._syntactic_search_id_fetch(data_tag_names);
-        for id in ids {
-            if let Ok(node) = self.get_node(id.clone()) {
-                match node.content {
-                    NodeContent::Resource(resource) => {
-                        let sub_results = resource.as_trait_object().get_all_syntactic_matches(data_tag_names);
-                        matching_nodes.extend(sub_results);
-                    }
-                    _ => {
-                        let resource_header = self.generate_resource_header();
-                        let retrieved_node = RetrievedNode {
-                            node: node,
-                            score: 0.0,
-                            resource_header,
-                            retrieval_path: VRPath::new(),
-                        };
-                        matching_nodes.push(retrieved_node);
-                    }
-                }
-            }
-        }
-
-        matching_nodes
     }
 
     /// Internal method to fetch all node ids for syntactic searches

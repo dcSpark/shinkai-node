@@ -169,7 +169,7 @@ impl MapVectorResource {
                     .push(RetrievedNode {
                         node: node.clone(),
                         score: 0.00,
-                        resource_header: self.generate_resource_header(),
+                        resource_header: self.generate_resource_header(None),
                         retrieval_path: VRPath::new(),
                     }),
                 _ => (),

@@ -115,9 +115,14 @@ impl JobManager {
         if include_description && !sorted_retrieved_nodes.is_empty() {
             let resource_header = sorted_retrieved_nodes[0].resource_header.clone();
 
-            // Iterate through resources until we find one with a matching resource resource_header
+            // Iterate through resources until we find one with a matching resource reference string
             for resource in resources {
-                if resource.as_trait_object().generate_resource_header() == resource_header {
+                if resource
+                    .as_trait_object()
+                    .generate_resource_header(None)
+                    .reference_string()
+                    == resource_header.reference_string()
+                {
                     if let Some(description) = resource.as_trait_object().description() {
                         let description_node = RetrievedNode::new(
                             Node::new_text(String::new(), &description, None, &vec![]),

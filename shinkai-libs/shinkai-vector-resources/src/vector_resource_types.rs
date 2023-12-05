@@ -3,6 +3,7 @@ use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
+use crate::source::VRLocation;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -344,6 +345,9 @@ pub struct VRHeader {
     pub resource_embedding: Option<Embedding>,
     pub resource_created_datetime: String,
     pub resource_last_modified_datetime: String,
+    /// The location where the VectorResource is held. Will be None for VectorResources
+    /// held inside of nodes of an existing VectorResource.
+    pub resource_location: Option<VRLocation>,
     pub data_tag_names: Vec<String>,
 }
 
@@ -358,6 +362,7 @@ impl VRHeader {
         resource_source: VRSource,
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
+        resource_location: Option<VRLocation>,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -368,6 +373,7 @@ impl VRHeader {
             resource_source,
             resource_created_datetime,
             resource_last_modified_datetime,
+            resource_location,
         }
     }
 
@@ -380,6 +386,7 @@ impl VRHeader {
         resource_source: VRSource,
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
+        resource_location: Option<VRLocation>,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -397,6 +404,7 @@ impl VRHeader {
             resource_source,
             resource_created_datetime,
             resource_last_modified_datetime,
+            resource_location,
         })
     }
 
@@ -412,12 +420,6 @@ impl VRHeader {
         let name = name.replace(" ", "_").replace(":", "_");
         let resource_id = resource_id.replace(" ", "_").replace(":", "_");
         format!("{}:::{}", name, resource_id)
-    }
-}
-
-impl From<Box<dyn VectorResource>> for VRHeader {
-    fn from(resource: Box<dyn VectorResource>) -> Self {
-        resource.generate_resource_header()
     }
 }
 
