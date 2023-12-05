@@ -88,10 +88,12 @@ impl VectorResource for MapVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
+        self.update_last_modified_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
+        self.update_last_modified_to_now();
         self.resource_embedding = embedding;
     }
 
@@ -233,6 +235,7 @@ impl MapVectorResource {
         embedding.set_id(key.to_string());
         self._insert_node(node.clone());
         self.embeddings.insert(node.id.clone(), embedding);
+        self.update_last_modified_to_now();
     }
 
     /// Replaces an existing node & associated embedding with a new
@@ -307,6 +310,7 @@ impl MapVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
         self.embeddings.insert(key.to_string(), embedding);
+        self.update_last_modified_to_now();
 
         Ok(old_node)
     }
@@ -325,6 +329,7 @@ impl MapVectorResource {
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
+        self.update_last_modified_to_now();
         Ok(removed_node)
     }
 
@@ -332,6 +337,7 @@ impl MapVectorResource {
     fn _insert_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
+        self.update_last_modified_to_now();
     }
 
     pub fn from_json(json: &str) -> Result<Self, VRError> {
@@ -340,5 +346,6 @@ impl MapVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+        self.update_last_modified_to_now();
     }
 }

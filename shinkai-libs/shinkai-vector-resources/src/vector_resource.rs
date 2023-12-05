@@ -9,6 +9,7 @@ use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 use async_trait::async_trait;
@@ -126,6 +127,12 @@ pub trait VectorResource {
         let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
         Ok(())
+    }
+
+    /// Updates the last_modified_datetime to the current time
+    fn update_last_modified_to_now(&mut self) {
+        let current_time = ShinkaiTime::generate_time_now();
+        self.set_last_modified_datetime(current_time).unwrap();
     }
 
     #[cfg(feature = "native-http")]

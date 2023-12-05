@@ -90,10 +90,12 @@ impl VectorResource for DocumentVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
+        self.update_last_modified_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
+        self.update_last_modified_to_now();
         self.resource_embedding = embedding;
     }
 
@@ -300,6 +302,7 @@ impl DocumentVectorResource {
         embedding.set_id_with_integer(id);
         self._append_node(node);
         self.embeddings.push(embedding);
+        self.update_last_modified_to_now();
     }
 
     /// Replaces an existing node and associated embedding in the Document resource
@@ -354,6 +357,7 @@ impl DocumentVectorResource {
                 // Remove node from data tag index
                 self.data_tag_index.remove_node(&node);
                 self.node_count -= 1;
+                self.update_last_modified_to_now();
                 Ok((node, embedding))
             }
             _ => Err(VRError::VectorResourceEmpty),
@@ -389,6 +393,7 @@ impl DocumentVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.embeddings[index] = embedding;
+        self.update_last_modified_to_now();
 
         Ok(old_node)
     }
@@ -422,6 +427,7 @@ impl DocumentVectorResource {
             let node_id: u64 = node.id.parse().unwrap();
             node.id = format!("{}", node_id - 1);
         }
+        self.update_last_modified_to_now();
         Ok(removed_node)
     }
 
@@ -429,6 +435,7 @@ impl DocumentVectorResource {
     fn _append_node(&mut self, mut node: Node) {
         self.node_count += 1;
         node.id = self.node_count.to_string();
+        self.update_last_modified_to_now();
         self.nodes.push(node);
     }
 
@@ -438,5 +445,6 @@ impl DocumentVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+        self.update_last_modified_to_now();
     }
 }
