@@ -1,10 +1,9 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
-use futures::Future;
 use core::panic;
-use std::pin::Pin;
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use futures::Future;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -26,6 +25,7 @@ use shinkai_node::network::Node;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::pin::Pin;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -80,7 +80,7 @@ where
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let mut node1 = Node::new_text(
             node1_identity_name.clone().to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -89,7 +89,7 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             false,
-            vec![]
+            vec![],
         );
 
         eprintln!("Starting Node");
@@ -117,7 +117,7 @@ where
             node1_device_identity_sk,
             node1_device_identity_pk,
             node1_device_encryption_sk,
-            node1_device_encryption_pk,  
+            node1_device_encryption_pk,
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));

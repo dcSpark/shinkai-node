@@ -3,18 +3,18 @@ use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
-use crate::utils::environment::{fetch_node_environment, fetch_agent_env};
+use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use network::Node;
 use network::node_api::ExtraAPIConfig;
+use network::Node;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -24,16 +24,16 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-mod db;
 mod agent;
+mod cron_tasks;
+mod db;
 mod managers;
 mod network;
+mod planner;
 mod resources;
 mod schemas;
 mod tools;
 mod utils;
-mod cron_tasks;
-mod planner;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
@@ -105,7 +105,7 @@ fn main() {
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(
         // This is the async block where you can use `.await`
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            Node::new(
+            Node::new_text(
                 global_identity_name.to_string(),
                 node_env.listen_address,
                 clone_signature_secret_key(&node_keys.identity_secret_key),
@@ -114,7 +114,7 @@ fn main() {
                 node_commands_receiver,
                 db_path,
                 node_env.first_device_needs_registration_code,
-                initial_agents
+                initial_agents,
             )
             .await
         }),

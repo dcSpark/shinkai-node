@@ -82,7 +82,7 @@ fn node_retrying_test() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let mut node1 = Node::new_text(
             node1_identity_name.to_string(),
             addr1,
             node1_identity_sk,
@@ -91,11 +91,11 @@ fn node_retrying_test() {
             node1_commands_receiver,
             node1_db_path,
             true,
-           vec![] 
+            vec![],
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(
+        let mut node2 = Node::new_text(
             node2_identity_name.to_string(),
             addr2,
             node2_identity_sk,
@@ -104,7 +104,7 @@ fn node_retrying_test() {
             node2_commands_receiver,
             node2_db_path,
             true,
-            vec![]
+            vec![],
         );
 
         eprintln!("Starting nodes");
@@ -214,18 +214,18 @@ fn node_retrying_test() {
                 eprintln!("node2_last_messages: {:?}", node2_last_messages);
                 assert_eq!(node2_last_messages.len(), 1);
 
-                  // Get Node1 messages
-                  let (res1_sender, res1_receiver) = async_channel::bounded(1);
-                  node1_commands_sender
-                      .send(NodeCommand::FetchLastMessages {
-                          limit: 2,
-                          res: res1_sender,
-                      })
-                      .await
-                      .unwrap();
-                  let node1_last_messages = res1_receiver.recv().await.unwrap();
-                  eprintln!("node1_last_messages: {:?}", node1_last_messages);
-                  assert_eq!(node1_last_messages.len(), 2);
+                // Get Node1 messages
+                let (res1_sender, res1_receiver) = async_channel::bounded(1);
+                node1_commands_sender
+                    .send(NodeCommand::FetchLastMessages {
+                        limit: 2,
+                        res: res1_sender,
+                    })
+                    .await
+                    .unwrap();
+                let node1_last_messages = res1_receiver.recv().await.unwrap();
+                eprintln!("node1_last_messages: {:?}", node1_last_messages);
+                assert_eq!(node1_last_messages.len(), 2);
             }
         });
 

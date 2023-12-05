@@ -2,6 +2,7 @@ use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiTime;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -155,6 +156,8 @@ pub struct Node {
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
+    /// RFC3339 Datetime when then Node was last modified
+    pub last_modified_datetime: String,
 }
 
 impl Node {
@@ -165,16 +168,19 @@ impl Node {
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
+
         Self {
             id,
             content: NodeContent::Text(text.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
+            last_modified_datetime: current_time,
         }
     }
 
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
-    pub fn new_with_integer_id(
+    pub fn new_text_with_integer_id(
         id: u64,
         text: &str,
         metadata: Option<HashMap<String, String>>,
@@ -189,11 +195,13 @@ impl Node {
         vector_resource: &BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Node {
             id: id,
             content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
+            last_modified_datetime: current_time,
         }
     }
 
@@ -212,11 +220,13 @@ impl Node {
         external_content: &SourceReference,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Node {
             id,
             content: NodeContent::ExternalContent(external_content.clone()),
             metadata,
             data_tag_names: vec![],
+            last_modified_datetime: current_time,
         }
     }
 
@@ -236,11 +246,13 @@ impl Node {
         metadata: Option<HashMap<String, String>>,
         data_tag_names: Vec<String>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Self {
             id,
             content,
             metadata,
             data_tag_names,
+            last_modified_datetime: current_time,
         }
     }
 
@@ -252,6 +264,12 @@ impl Node {
         data_tag_names: Vec<String>,
     ) -> Self {
         Self::from_content(id.to_string(), content, metadata, data_tag_names)
+    }
+
+    /// Updates the last_modified_datetime to the current time
+    pub fn update_last_modified_to_now(&mut self) {
+        let current_time = ShinkaiTime::generate_time_now();
+        self.last_modified_datetime = current_time;
     }
 
     /// Attempts to return the text content from the Node. Errors if is different type
@@ -296,7 +314,6 @@ pub struct VRHeader {
     pub resource_source: VRSource,
     pub resource_embedding: Option<Embedding>,
     pub data_tag_names: Vec<String>,
-    // pub metadata: HashMap<String, String>,
 }
 
 impl VRHeader {

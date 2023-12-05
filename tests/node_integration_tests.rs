@@ -88,7 +88,7 @@ fn subidentity_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let mut node1 = Node::new_text(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -97,11 +97,11 @@ fn subidentity_registration() {
             node1_commands_receiver,
             node1_db_path,
             true,
-            vec![]
+            vec![],
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new(
+        let mut node2 = Node::new_text(
             node2_identity_name.to_string(),
             addr2,
             clone_signature_secret_key(&node2_identity_sk),
@@ -110,7 +110,7 @@ fn subidentity_registration() {
             node2_commands_receiver,
             node2_db_path,
             true,
-            vec![]
+            vec![],
         );
 
         // Printing
@@ -410,7 +410,9 @@ fn subidentity_registration() {
                 )
                 .await;
 
-                eprintln!("Sending message from Node 1 subidentity to Node 1 subidentity 2 using the intra_sender feature");
+                eprintln!(
+                    "Sending message from Node 1 subidentity to Node 1 subidentity 2 using the intra_sender feature"
+                );
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
                 let unchanged_message = ShinkaiMessageBuilder::new(
