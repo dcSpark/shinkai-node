@@ -193,6 +193,8 @@ pub trait VectorResource {
             Some(embedding),
             tag_names,
             self.source(),
+            self.created_datetime(),
+            self.last_modified_datetime(),
         )
     }
 

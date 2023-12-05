@@ -105,7 +105,7 @@ fn main() {
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(
         // This is the async block where you can use `.await`
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            Node::new_text(
+            Node::new(
                 global_identity_name.to_string(),
                 node_env.listen_address,
                 clone_signature_secret_key(&node_keys.identity_secret_key),

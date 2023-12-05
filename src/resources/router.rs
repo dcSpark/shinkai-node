@@ -107,6 +107,8 @@ impl VectorResourceRouter {
                         embedding,
                         ret_node.node.data_tag_names.clone(),
                         source,
+                        ret_node.node.last_modified_datetime.clone(),
+                        ret_node.node.last_modified_datetime.clone(),
                     );
                     if let Ok(resource_header) = resource_header {
                         resource_headers.push(resource_header);

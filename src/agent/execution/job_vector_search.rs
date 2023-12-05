@@ -119,7 +119,7 @@ impl JobManager {
             for resource in resources {
                 if resource.as_trait_object().generate_resource_header() == resource_header {
                     if let Some(description) = resource.as_trait_object().description() {
-                        let description_node = RetrievedNode::new_text(
+                        let description_node = RetrievedNode::new(
                             Node::new_text(String::new(), &description, None, &vec![]),
                             1.0 as f32,
                             resource_header,

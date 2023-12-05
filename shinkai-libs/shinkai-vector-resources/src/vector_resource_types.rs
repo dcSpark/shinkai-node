@@ -162,7 +162,7 @@ pub struct Node {
 
 impl Node {
     /// Create a new text-holding Node with a provided String id
-    pub fn new(
+    pub fn new_text(
         id: String,
         text: &str,
         metadata: Option<HashMap<String, String>>,
@@ -186,7 +186,7 @@ impl Node {
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
-        Self::new(id.to_string(), text, metadata, data_tag_names)
+        Self::new_text(id.to_string(), text, metadata, data_tag_names)
     }
 
     /// Create a new BaseVectorResource-holding Node with a provided String id
@@ -313,6 +313,8 @@ pub struct VRHeader {
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSource,
     pub resource_embedding: Option<Embedding>,
+    pub resource_created_datetime: String,
+    pub resource_last_modified_datetime: String,
     pub data_tag_names: Vec<String>,
 }
 
@@ -325,6 +327,8 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
+        resource_created_datetime: String,
+        resource_last_modified_datetime: String,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -333,6 +337,8 @@ impl VRHeader {
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
             resource_source,
+            resource_created_datetime,
+            resource_last_modified_datetime,
         }
     }
 
@@ -343,6 +349,8 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
+        resource_created_datetime: String,
+        resource_last_modified_datetime: String,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -358,6 +366,8 @@ impl VRHeader {
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
             resource_source,
+            resource_created_datetime,
+            resource_last_modified_datetime,
         })
     }
 
@@ -383,7 +393,7 @@ impl From<Box<dyn VectorResource>> for VRHeader {
 }
 
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
-/// Internally the path is made up of an ordered list of Node ids (Int strings for Docs, any string for Maps).
+/// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
