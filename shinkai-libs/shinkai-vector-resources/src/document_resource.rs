@@ -3,7 +3,8 @@ use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::source::VRSource;
+use crate::shinkai_time::ShinkaiTime;
+use crate::source::{ShinkaiFileType, VRSource};
 use crate::vector_resource::{
     Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
 };
@@ -26,9 +27,28 @@ pub struct DocumentVectorResource {
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
+    created_datetime: String,
+    last_modified_datetime: String,
 }
 
 impl VectorResource for DocumentVectorResource {
+    /// RFC3339 Datetime when then Vector Resource was created
+    fn created_datetime(&self) -> String {
+        self.created_datetime.clone()
+    }
+    /// RFC3339 Datetime when then Vector Resource was last modified
+    fn last_modified_datetime(&self) -> String {
+        self.last_modified_datetime.clone()
+    }
+    /// Set a RFC Datetime of when then Vector Resource was last modified
+    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError> {
+        if ShinkaiTime::validate_datetime_string(&datetime) {
+            self.last_modified_datetime = datetime;
+            return Ok(());
+        }
+        return Err(VRError::InvalidDateTimeString(datetime));
+    }
+
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
     }
@@ -116,6 +136,7 @@ impl DocumentVectorResource {
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         DocumentVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
@@ -128,6 +149,8 @@ impl DocumentVectorResource {
             embedding_model_used,
             resource_base_type: VRBaseType::Document,
             data_tag_index: DataTagIndex::new(),
+            created_datetime: current_time.clone(),
+            last_modified_datetime: current_time,
         }
     }
 

@@ -21,6 +21,8 @@ keyphrases = "0.3.2"
 async-trait = "0.1.74"
 async-recursion = "1.0.5"
 scraper = "0.17.1"
+chrono = "0.4"
+chrono-tz = "0.5"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [build-dependencies]

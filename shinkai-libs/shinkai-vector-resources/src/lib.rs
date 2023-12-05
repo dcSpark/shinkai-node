@@ -6,6 +6,7 @@ pub mod embeddings;
 pub mod map_resource;
 pub mod model_type;
 pub mod resource_errors;
+pub mod shinkai_time;
 pub mod source;
 pub mod unstructured;
 pub mod vector_resource;

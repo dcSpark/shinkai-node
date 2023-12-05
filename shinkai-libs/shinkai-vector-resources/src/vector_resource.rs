@@ -91,6 +91,12 @@ pub trait VectorResource {
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
+    /// ISO RFC3339 when then Vector Resource was created
+    fn created_datetime(&self) -> String;
+    /// ISO RFC3339 when then Vector Resource was last modified
+    fn last_modified_datetime(&self) -> String;
+    /// Set a RFC3339 Datetime of when then Vector Resource was last modified
+    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
 
