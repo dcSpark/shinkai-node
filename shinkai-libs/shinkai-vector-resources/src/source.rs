@@ -1,9 +1,20 @@
 use crate::resource_errors::VRError;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
+use crate::vector_resource::VRPath;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+
+/// The location that a Vector Resource is held at. This is used
+/// in VRHeader for clarity of where the actual resource is stored
+/// so it can be fetched (or potentially updated) as needed
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum VRLocation {
+    LocalVectorFS(VRPath),
+    // RemoteVectorFS(ShinkaiIdentity, VRPath),
+    RemoteURI(String),
+}
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
 /// or a reference to the source file (either external such as URL, or a FileRef)

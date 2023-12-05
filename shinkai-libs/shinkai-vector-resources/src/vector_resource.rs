@@ -175,7 +175,7 @@ pub trait VectorResource {
     }
 
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
-    /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
+    /// This is also used as the unique identifier of the Vector Resource in the VectorFS.
     fn reference_string(&self) -> String {
         VRHeader::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
     }
@@ -250,6 +250,11 @@ pub trait VectorResource {
                 NodeContent::ExternalContent(external_content) => {
                     println!("");
                     format!("External: {}", external_content)
+                }
+
+                NodeContent::VRHeader(header) => {
+                    println!("");
+                    format!("Header For Vector Resource: {}", header.reference_string())
                 }
             };
             println!("{}: {}", path, data);

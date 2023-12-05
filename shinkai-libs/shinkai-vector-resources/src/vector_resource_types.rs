@@ -239,8 +239,36 @@ impl Node {
         Self::new_external_content(id.to_string(), external_content, metadata)
     }
 
-    /// Creates a new Node from given content with a String id.
-    pub fn from_content(
+    /// Create a new VRHeader-holding Node with a provided String id
+    pub fn new_vrheader(
+        id: String,
+        vrheader: &VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
+
+        Self {
+            id,
+            content: NodeContent::VRHeader(vrheader.clone()),
+            metadata,
+            data_tag_names: data_tag_names.clone(),
+            last_modified_datetime: current_time,
+        }
+    }
+
+    /// Create a new VRHeader-holding Node with a provided u64 id, which gets converted to string internally
+    pub fn new_vrheader_with_integer_id(
+        id: u64,
+        vrheader: &VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
+        Self::new_vrheader(id.to_string(), vrheader, metadata, data_tag_names)
+    }
+
+    /// Creates a new Node using provided content with a String id.
+    pub fn from_node_content(
         id: String,
         content: NodeContent,
         metadata: Option<HashMap<String, String>>,
@@ -256,14 +284,14 @@ impl Node {
         }
     }
 
-    /// Creates a new Node from given content with a u64 id
-    pub fn from_content_with_integer_id(
+    /// Creates a new Node using provided content with a u64 id
+    pub fn from_node_content_with_integer_id(
         id: u64,
         content: NodeContent,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: Vec<String>,
     ) -> Self {
-        Self::from_content(id.to_string(), content, metadata, data_tag_names)
+        Self::from_node_content(id.to_string(), content, metadata, data_tag_names)
     }
 
     /// Updates the last_modified_datetime to the current time
@@ -303,6 +331,7 @@ pub enum NodeContent {
     Text(String),
     Resource(BaseVectorResource),
     ExternalContent(SourceReference),
+    VRHeader(VRHeader),
 }
 
 /// Struct which holds descriptive information about a given Vector Resource.

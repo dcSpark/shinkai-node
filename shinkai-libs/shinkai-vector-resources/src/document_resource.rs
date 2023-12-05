@@ -294,7 +294,7 @@ impl DocumentVectorResource {
         tag_names: &Vec<String>,
     ) {
         let id = self.node_count + 1;
-        let node = Node::from_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
+        let node = Node::from_node_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
         self.data_tag_index.add_node(&node);
 
         // Embedding details
@@ -382,7 +382,7 @@ impl DocumentVectorResource {
 
         // Next create the new node, and replace the old node in the nodes list
         let new_node =
-            Node::from_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
+            Node::from_node_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
 
         // Then deletion of old node from index and addition of new node
