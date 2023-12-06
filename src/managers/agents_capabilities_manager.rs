@@ -117,8 +117,8 @@ impl AgentsCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" => vec![AgentCapability::TextInference],
-                "gpt-vision" => vec![AgentCapability::ImageAnalysis],
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => vec![AgentCapability::TextInference],
+                "gpt-vision" | "gpt-4-vision-preview" => vec![AgentCapability::ImageAnalysis],
                 "dall-e" => vec![AgentCapability::ImageGeneration],
                 _ => vec![],
             },
@@ -165,12 +165,12 @@ impl AgentsCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => AgentCost::Cheap,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" => AgentCost::Expensive,
-                "gpt-vision" => AgentCost::GoodValue,
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => AgentCost::Expensive,
+                "gpt-vision" | "gpt-4-vision-preview" => AgentCost::GoodValue,
                 "dall-e" => AgentCost::GoodValue,
                 _ => AgentCost::Unknown,
             },
-            AgentLLMInterface::Ollama(ollama) => AgentCost::Cheap,
+            AgentLLMInterface::Ollama(_) => AgentCost::Cheap,
         }
     }
 
@@ -191,12 +191,12 @@ impl AgentsCapabilitiesManager {
             },
             AgentLLMInterface::LocalLLM(_) => AgentPrivacy::Local,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" => AgentPrivacy::RemoteGreedy,
-                "gpt-vision" => AgentPrivacy::RemoteGreedy,
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => AgentPrivacy::RemoteGreedy,
+                "gpt-vision" | "gpt-4-vision-preview" => AgentPrivacy::RemoteGreedy,
                 "dall-e" => AgentPrivacy::RemoteGreedy,
                 _ => AgentPrivacy::Unknown,
             },
-            AgentLLMInterface::Ollama(ollama) => AgentPrivacy::Local,
+            AgentLLMInterface::Ollama(_) => AgentPrivacy::Local,
         }
     }
 

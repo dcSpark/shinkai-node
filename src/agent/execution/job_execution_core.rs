@@ -341,7 +341,6 @@ impl JobManager {
                         file_extension.to_string(),
                     )
                     .await?;
-                    eprintln!("Image file processed");
                     return Ok(true);
                 }
             }
