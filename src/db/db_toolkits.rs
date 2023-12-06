@@ -218,8 +218,18 @@ impl ShinkaiDB {
             }
         }
 
-        // 3. Write the batch to the DB
+        // 3. Updates the headers_set of the toolkit in the map
+        let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
+        toolkit_map.update_headers_set(toolkit_name, true)?;
+        let (bytes, cf) = self._prepare_profile_toolkit_map(&toolkit_map, profile)?;
+        pb_batch.put_cf_pb(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes);
+
+        // 4. Write the batch to the DB
         self.write_pb(pb_batch)?;
+        eprintln!(
+            "set_toolkit_header_values> profile set header values: {:?}",
+            header_values
+        );
 
         Ok(())
     }

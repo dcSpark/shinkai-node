@@ -1,12 +1,12 @@
 /*! For license information please see packaged-shinkai-toolkit.js.LICENSE.txt */
 (() => {
   var __webpack_modules__ = {
-    147: (module, __unused_webpack_exports, __webpack_require__) => {
+    3176: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Merge = __webpack_require__(2602);
-      const Reach = __webpack_require__(4646);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Merge = __webpack_require__(7093);
+      const Reach = __webpack_require__(6770);
       const internals = {};
       module.exports = function (defaults, source, options = {}) {
         Assert(
@@ -91,9 +91,9 @@
         ref[path[path.length - 1]] = value;
       };
     },
-    2634: (module, __unused_webpack_exports, __webpack_require__) => {
+    9647: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const AssertError = __webpack_require__(7618);
+      const AssertError = __webpack_require__(6090);
       const internals = {};
       module.exports = function (condition, ...args) {
         if (condition) {
@@ -105,11 +105,11 @@
         throw new AssertError(args);
       };
     },
-    6566: (module, __unused_webpack_exports, __webpack_require__) => {
+    3737: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Reach = __webpack_require__(4646);
-      const Types = __webpack_require__(7634);
-      const Utils = __webpack_require__(1416);
+      const Reach = __webpack_require__(6770);
+      const Types = __webpack_require__(6157);
+      const Utils = __webpack_require__(5262);
       const internals = {
         needsProtoHack: new Set([
           Types.set,
@@ -242,9 +242,9 @@
         return Object.create(proto);
       };
     },
-    9820: (module, __unused_webpack_exports, __webpack_require__) => {
+    5245: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Types = __webpack_require__(7634);
+      const Types = __webpack_require__(6157);
       const internals = { mismatched: null };
       module.exports = function (obj, ref, options) {
         options = Object.assign({ prototype: true }, options);
@@ -482,9 +482,9 @@
         }
       };
     },
-    7618: (module, exports, __webpack_require__) => {
+    6090: (module, exports, __webpack_require__) => {
       "use strict";
-      const Stringify = __webpack_require__(5314);
+      const Stringify = __webpack_require__(4308);
       const internals = {};
       module.exports = class extends Error {
         constructor(args) {
@@ -504,7 +504,7 @@
         }
       };
     },
-    9617: (module) => {
+    8438: (module) => {
       "use strict";
       const internals = {};
       module.exports = function (input) {
@@ -568,7 +568,7 @@
         return safe;
       })();
     },
-    6166: (module) => {
+    2573: (module) => {
       "use strict";
       const internals = {};
       module.exports = function (string) {
@@ -578,16 +578,16 @@
         );
       };
     },
-    2242: (module) => {
+    4298: (module) => {
       "use strict";
       const internals = {};
       module.exports = function () {};
     },
-    2602: (module, __unused_webpack_exports, __webpack_require__) => {
+    7093: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Utils = __webpack_require__(1416);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Utils = __webpack_require__(5262);
       const internals = {};
       module.exports = internals.merge = function (target, source, options) {
         Assert(
@@ -652,9 +652,9 @@
         return target;
       };
     },
-    4646: (module, __unused_webpack_exports, __webpack_require__) => {
+    6770: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
+      const Assert = __webpack_require__(9647);
       const internals = {};
       module.exports = function (obj, chain, options) {
         if (chain === false || chain === null || chain === undefined) {
@@ -725,7 +725,7 @@
         }
       };
     },
-    5314: (module) => {
+    4308: (module) => {
       "use strict";
       const internals = {};
       module.exports = function (...args) {
@@ -736,7 +736,7 @@
         }
       };
     },
-    7634: (module, exports) => {
+    6157: (module, exports) => {
       "use strict";
       const internals = {};
       exports = module.exports = {
@@ -780,7 +780,7 @@
         return internals.typeMap.get(objName) || exports.generic;
       };
     },
-    1416: (__unused_webpack_module, exports) => {
+    5262: (__unused_webpack_module, exports) => {
       "use strict";
       const internals = {};
       exports.keys = function (obj, options = {}) {
@@ -789,9 +789,9 @@
           : Object.getOwnPropertyNames(obj);
       };
     },
-    9023: (__unused_webpack_module, exports, __webpack_require__) => {
+    9484: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
+      const Assert = __webpack_require__(9647);
       const internals = {};
       exports.Sorter = class {
         constructor() {
@@ -959,10 +959,10 @@
       internals.mergeSort = (a, b) =>
         a.sort === b.sort ? 0 : a.sort < b.sort ? -1 : 1;
     },
-    6288: (__unused_webpack_module, exports, __webpack_require__) => {
+    9253: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       const Url = __webpack_require__(7310);
-      const Errors = __webpack_require__(303);
+      const Errors = __webpack_require__(1722);
       const internals = {
         minDomainSegments: 2,
         nonAsciiRx: /[^\x00-\x7f]/,
@@ -1050,11 +1050,11 @@
         }
       };
     },
-    2531: (__unused_webpack_module, exports, __webpack_require__) => {
+    7558: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       const Util = __webpack_require__(3837);
-      const Domain = __webpack_require__(6288);
-      const Errors = __webpack_require__(303);
+      const Domain = __webpack_require__(9253);
+      const Errors = __webpack_require__(1722);
       const internals = {
         nonAsciiRx: /[^\x00-\x7f]/,
         encoder: new (Util.TextEncoder || TextEncoder)(),
@@ -1136,7 +1136,7 @@
         ].join("|")
       );
     },
-    303: (__unused_webpack_module, exports) => {
+    1722: (__unused_webpack_module, exports) => {
       "use strict";
       exports.codes = {
         EMPTY_STRING: "Address must be a non-empty string",
@@ -1167,10 +1167,10 @@
         return { code, error: exports.codes[code] };
       };
     },
-    6624: (__unused_webpack_module, exports, __webpack_require__) => {
+    7531: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Uri = __webpack_require__(6180);
+      const Assert = __webpack_require__(9647);
+      const Uri = __webpack_require__(1747);
       const internals = {};
       exports.regex = function (options = {}) {
         Assert(
@@ -1227,7 +1227,7 @@
         return { cidr, versions, regex, raw };
       };
     },
-    177: (module) => {
+    1254: (module) => {
       "use strict";
       const internals = {};
       internals.tlds = [
@@ -2720,10 +2720,10 @@
       ];
       module.exports = new Set(internals.tlds.map((tld) => tld.toLowerCase()));
     },
-    6180: (__unused_webpack_module, exports, __webpack_require__) => {
+    1747: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const EscapeRegex = __webpack_require__(6166);
+      const Assert = __webpack_require__(9647);
+      const EscapeRegex = __webpack_require__(2573);
       const internals = {};
       internals.generate = function () {
         const rfc3986 = {};
@@ -2934,7 +2934,7 @@
         return internals.uriRegex;
       };
     },
-    2211: (__unused_webpack_module, exports) => {
+    5278: (__unused_webpack_module, exports) => {
       "use strict";
       const internals = {
         operators: [
@@ -3326,7 +3326,7 @@
         return value !== null && value !== undefined;
       };
     },
-    6358: (__unused_webpack_module, exports) => {
+    9725: (__unused_webpack_module, exports) => {
       "use strict";
       const internals = {};
       exports.location = function (depth = 0) {
@@ -3339,10 +3339,10 @@
         return { filename: line.getFileName(), line: line.getLineNumber() };
       };
     },
-    9448: (__unused_webpack_module, exports, __webpack_require__) => {
+    1746: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Clone = __webpack_require__(6566);
-      const Common = __webpack_require__(1265);
+      const Clone = __webpack_require__(3737);
+      const Common = __webpack_require__(6615);
       const internals = { annotations: Symbol("annotations") };
       exports.error = function (stripColorCodes) {
         if (!this._original || typeof this._original !== "object") {
@@ -3488,24 +3488,24 @@
         };
       };
     },
-    2832: (module, __unused_webpack_exports, __webpack_require__) => {
+    1785: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const DeepEqual = __webpack_require__(9820);
-      const Merge = __webpack_require__(2602);
-      const Cache = __webpack_require__(9984);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
-      const Errors = __webpack_require__(8925);
-      const Extend = __webpack_require__(9541);
-      const Manifest = __webpack_require__(860);
-      const Messages = __webpack_require__(6501);
-      const Modify = __webpack_require__(6803);
-      const Ref = __webpack_require__(1781);
-      const Trace = __webpack_require__(8891);
-      const Validator = __webpack_require__(2685);
-      const Values = __webpack_require__(1191);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const DeepEqual = __webpack_require__(5245);
+      const Merge = __webpack_require__(7093);
+      const Cache = __webpack_require__(637);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
+      const Errors = __webpack_require__(9963);
+      const Extend = __webpack_require__(4282);
+      const Manifest = __webpack_require__(5919);
+      const Messages = __webpack_require__(4941);
+      const Modify = __webpack_require__(6973);
+      const Ref = __webpack_require__(5263);
+      const Trace = __webpack_require__(5516);
+      const Validator = __webpack_require__(6652);
+      const Values = __webpack_require__(6417);
       const internals = {};
       internals.Base = class {
         constructor(type) {
@@ -4365,11 +4365,11 @@
       internals.Base.prototype.preferences = internals.Base.prototype.prefs;
       module.exports = new internals.Base();
     },
-    9984: (__unused_webpack_module, exports, __webpack_require__) => {
+    637: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Common = __webpack_require__(6615);
       const internals = {
         max: 1e3,
         supported: new Set(["undefined", "boolean", "number", "string"]),
@@ -4464,11 +4464,11 @@
         }
       };
     },
-    1265: (__unused_webpack_module, exports, __webpack_require__) => {
+    6615: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const AssertError = __webpack_require__(7618);
-      const Pkg = __webpack_require__(6763);
+      const Assert = __webpack_require__(9647);
+      const AssertError = __webpack_require__(6090);
+      const Pkg = __webpack_require__(8555);
       let Messages;
       let Schemas;
       const internals = {
@@ -4528,7 +4528,7 @@
         );
       };
       exports.checkPreferences = function (prefs) {
-        Schemas = Schemas || __webpack_require__(2114);
+        Schemas = Schemas || __webpack_require__(8417);
         const result = Schemas.preferences.validate(prefs);
         if (result.error) {
           throw new AssertError([result.error.details[0].message]);
@@ -4581,7 +4581,7 @@
         return Number.isSafeInteger(value) && value >= 0;
       };
       exports.preferences = function (target, source) {
-        Messages = Messages || __webpack_require__(6501);
+        Messages = Messages || __webpack_require__(4941);
         target = target || {};
         source = source || {};
         const merged = Object.assign({}, target, source);
@@ -4635,11 +4635,11 @@
         }
       };
     },
-    2913: (__unused_webpack_module, exports, __webpack_require__) => {
+    2194: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Common = __webpack_require__(1265);
-      const Ref = __webpack_require__(1781);
+      const Assert = __webpack_require__(9647);
+      const Common = __webpack_require__(6615);
+      const Ref = __webpack_require__(5263);
       const internals = {};
       exports.schema = function (Joi, config, options = {}) {
         Common.assertOptions(options, ["appendPath", "override"]);
@@ -4907,11 +4907,11 @@
         return condition;
       };
     },
-    8925: (__unused_webpack_module, exports, __webpack_require__) => {
+    9963: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Annotate = __webpack_require__(9448);
-      const Common = __webpack_require__(1265);
-      const Template = __webpack_require__(9334);
+      const Annotate = __webpack_require__(1746);
+      const Common = __webpack_require__(6615);
+      const Template = __webpack_require__(6453);
       const internals = {};
       exports.Report = class {
         constructor(code, value, local, flags, messages, state, prefs) {
@@ -5119,12 +5119,12 @@
       exports.ValidationError.prototype.name = "ValidationError";
       exports.ValidationError.prototype.annotate = Annotate.error;
     },
-    9541: (__unused_webpack_module, exports, __webpack_require__) => {
+    4282: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Common = __webpack_require__(1265);
-      const Messages = __webpack_require__(6501);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Common = __webpack_require__(6615);
+      const Messages = __webpack_require__(4941);
       const internals = {};
       exports.type = function (from, options) {
         const base = Object.getPrototypeOf(from);
@@ -5339,38 +5339,38 @@
         };
       };
     },
-    9611: (module, __unused_webpack_exports, __webpack_require__) => {
+    4354: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Cache = __webpack_require__(9984);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
-      const Errors = __webpack_require__(8925);
-      const Extend = __webpack_require__(9541);
-      const Manifest = __webpack_require__(860);
-      const Ref = __webpack_require__(1781);
-      const Template = __webpack_require__(9334);
-      const Trace = __webpack_require__(8891);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Cache = __webpack_require__(637);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
+      const Errors = __webpack_require__(9963);
+      const Extend = __webpack_require__(4282);
+      const Manifest = __webpack_require__(5919);
+      const Ref = __webpack_require__(5263);
+      const Template = __webpack_require__(6453);
+      const Trace = __webpack_require__(5516);
       let Schemas;
       const internals = {
         types: {
-          alternatives: __webpack_require__(209),
-          any: __webpack_require__(8017),
-          array: __webpack_require__(3729),
-          boolean: __webpack_require__(7239),
-          date: __webpack_require__(7984),
-          function: __webpack_require__(1966),
-          link: __webpack_require__(5378),
-          number: __webpack_require__(2443),
-          object: __webpack_require__(8386),
-          string: __webpack_require__(3823),
-          symbol: __webpack_require__(3734),
+          alternatives: __webpack_require__(5775),
+          any: __webpack_require__(3059),
+          array: __webpack_require__(9606),
+          boolean: __webpack_require__(9853),
+          date: __webpack_require__(4340),
+          function: __webpack_require__(8601),
+          link: __webpack_require__(2544),
+          number: __webpack_require__(4264),
+          object: __webpack_require__(1942),
+          string: __webpack_require__(8439),
+          symbol: __webpack_require__(7896),
         },
         aliases: { alt: "alternatives", bool: "boolean", func: "function" },
       };
       if (Buffer) {
-        internals.types.binary = __webpack_require__(1253);
+        internals.types.binary = __webpack_require__(4788);
       }
       internals.root = function () {
         const root = { _types: new Set(Object.keys(internals.types)) };
@@ -5462,7 +5462,7 @@
         },
         extend(...extensions) {
           Common.verifyFlat(extensions, "extend");
-          Schemas = Schemas || __webpack_require__(2114);
+          Schemas = Schemas || __webpack_require__(8417);
           Assert(
             extensions.length,
             "You need to provide at least one extension"
@@ -5566,14 +5566,14 @@
       };
       module.exports = internals.root();
     },
-    860: (__unused_webpack_module, exports, __webpack_require__) => {
+    5919: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Common = __webpack_require__(1265);
-      const Messages = __webpack_require__(6501);
-      const Ref = __webpack_require__(1781);
-      const Template = __webpack_require__(9334);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Common = __webpack_require__(6615);
+      const Messages = __webpack_require__(4941);
+      const Ref = __webpack_require__(5263);
+      const Template = __webpack_require__(6453);
       let Schemas;
       const internals = {};
       exports.describe = function (schema) {
@@ -5945,15 +5945,15 @@
         return new RegExp(exp, flags);
       };
       internals.validate = function (joi, desc) {
-        Schemas = Schemas || __webpack_require__(2114);
+        Schemas = Schemas || __webpack_require__(8417);
         joi.assert(desc, Schemas.description);
       };
     },
-    6501: (__unused_webpack_module, exports, __webpack_require__) => {
+    4941: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Template = __webpack_require__(9334);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Template = __webpack_require__(6453);
       const internals = {};
       exports.compile = function (messages, target) {
         if (typeof messages === "string") {
@@ -6079,11 +6079,11 @@
         return target;
       };
     },
-    6803: (__unused_webpack_module, exports, __webpack_require__) => {
+    6973: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Common = __webpack_require__(1265);
-      const Ref = __webpack_require__(1781);
+      const Assert = __webpack_require__(9647);
+      const Common = __webpack_require__(6615);
+      const Ref = __webpack_require__(5263);
       const internals = {};
       exports.Ids = internals.Ids = class {
         constructor() {
@@ -6337,12 +6337,12 @@
         return clone;
       };
     },
-    1781: (__unused_webpack_module, exports, __webpack_require__) => {
+    5263: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Reach = __webpack_require__(4646);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Reach = __webpack_require__(6770);
+      const Common = __webpack_require__(6615);
       let Template;
       const internals = {
         symbol: Symbol("ref"),
@@ -6670,7 +6670,7 @@
               root: source.root,
             });
           }
-          Template = Template || __webpack_require__(9334);
+          Template = Template || __webpack_require__(6453);
           if (Template.isTemplate(source)) {
             this.register(source.refs(), target);
           }
@@ -6693,9 +6693,9 @@
         }
       };
     },
-    2114: (__unused_webpack_module, exports, __webpack_require__) => {
+    8417: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Joi = __webpack_require__(9611);
+      const Joi = __webpack_require__(4354);
       const internals = {};
       internals.wrap = Joi.string().min(1).max(2).allow(false);
       exports.preferences = Joi.object({
@@ -6937,11 +6937,11 @@
         link: internals.desc.ref,
       }).pattern(/^[a-z]\w*$/, Joi.any());
     },
-    2758: (module, __unused_webpack_exports, __webpack_require__) => {
+    5908: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Clone = __webpack_require__(6566);
-      const Reach = __webpack_require__(4646);
-      const Common = __webpack_require__(1265);
+      const Clone = __webpack_require__(3737);
+      const Reach = __webpack_require__(6770);
+      const Common = __webpack_require__(6615);
       const internals = { value: Symbol("value") };
       module.exports = internals.State = class {
         constructor(path, ancestors, state) {
@@ -7051,15 +7051,15 @@
         }
       };
     },
-    9334: (module, exports, __webpack_require__) => {
+    6453: (module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const EscapeHtml = __webpack_require__(9617);
-      const Formula = __webpack_require__(2211);
-      const Common = __webpack_require__(1265);
-      const Errors = __webpack_require__(8925);
-      const Ref = __webpack_require__(1781);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const EscapeHtml = __webpack_require__(8438);
+      const Formula = __webpack_require__(5278);
+      const Common = __webpack_require__(6615);
+      const Errors = __webpack_require__(9963);
+      const Ref = __webpack_require__(5263);
       const internals = {
         symbol: Symbol("template"),
         opens: new Array(1e3).join("\0"),
@@ -7454,11 +7454,11 @@
         },
       };
     },
-    8891: (__unused_webpack_module, exports, __webpack_require__) => {
+    5516: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const DeepEqual = __webpack_require__(9820);
-      const Pinpoint = __webpack_require__(6358);
-      const Errors = __webpack_require__(8925);
+      const DeepEqual = __webpack_require__(5245);
+      const Pinpoint = __webpack_require__(9725);
+      const Errors = __webpack_require__(9963);
       const internals = {
         codes: { error: 1, pass: 2, full: 3 },
         labels: { 0: "never used", 1: "always error", 2: "always pass" },
@@ -7702,15 +7702,15 @@
         }
       };
     },
-    209: (module, __unused_webpack_exports, __webpack_require__) => {
+    5775: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Merge = __webpack_require__(2602);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
-      const Errors = __webpack_require__(8925);
-      const Ref = __webpack_require__(1781);
+      const Assert = __webpack_require__(9647);
+      const Merge = __webpack_require__(7093);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
+      const Errors = __webpack_require__(9963);
+      const Ref = __webpack_require__(5263);
       const internals = {};
       module.exports = Any.extend({
         type: "alternatives",
@@ -7986,12 +7986,12 @@
         };
       };
     },
-    8017: (module, __unused_webpack_exports, __webpack_require__) => {
+    3059: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Base = __webpack_require__(2832);
-      const Common = __webpack_require__(1265);
-      const Messages = __webpack_require__(6501);
+      const Assert = __webpack_require__(9647);
+      const Base = __webpack_require__(1785);
+      const Common = __webpack_require__(6615);
+      const Messages = __webpack_require__(4941);
       const internals = {};
       module.exports = Base.extend({
         type: "any",
@@ -8143,14 +8143,14 @@
         },
       });
     },
-    3729: (module, __unused_webpack_exports, __webpack_require__) => {
+    9606: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const DeepEqual = __webpack_require__(9820);
-      const Reach = __webpack_require__(4646);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
+      const Assert = __webpack_require__(9647);
+      const DeepEqual = __webpack_require__(5245);
+      const Reach = __webpack_require__(6770);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
       const internals = {};
       module.exports = Any.extend({
         type: "array",
@@ -8961,11 +8961,11 @@
         return null;
       };
     },
-    1253: (module, __unused_webpack_exports, __webpack_require__) => {
+    4788: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
       const internals = {};
       module.exports = Any.extend({
         type: "binary",
@@ -9063,12 +9063,12 @@
         },
       });
     },
-    7239: (module, __unused_webpack_exports, __webpack_require__) => {
+    9853: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Values = __webpack_require__(1191);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Values = __webpack_require__(6417);
       const internals = {};
       internals.isBool = function (value) {
         return typeof value === "boolean";
@@ -9185,12 +9185,12 @@
         messages: { "boolean.base": "{{#label}} must be a boolean" },
       });
     },
-    7984: (module, __unused_webpack_exports, __webpack_require__) => {
+    4340: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Template = __webpack_require__(9334);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Template = __webpack_require__(6453);
       const internals = {};
       internals.isDate = function (value) {
         return value instanceof Date;
@@ -9369,10 +9369,10 @@
         return null;
       };
     },
-    1966: (module, __unused_webpack_exports, __webpack_require__) => {
+    8601: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Keys = __webpack_require__(4188);
+      const Assert = __webpack_require__(9647);
+      const Keys = __webpack_require__(6383);
       const internals = {};
       module.exports = Keys.extend({
         type: "function",
@@ -9445,18 +9445,18 @@
         },
       });
     },
-    4188: (module, __unused_webpack_exports, __webpack_require__) => {
+    6383: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const ApplyToDefaults = __webpack_require__(147);
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Topo = __webpack_require__(9023);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
-      const Errors = __webpack_require__(8925);
-      const Ref = __webpack_require__(1781);
-      const Template = __webpack_require__(9334);
+      const ApplyToDefaults = __webpack_require__(3176);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Topo = __webpack_require__(9484);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
+      const Errors = __webpack_require__(9963);
+      const Ref = __webpack_require__(5263);
+      const Template = __webpack_require__(6453);
       const internals = {
         renameDefaults: { alias: false, multiple: false, override: false },
       };
@@ -10506,13 +10506,13 @@
         }
       };
     },
-    5378: (module, __unused_webpack_exports, __webpack_require__) => {
+    2544: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
-      const Compile = __webpack_require__(2913);
-      const Errors = __webpack_require__(8925);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
+      const Compile = __webpack_require__(2194);
+      const Errors = __webpack_require__(9963);
       const internals = {};
       module.exports = Any.extend({
         type: "link",
@@ -10674,11 +10674,11 @@
         );
       };
     },
-    2443: (module, __unused_webpack_exports, __webpack_require__) => {
+    4264: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
       const internals = {
         numberRx:
           /^\s*[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:e([+-]?\d+))?\s*$/i,
@@ -10962,9 +10962,9 @@
         return str;
       };
     },
-    8386: (module, __unused_webpack_exports, __webpack_require__) => {
+    1942: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Keys = __webpack_require__(4188);
+      const Keys = __webpack_require__(6383);
       const internals = {};
       module.exports = Keys.extend({
         type: "object",
@@ -10978,17 +10978,17 @@
         },
       });
     },
-    3823: (module, __unused_webpack_exports, __webpack_require__) => {
+    8439: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Domain = __webpack_require__(6288);
-      const Email = __webpack_require__(2531);
-      const Ip = __webpack_require__(6624);
-      const EscapeRegex = __webpack_require__(6166);
-      const Tlds = __webpack_require__(177);
-      const Uri = __webpack_require__(6180);
-      const Any = __webpack_require__(8017);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const Domain = __webpack_require__(9253);
+      const Email = __webpack_require__(7558);
+      const Ip = __webpack_require__(7531);
+      const EscapeRegex = __webpack_require__(2573);
+      const Tlds = __webpack_require__(1254);
+      const Uri = __webpack_require__(1747);
+      const Any = __webpack_require__(3059);
+      const Common = __webpack_require__(6615);
       const internals = {
         tlds:
           Tlds instanceof Set ? { tlds: { allow: Tlds, deny: null } } : false,
@@ -11813,10 +11813,10 @@
         });
       };
     },
-    3734: (module, __unused_webpack_exports, __webpack_require__) => {
+    7896: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Any = __webpack_require__(8017);
+      const Assert = __webpack_require__(9647);
+      const Any = __webpack_require__(3059);
       const internals = {};
       internals.Map = class extends Map {
         slice() {
@@ -11896,15 +11896,15 @@
         },
       });
     },
-    2685: (__unused_webpack_module, exports, __webpack_require__) => {
+    6652: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const Clone = __webpack_require__(6566);
-      const Ignore = __webpack_require__(2242);
-      const Reach = __webpack_require__(4646);
-      const Common = __webpack_require__(1265);
-      const Errors = __webpack_require__(8925);
-      const State = __webpack_require__(2758);
+      const Assert = __webpack_require__(9647);
+      const Clone = __webpack_require__(3737);
+      const Ignore = __webpack_require__(4298);
+      const Reach = __webpack_require__(6770);
+      const Common = __webpack_require__(6615);
+      const Errors = __webpack_require__(9963);
+      const State = __webpack_require__(5908);
       const internals = { result: Symbol("result") };
       exports.entry = function (value, schema, prefs) {
         let settings = Common.defaults;
@@ -12593,11 +12593,11 @@
         return errors;
       };
     },
-    1191: (module, __unused_webpack_exports, __webpack_require__) => {
+    6417: (module, __unused_webpack_exports, __webpack_require__) => {
       "use strict";
-      const Assert = __webpack_require__(2634);
-      const DeepEqual = __webpack_require__(9820);
-      const Common = __webpack_require__(1265);
+      const Assert = __webpack_require__(9647);
+      const DeepEqual = __webpack_require__(5245);
+      const Common = __webpack_require__(6615);
       const internals = {};
       module.exports = internals.Values = class {
         constructor(values, refs) {
@@ -12770,7 +12770,7 @@
         return map;
       };
     },
-    1738: () => {
+    8060: () => {
       var Reflect;
       (function (Reflect) {
         (function (factory) {
@@ -13542,209 +13542,12 @@
         });
       })(Reflect || (Reflect = {}));
     },
-    4639: (__unused_webpack_module, exports, __webpack_require__) => {
-      "use strict";
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.ToolKitSetup = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      const toolkit_lib_1 = __webpack_require__(3847);
-      let ToolKitSetup = class ToolKitSetup extends toolkit_lib_1.ShinkaiSetup {
-        constructor() {
-          super();
-          this.toolkitName = "@shinkai_network/toolkit-example";
-          this.author = "shinkai-dev";
-          this.version = "0.0.1";
-          this.cover =
-            "https://www.slideteam.net/wp/wp-content/uploads/2023/05/Brand-Toolkit-Examples-_English-.png";
-          this.toolkitHeaders = [
-            {
-              name: "example-string",
-              type: toolkit_lib_1.DATA_TYPES.STRING,
-              description: "An example string header",
-            },
-            {
-              name: "example-integer",
-              type: toolkit_lib_1.DATA_TYPES.INTEGER,
-              description: "An example integer header",
-            },
-            {
-              name: "example-float",
-              type: toolkit_lib_1.DATA_TYPES.FLOAT,
-              description: "An example float header",
-            },
-            {
-              name: "example-bool",
-              description: "Example boolean header",
-              type: toolkit_lib_1.DATA_TYPES.BOOLEAN,
-            },
-            {
-              name: "example-json",
-              type: toolkit_lib_1.DATA_TYPES.JSON,
-              description: "Example json header",
-            },
-            {
-              name: "example-enum",
-              type: toolkit_lib_1.DATA_TYPES.ENUM,
-              description: "Example enum header",
-              enum: ["ONE", "TWO", "THREE", "FOUR", "FIVE"],
-            },
-          ];
-          this.dev = true;
-        }
-        validateHeaders(headers) {
-          return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            if (String(headers["example-bool"]) === String(false)) {
-              throw new Error("Invalid 'example-bool' header");
-            }
-            if (String(headers["example-bool"]) === String(true)) {
-              return Promise.resolve(true);
-            }
-            return Promise.resolve(true);
-          });
-        }
-      };
-      exports.ToolKitSetup = ToolKitSetup;
-      exports.ToolKitSetup = ToolKitSetup = tslib_1.__decorate(
-        [toolkit_lib_1.isToolKit, tslib_1.__metadata("design:paramtypes", [])],
-        ToolKitSetup
-      );
-    },
-    3560: (__unused_webpack_module, exports, __webpack_require__) => {
-      "use strict";
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.CompareNumbers = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      const toolkit_lib_1 = __webpack_require__(3847);
-      let CompareInput = class CompareInput extends toolkit_lib_1.BaseInput {};
-      tslib_1.__decorate(
-        [
-          (0, toolkit_lib_1.isInteger)(
-            "Number to check if greater than, lower than or equal than."
-          ),
-          tslib_1.__metadata("design:type", Number),
-        ],
-        CompareInput.prototype,
-        "number",
-        void 0
-      );
-      tslib_1.__decorate(
-        [
-          (0, toolkit_lib_1.isInteger)("Number to compare with."),
-          tslib_1.__metadata("design:type", Number),
-        ],
-        CompareInput.prototype,
-        "numberToCompare",
-        void 0
-      );
-      CompareInput = tslib_1.__decorate(
-        [(0, toolkit_lib_1.isInput)("CompareNumbers")],
-        CompareInput
-      );
-      let CompareOutput = class CompareOutput extends toolkit_lib_1.BaseOutput {};
-      tslib_1.__decorate(
-        [
-          (0, toolkit_lib_1.isEnum)(
-            ["GT", "LT", "EQ"],
-            "Result of the comparison."
-          ),
-          tslib_1.__metadata("design:type", String),
-        ],
-        CompareOutput.prototype,
-        "comparison",
-        void 0
-      );
-      CompareOutput = tslib_1.__decorate(
-        [(0, toolkit_lib_1.isOutput)("CompareNumbers")],
-        CompareOutput
-      );
-      let CompareNumbers = class CompareNumbers extends toolkit_lib_1.BaseTool {
-        constructor() {
-          super(...arguments);
-          this.description =
-            "Check if number is greater than, lower than or equal to another number.";
-        }
-        run(input) {
-          return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const out = new CompareOutput();
-            if (input.number > input.numberToCompare) {
-              out.comparison = "GT";
-            } else if (input.number < input.numberToCompare) {
-              out.comparison = "LT";
-            } else {
-              out.comparison = "EQ";
-            }
-            return out;
-          });
-        }
-      };
-      exports.CompareNumbers = CompareNumbers;
-      exports.CompareNumbers = CompareNumbers = tslib_1.__decorate(
-        [toolkit_lib_1.isTool],
-        CompareNumbers
-      );
-    },
-    7246: (__unused_webpack_module, exports, __webpack_require__) => {
-      "use strict";
-      Object.defineProperty(exports, "__esModule", { value: true });
-      exports.isEven = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      const toolkit_lib_1 = __webpack_require__(3847);
-      let isEvenInput = class isEvenInput extends toolkit_lib_1.BaseInput {};
-      tslib_1.__decorate(
-        [
-          (0, toolkit_lib_1.isInteger)("Integer number to check if is even."),
-          tslib_1.__metadata("design:type", Number),
-        ],
-        isEvenInput.prototype,
-        "number",
-        void 0
-      );
-      isEvenInput = tslib_1.__decorate(
-        [(0, toolkit_lib_1.isInput)("isEven")],
-        isEvenInput
-      );
-      let isEvenOutput = class isEvenOutput extends toolkit_lib_1.BaseOutput {};
-      tslib_1.__decorate(
-        [
-          (0, toolkit_lib_1.isBoolean)(
-            "Result of the check. True if the number is even."
-          ),
-          tslib_1.__metadata("design:type", Boolean),
-        ],
-        isEvenOutput.prototype,
-        "isEvenOutput",
-        void 0
-      );
-      isEvenOutput = tslib_1.__decorate(
-        [(0, toolkit_lib_1.isOutput)("isEven")],
-        isEvenOutput
-      );
-      let isEven = class isEven extends toolkit_lib_1.BaseTool {
-        constructor() {
-          super(...arguments);
-          this.description = "Check if a number is even";
-        }
-        run(input) {
-          return tslib_1.__awaiter(this, void 0, void 0, function* () {
-            const isEven = (input.number || 0) % 2 === 0;
-            const out = new isEvenOutput();
-            out.isEvenOutput = isEven;
-            return out;
-          });
-        }
-      };
-      exports.isEven = isEven;
-      exports.isEven = isEven = tslib_1.__decorate(
-        [toolkit_lib_1.isTool],
-        isEven
-      );
-    },
-    7765: (__unused_webpack_module, exports, __webpack_require__) => {
+    409: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.BaseTool = exports.BaseOutput = exports.BaseInput = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      const ShinkaiToolkitLib_1 = __webpack_require__(8555);
+      const tslib_1 = __webpack_require__(2712);
+      const ShinkaiToolkitLib_1 = __webpack_require__(4952);
       class BaseInput {}
       exports.BaseInput = BaseInput;
       class BaseOutput {
@@ -13785,12 +13588,12 @@
       }
       exports.BaseTool = BaseTool;
     },
-    4679: (__unused_webpack_module, exports, __webpack_require__) => {
+    8973: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.ShinkaiSetup = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      const ShinkaiToolkitLib_1 = __webpack_require__(8555);
+      const tslib_1 = __webpack_require__(2712);
+      const ShinkaiToolkitLib_1 = __webpack_require__(4952);
       class ShinkaiSetup {
         constructor() {
           this.dev = false;
@@ -13809,7 +13612,8 @@
             Object.keys(rawHeader).forEach((key) => {
               if (!v.transformer[key]) {
               } else {
-                Object.assign(headers, v.transformer[key](rawHeader[key]));
+                const transformedValue = v.transformer[key](rawHeader[key]);
+                Object.assign(headers, transformedValue);
               }
             });
             const headerValidation = v.validator.validate(headers);
@@ -13822,14 +13626,14 @@
       }
       exports.ShinkaiSetup = ShinkaiSetup;
     },
-    8555: (__unused_webpack_module, exports, __webpack_require__) => {
+    4952: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.ShinkaiToolkitLib = void 0;
-      const tslib_1 = __webpack_require__(2970);
-      __webpack_require__(1738);
-      const Joi = tslib_1.__importStar(__webpack_require__(9611));
-      const types_1 = __webpack_require__(453);
+      const tslib_1 = __webpack_require__(2712);
+      __webpack_require__(8060);
+      const Joi = tslib_1.__importStar(__webpack_require__(4354));
+      const types_1 = __webpack_require__(3471);
       const DEBUG =
         typeof process !== "undefined" && !!process.env["DEBUG_TOOLKIT"];
       class ShinkaiToolkitLib {
@@ -13975,41 +13779,101 @@
                 case types_1.DATA_TYPES.ENUM:
                 case types_1.DATA_TYPES.OAUTH:
                 case types_1.DATA_TYPES.STRING: {
-                  ShinkaiToolkitLib.headerTransformer[header] = (input) => ({
-                    [header]: input,
-                    [field.name]: input,
-                  });
+                  ShinkaiToolkitLib.headerTransformer[header] = (input) => {
+                    const transformerFn = (value) => value;
+                    const transformedValue =
+                      ShinkaiToolkitLib.baseHeaderTransformer(
+                        field,
+                        input,
+                        transformerFn
+                      );
+                    return {
+                      [header]: transformedValue,
+                      [field.name]: transformedValue,
+                    };
+                  };
                   break;
                 }
                 case types_1.DATA_TYPES.BOOLEAN: {
-                  ShinkaiToolkitLib.headerTransformer[header] = (input) => ({
-                    [header]:
-                      input === "true" ? true : input === "false" ? false : "?",
-                    [field.name]:
-                      input === "true" ? true : input === "false" ? false : "?",
-                  });
+                  ShinkaiToolkitLib.headerTransformer[header] = (input) => {
+                    const transformerFn = (value) =>
+                      value === "true" ? true : value === "false" ? false : "?";
+                    const transformedValue =
+                      ShinkaiToolkitLib.baseHeaderTransformer(
+                        field,
+                        input,
+                        transformerFn
+                      );
+                    return {
+                      [header]: transformedValue,
+                      [field.name]: transformedValue,
+                    };
+                  };
                   break;
                 }
                 case types_1.DATA_TYPES.INTEGER:
                 case types_1.DATA_TYPES.FLOAT: {
-                  ShinkaiToolkitLib.headerTransformer[header] = (input) => ({
-                    [header]: +input,
-                    [field.name]: +input,
-                  });
+                  ShinkaiToolkitLib.headerTransformer[header] = (input) => {
+                    const transformerFn = (value) => +value;
+                    const transformedValue =
+                      ShinkaiToolkitLib.baseHeaderTransformer(
+                        field,
+                        input,
+                        transformerFn
+                      );
+                    return {
+                      [header]: transformedValue,
+                      [field.name]: transformedValue,
+                    };
+                  };
                   break;
                 }
                 case types_1.DATA_TYPES.JSON: {
-                  ShinkaiToolkitLib.headerTransformer[header] = (input) => ({
-                    [header]: JSON.parse(input),
-                    [field.name]: JSON.parse(input),
-                  });
+                  ShinkaiToolkitLib.headerTransformer[header] = (input) => {
+                    const transformerFn = (value) => {
+                      try {
+                        return JSON.parse(value);
+                      } catch (e) {
+                        throw new Error(
+                          `${header} can't be parsed as JSON type. ${e}`
+                        );
+                      }
+                    };
+                    const transformedValue =
+                      ShinkaiToolkitLib.baseHeaderTransformer(
+                        field,
+                        input,
+                        transformerFn
+                      );
+                    return {
+                      [header]: transformedValue,
+                      [field.name]: transformedValue,
+                    };
+                  };
                   break;
                 }
                 case types_1.DATA_TYPES.ISODATE: {
-                  ShinkaiToolkitLib.headerTransformer[header] = (input) => ({
-                    [header]: new Date(input).toISOString(),
-                    [field.name]: new Date(input).toISOString(),
-                  });
+                  ShinkaiToolkitLib.headerTransformer[header] = (input) => {
+                    const transformerFn = (value) => {
+                      try {
+                        return new Date(value).toISOString();
+                      } catch (e) {
+                        throw new Error(
+                          `${header} can't be parsed as Date type. ${e}`
+                        );
+                      }
+                    };
+                    const transformedValue =
+                      ShinkaiToolkitLib.baseHeaderTransformer(
+                        field,
+                        input,
+                        transformerFn
+                      );
+                    return {
+                      [header]: transformedValue,
+                      [field.name]: transformedValue,
+                    };
+                  };
                   break;
                 }
                 default:
@@ -14320,8 +14184,38 @@
       ShinkaiToolkitLib.headerTransformer = {};
       ShinkaiToolkitLib.ebnf = {};
       ShinkaiToolkitLib.isLibReady = false;
+      ShinkaiToolkitLib.baseHeaderTransformer = (
+        field,
+        input,
+        transformerFn
+      ) => {
+        let fixedInput = input;
+        const needRemoveScapedQuotes =
+          field.type === types_1.DATA_TYPES.ENUM ||
+          field.type === types_1.DATA_TYPES.ISODATE;
+        if (
+          needRemoveScapedQuotes &&
+          field.wrapperType === types_1.WRAPPER_TYPES.Array
+        ) {
+          fixedInput = input.replace(/\\/g, "");
+        } else if (needRemoveScapedQuotes) {
+          fixedInput = input.replace(/\\"/g, "");
+        }
+        if (field.wrapperType === types_1.WRAPPER_TYPES.Array) {
+          let arrayInput;
+          try {
+            arrayInput = JSON.parse(fixedInput);
+          } catch (e) {
+            throw new Error(`Error parsing ${input} as json. ${e}`);
+          }
+          return arrayInput.map((arrayInputValue) =>
+            transformerFn(arrayInputValue)
+          );
+        }
+        return transformerFn(fixedInput);
+      };
     },
-    2076: (__unused_webpack_module, exports, __webpack_require__) => {
+    1501: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.isRequired =
@@ -14340,9 +14234,9 @@
         exports.isTool =
         exports.isToolKit =
           void 0;
-      const ShinkaiToolkitLib_1 = __webpack_require__(8555);
-      const types_1 = __webpack_require__(453);
-      __webpack_require__(1738);
+      const ShinkaiToolkitLib_1 = __webpack_require__(4952);
+      const types_1 = __webpack_require__(3471);
+      __webpack_require__(8060);
       function isToolKit(classDef) {
         ShinkaiToolkitLib_1.ShinkaiToolkitLib.registerToolKit(new classDef());
       }
@@ -14602,16 +14496,16 @@
         }
       }
     },
-    3847: (__unused_webpack_module, exports, __webpack_require__) => {
+    848: (__unused_webpack_module, exports, __webpack_require__) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
-      const tslib_1 = __webpack_require__(2970);
-      const ShinkaiToolkitLib_1 = __webpack_require__(8555);
-      tslib_1.__exportStar(__webpack_require__(2076), exports);
-      tslib_1.__exportStar(__webpack_require__(7765), exports);
-      tslib_1.__exportStar(__webpack_require__(453), exports);
-      tslib_1.__exportStar(__webpack_require__(8555), exports);
-      tslib_1.__exportStar(__webpack_require__(4679), exports);
+      const tslib_1 = __webpack_require__(2712);
+      const ShinkaiToolkitLib_1 = __webpack_require__(4952);
+      tslib_1.__exportStar(__webpack_require__(1501), exports);
+      tslib_1.__exportStar(__webpack_require__(409), exports);
+      tslib_1.__exportStar(__webpack_require__(3471), exports);
+      tslib_1.__exportStar(__webpack_require__(4952), exports);
+      tslib_1.__exportStar(__webpack_require__(8973), exports);
       ShinkaiToolkitLib_1.ShinkaiToolkitLib.start();
       if (typeof process !== "undefined" && process.env["EMIT_TOOLS"]) {
         (() =>
@@ -14622,7 +14516,7 @@
           }))();
       }
     },
-    453: (__unused_webpack_module, exports) => {
+    3471: (__unused_webpack_module, exports) => {
       "use strict";
       Object.defineProperty(exports, "__esModule", { value: true });
       exports.SHINKAI_OAUTH =
@@ -14648,6 +14542,221 @@
       })(WRAPPER_TYPES || (exports.WRAPPER_TYPES = WRAPPER_TYPES = {}));
       exports.SHINKAI_OAUTH = "OAUTH";
     },
+    8694: (__unused_webpack_module, exports, __webpack_require__) => {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.ToolKitSetup = void 0;
+      const tslib_1 = __webpack_require__(2712);
+      const toolkit_lib_1 = __webpack_require__(848);
+      let ToolKitSetup = class ToolKitSetup extends toolkit_lib_1.ShinkaiSetup {
+        constructor() {
+          super();
+          this.toolkitName = "@shinkai_network/toolkit-example";
+          this.author = "shinkai-dev";
+          this.version = "0.0.1";
+          this.cover =
+            "https://www.slideteam.net/wp/wp-content/uploads/2023/05/Brand-Toolkit-Examples-_English-.png";
+          this.toolkitHeaders = [
+            {
+              name: "example-string",
+              type: toolkit_lib_1.DATA_TYPES.STRING,
+              description: "An example string header",
+            },
+            {
+              name: "example-integer",
+              type: toolkit_lib_1.DATA_TYPES.INTEGER,
+              description: "An example integer header",
+            },
+            {
+              name: "example-float",
+              type: toolkit_lib_1.DATA_TYPES.FLOAT,
+              description: "An example float header",
+            },
+            {
+              name: "example-bool",
+              description: "Example boolean header",
+              type: toolkit_lib_1.DATA_TYPES.BOOLEAN,
+            },
+            {
+              name: "example-isodate",
+              type: toolkit_lib_1.DATA_TYPES.ISODATE,
+              description: "Example iso date header",
+            },
+            {
+              name: "example-json",
+              type: toolkit_lib_1.DATA_TYPES.JSON,
+              description: "Example json header",
+            },
+            {
+              name: "example-enum",
+              type: toolkit_lib_1.DATA_TYPES.ENUM,
+              description: "Example enum header",
+              enum: ["ONE", "TWO", "THREE", "FOUR", "FIVE"],
+            },
+            {
+              name: "example-array-enum",
+              type: toolkit_lib_1.DATA_TYPES.ENUM,
+              description: "Example array of enums header",
+              enum: ["A", "B", "C", "D"],
+              wrapperType: toolkit_lib_1.WRAPPER_TYPES.Array,
+            },
+            {
+              name: "example-array-iso-date",
+              type: toolkit_lib_1.DATA_TYPES.ISODATE,
+              description: "Example array of iso dates header",
+              wrapperType: toolkit_lib_1.WRAPPER_TYPES.Array,
+            },
+          ];
+          this.dev = true;
+        }
+        validateHeaders(headers) {
+          return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            if (String(headers["example-bool"]) === String(false)) {
+              throw new Error("Invalid 'example-bool' header");
+            }
+            if (String(headers["example-bool"]) === String(true)) {
+              return Promise.resolve(true);
+            }
+            return Promise.resolve(true);
+          });
+        }
+      };
+      exports.ToolKitSetup = ToolKitSetup;
+      exports.ToolKitSetup = ToolKitSetup = tslib_1.__decorate(
+        [toolkit_lib_1.isToolKit, tslib_1.__metadata("design:paramtypes", [])],
+        ToolKitSetup
+      );
+    },
+    9083: (__unused_webpack_module, exports, __webpack_require__) => {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.CompareNumbers = void 0;
+      const tslib_1 = __webpack_require__(2712);
+      const toolkit_lib_1 = __webpack_require__(848);
+      let CompareInput = class CompareInput extends toolkit_lib_1.BaseInput {};
+      tslib_1.__decorate(
+        [
+          (0, toolkit_lib_1.isInteger)(
+            "Number to check if greater than, lower than or equal than."
+          ),
+          tslib_1.__metadata("design:type", Number),
+        ],
+        CompareInput.prototype,
+        "number",
+        void 0
+      );
+      tslib_1.__decorate(
+        [
+          (0, toolkit_lib_1.isInteger)("Number to compare with."),
+          tslib_1.__metadata("design:type", Number),
+        ],
+        CompareInput.prototype,
+        "numberToCompare",
+        void 0
+      );
+      CompareInput = tslib_1.__decorate(
+        [(0, toolkit_lib_1.isInput)("CompareNumbers")],
+        CompareInput
+      );
+      let CompareOutput = class CompareOutput extends toolkit_lib_1.BaseOutput {};
+      tslib_1.__decorate(
+        [
+          (0, toolkit_lib_1.isEnum)(
+            ["GT", "LT", "EQ"],
+            "Result of the comparison."
+          ),
+          tslib_1.__metadata("design:type", String),
+        ],
+        CompareOutput.prototype,
+        "comparison",
+        void 0
+      );
+      CompareOutput = tslib_1.__decorate(
+        [(0, toolkit_lib_1.isOutput)("CompareNumbers")],
+        CompareOutput
+      );
+      let CompareNumbers = class CompareNumbers extends toolkit_lib_1.BaseTool {
+        constructor() {
+          super(...arguments);
+          this.description =
+            "Check if number is greater than, lower than or equal to another number.";
+        }
+        run(input) {
+          return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const out = new CompareOutput();
+            if (input.number > input.numberToCompare) {
+              out.comparison = "GT";
+            } else if (input.number < input.numberToCompare) {
+              out.comparison = "LT";
+            } else {
+              out.comparison = "EQ";
+            }
+            return out;
+          });
+        }
+      };
+      exports.CompareNumbers = CompareNumbers;
+      exports.CompareNumbers = CompareNumbers = tslib_1.__decorate(
+        [toolkit_lib_1.isTool],
+        CompareNumbers
+      );
+    },
+    7002: (__unused_webpack_module, exports, __webpack_require__) => {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", { value: true });
+      exports.isEven = void 0;
+      const tslib_1 = __webpack_require__(2712);
+      const toolkit_lib_1 = __webpack_require__(848);
+      let isEvenInput = class isEvenInput extends toolkit_lib_1.BaseInput {};
+      tslib_1.__decorate(
+        [
+          (0, toolkit_lib_1.isInteger)("Integer number to check if is even."),
+          tslib_1.__metadata("design:type", Number),
+        ],
+        isEvenInput.prototype,
+        "number",
+        void 0
+      );
+      isEvenInput = tslib_1.__decorate(
+        [(0, toolkit_lib_1.isInput)("isEven")],
+        isEvenInput
+      );
+      let isEvenOutput = class isEvenOutput extends toolkit_lib_1.BaseOutput {};
+      tslib_1.__decorate(
+        [
+          (0, toolkit_lib_1.isBoolean)(
+            "Result of the check. True if the number is even."
+          ),
+          tslib_1.__metadata("design:type", Boolean),
+        ],
+        isEvenOutput.prototype,
+        "isEvenOutput",
+        void 0
+      );
+      isEvenOutput = tslib_1.__decorate(
+        [(0, toolkit_lib_1.isOutput)("isEven")],
+        isEvenOutput
+      );
+      let isEven = class isEven extends toolkit_lib_1.BaseTool {
+        constructor() {
+          super(...arguments);
+          this.description = "Check if a number is even";
+        }
+        run(input) {
+          return tslib_1.__awaiter(this, void 0, void 0, function* () {
+            const isEven = (input.number || 0) % 2 === 0;
+            const out = new isEvenOutput();
+            out.isEvenOutput = isEven;
+            return out;
+          });
+        }
+      };
+      exports.isEven = isEven;
+      exports.isEven = isEven = tslib_1.__decorate(
+        [toolkit_lib_1.isTool],
+        isEven
+      );
+    },
     7310: (module) => {
       "use strict";
       module.exports = require("url");
@@ -14656,7 +14765,7 @@
       "use strict";
       module.exports = require("util");
     },
-    2970: (
+    2712: (
       __unused_webpack___webpack_module__,
       __webpack_exports__,
       __webpack_require__
@@ -15370,7 +15479,7 @@
         __disposeResources,
       };
     },
-    6763: (module) => {
+    8555: (module) => {
       "use strict";
       module.exports = JSON.parse(
         '{"name":"joi","description":"Object schema validation","version":"17.11.0","repository":"git://github.com/hapijs/joi","main":"lib/index.js","types":"lib/index.d.ts","browser":"dist/joi-browser.min.js","files":["lib/**/*","dist/*"],"keywords":["schema","validation"],"dependencies":{"@hapi/hoek":"^9.0.0","@hapi/topo":"^5.0.0","@sideway/address":"^4.1.3","@sideway/formula":"^3.0.1","@sideway/pinpoint":"^2.0.0"},"devDependencies":{"@hapi/bourne":"2.x.x","@hapi/code":"8.x.x","@hapi/joi-legacy-test":"npm:@hapi/joi@15.x.x","@hapi/lab":"^25.0.1","@types/node":"^14.18.24","typescript":"4.3.x"},"scripts":{"prepublishOnly":"cd browser && npm install && npm run build","test":"lab -t 100 -a @hapi/code -L -Y","test-cov-html":"lab -r html -o coverage.html -a @hapi/code"},"license":"BSD-3-Clause"}'
@@ -15424,28 +15533,28 @@
       exports.ShinkaiToolkitLib =
       exports.ToolKitSetup =
         void 0;
-    var ToolKitSetup_1 = __webpack_require__(4639);
+    var ToolKitSetup_1 = __webpack_require__(8694);
     Object.defineProperty(exports, "ToolKitSetup", {
       enumerable: true,
       get: function () {
         return ToolKitSetup_1.ToolKitSetup;
       },
     });
-    var toolkit_lib_1 = __webpack_require__(3847);
+    var toolkit_lib_1 = __webpack_require__(848);
     Object.defineProperty(exports, "ShinkaiToolkitLib", {
       enumerable: true,
       get: function () {
         return toolkit_lib_1.ShinkaiToolkitLib;
       },
     });
-    var compare_numbers_1 = __webpack_require__(3560);
+    var compare_numbers_1 = __webpack_require__(9083);
     Object.defineProperty(exports, "CompareNumbers", {
       enumerable: true,
       get: function () {
         return compare_numbers_1.CompareNumbers;
       },
     });
-    var is_even_1 = __webpack_require__(7246);
+    var is_even_1 = __webpack_require__(7002);
     Object.defineProperty(exports, "isEven", {
       enumerable: true,
       get: function () {

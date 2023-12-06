@@ -1449,22 +1449,7 @@ impl Node {
             }
         };
 
-        // Validate headers
-        let header_check = executor
-            .submit_headers_validation_request(&toolkit_file.clone(), &header_values.clone())
-            .await;
-        if let Err(err) = header_check {
-            eprintln!("api_add_toolkit> header check error: {}", err);
-            let api_error = APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "User Error".to_string(),
-                message: format!("{}", err),
-            };
-            let _ = res.send(Err(api_error)).await;
-            return Ok(());
-        }
-
-        // Validate and convert to Toolkit
+        // Generate toolkit json from JS source code
         let toolkit = executor.submit_toolkit_json_request(&toolkit_file).await;
         if let Err(err) = toolkit {
             let api_error = APIError {
@@ -1503,7 +1488,10 @@ impl Node {
                 return Ok(());
             }
 
-            eprintln!("api_add_toolkit> profile set header values: {:?}", header_values);
+            eprintln!(
+                "api_add_toolkit> profile setting toolkit header values: {:?}",
+                header_values
+            );
             let set_header_result = db_lock
                 .set_toolkit_header_values(
                     &toolkit.name.clone(),

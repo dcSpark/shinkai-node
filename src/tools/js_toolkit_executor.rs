@@ -94,8 +94,6 @@ impl JSToolkitExecutor {
         header_values: &JsonValue,
     ) -> Result<(), ToolError> {
         let input_data_json = serde_json::json!({ "source": toolkit_js_code });
-        eprintln!("Submitting headers validation request: {:?}", input_data_json);
-        eprintln!("Headers: {:?}", header_values);
         let response = self
             .submit_post_request("/validate_headers", &input_data_json, header_values)
             .await?;
@@ -168,12 +166,13 @@ impl JSToolkitExecutor {
 
         if let JsonValue::Object(headers) = header_values {
             for (key, value) in headers {
-                let value_str = value.to_string();
-                request_builder = request_builder.header(key, &value_str);
+                if let Some(value_str) = value.as_str() {
+                    request_builder = request_builder.header(key, value_str);
+                } else {
+                    request_builder = request_builder.header(key, value.to_string());
+                }
             }
         }
-
-        println!("{:?}", request_builder);
 
         let response = request_builder.send().await?;
 
