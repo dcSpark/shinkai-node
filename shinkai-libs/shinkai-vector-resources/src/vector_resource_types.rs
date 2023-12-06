@@ -157,7 +157,6 @@ pub struct Node {
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
-    /// RFC3339 Datetime when then Node was last modified
     pub last_modified_datetime: String,
 }
 
@@ -323,6 +322,14 @@ impl Node {
             NodeContent::ExternalContent(external_content) => Ok(external_content.clone()),
             _ => Err(VRError::ContentIsNonMatchingType),
         }
+    }
+
+    /// Returns the keys of all kv pairs in the Node's metadata field
+    /// None if Metadata is None
+    pub fn metadata_keys(&self) -> Option<Vec<String>> {
+        self.metadata
+            .as_ref()
+            .map(|metadata| metadata.keys().cloned().collect())
     }
 }
 

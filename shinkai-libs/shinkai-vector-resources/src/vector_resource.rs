@@ -32,6 +32,7 @@ pub trait VectorResource {
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn data_tag_index(&self) -> &DataTagIndex;
+    fn metadata_key_index(&self) -> &DataTagIndex;
     /// Retrieves an Embedding given its id, at the root level depth.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.

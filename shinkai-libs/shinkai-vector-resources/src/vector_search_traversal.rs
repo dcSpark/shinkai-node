@@ -1,20 +1,5 @@
-use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
-use crate::data_tags::DataTag;
-use crate::data_tags::DataTagIndex;
-use crate::embedding_generator::EmbeddingGenerator;
-#[cfg(feature = "native-http")]
-use crate::embedding_generator::RemoteEmbeddingGenerator;
-use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::model_type::EmbeddingModelType;
-use crate::resource_errors::VRError;
-use crate::shinkai_time::ShinkaiTime;
-use crate::source::VRLocation;
-use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
-use async_trait::async_trait;
-use env_logger::filter::Filter;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to
