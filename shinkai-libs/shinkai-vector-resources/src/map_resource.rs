@@ -158,31 +158,6 @@ impl MapVectorResource {
         )
     }
 
-    /// Returns all Nodes with a matching key/value pair in the metadata hashmap
-    /// Does not perform any traversal, meaning only searches in root depth.
-    pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
-        let mut matching_nodes = Vec::new();
-
-        for node in self.nodes.values() {
-            match &node.metadata {
-                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_nodes
-                    .push(RetrievedNode {
-                        node: node.clone(),
-                        score: 0.00,
-                        resource_header: self.generate_resource_header(None),
-                        retrieval_path: VRPath::new(),
-                    }),
-                _ => (),
-            }
-        }
-
-        if matching_nodes.is_empty() {
-            return Err(VRError::NoNodeFound);
-        }
-
-        Ok(matching_nodes)
-    }
-
     /// Inserts a new node (with a BaseVectorResource) and associated embeddings
     /// at the specified key in the Map resource, and updates the data tags index.
     pub fn insert_vector_resource_node(
