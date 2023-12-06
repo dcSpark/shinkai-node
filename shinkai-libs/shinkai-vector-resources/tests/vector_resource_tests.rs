@@ -5,9 +5,10 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
-    NodeContent, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
+    FilterMode, NodeContent, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
 };
 use shinkai_vector_resources::vector_resource_types::VRPath;
+use std::collections::HashMap;
 
 #[test]
 fn test_remote_embeddings_generation() {
@@ -288,8 +289,80 @@ fn test_manual_resource_vector_search() {
         &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
         Some(path),
     );
-
     assert_eq!(res.len(), 3);
+
+    //
+    /// Metadata Filter Tests
+    //
+    let res = fruit_doc.vector_seach_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetFilterMode(
+            FilterMode::ContainsAnyMetadataKeyValues(vec![
+                ("key".to_string(), Some("value".to_string())),
+                ("other_key".to_string(), None),
+            ]),
+        )],
+        None,
+    );
+    assert_eq!(res.len(), 0);
+
+    let res = fruit_doc.vector_seach_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetFilterMode(
+            FilterMode::ContainsAllMetadataKeyValues(vec![
+                ("key".to_string(), Some("value".to_string())),
+                ("other_key".to_string(), None),
+            ]),
+        )],
+        None,
+    );
+    assert_eq!(res.len(), 0);
+
+    // Creating fake metadata to test with
+    let mut hm1 = HashMap::new();
+    hm1.insert("common_key".to_string(), "common_value".to_string());
+    hm1.insert("unique_key1".to_string(), "unique_value1".to_string());
+
+    let mut hm2 = HashMap::new();
+    hm2.insert("common_key".to_string(), "common_value".to_string());
+    hm2.insert("unique_key2".to_string(), "unique_value2".to_string());
+
+    fruit_doc.append_text_node(fact5, Some(hm1), &fact5_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact6, Some(hm2), &fact6_embeddings, &vec![]);
+
+    // Check any filtering, with the common key/value
+    let res = fruit_doc.vector_seach_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetFilterMode(
+            FilterMode::ContainsAnyMetadataKeyValues(vec![
+                ("uniq".to_string(), Some("e".to_string())),
+                ("common_key".to_string(), Some("common_value".to_string())),
+            ]),
+        )],
+        None,
+    );
+    assert_eq!(res.len(), 2);
+
+    // Check all filtering, including with None value skipping
+    let res = fruit_doc.vector_seach_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetFilterMode(
+            FilterMode::ContainsAllMetadataKeyValues(vec![
+                ("common_key".to_string(), None),
+                ("unique_key2".to_string(), Some("unique_value2".to_string())),
+            ]),
+        )],
+        None,
+    );
+    assert_eq!(res.len(), 1);
 }
 
 #[test]
