@@ -17,7 +17,7 @@ use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
@@ -29,7 +29,7 @@ fn setup() {
 fn generate_message_with_text(
     content: String,
     my_encryption_secret_key: EncryptionStaticKey,
-    my_signature_secret_key: SignatureStaticKey,
+    my_signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey,
     recipient_subidentity_name: String,
     origin_destination_identity_name: String,

@@ -2,27 +2,27 @@ use super::error::AgentError;
 use super::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use crate::agent::agent::Agent;
 pub use crate::agent::execution::job_execution_core::*;
-use crate::agent::job::{Job, JobId, JobLike};
-use crate::db::{db_errors::ShinkaiDBError, ShinkaiDB};
+use crate::agent::job::JobLike;
+use crate::db::ShinkaiDB;
 use crate::managers::IdentityManager;
-use ed25519_dalek::SecretKey as SignatureStaticKey;
+use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
-    schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
+    schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreationInfo, JobMessage, JobPreMessage, MessageSchemaType},
+        shinkai_message_schemas::{JobCreationInfo, JobMessage, MessageSchemaType},
     },
-    shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
+    shinkai_utils::signatures::clone_signature_secret_key,
 };
 use std::collections::HashSet;
 use std::mem;
 use std::pin::Pin;
 use std::result::Result::Ok;
-use std::{collections::HashMap, error::Error, sync::Arc};
-use tokio::sync::{mpsc, Mutex, Semaphore};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::{Mutex, Semaphore};
 
 const NUM_THREADS: usize = 2;
 
@@ -31,7 +31,7 @@ pub struct JobManager {
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub identity_manager: Arc<Mutex<IdentityManager>>,
     pub agents: Vec<Arc<Mutex<Agent>>>,
-    pub identity_secret_key: SignatureStaticKey,
+    pub identity_secret_key: SigningKey,
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
@@ -41,7 +41,7 @@ impl JobManager {
     pub async fn new(
         db: Arc<Mutex<ShinkaiDB>>,
         identity_manager: Arc<Mutex<IdentityManager>>,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
@@ -96,11 +96,11 @@ impl JobManager {
         job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
         db: Arc<Mutex<ShinkaiDB>>,
         max_parallel_jobs: usize,
-        identity_sk: SignatureStaticKey,
+        identity_sk: SigningKey,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Arc<Mutex<ShinkaiDB>>,
-                SignatureStaticKey,
+                SigningKey,
             ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send>>
             + Send
             + Sync
@@ -165,7 +165,7 @@ impl JobManager {
 
                         // Acquire the lock, dequeue the job, and immediately release the lock
                         let job = {
-                            let mut job_queue_manager = job_queue_manager.lock().await;
+                            let job_queue_manager = job_queue_manager.lock().await;
                             let job = job_queue_manager.peek(&job_id).await;
                             job
                         };
@@ -190,11 +190,11 @@ impl JobManager {
                                             "Job processed successfully",
                                         );
                                     } // handle success case
-                                    Err(e) => {} // handle error case
+                                    Err(_) => {} // handle error case
                                 }
                             }
                             Ok(None) => {}
-                            Err(e) => {
+                            Err(_) => {
                                 // Log the error
                             }
                         }

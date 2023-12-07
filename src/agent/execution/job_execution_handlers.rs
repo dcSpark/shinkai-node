@@ -1,9 +1,9 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
-use ed25519_dalek::SecretKey as SignatureStaticKey;
+use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName},
+    schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName},
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -20,7 +20,7 @@ use crate::{
     },
     cron_tasks::web_scrapper::{CronTaskRequest, CronTaskRequestResponse, WebScraper},
     db::{db_cron_task::CronTask, db_errors::ShinkaiDBError, ShinkaiDB},
-    planner::{kai_files::{KaiJobFile, KaiSchemaType}, kai_manager::KaiJobFileManager},
+    planner::kai_files::{KaiJobFile, KaiSchemaType},
 };
 
 impl JobManager {
@@ -32,7 +32,7 @@ impl JobManager {
         job_message: JobMessage,
         cron_task_request: CronTaskRequest,
         profile: ShinkaiName,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
     ) -> Result<bool, AgentError> {
         // Setup initial data to get ready to call a specific inference chain
         let prev_execution_context = full_job.execution_context.clone();
@@ -107,7 +107,7 @@ impl JobManager {
         full_job: Job,
         cron_job: CronTask,
         profile: ShinkaiName,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
     ) -> Result<(), AgentError> {
         let prev_execution_context = full_job.execution_context.clone();
 
@@ -252,14 +252,14 @@ impl JobManager {
         task: String,
         content: Vec<u8>,
         profile: ShinkaiName,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         file_extension: String,
     ) -> Result<(), AgentError> {
         let prev_execution_context = full_job.execution_context.clone();
         let base64_image = format!("data:image/{};base64,{}", file_extension, base64::encode(&content));
 
         // TODO: fix the new_execution_context
-        let (inference_response_content, new_execution_context) = JobManager::image_analysis_chain(
+        let (inference_response_content, _) = JobManager::image_analysis_chain(
             db.clone(),
             full_job.clone(),
             agent_found.clone(),

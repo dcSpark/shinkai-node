@@ -1,12 +1,8 @@
-use crate::db::db_errors::ShinkaiDBError;
-use crate::db::ShinkaiDB;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use regex::Regex;
+use ed25519_dalek::VerifyingKey;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_public_key_to_string_ref,
@@ -14,9 +10,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, signature_public_key_to_string_ref,
 };
-use std::sync::Arc;
 use std::{fmt, net::SocketAddr};
-use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(Debug, PartialEq, PartialOrd, Eq, Clone, Serialize, Deserialize)]
@@ -119,9 +113,9 @@ pub struct StandardIdentity {
     pub full_identity_name: ShinkaiName,
     pub addr: Option<SocketAddr>,
     pub node_encryption_public_key: EncryptionPublicKey,
-    pub node_signature_public_key: SignaturePublicKey,
+    pub node_signature_public_key: VerifyingKey,
     pub profile_encryption_public_key: Option<EncryptionPublicKey>,
-    pub profile_signature_public_key: Option<SignaturePublicKey>,
+    pub profile_signature_public_key: Option<VerifyingKey>,
     pub identity_type: StandardIdentityType,
     pub permission_type: IdentityPermissions,
 }
@@ -131,11 +125,11 @@ pub struct DeviceIdentity {
     // This would include the profile name e.g. @@Alice.shinkai/profileName/myPhone
     pub full_identity_name: ShinkaiName,
     pub node_encryption_public_key: EncryptionPublicKey,
-    pub node_signature_public_key: SignaturePublicKey,
+    pub node_signature_public_key: VerifyingKey,
     pub profile_encryption_public_key: EncryptionPublicKey,
-    pub profile_signature_public_key: SignaturePublicKey,
+    pub profile_signature_public_key: VerifyingKey,
     pub device_encryption_public_key: EncryptionPublicKey,
-    pub device_signature_public_key: SignaturePublicKey,
+    pub device_signature_public_key: VerifyingKey,
     pub permission_type: IdentityPermissions,
 }
 
@@ -191,9 +185,9 @@ impl StandardIdentity {
         full_identity_name: ShinkaiName,
         addr: Option<SocketAddr>,
         node_encryption_public_key: EncryptionPublicKey,
-        node_signature_public_key: SignaturePublicKey,
+        node_signature_public_key: VerifyingKey,
         subidentity_encryption_public_key: Option<EncryptionPublicKey>,
-        subidentity_signature_public_key: Option<SignaturePublicKey>,
+        subidentity_signature_public_key: Option<VerifyingKey>,
         identity_type: StandardIdentityType,
         permission_type: IdentityPermissions,
     ) -> Self {

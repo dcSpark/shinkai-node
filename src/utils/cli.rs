@@ -7,8 +7,7 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key,
     },
 };
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 use super::{args::Args, keys::NodeKeys};
 
 pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identity_name: &str) {
@@ -45,40 +44,6 @@ pub fn cli_handle_create_message(args: Args, node_keys: &NodeKeys, global_identi
         }
     }
 }
-
-// fn handle_code_registration(
-//     code: String,
-//     node_keys: &NodeKeys,
-//     global_identity_name: &str,
-//     recipient: String,
-//     node2_encryption_pk: EncryptionPublicKey,
-// ) {
-//     let message = ShinkaiMessageBuilder::use_code_registration_for_device(
-//         node_keys.encryption_secret_key.clone(),
-//         clone_signature_secret_key(&node_keys.identity_secret_key),
-//         node2_encryption_pk,
-//         code.to_string(),
-//         "device".to_string(),
-//         "admin".to_string(),
-//         "".to_string(),
-//         global_identity_name.to_string().clone(),
-//         recipient.to_string(),
-//     )
-//     .expect("Failed to create message with code registration");
-
-//     println!(
-//         "Message's signature: {}",
-//         message.clone().external_metadata.signature
-//     );
-
-//     // Serialize the wrapper into JSON and print to stdout
-//     let message_json = serde_json::to_string_pretty(&message);
-
-//     match message_json {
-//         Ok(json) => println!("{}", json),
-//         Err(e) => println!("Error creating JSON: {}", e),
-//     }
-// }
 
 fn handle_create_message(
     node_keys: &NodeKeys,

@@ -1,6 +1,6 @@
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use shinkai_message_primitives::shinkai_utils::{
-    encryption::{ephemeral_encryption_keys, string_to_encryption_static_key, clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string},
+    encryption::{ephemeral_encryption_keys, string_to_encryption_static_key, clone_static_secret_key, encryption_secret_key_to_string},
     shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     signatures::{
         clone_signature_secret_key, ephemeral_signature_keypair, signature_secret_key_to_string,
@@ -11,8 +11,8 @@ use std::env;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct NodeKeys {
-    pub identity_secret_key: SignatureStaticKey,
-    pub identity_public_key: SignaturePublicKey,
+    pub identity_secret_key: SigningKey,
+    pub identity_public_key: VerifyingKey,
     pub encryption_secret_key: EncryptionStaticKey,
     pub encryption_public_key: EncryptionPublicKey,
 }
@@ -21,7 +21,7 @@ pub fn generate_or_load_keys() -> NodeKeys {
     let (identity_secret_key, identity_public_key) = match env::var("IDENTITY_SECRET_KEY") {
         Ok(secret_key_str) => {
             let secret_key = string_to_signature_secret_key(&secret_key_str.clone()).unwrap();
-            let public_key = SignaturePublicKey::from(&secret_key);
+            let public_key = secret_key.verifying_key();
 
             // Keys Validation (it case of scalar clamp)
             {

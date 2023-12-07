@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::env;
     use core::panic;
-    use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+    use ed25519_dalek::SigningKey;
     use futures::Future;
     use shinkai_message_primitives::{
         schemas::{
@@ -16,17 +15,13 @@ mod tests {
         },
     };
     use shinkai_node::{
-        agent::{
-            job_manager::{self, JobManager},
-            queue::job_queue_manager::{JobForProcessing, JobQueueManager},
-        },
+        agent::job_manager::JobManager,
         cron_tasks::cron_manager::{CronManager, CronManagerError},
         db::{db_cron_task::CronTask, ShinkaiDB},
         managers::IdentityManager,
     };
-    use std::{collections::HashMap, fs, path::Path, pin::Pin, sync::Arc, time::Duration};
+    use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
-    use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
     const NUM_THREADS: usize = 1;
     const CRON_INTERVAL_TIME: u64 = 60 * 10; // it doesn't matter here
@@ -133,7 +128,7 @@ mod tests {
         let process_job_message_queued_wrapper =
             |job: CronTask,
              db: Arc<Mutex<ShinkaiDB>>,
-             identity_sk: SignatureStaticKey,
+             identity_sk: SigningKey,
              job_manager: Arc<Mutex<JobManager>>,
              node_profile_name: ShinkaiName,
              profile: String | {
