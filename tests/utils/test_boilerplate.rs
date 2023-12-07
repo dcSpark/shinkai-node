@@ -1,32 +1,17 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
-use core::panic;
-use std::pin::Pin;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
-};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
-};
-use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
+    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
+use std::pin::Pin;
+use std::net::SocketAddr;
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -37,16 +22,16 @@ pub struct TestEnvironment {
     pub node1_agent: String,
     pub node1_commands_sender: Sender<NodeCommand>,
     pub node1_commands_receiver: Receiver<NodeCommand>,
-    pub node1_identity_sk: SignatureStaticKey,
-    pub node1_identity_pk: SignaturePublicKey,
+    pub node1_identity_sk: SigningKey,
+    pub node1_identity_pk: VerifyingKey,
     pub node1_encryption_sk: EncryptionStaticKey,
     pub node1_encryption_pk: EncryptionPublicKey,
-    pub node1_profile_identity_sk: SignatureStaticKey,
-    pub node1_profile_identity_pk: SignaturePublicKey,
+    pub node1_profile_identity_sk: SigningKey,
+    pub node1_profile_identity_pk: VerifyingKey,
     pub node1_profile_encryption_sk: EncryptionStaticKey,
     pub node1_profile_encryption_pk: EncryptionPublicKey,
-    pub node1_device_identity_sk: SignatureStaticKey,
-    pub node1_device_identity_pk: SignaturePublicKey,
+    pub node1_device_identity_sk: SigningKey,
+    pub node1_device_identity_pk: VerifyingKey,
     pub node1_device_encryption_sk: EncryptionStaticKey,
     pub node1_device_encryption_pk: EncryptionPublicKey,
 }
@@ -80,7 +65,7 @@ where
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new(
+        let node1 = Node::new(
             node1_identity_name.clone().to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -89,7 +74,7 @@ where
             node1_commands_receiver.clone(),
             node1_db_path,
             false,
-            vec![]
+            vec![],
         );
 
         eprintln!("Starting Node");
@@ -117,7 +102,7 @@ where
             node1_device_identity_sk,
             node1_device_identity_pk,
             node1_device_encryption_sk,
-            node1_device_encryption_pk,  
+            node1_device_encryption_pk,
         };
 
         let interactions_handler = tokio::spawn(interactions_handler_logic(env));

@@ -1,6 +1,4 @@
-use async_channel::{bounded, Receiver, Sender};
 use async_std::task;
-use reqwest::Identity;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -13,16 +11,11 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::db::Topic;
-use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityType, StandardIdentity, StandardIdentityType};
+use shinkai_node::schemas::identity::{StandardIdentity, StandardIdentityType};
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
 
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
@@ -35,7 +28,7 @@ async fn create_local_node_profile(
     db: &ShinkaiDB,
     node_profile_name: String,
     encryption_public_key: EncryptionPublicKey,
-    identity_public_key: SignaturePublicKey,
+    identity_public_key: VerifyingKey,
 ) {
     let node_profile = ShinkaiName::new(node_profile_name.clone()).unwrap();
     match db.update_local_node_keys(node_profile, encryption_public_key, identity_public_key) {
@@ -48,8 +41,8 @@ async fn create_local_node_profile(
 fn test_generate_and_use_registration_code_for_specific_profile() {
     setup();
     let node_profile_name = "@@node1.shinkai";
-    let (identity_sk, identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (encryption_sk, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_, identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_, encryption_pk) = unsafe_deterministic_encryption_keypair(0);
     let db_path = format!("db_tests/{}", hash_string(node_profile_name.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
@@ -62,8 +55,8 @@ fn test_generate_and_use_registration_code_for_specific_profile() {
     ));
 
     let profile_name = "profile_1";
-    let (profile_identity_sk, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
-    let (profile_encryption_sk, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
+    let (_, profile_identity_pk) = unsafe_deterministic_signature_keypair(1);
+    let (_, profile_encryption_pk) = unsafe_deterministic_encryption_keypair(1);
 
     // Test generate_registration_code_for_specific_profile
     let registration_code = shinkai_db

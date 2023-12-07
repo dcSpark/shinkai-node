@@ -1,18 +1,14 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::managers::IdentityManager;
-use crate::schemas::identity::{DeviceIdentity, IdentityType, StandardIdentity, StandardIdentityType};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use crate::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
+use ed25519_dalek::VerifyingKey;
 use rand::RngCore;
-use rocksdb::{Error, Options};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::to_vec;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
+    encryption_public_key_to_string, string_to_encryption_public_key,
 };
 use shinkai_message_primitives::shinkai_utils::signatures::{
-    signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
+    signature_public_key_to_string, string_to_signature_public_key,
 };
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -383,7 +379,7 @@ impl ShinkaiDB {
         &self,
         my_node_identity_name: ShinkaiName,
         encryption_pk: EncryptionPublicKey,
-        signature_pk: SignaturePublicKey,
+        signature_pk: VerifyingKey,
     ) -> Result<(), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
@@ -407,7 +403,7 @@ impl ShinkaiDB {
     pub fn get_local_node_keys(
         &self,
         my_node_identity_name: ShinkaiName,
-    ) -> Result<(EncryptionPublicKey, SignaturePublicKey), ShinkaiDBError> {
+    ) -> Result<(EncryptionPublicKey, VerifyingKey), ShinkaiDBError> {
         let node_name = my_node_identity_name.get_node_name().to_string();
 
         let cf_node_encryption = self.cf_handle(Topic::ExternalNodeEncryptionKey.as_str())?;
