@@ -1,24 +1,12 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
-use crate::schemas::identity::{DeviceIdentity, Identity, IdentityType, StandardIdentity, StandardIdentityType};
 use chrono::Utc;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
-use serde_json::to_vec;
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    MessageBody, MessageData, ShinkaiBody, ShinkaiData,
+    MessageBody, MessageData 
 };
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, JobMessage, MessageSchemaType,
+    JobMessage, MessageSchemaType,
 };
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_public_key_to_string_ref, string_to_encryption_public_key,
-};
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    signature_public_key_to_string, signature_public_key_to_string_ref, string_to_signature_public_key,
-};
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl ShinkaiDB {
     pub fn write_symmetric_key(&self, hex_blake3_hash: &str, private_key: &[u8]) -> Result<(), ShinkaiDBError> {

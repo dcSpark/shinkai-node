@@ -1,4 +1,3 @@
-use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
@@ -16,18 +15,12 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::db_errors::ShinkaiDBError;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_node::managers::IdentityManager;
-use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::Node;
-use shinkai_node::schemas::identity::{IdentityType, StandardIdentity, StandardIdentityType};
+use shinkai_node::schemas::identity::{StandardIdentity, StandardIdentityType};
 use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
 
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
@@ -58,7 +51,7 @@ fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, Shinkai
 fn generate_message_with_text(
     content: String,
     my_encryption_secret_key: EncryptionStaticKey,
-    my_signature_secret_key: SignatureStaticKey,
+    my_signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey,
     recipient_subidentity_name: String,
     origin_destination_identity_name: String,
@@ -454,11 +447,11 @@ fn test_permission_errors() {
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
 
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (_, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
     let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name.clone()));
 

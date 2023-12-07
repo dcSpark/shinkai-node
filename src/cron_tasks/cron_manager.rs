@@ -21,17 +21,14 @@ c) Execute Task
 
 */
 
-use core::panic;
 use std::{
-    collections::{HashMap, HashSet},
-    mem,
+    collections::HashMap,
     pin::Pin,
     sync::Arc,
 };
 
-use chrono::{DateTime, Timelike, Utc};
-use cron_parser::parse;
-use ed25519_dalek::SecretKey as SignatureStaticKey;
+use chrono::{Timelike, Utc};
+use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::{
     schemas::{
@@ -45,23 +42,19 @@ use shinkai_message_primitives::{
         signatures::clone_signature_secret_key, shinkai_message_builder::ShinkaiMessageBuilder,
     },
 };
-use std::str::FromStr;
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::Mutex;
 
 use crate::{
-    agent::{error::AgentError, job_manager::JobManager, queue::job_queue_manager::JobQueueManager},
-    cron_tasks::web_scrapper::WebScraper,
+    agent::{error::AgentError, job_manager::JobManager},
     db::{db_cron_task::CronTask, db_errors, ShinkaiDB},
     planner::kai_files::{KaiJobFile, KaiSchemaType},
-    schemas::{identity::Identity, inbox_permission::InboxPermission},
+    schemas::inbox_permission::InboxPermission,
 };
-
-use super::youtube_checker::YoutubeChecker;
 
 pub struct CronManager {
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub node_profile_name: ShinkaiName,
-    pub identity_secret_key: SignatureStaticKey,
+    pub identity_secret_key: SigningKey,
     pub job_manager: Arc<Mutex<JobManager>>,
     pub cron_processing_task: Option<tokio::task::JoinHandle<()>>,
 }
@@ -106,7 +99,7 @@ const CRON_INTERVAL_TIME: u64 = 60 * 1;
 impl CronManager {
     pub async fn new(
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         node_name: ShinkaiName,
         job_manager: Arc<Mutex<JobManager>>,
     ) -> Self {
@@ -140,13 +133,13 @@ impl CronManager {
     pub fn process_job_queue(
         db: Arc<Mutex<ShinkaiDB>>,
         node_profile_name: ShinkaiName,
-        identity_sk: SignatureStaticKey,
+        identity_sk: SigningKey,
         cron_time_interval: u64,
         job_manager: Arc<Mutex<JobManager>>,
         job_processing_fn: impl Fn(
                 CronTask,
                 Arc<Mutex<ShinkaiDB>>,
-                SignatureStaticKey,
+                SigningKey,
                 Arc<Mutex<JobManager>>,
                 ShinkaiName,
                 String,
@@ -237,7 +230,7 @@ impl CronManager {
     pub async fn process_job_message_queued(
         cron_job: CronTask,
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         job_manager: Arc<Mutex<JobManager>>,
         node_profile_name: ShinkaiName,
         profile: String,

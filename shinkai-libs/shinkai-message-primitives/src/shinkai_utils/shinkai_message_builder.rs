@@ -1,5 +1,5 @@
 use crate::shinkai_utils::job_scope::JobScope;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::Serialize;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -10,7 +10,7 @@ use crate::{
     },
     shinkai_message::{
         shinkai_message::{
-            EncryptedShinkaiBody, EncryptedShinkaiData, ExternalMetadata, InternalMetadata, MessageBody, MessageData,
+            ExternalMetadata, InternalMetadata, MessageBody, MessageData,
             ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion,
         },
         shinkai_message_schemas::{
@@ -20,7 +20,7 @@ use crate::{
     },
     shinkai_utils::{
         encryption::{encryption_public_key_to_string, EncryptionMethod},
-        signatures::{signature_public_key_to_string},
+        signatures::signature_public_key_to_string,
     },
 };
 
@@ -41,8 +41,8 @@ pub struct ShinkaiMessageBuilder {
     encryption: EncryptionMethod,
     my_encryption_secret_key: EncryptionStaticKey,
     my_encryption_public_key: EncryptionPublicKey,
-    my_signature_secret_key: SignatureStaticKey,
-    my_signature_public_key: SignaturePublicKey,
+    my_signature_secret_key: SigningKey,
+    my_signature_public_key: VerifyingKey,
     receiver_public_key: EncryptionPublicKey,
     version: ShinkaiVersion,
     optional_second_public_key_receiver_node: Option<EncryptionPublicKey>,
@@ -51,12 +51,12 @@ pub struct ShinkaiMessageBuilder {
 impl ShinkaiMessageBuilder {
     pub fn new(
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
     ) -> Self {
         let version = ShinkaiVersion::V1_0;
         let my_encryption_public_key = x25519_dalek::PublicKey::from(&my_encryption_secret_key);
-        let my_signature_public_key = ed25519_dalek::PublicKey::from(&my_signature_secret_key);
+        let my_signature_public_key = my_signature_secret_key.verifying_key();
         Self {
             message_raw_content: "".to_string(),
             message_content_schema: MessageSchemaType::Empty,
@@ -282,7 +282,7 @@ impl ShinkaiMessageBuilder {
         let my_encryption_secret_key_clone = clone_static_secret_key(&self.my_encryption_secret_key);
         let my_signature_secret_key_clone = clone_signature_secret_key(&self.my_signature_secret_key);
         let my_encryption_public_key_clone = x25519_dalek::PublicKey::from(&my_encryption_secret_key_clone);
-        let my_signature_public_key_clone = ed25519_dalek::PublicKey::from(&my_signature_secret_key_clone);
+        let my_signature_public_key_clone = my_signature_secret_key_clone.verifying_key();
         let receiver_public_key_clone = self.receiver_public_key.clone();
 
         Self {
@@ -431,7 +431,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn ack_message(
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ProfileName,
         receiver: ProfileName,
@@ -447,7 +447,7 @@ impl ShinkaiMessageBuilder {
     pub fn ping_pong_message(
         message: String,
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ProfileName,
         receiver: ProfileName,
@@ -466,7 +466,7 @@ impl ShinkaiMessageBuilder {
     pub fn job_creation(
         scope: JobScope,
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ProfileName,
         sender_subidentity: String,
@@ -495,7 +495,7 @@ impl ShinkaiMessageBuilder {
         content: String,
         files_inbox: String,
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         node_sender: ProfileName,
         sender_subidentity: String,
@@ -532,7 +532,7 @@ impl ShinkaiMessageBuilder {
         job_id: String,
         content: String,
         files_inbox: String,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         node_sender: ProfileName,
         node_receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
@@ -571,7 +571,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn terminate_message(
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ProfileName,
         receiver: ProfileName,
@@ -586,7 +586,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn request_code_registration(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         permissions: IdentityPermissions,
         code_type: RegistrationCodeType,
@@ -610,7 +610,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn use_code_registration_for_profile(
         profile_encryption_sk: EncryptionStaticKey,
-        profile_signature_sk: SignatureStaticKey,
+        profile_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
         identity_type: String,
@@ -620,7 +620,7 @@ impl ShinkaiMessageBuilder {
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_signature_pk = profile_signature_sk.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
 
         let registration_code = RegistrationCode {
@@ -648,9 +648,9 @@ impl ShinkaiMessageBuilder {
 
     pub fn use_code_registration_for_device(
         my_device_encryption_sk: EncryptionStaticKey,
-        my_device_signature_sk: SignatureStaticKey,
+        my_device_signature_sk: SigningKey,
         profile_encryption_sk: EncryptionStaticKey,
-        profile_signature_sk: SignatureStaticKey,
+        profile_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         code: String,
         identity_type: String,
@@ -660,9 +660,9 @@ impl ShinkaiMessageBuilder {
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk);
+        let my_device_signature_pk = my_device_signature_sk.verifying_key();
         let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_signature_pk = profile_signature_sk.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
         let other = encryption_public_key_to_string(my_device_encryption_pk);
 
@@ -691,17 +691,17 @@ impl ShinkaiMessageBuilder {
 
     pub fn initial_registration_with_no_code_for_device(
         my_device_encryption_sk: EncryptionStaticKey,
-        my_device_signature_sk: SignatureStaticKey,
+        my_device_signature_sk: SigningKey,
         profile_encryption_sk: EncryptionStaticKey,
-        profile_signature_sk: SignatureStaticKey,
+        profile_signature_sk: SigningKey,
         registration_name: String,
         sender_subidentity: String,
         sender: ProfileName,
         receiver: ProfileName,
     ) -> Result<ShinkaiMessage, &'static str> {
-        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk);
+        let my_device_signature_pk = my_device_signature_sk.verifying_key();
         let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk);
+        let profile_signature_pk = profile_signature_sk.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk);
         let other = encryption_public_key_to_string(my_device_encryption_pk);
 
@@ -737,7 +737,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn create_files_inbox_with_sym_key(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         symmetric_key_sk: String,
@@ -765,7 +765,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn get_all_inboxes_for_profile(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         full_profile: String,
         sender_subidentity: String,
@@ -792,7 +792,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn get_last_messages_from_inbox(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         count: usize,
@@ -822,7 +822,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn get_last_unread_messages_from_inbox(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         count: usize,
@@ -852,7 +852,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn request_add_agent(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         agent: SerializedAgent,
         sender_subidentity: String,
@@ -875,7 +875,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn read_up_to_time(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         inbox: String,
         up_to_time: String,
@@ -900,7 +900,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn create_custom_shinkai_message_to_node<T: Serialize>(
         my_subidentity_encryption_sk: EncryptionStaticKey,
-        my_subidentity_signature_sk: SignatureStaticKey,
+        my_subidentity_signature_sk: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         data: T,
         sender_subidentity: String,
@@ -932,7 +932,7 @@ impl ShinkaiMessageBuilder {
 
     pub fn error_message(
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         receiver_public_key: EncryptionPublicKey,
         sender: ProfileName,
         receiver: ProfileName,

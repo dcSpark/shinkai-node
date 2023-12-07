@@ -1,48 +1,33 @@
-use super::{node_api::APIError, node_error::NodeError, node_message_handlers::verify_message_signature, Node};
+use super::{node_error::NodeError, Node};
 use crate::{
-    db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, IdentityManager},
     network::node_message_handlers::{ping_pong, PingPong},
     schemas::{
-        identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity},
-        inbox_permission::InboxPermission, smart_inbox::SmartInbox,
+        identity::{Identity, StandardIdentity},
+        inbox_permission::InboxPermission,
+        smart_inbox::SmartInbox,
     },
 };
 use async_channel::Sender;
-use chrono::{TimeZone, Utc};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use log::{debug, error, info, trace, warn};
-use reqwest::StatusCode;
+use log::{error, info};
+use ed25519_dalek::VerifyingKey;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
+        shinkai_name::ShinkaiName,
     },
-    shinkai_message::{
-        shinkai_message::ShinkaiMessage,
-        shinkai_message_schemas::{
-            IdentityPermissions, MessageSchemaType, RegistrationCodeRequest, RegistrationCodeType,
-        },
-    },
+    shinkai_message::shinkai_message::ShinkaiMessage,
     shinkai_utils::{
-        encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key,
-        },
-        signatures::{clone_signature_secret_key, string_to_signature_public_key},
+        encryption::clone_static_secret_key,
+        signatures::clone_signature_secret_key, shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel},
     },
 };
-use std::{str::FromStr, sync::Arc};
 use std::{
-    cell::RefCell,
     io::{self, Error},
     net::SocketAddr,
 };
-use tokio::sync::oneshot::error;
-use uuid::Uuid;
-use warp::path::full;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::{str::FromStr, sync::Arc};
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 impl Node {
     pub async fn send_peer_addresses(&self, sender: Sender<Vec<SocketAddr>>) -> Result<(), Error> {
@@ -84,7 +69,7 @@ impl Node {
         {
             Ok(messages) => messages,
             Err(e) => {
-                error!("Failed to get last messages from inbox: {}", e);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get last messages from inbox: {}", e).as_str());
                 return Vec::new();
             }
         };
@@ -94,14 +79,16 @@ impl Node {
 
     pub async fn internal_get_all_inboxes_for_profile(&self, full_profile_name: ShinkaiName) -> Vec<String> {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
-        let identity = identity_manager.search_identity(full_profile_name.full_name.as_str()).await;
+        let identity = identity_manager
+            .search_identity(full_profile_name.full_name.as_str())
+            .await;
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            error!("Failed to find identity for profile: {}", full_profile_name);
+            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to find identity for profile: {}", full_profile_name).as_str());
             return Vec::new();
         }
 
@@ -111,14 +98,14 @@ impl Node {
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
             _ => {
-                error!("Identity for profile: {} is not a StandardIdentity", full_profile_name);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str());
                 return Vec::new();
             }
         };
         let result = match self.db.lock().await.get_inboxes_for_profile(standard_identity) {
             Ok(inboxes) => inboxes,
             Err(e) => {
-                error!("Failed to get inboxes for profile: {}", e);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get inboxes for profile: {}", e).as_str());
                 return Vec::new();
             }
         };
@@ -130,7 +117,7 @@ impl Node {
         match self.db.lock().await.update_smart_inbox_name(&inbox_id, &new_name) {
             Ok(_) => Ok(()),
             Err(e) => {
-                error!("Failed to update inbox name: {}", e);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to update inbox name: {}", e).as_str());
                 Err(format!("Failed to update inbox name: {}", e))
             }
         }
@@ -145,7 +132,7 @@ impl Node {
 
         // If identity is None (doesn't exist), return an error message
         if identity.is_none() {
-            error!("Failed to find identity for profile: {}", full_profile_name);
+            shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to find identity for profile: {}", full_profile_name).as_str());
             return Vec::new();
         }
 
@@ -155,14 +142,19 @@ impl Node {
         let standard_identity = match &identity {
             Identity::Standard(std_identity) => std_identity.clone(),
             _ => {
-                error!("Identity for profile: {} is not a StandardIdentity", full_profile_name);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Identity for profile: {} is not a StandardIdentity", full_profile_name).as_str());
                 return Vec::new();
             }
         };
-        let result = match self.db.lock().await.get_all_smart_inboxes_for_profile(standard_identity) {
+        let result = match self
+            .db
+            .lock()
+            .await
+            .get_all_smart_inboxes_for_profile(standard_identity)
+        {
             Ok(inboxes) => inboxes,
             Err(e) => {
-                error!("Failed to get inboxes for profile: {}", e);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get inboxes for profile: {}", e).as_str());
                 return Vec::new();
             }
         };
@@ -185,7 +177,7 @@ impl Node {
         {
             Ok(messages) => messages,
             Err(e) => {
-                error!("Failed to get last messages from inbox: {}", e);
+                shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Error, format!("Failed to get last messages from inbox: {}", e).as_str());
                 return Vec::new();
             }
         };
@@ -193,7 +185,7 @@ impl Node {
         result
     }
 
-    pub async fn send_public_keys(&self, res: Sender<(SignaturePublicKey, EncryptionPublicKey)>) -> Result<(), Error> {
+    pub async fn send_public_keys(&self, res: Sender<(VerifyingKey, EncryptionPublicKey)>) -> Result<(), Error> {
         let identity_public_key = self.identity_public_key.clone();
         let encryption_public_key = self.encryption_public_key.clone();
         let _ = res
@@ -236,7 +228,7 @@ impl Node {
         res: Sender<bool>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;

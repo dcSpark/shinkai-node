@@ -7,10 +7,9 @@ use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use network::node_api::ExtraAPIConfig;
 use network::Node;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -22,7 +21,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use std::env;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 mod agent;
 mod cron_tasks;
@@ -34,12 +32,13 @@ mod resources;
 mod schemas;
 mod tools;
 mod utils;
+mod crypto_identities;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
-fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
+fn get_db_path(identity_public_key: &VerifyingKey) -> String {
     format!("db/{}", hash_signature_public_key(identity_public_key))
 }
 

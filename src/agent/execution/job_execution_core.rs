@@ -5,7 +5,7 @@ use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
 use crate::managers::agents_capabilities_manager::{AgentCapability, AgentsCapabilitiesManager};
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
-use ed25519_dalek::SecretKey as SignatureStaticKey;
+use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::shinkai_utils::job_scope::{DBScopeEntry, LocalScopeEntry, ScopeEntry};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -26,7 +26,7 @@ impl JobManager {
     pub async fn process_job_message_queued(
         job_message: JobForProcessing,
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
     ) -> Result<String, AgentError> {
         let job_id = job_message.job_message.job_id.clone();
         // Fetch data we need to execute job step
@@ -111,7 +111,7 @@ impl JobManager {
     /// and then parses + saves the output result to the DB.
     pub async fn process_inference_chain(
         db: Arc<Mutex<ShinkaiDB>>,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         job_message: JobMessage,
         full_job: Job,
         agent_found: Option<SerializedAgent>,
@@ -196,7 +196,7 @@ impl JobManager {
         agent_found: Option<SerializedAgent>,
         full_job: Job,
         profile: ShinkaiName,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
     ) -> Result<bool, AgentError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
