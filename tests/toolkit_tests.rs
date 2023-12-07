@@ -69,7 +69,7 @@ async fn test_js_toolkit_execution() {
 
     // Test submit_toolkit_json_request
     let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).await.unwrap();
-    assert_eq!(&toolkit.name, "toolkit-example");
+    assert_eq!(&toolkit.name, "@shinkai_network/toolkit-example");
     assert_eq!(toolkit.tools.len(), 2);
 
     // Test submit_headers_validation_request
