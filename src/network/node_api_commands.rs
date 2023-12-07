@@ -1,4 +1,5 @@
 use serde_json::Value as JsonValue;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use super::{
@@ -1501,6 +1502,22 @@ impl Node {
                 )
                 .await;
             if let Err(err) = set_header_result {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
+            let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
+            eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
+            let activate_toolkit_result = db_lock
+                .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)
+                .await;
+            if let Err(err) = activate_toolkit_result {
                 let api_error = APIError {
                     code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
                     error: "Internal Server Error".to_string(),
