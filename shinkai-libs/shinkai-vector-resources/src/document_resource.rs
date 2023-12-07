@@ -1,6 +1,7 @@
 use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
@@ -29,6 +30,7 @@ pub struct DocumentVectorResource {
     data_tag_index: DataTagIndex,
     created_datetime: String,
     last_modified_datetime: String,
+    metadata_index: MetadataIndex,
 }
 
 impl VectorResource for DocumentVectorResource {
@@ -51,6 +53,10 @@ impl VectorResource for DocumentVectorResource {
 
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
+    }
+
+    fn metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -153,6 +159,7 @@ impl DocumentVectorResource {
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),
             last_modified_datetime: current_time,
+            metadata_index: MetadataIndex::new(),
         }
     }
 

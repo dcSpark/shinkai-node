@@ -1,6 +1,7 @@
 use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
@@ -8,6 +9,7 @@ use crate::source::VRSource;
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
+use std::fs::Metadata;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as spreadsheet ingestion,
@@ -27,6 +29,7 @@ pub struct MapVectorResource {
     data_tag_index: DataTagIndex,
     created_datetime: String,
     last_modified_datetime: String,
+    metadata_index: MetadataIndex,
 }
 
 impl VectorResource for MapVectorResource {
@@ -49,6 +52,10 @@ impl VectorResource for MapVectorResource {
 
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
+    }
+
+    fn metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -141,6 +148,7 @@ impl MapVectorResource {
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),
             last_modified_datetime: current_time,
+            metadata_index: MetadataIndex::new(),
         }
     }
 

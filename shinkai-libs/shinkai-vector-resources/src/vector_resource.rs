@@ -1,3 +1,5 @@
+use std::fs::Metadata;
+
 use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
@@ -7,6 +9,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
@@ -32,7 +35,7 @@ pub trait VectorResource {
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn data_tag_index(&self) -> &DataTagIndex;
-    fn metadata_key_index(&self) -> &DataTagIndex;
+    fn metadata_index(&self) -> &MetadataIndex;
     /// Retrieves an Embedding given its id, at the root level depth.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
