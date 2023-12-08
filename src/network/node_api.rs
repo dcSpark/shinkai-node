@@ -1,10 +1,8 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
 use futures::Future;
-use futures::FutureExt;
 use futures::StreamExt;
 use futures::TryFutureExt;
-use futures::TryStreamExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,8 +15,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use warp::filters::BoxedFilter;
-use warp::reply::Reply;
 use warp::Buf;
 use warp::Filter;
 
@@ -695,7 +691,7 @@ async fn get_last_messages_from_inbox_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastMessagesFromInbox {
+        |_, message, res_sender| NodeCommand::APIGetLastMessagesFromInbox {
             msg: message,
             res: res_sender,
         },
@@ -710,7 +706,7 @@ async fn get_last_unread_messages_from_inbox_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastUnreadMessagesFromInbox {
+        |_, message, res_sender| NodeCommand::APIGetLastUnreadMessagesFromInbox {
             msg: message,
             res: res_sender,
         },
@@ -725,7 +721,7 @@ async fn get_all_inboxes_for_profile_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllInboxesForProfile {
+        |_, message, res_sender| NodeCommand::APIGetAllInboxesForProfile {
             msg: message,
             res: res_sender,
         },
@@ -740,7 +736,7 @@ async fn get_all_smart_inboxes_for_profile_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllSmartInboxesForProfile {
+        |_, message, res_sender| NodeCommand::APIGetAllSmartInboxesForProfile {
             msg: message,
             res: res_sender,
         },
@@ -755,7 +751,7 @@ async fn update_smart_inbox_name_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateSmartInboxName {
+        |_, message, res_sender| NodeCommand::APIUpdateSmartInboxName {
             msg: message,
             res: res_sender,
         },
@@ -770,7 +766,7 @@ async fn update_job_to_finished_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateJobToFinished {
+        |_, message, res_sender| NodeCommand::APIUpdateJobToFinished {
             msg: message,
             res: res_sender,
         },
@@ -785,7 +781,7 @@ async fn create_job_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateJob {
+        |_, message, res_sender| NodeCommand::APICreateJob {
             msg: message,
             res: res_sender,
         },
@@ -800,7 +796,7 @@ async fn add_agent_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAddAgent {
+        |_, message, res_sender| NodeCommand::APIAddAgent {
             msg: message,
             res: res_sender,
         },
@@ -815,7 +811,7 @@ async fn available_agents_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableAgents {
+        |_, message, res_sender| NodeCommand::APIAvailableAgents {
             msg: message,
             res: res_sender,
         },
@@ -830,7 +826,7 @@ async fn job_message_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIJobMessage {
+        |_, message, res_sender| NodeCommand::APIJobMessage {
             msg: message,
             res: res_sender,
         },
@@ -845,7 +841,7 @@ async fn get_filenames_message_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetFilenamesInInbox {
+        |_, message, res_sender| NodeCommand::APIGetFilenamesInInbox {
             msg: message,
             res: res_sender,
         },
@@ -860,7 +856,7 @@ async fn mark_as_read_up_to_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIMarkAsReadUpTo {
+        |_, message, res_sender| NodeCommand::APIMarkAsReadUpTo {
             msg: message,
             res: res_sender,
         },
@@ -875,7 +871,7 @@ async fn create_files_inbox_with_symmetric_key_handler(
     handle_node_command(
         node_commands_sender,
         message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateFilesInboxWithSymmetricKey {
+        |_, message, res_sender| NodeCommand::APICreateFilesInboxWithSymmetricKey {
             msg: message,
             res: res_sender,
         },

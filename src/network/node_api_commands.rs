@@ -25,7 +25,7 @@ use aes_gcm::KeyInit;
 use async_channel::Sender;
 use async_std::eprint;
 use blake3::Hasher;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::VerifyingKey;
 use futures::task::{Context, Poll};
 use futures::Stream;
 use futures::StreamExt;

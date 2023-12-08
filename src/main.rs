@@ -3,18 +3,17 @@ use crate::network::node::NodeCommand;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
-use crate::utils::environment::{fetch_node_environment, fetch_agent_env};
+use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use network::Node;
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use network::node_api::ExtraAPIConfig;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType};
+use network::Node;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -22,24 +21,24 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
 use std::env;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-mod db;
 mod agent;
+mod cron_tasks;
+mod db;
 mod managers;
 mod network;
+mod planner;
 mod resources;
 mod schemas;
 mod tools;
 mod utils;
-mod cron_tasks;
-mod planner;
+mod crypto_identities;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
-fn get_db_path(identity_public_key: &SignaturePublicKey) -> String {
+fn get_db_path(identity_public_key: &VerifyingKey) -> String {
     format!("db/{}", hash_signature_public_key(identity_public_key))
 }
 

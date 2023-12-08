@@ -2,14 +2,11 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use log::{debug, error, info, trace, warn};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::schemas::inbox_name::InboxNameError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
@@ -22,14 +19,13 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self};
 use crate::managers::IdentityManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -45,7 +41,7 @@ pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
     PingAll,
     // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
-    GetPublicKeys(Sender<(SignaturePublicKey, EncryptionPublicKey)>),
+    GetPublicKeys(Sender<(VerifyingKey, EncryptionPublicKey)>),
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
@@ -244,9 +240,9 @@ pub struct Node {
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
-    pub identity_secret_key: SignatureStaticKey,
+    pub identity_secret_key: SigningKey,
     // The public key corresponding to `identity_secret_key`.
-    pub identity_public_key: SignaturePublicKey,
+    pub identity_public_key: VerifyingKey,
     // The secret key used for encryption and decryption.
     pub encryption_secret_key: EncryptionStaticKey,
     // The public key corresponding to `encryption_secret_key`.
@@ -281,7 +277,7 @@ impl Node {
     pub async fn new(
         node_profile_name: String,
         listen_address: SocketAddr,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
@@ -296,7 +292,7 @@ impl Node {
             Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
         }
 
-        let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
+        let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
@@ -388,7 +384,7 @@ impl Node {
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let mut check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
         loop {
             let ping_future = ping_interval.next().fuse();
@@ -400,9 +396,9 @@ impl Node {
             pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
-                    retry = retry_future => self.retry_messages().await?,
-                    listen = listen_future => unreachable!(),
-                    ping = ping_future => self.ping_all().await?,
+                    _retry = retry_future => self.retry_messages().await?,
+                    _listen = listen_future => unreachable!(),
+                    _ping = ping_future => self.ping_all().await?,
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
@@ -783,7 +779,7 @@ impl Node {
         bytes: &[u8],
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {

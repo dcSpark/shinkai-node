@@ -1,4 +1,4 @@
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -17,7 +17,7 @@ fn create_message(
     node_identity_name: &str,
     node_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    node_identity_sk: SignatureStaticKey,
+    node_identity_sk: SigningKey,
 ) -> ShinkaiMessage {
     let message_content = std::iter::repeat("a").take(take_size).collect::<String>();
 

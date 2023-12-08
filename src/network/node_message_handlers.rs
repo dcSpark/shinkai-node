@@ -1,5 +1,5 @@
 use crate::{db::ShinkaiDB, managers::IdentityManager, network::Node};
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -30,7 +30,7 @@ pub async fn handle_based_on_message_content_and_encryption(
     sender_address: SocketAddr,
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SignatureStaticKey,
+    my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
@@ -132,7 +132,7 @@ pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result
 }
 
 pub fn verify_message_signature(
-    sender_signature_pk: ed25519_dalek::PublicKey,
+    sender_signature_pk: VerifyingKey,
     message: &ShinkaiMessage,
 ) -> io::Result<()> {
     match message.verify_outer_layer_signature(&sender_signature_pk) {
@@ -168,7 +168,7 @@ pub async fn handle_ping(
     sender_encryption_pk: x25519_dalek::PublicKey,
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SignatureStaticKey,
+    my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -196,7 +196,7 @@ pub async fn handle_default_encryption(
     sender_address: SocketAddr,
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SignatureStaticKey,
+    my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -243,7 +243,7 @@ pub async fn handle_other_cases(
     sender_address: SocketAddr,
     sender_profile_name: String,
     my_encryption_secret_key: &EncryptionStaticKey,
-    my_signature_secret_key: &SignatureStaticKey,
+    my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
     receiver_address: SocketAddr,
     unsafe_sender_address: SocketAddr,
@@ -270,7 +270,7 @@ pub async fn handle_other_cases(
 pub async fn send_ack(
     peer: (SocketAddr, ProfileName),
     encryption_secret_key: EncryptionStaticKey, // not important for ping pong
-    signature_secret_key: SignatureStaticKey,
+    signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,
@@ -302,7 +302,7 @@ pub async fn send_ack(
 #[derive(Debug)]
 pub struct PublicKeyInfo {
     pub address: SocketAddr,
-    pub signature_public_key: ed25519_dalek::PublicKey,
+    pub signature_public_key: VerifyingKey,
     pub encryption_public_key: x25519_dalek::PublicKey,
 }
 
@@ -310,7 +310,7 @@ pub async fn ping_pong(
     peer: (SocketAddr, ProfileName),
     ping_or_pong: PingPong,
     encryption_secret_key: EncryptionStaticKey, // not important for ping pong
-    signature_secret_key: SignatureStaticKey,
+    signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey, // not important for ping pong
     sender: ProfileName,
     receiver: ProfileName,

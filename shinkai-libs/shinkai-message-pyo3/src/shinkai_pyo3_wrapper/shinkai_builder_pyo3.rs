@@ -4,7 +4,7 @@ use super::{
     encryption_method_pyo3::PyEncryptionMethod, message_schema_type_pyo3::PyMessageSchemaType,
     shinkai_message_pyo3::PyShinkaiMessage,
 };
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use pyo3::{prelude::*, pyclass, types::PyDict, PyResult};
 use shinkai_message_primitives::{
     schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode},
@@ -441,7 +441,7 @@ impl PyShinkaiMessageBuilder {
             Err(_) => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>("Invalid signature key")),
         };
 
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let registration_code = RegistrationCode {
@@ -530,9 +530,9 @@ impl PyShinkaiMessageBuilder {
             }
         };
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_signature_pk = my_subidentity_signature_sk_type.verifying_key();
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
@@ -626,9 +626,9 @@ impl PyShinkaiMessageBuilder {
             }
         };
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_signature_pk = my_subidentity_signature_sk_type.verifying_key();
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let identity_type = "device".to_string();

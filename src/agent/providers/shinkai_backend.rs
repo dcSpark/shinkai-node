@@ -1,7 +1,7 @@
 use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::shared::openai::{MessageContent, OpenAIResponse, openai_prepare_messages};
+use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -11,6 +11,29 @@ use serde_json::{self, Map};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, ShinkaiBackend};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tiktoken_rs::model::get_context_size;
+
+fn truncate_image_url_in_payload(payload: &mut JsonValue) {
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(array) = content.as_array_mut() {
+                        for item in array {
+                            if let Some(image_url) = item.get_mut("image_url") {
+                                if let Some(url) = image_url.get_mut("url") {
+                                    if let Some(str_url) = url.as_str() {
+                                        let truncated_url = format!("{}...", &str_url[0..20.min(str_url.len())]);
+                                        *url = JsonValue::String(truncated_url);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[async_trait]
 impl LLMProvider for ShinkaiBackend {
@@ -25,6 +48,7 @@ impl LLMProvider for ShinkaiBackend {
             if let Some(key) = api_key {
                 // TODO: Update URL
                 let url = format!("{}/ai-proxy/{}", base_url, "https://api.openai.com/v1/chat/completions");
+                eprintln!("URL: {}", url);
                 let open_ai = OpenAI {
                     model_type: self.model_type.clone(),
                 };
@@ -34,7 +58,11 @@ impl LLMProvider for ShinkaiBackend {
                 let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
-                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
+                    _ => {
+                        return Err(AgentError::UnexpectedPromptResultVariant(
+                            "Expected Value variant in PromptResultEnum".to_string(),
+                        ))
+                    }
                 };
 
                 let mut payload = json!({
@@ -49,22 +77,27 @@ impl LLMProvider for ShinkaiBackend {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
+                let mut payload_log = payload.clone();
+                truncate_image_url_in_payload(&mut payload_log);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", payload).as_str(),
+                    format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
-                let bearer = format!("Bearer {}", key);
-                // TODO: add auth to header
-                let res = client
+                let request = client
                     .post(url)
                     .bearer_auth(key)
                     .header("Content-Type", "application/json")
-                    .header("Authorization", bearer)
-                    .json(&payload)
-                    .send()
-                    .await?;
+                    .json(&payload);
+
+                shinkai_log(
+                    ShinkaiLogOption::DetailedAPI,
+                    ShinkaiLogLevel::Debug,
+                    format!("Request Details: {:?}", request).as_str(),
+                );
+
+                let res = request.send().await?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
