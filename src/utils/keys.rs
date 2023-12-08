@@ -7,7 +7,7 @@ use shinkai_message_primitives::shinkai_utils::{
         string_to_signature_secret_key,
     },
 };
-use std::env;
+use std::{env, fs, collections::HashMap};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct NodeKeys {
@@ -18,6 +18,38 @@ pub struct NodeKeys {
 }
 
 pub fn generate_or_load_keys() -> NodeKeys {
+    // First check for .secret file
+    if let Ok(contents) = fs::read_to_string(".secret") {
+        // Parse the contents of the file
+        let lines: HashMap<_, _> = contents
+            .lines()
+            .filter_map(|line| {
+                let mut parts = line.splitn(2, '=');
+                Some((parts.next()?, parts.next()?.to_string()))
+            })
+            .collect();
+
+        // Use the values from the file if they exist
+        if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) = 
+            (lines.get("IDENTITY_SECRET_KEY"), lines.get("ENCRYPTION_SECRET_KEY")) {
+            // Convert the strings back to secret keys
+            let identity_secret_key = string_to_signature_secret_key(identity_secret_key_string).unwrap();
+            let encryption_secret_key = string_to_encryption_static_key(encryption_secret_key_string).unwrap();
+
+            // Generate public keys from secret keys
+            let identity_public_key = identity_secret_key.verifying_key();
+            let encryption_public_key = x25519_dalek::PublicKey::from(&encryption_secret_key);
+
+            return NodeKeys {
+                identity_secret_key,
+                identity_public_key,
+                encryption_secret_key,
+                encryption_public_key,
+            };
+        }
+    }
+
+    // If not then use ENV
     let (identity_secret_key, identity_public_key) = match env::var("IDENTITY_SECRET_KEY") {
         Ok(secret_key_str) => {
             let secret_key = string_to_signature_secret_key(&secret_key_str.clone()).unwrap();

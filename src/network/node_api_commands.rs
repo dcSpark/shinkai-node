@@ -18,6 +18,7 @@ use crate::{
         smart_inbox::SmartInbox,
     },
     tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
+    utils::update_global_identity::update_global_identity_name
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
@@ -2101,6 +2102,66 @@ impl Node {
         }
     }
 
+    pub async fn api_change_nodes_name(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // TODO: check if name is valid and exists in the blockchain
+        // Send message back to the API
+        // 1 sec later? panic! and exit the program
+        // Validate the message
+
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let msg = match validation_result {
+            Ok((msg, _)) => msg,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Decrypt the message
+        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+
+        // Extract the content of the message
+        let new_node_name = decrypted_msg.get_message_content()?;
+
+        // Check that new_node_name is valid
+        let new_node_name = match ShinkaiName::from_node_name(new_node_name) {
+            Ok(name) => name,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid node name".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Write to .secret file
+        match update_global_identity_name(new_node_name.get_node_name().as_str()) {
+            Ok(_) => {
+                let _ = res.send(Ok(())).await;
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+            }
+        };
+        Ok(())
+    }
+
     pub async fn api_handle_send_onionized_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -2108,6 +2169,16 @@ impl Node {
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
         eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
+        if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid node name: @@localhost.shinkai".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
 
         let validation_result = self.validate_message(potentially_encrypted_msg, None).await;
         let (mut msg, _) = match validation_result {
