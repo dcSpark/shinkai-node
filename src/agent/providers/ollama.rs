@@ -82,11 +82,10 @@ impl LLMProvider for Ollama {
 
                 match data_resp {
                     Ok(data) => {
-                        let response_string = data.response.to_string();
+                        let response_string = data.response.as_str().unwrap_or("");
                         match serde_json::from_str::<JsonValue>(&response_string) {
                             Ok(deserialized_json) => {
                                 let response_string = deserialized_json.to_string();
-                                eprintln!("response_string: {:?}", response_string);
                                 Self::extract_first_json_object(&response_string)
                             },
                             Err(e) => {

@@ -299,7 +299,7 @@ impl AgentsCapabilitiesManager {
             }
             AgentLLMInterface::Ollama(_) => {
                 // Fill in the appropriate logic for Ollama
-                0
+                4096
             }
         }
     }
