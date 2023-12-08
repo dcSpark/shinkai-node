@@ -1,2 +1,0 @@
-# Sample
-> THIS IS A SAMPLE TOOL

@@ -1,17 +1,13 @@
-use reqwest::header;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_node::tools::router::ShinkaiTool;
-use shinkai_node::tools::rust_tools::RUST_TOOLKIT;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::vector_resource::VectorResource;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(&path);
@@ -78,7 +74,6 @@ async fn test_js_toolkit_execution() {
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
         .await
         .unwrap();
-
     // Test submit_tool_execution_request
     let tool = "isEven";
     let input_data = &serde_json::json!({"number": 56});
