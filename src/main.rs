@@ -7,7 +7,7 @@ use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use network::node_api::ExtraAPIConfig;
 use network::Node;
 use shinkai_message_primitives::shinkai_utils::encryption::{
@@ -18,12 +18,14 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
-use std::env;
+use std::collections::HashMap;
+use std::{env, fs};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 mod agent;
 mod cron_tasks;
+mod crypto_identities;
 mod db;
 mod managers;
 mod network;
@@ -32,7 +34,6 @@ mod resources;
 mod schemas;
 mod tools;
 mod utils;
-mod crypto_identities;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
@@ -42,12 +43,29 @@ fn get_db_path(identity_public_key: &VerifyingKey) -> String {
     format!("db/{}", hash_signature_public_key(identity_public_key))
 }
 
+fn parse_secret_file() -> HashMap<String, String> {
+    let contents = fs::read_to_string(".secret").unwrap_or_default();
+    contents
+        .lines()
+        .map(|line| {
+            let mut parts = line.splitn(2, '=');
+            let key = parts.next().unwrap_or_default().to_string();
+            let value = parts.next().unwrap_or_default().to_string();
+            (key, value)
+        })
+        .collect()
+}
+
 fn main() {
     env_logger::init();
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
-    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
+    let secrets = parse_secret_file();
+    let global_identity_name = secrets
+        .get("GLOBAL_IDENTITY_NAME")
+        .cloned()
+        .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string()));
 
     // Initialization
     let args = parse_args();
@@ -69,6 +87,9 @@ fn main() {
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
 
+    let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
+    let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
+
     // Log the address, port, and public_key
     shinkai_log(
         ShinkaiLogOption::Node,
@@ -86,8 +107,8 @@ fn main() {
             "identity sk: {} pk: {} encryption sk: {} pk: {}",
             identity_secret_key_string,
             identity_public_key_string,
-            encryption_secret_key_to_string(node_keys.encryption_secret_key.clone()),
-            encryption_public_key_to_string(node_keys.encryption_public_key.clone())
+            encryption_secret_key_string,
+            encryption_public_key_string,
         )
         .as_str(),
     );
@@ -96,6 +117,19 @@ fn main() {
     if args.create_message {
         cli_handle_create_message(args, &node_keys, &global_identity_name);
         return;
+    }
+
+    // Store to .secret file
+    let identity_secret_key_string =
+        signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
+    let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
+
+    let secret_content = format!(
+        "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}",
+        global_identity_name, identity_secret_key_string, encryption_secret_key_string
+    );
+    if !node_env.no_secret_file {
+        std::fs::write(".secret", secret_content).expect("Unable to write to .secret file");
     }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);

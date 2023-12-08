@@ -18,6 +18,7 @@ pub struct NodeEnvironment {
     pub cron_devops_api_token: String,
     pub cron_devops_api_enabled: bool,
     pub js_toolkit_executor_remote: Option<String>,
+    pub no_secret_file: bool,
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
@@ -129,6 +130,11 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
 
+    let no_secret_file: bool = env::var("NO_SECRET_FILE")
+        .unwrap_or_else(|_| "false".to_string())
+        .parse()
+        .expect("Failed to parse NO_SECRET_FILE");
+
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
@@ -145,5 +151,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         cron_devops_api_token,
         cron_devops_api_enabled,
         js_toolkit_executor_remote,
+        no_secret_file,
     }
 }
