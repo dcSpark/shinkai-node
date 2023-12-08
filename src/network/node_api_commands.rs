@@ -2148,6 +2148,7 @@ impl Node {
         match update_global_identity_name(new_node_name.get_node_name().as_str()) {
             Ok(_) => {
                 let _ = res.send(Ok(())).await;
+                panic!("Node name changed successfully. Restarting server...");
             }
             Err(err) => {
                 let _ = res
