@@ -1,5 +1,5 @@
-use shinkai_node::crypto_identities::crypto_identity_manager::ShinkaiRegistryError;
-use shinkai_node::crypto_identities::crypto_identity_manager::{OnchainIdentity, ShinkaiRegistryTrait};
+use shinkai_node::crypto_identities::shinkai_registry::ShinkaiRegistryError;
+use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistryTrait};
 use dashmap::DashMap;
 use ethers::prelude::*;
 use std::sync::Arc;
