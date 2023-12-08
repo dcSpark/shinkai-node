@@ -1,10 +1,10 @@
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use ethers::types::U256;
-    use shinkai_node::crypto_identities::crypto_identity_manager::{ShinkaiRegistry, OnchainIdentity};
+    use chrono::{DateTime, Utc};
+    use ethers::{middleware::gas_oracle::cache, types::U256};
+    use shinkai_node::crypto_identities::crypto_identity_manager::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
     #[test]
@@ -15,7 +15,9 @@ mod tests {
                 "https://rpc.sepolia.org",
                 "0xb2945D0CDa4C119DE184380955aA4FbfAFb6B8cC",
                 "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
-            ).await.unwrap();
+            )
+            .await
+            .unwrap();
 
             let identity = "nico.shinkai".to_string();
 
@@ -31,10 +33,8 @@ mod tests {
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
             };
             assert_eq!(record, expected_record);
-            eprintln!("Got identity record for {}", identity);
-
+            
             let initial_cache_time = registry.get_cache_time(&identity).unwrap();
-            eprintln!("Initial cache time: {:?}", initial_cache_time);
 
             // Request the identity record again to trigger a cache update
             let _ = registry.get_identity_record(identity.clone()).await.unwrap();
@@ -43,7 +43,6 @@ mod tests {
             for _ in 0..10 {
                 sleep(Duration::from_millis(500)).await;
                 if let Some(cache_time) = registry.get_cache_time(&identity) {
-                    eprintln!("Cache time: {:?}", cache_time);
                     if cache_time != initial_cache_time {
                         return;
                     }

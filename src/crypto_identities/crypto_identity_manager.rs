@@ -1,3 +1,6 @@
+use chrono::DateTime;
+use chrono::Utc;
+use dashmap::DashMap;
 use ethers::abi::Abi;
 use ethers::prelude::*;
 use lazy_static::lazy_static;
@@ -100,7 +103,7 @@ pub struct OnchainIdentity {
 #[derive(Debug, Clone)]
 pub struct ShinkaiRegistry {
     pub contract: ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
-    pub cache: HashMap<String, (SystemTime, OnchainIdentity)>,
+    pub cache: Arc<DashMap<String, (SystemTime, OnchainIdentity)>>,
 }
 
 impl ShinkaiRegistry {
@@ -121,7 +124,7 @@ impl ShinkaiRegistry {
         let contract = Contract::new(contract_address, abi, Arc::new(provider));
         Ok(Self {
             contract,
-            cache: HashMap::new(),
+            cache: Arc::new(DashMap::new()),
         })
     }
 
@@ -129,14 +132,15 @@ impl ShinkaiRegistry {
         let now = SystemTime::now();
     
         // If the cache is up-to-date, return the cached value
-        if let Some((last_updated, record)) = self.cache.get(&identity) {
-            if now.duration_since(*last_updated)? < *CACHE_TIME {
+        if let Some(value) = self.cache.get(&identity) {
+            let (last_updated, record) = value.value().clone();
+            if now.duration_since(last_updated)? < *CACHE_TIME {
                 // Spawn a new task to update the cache in the background
                 let identity_clone = identity.clone();
-                let mut registry_clone = self.clone();
+                let contract_clone = self.contract.clone();
+                let cache_clone = self.cache.clone();
                 task::spawn(async move {
-                    eprintln!("Updating cache for {}", identity_clone);
-                    if let Err(e) = registry_clone.update_cache(identity_clone).await {
+                    if let Err(e) = Self::update_cache(&contract_clone, &cache_clone, identity_clone).await {
                         // Log the error
                         shinkai_log(
                             ShinkaiLogOption::CryptoIdentity,
@@ -146,34 +150,31 @@ impl ShinkaiRegistry {
                     }
                 });
     
-                return Ok(record.clone());
+                return Ok(record);
             }
         }
     
         // Otherwise, update the cache
-        let record = self.update_cache(identity.clone()).await?;
+        let record = Self::update_cache(&self.contract, &self.cache, identity.clone()).await?;
         Ok(record.clone())
     }
 
-    async fn update_cache(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    async fn update_cache(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, cache: &DashMap<String, (SystemTime, OnchainIdentity)>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         // Fetch the identity record from the contract
-        let record = self.fetch_identity_record(identity.clone()).await?;
-        eprintln!("Fetched identity record for {}", identity);
+        let record = Self::fetch_identity_record(contract, identity.clone()).await?;
     
         // Update the cache and the timestamp
-        self.cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
-        eprintln!("Updated cache for {} with time {:?}", identity, SystemTime::now());
+        cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
     
         Ok(record)
     }
 
     pub fn get_cache_time(&self, identity: &str) -> Option<SystemTime> {
-        self.cache.get(identity).map(|(time, _)| *time)
+        self.cache.get(identity).map(|value| value.value().0)
     }
 
-    async fn fetch_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let function_call = match self
-            .contract
+    pub async fn fetch_identity_record(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let function_call = match contract
             .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity,))
         {
             Ok(call) => call,
