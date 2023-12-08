@@ -1,12 +1,21 @@
 use ethers::abi::Abi;
 use ethers::prelude::*;
+use lazy_static::lazy_static;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::SystemTime;
+use tokio::task;
+
+lazy_static! {
+    static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
+}
 
 #[derive(Debug)]
 pub enum ShinkaiRegistryError {
@@ -17,6 +26,7 @@ pub enum ShinkaiRegistryError {
     IoError(std::io::Error),
     JsonError(serde_json::Error),
     CustomError(String),
+    SystemTimeError(std::time::SystemTimeError),
 }
 
 impl fmt::Display for ShinkaiRegistryError {
@@ -24,13 +34,19 @@ impl fmt::Display for ShinkaiRegistryError {
         match self {
             ShinkaiRegistryError::UrlParseError(err) => write!(f, "URL Parse Error: {}", err),
             ShinkaiRegistryError::ProviderError(err) => write!(f, "Provider Error: {}", err),
-            // ShinkaiRegistryError::ContractError(err) => write!(f, "Contract Error: {}", err),
             ShinkaiRegistryError::ContractAbiError(err) => write!(f, "Contract ABI Error: {}", err),
             ShinkaiRegistryError::AbiError(err) => write!(f, "ABI Error: {}", err),
             ShinkaiRegistryError::IoError(err) => write!(f, "IO Error: {}", err),
             ShinkaiRegistryError::JsonError(err) => write!(f, "JSON Error: {}", err),
             ShinkaiRegistryError::CustomError(err) => write!(f, "Custom Error: {}", err),
+            ShinkaiRegistryError::SystemTimeError(err) => write!(f, "System Time Error: {}", err),
         }
+    }
+}
+
+impl From<std::time::SystemTimeError> for ShinkaiRegistryError {
+    fn from(err: std::time::SystemTimeError) -> ShinkaiRegistryError {
+        ShinkaiRegistryError::SystemTimeError(err)
     }
 }
 
@@ -84,16 +100,18 @@ pub struct OnchainIdentity {
 #[derive(Debug, Clone)]
 pub struct ShinkaiRegistry {
     pub contract: ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
-    // identity_records: HashMap<String, IdentityRecord>,
-    // ... add other fields as needed
+    pub cache: HashMap<String, (SystemTime, OnchainIdentity)>,
 }
 
 impl ShinkaiRegistry {
-    // Initialize a new ShinkaiRegistry
     pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
         let provider = Provider::<Http>::try_from(url).map_err(ShinkaiRegistryError::UrlParseError)?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
-            shinkai_log(ShinkaiLogOption::CryptoIdentity, ShinkaiLogLevel::Error, format!("Error parsing contract address: {}", e).as_str());
+            shinkai_log(
+                ShinkaiLogOption::CryptoIdentity,
+                ShinkaiLogLevel::Error,
+                format!("Error parsing contract address: {}", e).as_str(),
+            );
             ShinkaiRegistryError::AbiError(ethers::abi::Error::InvalidData)
         })?;
 
@@ -101,17 +119,70 @@ impl ShinkaiRegistry {
         let abi: Abi = serde_json::from_str(&abi).map_err(ShinkaiRegistryError::JsonError)?;
 
         let contract = Contract::new(contract_address, abi, Arc::new(provider));
-        Ok(Self { contract })
+        Ok(Self {
+            contract,
+            cache: HashMap::new(),
+        })
     }
 
-    pub async fn get_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let now = SystemTime::now();
+    
+        // If the cache is up-to-date, return the cached value
+        if let Some((last_updated, record)) = self.cache.get(&identity) {
+            if now.duration_since(*last_updated)? < *CACHE_TIME {
+                // Spawn a new task to update the cache in the background
+                let identity_clone = identity.clone();
+                let mut registry_clone = self.clone();
+                task::spawn(async move {
+                    eprintln!("Updating cache for {}", identity_clone);
+                    if let Err(e) = registry_clone.update_cache(identity_clone).await {
+                        // Log the error
+                        shinkai_log(
+                            ShinkaiLogOption::CryptoIdentity,
+                            ShinkaiLogLevel::Error,
+                            format!("Error updating cache: {}", e).as_str(),
+                        );
+                    }
+                });
+    
+                return Ok(record.clone());
+            }
+        }
+    
+        // Otherwise, update the cache
+        let record = self.update_cache(identity.clone()).await?;
+        Ok(record.clone())
+    }
+
+    async fn update_cache(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        // Fetch the identity record from the contract
+        let record = self.fetch_identity_record(identity.clone()).await?;
+        eprintln!("Fetched identity record for {}", identity);
+    
+        // Update the cache and the timestamp
+        self.cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
+        eprintln!("Updated cache for {} with time {:?}", identity, SystemTime::now());
+    
+        Ok(record)
+    }
+
+    pub fn get_cache_time(&self, identity: &str) -> Option<SystemTime> {
+        self.cache.get(identity).map(|(time, _)| *time)
+    }
+
+    async fn fetch_identity_record(&self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         let function_call = match self
             .contract
             .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity,))
         {
             Ok(call) => call,
             Err(err) => {
-                shinkai_log(ShinkaiLogOption::CryptoIdentity, ShinkaiLogLevel::Error, format!("Error creating function call: {}", err).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::CryptoIdentity,
+                    ShinkaiLogLevel::Error,
+                    format!("Error creating function call: {}", err).as_str(),
+                );
                 return Err(ShinkaiRegistryError::ContractAbiError(err));
             }
         };
@@ -119,11 +190,14 @@ impl ShinkaiRegistry {
         let result: (U256, U256, String, String, bool, Vec<String>, U256) = match function_call.call().await {
             Ok(res) => res,
             Err(e) => {
-                shinkai_log(ShinkaiLogOption::CryptoIdentity, ShinkaiLogLevel::Error, format!("Error calling contract: {}", e).as_str());
+                shinkai_log(
+                    ShinkaiLogOption::CryptoIdentity,
+                    ShinkaiLogLevel::Error,
+                    format!("Error calling contract: {}", e).as_str(),
+                );
                 return Err(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
             }
         };
-        shinkai_log(ShinkaiLogOption::CryptoIdentity, ShinkaiLogLevel::Debug, format!("get_identity_record result: {:?}", result).as_str());
 
         Ok(OnchainIdentity {
             bound_nft: result.0,
