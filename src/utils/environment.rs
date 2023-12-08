@@ -17,6 +17,7 @@ pub struct NodeEnvironment {
     pub first_device_needs_registration_code: bool,
     pub cron_devops_api_token: String,
     pub cron_devops_api_enabled: bool,
+    pub js_toolkit_executor_remote: Option<String>,
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
@@ -126,6 +127,8 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse CRON_DEVOPS_API_TOKEN");
 
+    let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
+
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
@@ -141,5 +144,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         first_device_needs_registration_code,
         cron_devops_api_token,
         cron_devops_api_enabled,
+        js_toolkit_executor_remote,
     }
 }

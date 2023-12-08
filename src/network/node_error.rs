@@ -1,4 +1,4 @@
-use crate::{agent::error::AgentError, db::db_errors::ShinkaiDBError};
+use crate::{agent::error::AgentError, db::db_errors::ShinkaiDBError, tools::error::ToolError};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
@@ -57,6 +57,14 @@ impl From<ShinkaiDBError> for NodeError {
     }
 }
 
+impl From<ToolError> for NodeError {
+    fn from(error: ToolError) -> Self {
+        NodeError {
+            message: format!("{}", error),
+        }
+    }
+}
+
 impl From<InboxNameError> for NodeError {
     fn from(err: InboxNameError) -> NodeError {
         NodeError {
@@ -75,8 +83,6 @@ impl From<ShinkaiNameError> for NodeError {
 
 impl From<String> for NodeError {
     fn from(error: String) -> Self {
-        NodeError {
-            message: error,
-        }
+        NodeError { message: error }
     }
 }

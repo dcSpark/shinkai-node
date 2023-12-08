@@ -75,6 +75,7 @@ where
             node1_db_path,
             false,
             vec![],
+            None
         );
 
         eprintln!("Starting Node");
