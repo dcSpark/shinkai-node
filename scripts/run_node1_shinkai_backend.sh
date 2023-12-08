@@ -13,6 +13,7 @@ export STARTING_NUM_QR_PROFILES="1"
 export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
 export LOG_SIMPLE="true"
+export NO_SECRET_FILE="true"
 
 export INITIAL_AGENT_NAMES="my_gpt,my_gpt_vision"
 export INITIAL_AGENT_URLS="https://backend-node-b1.shinkai.com,https://backend-node-b1.shinkai.com"

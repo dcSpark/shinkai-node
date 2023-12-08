@@ -128,7 +128,9 @@ fn main() {
         "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}",
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
-    std::fs::write(".secret", secret_content).expect("Unable to write to .secret file");
+    if !node_env.no_secret_file {
+        std::fs::write(".secret", secret_content).expect("Unable to write to .secret file");
+    }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
 
