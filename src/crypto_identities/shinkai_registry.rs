@@ -1,5 +1,3 @@
-use chrono::DateTime;
-use chrono::Utc;
 use dashmap::DashMap;
 use ethers::abi::Abi;
 use ethers::prelude::*;
@@ -7,7 +5,6 @@ use lazy_static::lazy_static;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
@@ -89,6 +86,8 @@ impl From<rustube::url::ParseError> for ShinkaiRegistryError {
     }
 }
 
+impl std::error::Error for ShinkaiRegistryError {}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct OnchainIdentity {
     pub bound_nft: U256, // id of the nft
@@ -98,6 +97,14 @@ pub struct OnchainIdentity {
     pub routing: bool,
     pub address_or_proxy_nodes: Vec<String>,
     pub delegated_tokens: U256,
+}
+
+pub trait ShinkaiRegistryTrait {
+    fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError>
+    where
+        Self: Sized;
+    fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError>;
+    fn get_cache_time(&self, identity: &str) -> Option<SystemTime>;
 }
 
 #[derive(Debug, Clone)]
@@ -211,20 +218,3 @@ impl ShinkaiRegistry {
         })
     }
 }
-
-/*
-    - Create Identity Manager (Reader)
-    - it should have an indexer for caching
-    - it should be able to check if the indexer is up to date easily (maybe with a timestamp)
-    - if indexer not up to date, it should be able to update it and (next line)
-    - it should be able to do individual request to an external or local node api
-    - it should be able to read current information associated with the user (delegation, info of stake pools, etc)
-
-    // Should we have a different identity manager for writing? It feels like we should.
-    // add local mnemonics
-    // rpc (local or external) to create new identities
-
-    // some values:
-    TESTNET_RPC=https://eth-sepolia.g.alchemy.com/v2/demo
-    MAINNET_RPC=https://eth.llamarpc.com
-*/

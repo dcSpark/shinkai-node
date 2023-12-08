@@ -2,8 +2,7 @@
 mod tests {
     use std::time::Duration;
 
-    use chrono::{DateTime, Utc};
-    use ethers::{middleware::gas_oracle::cache, types::U256};
+    use ethers::{types::U256};
     use shinkai_node::crypto_identities::crypto_identity_manager::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
