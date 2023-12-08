@@ -3,7 +3,7 @@ mod tests {
     use std::time::Duration;
 
     use ethers::{types::U256};
-    use shinkai_node::crypto_identities::crypto_identity_manager::{OnchainIdentity, ShinkaiRegistry};
+    use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
     #[test]
