@@ -6,6 +6,7 @@ pub enum ShinkaiLogOption {
     Blockchain,
     Database,
     Identity,
+    CryptoIdentity,
     JobExecution,
     CronExecution,
     API,
@@ -39,6 +40,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::Blockchain,
             ShinkaiLogOption::Database,
             ShinkaiLogOption::Identity,
+            ShinkaiLogOption::CryptoIdentity,
             ShinkaiLogOption::JobExecution,
             ShinkaiLogOption::CronExecution,
             ShinkaiLogOption::API,
@@ -59,6 +61,9 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_IDENTITY").is_ok() {
         active_options.push(ShinkaiLogOption::Identity);
+    }
+    if std::env::var("LOG_CRYPTO_IDENTITY").is_ok() {
+        active_options.push(ShinkaiLogOption::CryptoIdentity);
     }
     if std::env::var("LOG_API").is_ok() {
         active_options.push(ShinkaiLogOption::API);
