@@ -19,8 +19,6 @@ lazy_static! {
 
 #[derive(Debug)]
 pub enum ShinkaiRegistryError {
-    UrlParseError(rustube::url::ParseError),
-    ProviderError(ethers::providers::ProviderError),
     ContractAbiError(ethers::contract::AbiError),
     AbiError(ethers::abi::Error),
     IoError(std::io::Error),
@@ -32,8 +30,6 @@ pub enum ShinkaiRegistryError {
 impl fmt::Display for ShinkaiRegistryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ShinkaiRegistryError::UrlParseError(err) => write!(f, "URL Parse Error: {}", err),
-            ShinkaiRegistryError::ProviderError(err) => write!(f, "Provider Error: {}", err),
             ShinkaiRegistryError::ContractAbiError(err) => write!(f, "Contract ABI Error: {}", err),
             ShinkaiRegistryError::AbiError(err) => write!(f, "ABI Error: {}", err),
             ShinkaiRegistryError::IoError(err) => write!(f, "IO Error: {}", err),
@@ -62,12 +58,6 @@ impl From<serde_json::Error> for ShinkaiRegistryError {
     }
 }
 
-impl From<ethers::providers::ProviderError> for ShinkaiRegistryError {
-    fn from(err: ethers::providers::ProviderError) -> ShinkaiRegistryError {
-        ShinkaiRegistryError::ProviderError(err)
-    }
-}
-
 impl From<ethers::abi::Error> for ShinkaiRegistryError {
     fn from(err: ethers::abi::Error) -> ShinkaiRegistryError {
         ShinkaiRegistryError::AbiError(err)
@@ -77,12 +67,6 @@ impl From<ethers::abi::Error> for ShinkaiRegistryError {
 impl From<std::io::Error> for ShinkaiRegistryError {
     fn from(err: std::io::Error) -> ShinkaiRegistryError {
         ShinkaiRegistryError::IoError(err)
-    }
-}
-
-impl From<rustube::url::ParseError> for ShinkaiRegistryError {
-    fn from(err: rustube::url::ParseError) -> ShinkaiRegistryError {
-        ShinkaiRegistryError::UrlParseError(err)
     }
 }
 
@@ -115,7 +99,7 @@ pub struct ShinkaiRegistry {
 
 impl ShinkaiRegistry {
     pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        let provider = Provider::<Http>::try_from(url).map_err(ShinkaiRegistryError::UrlParseError)?;
+        let provider = Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
             shinkai_log(
                 ShinkaiLogOption::CryptoIdentity,
