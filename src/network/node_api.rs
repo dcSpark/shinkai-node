@@ -887,6 +887,7 @@ async fn create_registration_code_handler(
 #[derive(Debug, Deserialize, Clone)]
 pub struct APIUseRegistrationCodeSuccessResponse {
     pub message: String,
+    pub node_name: String,
     pub encryption_public_key: String,
     pub identity_public_key: String,
 }
@@ -910,6 +911,7 @@ async fn use_registration_code_handler(
         Ok(success_response) => {
             let response = serde_json::json!({
                 "message": success_response.message,
+                "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,
                 "identity_public_key": success_response.identity_public_key
             });

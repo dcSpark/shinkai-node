@@ -830,6 +830,7 @@ impl Node {
                             Ok(_) => {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
+                                    node_name: self.node_profile_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -934,6 +935,7 @@ impl Node {
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
+                                    node_name: self.node_profile_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
