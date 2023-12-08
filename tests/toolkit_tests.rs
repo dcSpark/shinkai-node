@@ -1,17 +1,13 @@
-use reqwest::header;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_node::tools::router::ShinkaiTool;
-use shinkai_node::tools::rust_tools::RUST_TOOLKIT;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::vector_resource::VectorResource;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(&path);
@@ -28,10 +24,29 @@ fn default_toolkit_json() -> JsonValue {
 }
 
 fn default_toolkit_header_values() -> HashMap<String, String> {
+    let header_object: JsonValue = serde_json::from_str(r#"{
+        "example-string": "An example string",
+        "example-integer": 5,
+        "example-float": 0.2,
+        "example-bool": true,
+        "example-isodate": "2000-10-20T01:30:00.000Z",
+        "example-json": { "key": "value" },
+        "example-enum": "ONE",
+        "example-array-enum": ["A", "B"],
+        "example-array-iso-date": ["2000-10-20T01:30:00.000Z", "2001-12-20T01:30:00.000Z"]
+    }"#).unwrap();
     let mut header_values = HashMap::new();
-    header_values.insert("x-shinkai-api-key".to_string(), "example".to_string());
-    header_values.insert("x-shinkai-example-bool".to_string(), "true".to_string());
-
+    for (key, value) in header_object.as_object().unwrap().iter() {
+        let parsed_value: String;
+        if value.is_array() || value.is_object() {
+            parsed_value = serde_json::to_string(&value).unwrap();
+        } else if value.is_string() {
+            parsed_value = value.as_str().unwrap().to_string();
+        } else {
+            parsed_value = value.to_string();
+        }
+        header_values.insert(format!("x-shinkai-{}", key), parsed_value);
+    }
     header_values
 }
 
@@ -69,15 +84,14 @@ fn test_js_toolkit_execution() {
 
     // Test submit_toolkit_json_request
     let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
-    assert_eq!(&toolkit.name, "toolkit-example");
+    assert_eq!(&toolkit.name, "@shinkai_network/toolkit-example");
     assert_eq!(toolkit.tools.len(), 2);
 
     // Test submit_headers_validation_request
     let header_values = &default_toolkit_header_values();
-    let headers_validation_result = executor
+    executor
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
         .unwrap();
-
     // Test submit_tool_execution_request
     let tool = "isEven";
     let input_data = &serde_json::json!({"number": 56});
