@@ -70,16 +70,9 @@ impl From<&str> for APIError {
 
 impl warp::reject::Reject for APIError {}
 
-#[derive(Clone, Debug)]
-pub struct ExtraAPIConfig {
-    pub cron_devops_api_enabled: bool,
-    pub cron_devops_api_token: String,
-}
-
 pub async fn run_api(
     node_commands_sender: Sender<NodeCommand>,
     address: SocketAddr,
-    extra_config: Option<ExtraAPIConfig>,
 ) {
     println!("Starting Node API server at: {}", &address);
 
@@ -469,15 +462,6 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
             "error": "Error occurred while pinging all nodes"
         }))),
     }
-}
-
-async fn private_devops_cron_list_handler(
-    node_commands_sender: Sender<NodeCommand>,
-) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    handle_node_command_without_message(node_commands_sender, |_, res_sender| {
-        NodeCommand::APIPrivateDevopsCronList { res: res_sender }
-    })
-    .await
 }
 
 async fn add_toolkit_handler(
