@@ -35,6 +35,12 @@ mod schemas;
 mod tools;
 mod utils;
 
+extern crate log;
+extern crate syslog;
+
+use log::LevelFilter;
+use syslog::BasicLogger;
+
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
@@ -61,7 +67,21 @@ fn parse_secret_file() -> HashMap<String, String> {
 }
 
 fn main() {
-    env_logger::init();
+    let udp_syslog_server = std::env::var("LOG_SYSLOG_SERVER").unwrap_or("".to_string());
+    if !udp_syslog_server.is_empty() {
+        let formatter = syslog::Formatter3164 {
+            facility: syslog::Facility::LOG_USER,
+            hostname: Some(std::env::var("LOG_SYSLOG_NODE_HOSTNAME").unwrap_or("localhost".to_string())),
+            process: "shinkai_node".into(),
+            pid: 0,
+        };
+        let logger = syslog::udp(formatter, "0.0.0.0:0", &udp_syslog_server).unwrap();
+        log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
+            .map(|()| log::set_max_level(LevelFilter::Info))
+            .unwrap();
+    } else {
+        env_logger::init();
+    }
 
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
@@ -175,7 +195,7 @@ fn main() {
 
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {
-            println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
+            log::warn!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
 
             let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
