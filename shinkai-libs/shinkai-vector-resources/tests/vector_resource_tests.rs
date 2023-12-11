@@ -363,6 +363,10 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(res.len(), 1);
+
+    // Check the metadata_index
+    println!("Metdata index: {:?}", fruit_doc.metadata_index());
+    assert_eq!(fruit_doc.metadata_index().get_all_metadata_keys().len(), 3);
 }
 
 #[test]

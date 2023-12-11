@@ -13,11 +13,6 @@ impl MetadataIndex {
         Self { index: HashMap::new() }
     }
 
-    /// Returns list of all metadata keys part of the index
-    pub fn metadata_keys(&self) -> Vec<String> {
-        self.index.keys().cloned().collect()
-    }
-
     /// Adds id of node to the index using all of the node's
     /// metadata keys
     pub fn add_node(&mut self, node: &Node) {
@@ -68,8 +63,18 @@ impl MetadataIndex {
         }
     }
 
-    /// Get node ids associated with a metadata key
+    /// Get node ids associated with a specific metadata key
     pub fn get_node_ids(&self, metadata_key: &str) -> Option<&Vec<String>> {
         self.index.get(metadata_key)
+    }
+
+    /// Returns list of all metadata keys part of the index
+    pub fn get_all_metadata_keys(&self) -> Vec<String> {
+        self.index.keys().cloned().collect()
+    }
+
+    /// Returns a reference to the internal index Hashmap for reading
+    pub fn get_metdata_index_hashmap(&self) -> &HashMap<String, Vec<String>> {
+        &self.index
     }
 }
