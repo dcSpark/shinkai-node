@@ -18,8 +18,9 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use std::collections::HashMap;
-use std::{env, fs};
+use std::path::Path;
 use std::sync::Arc;
+use std::{env, fs};
 use tokio::runtime::Runtime;
 
 mod agent;
@@ -39,11 +40,15 @@ fn initialize_runtime() -> Runtime {
 }
 
 fn get_db_path(identity_public_key: &VerifyingKey) -> String {
-    format!("db/{}", hash_signature_public_key(identity_public_key))
+    Path::new("db")
+        .join(hash_signature_public_key(identity_public_key))
+        .into_os_string()
+        .into_string()
+        .unwrap()
 }
 
 fn parse_secret_file() -> HashMap<String, String> {
-    let contents = fs::read_to_string("db/.secret").unwrap_or_default();
+    let contents = fs::read_to_string(Path::new("db").join(".secret")).unwrap_or_default();
     contents
         .lines()
         .map(|line| {
@@ -128,7 +133,7 @@ fn main() {
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
     if !node_env.no_secret_file {
-        std::fs::write(".secret", secret_content).expect("Unable to write to .secret file");
+        std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
     }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
