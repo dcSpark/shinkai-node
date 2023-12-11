@@ -25,6 +25,7 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
     let initial_agent_names: Vec<String> = env::var("INITIAL_AGENT_NAMES")
         .unwrap_or_else(|_| "".to_string())
         .split(',')
+        .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();
 
