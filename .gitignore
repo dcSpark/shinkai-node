@@ -18,8 +18,6 @@ embeddings
 bert.cpp/
 bert-cpp-server
 a.out
-packaged-shinkai-toolkit.js
-shinkai-toolkit-executor.js
 tmp_*.js
 qr_code_profile_*.png
 qr_code_device_*.png
@@ -34,3 +32,6 @@ zeko_word_listing.txt
 tmp_cron_downloads
 shinkai-mini-apps/shinkai-tray/src-tauri/models
 shinkai-mini-apps/shinkai-tray/src-tauri/db
+typescript
+.secret
+db/.secret

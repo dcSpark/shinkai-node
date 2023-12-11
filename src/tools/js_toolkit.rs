@@ -18,6 +18,18 @@ impl InstalledJSToolkitMap {
         }
     }
 
+    /// Updates the headers_set field for a given toolkit
+    pub fn update_headers_set(&mut self, toolkit_name: &str, headers_set: bool) -> Result<(), ToolError> {
+        let toolkit_info = self
+            .toolkits_info
+            .get_mut(toolkit_name)
+            .ok_or(ToolError::ToolkitNotFound)?;
+
+        toolkit_info.headers_set = headers_set;
+
+        Ok(())
+    }
+
     /// Sets a given toolkit to active state
     pub fn activate_toolkit(&mut self, toolkit_name: &str) -> Result<(), ToolError> {
         let toolkit_info = self
@@ -157,6 +169,7 @@ impl JSToolkit {
         key
     }
 
+    /// Given a toolkit definition json, create a JSToolkit
     pub fn from_toolkit_json(parsed_json: &JsonValue, js_code: &str) -> Result<Self, ToolError> {
         // Name parse
         let name = parsed_json["toolkitName"]
@@ -209,7 +222,6 @@ impl JSToolkit {
         })
     }
 
-    /// Convert to json
     pub fn to_json(&self) -> Result<String, ToolError> {
         serde_json::to_string(self).map_err(|_| ToolError::FailedJSONParsing)
     }

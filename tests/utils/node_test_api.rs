@@ -1,35 +1,21 @@
-use async_channel::{bounded, Receiver, Sender};
-use async_std::println;
-use shinkai_node::schemas::smart_inbox::SmartInbox;
+use async_channel::Sender;
 use core::panic;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, MessageSchemaType, RegistrationCodeType,
 };
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
-    EncryptionMethod,
-};
+use shinkai_message_primitives::shinkai_utils::encryption::{encryption_public_key_to_string, EncryptionMethod};
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, signature_public_key_to_string, signature_secret_key_to_string,
-    unsafe_deterministic_signature_keypair,
-};
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
-use shinkai_node::network::Node;
 use shinkai_node::schemas::identity::{Identity, IdentityType, StandardIdentity};
-use std::fs;
-use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
+use shinkai_node::schemas::smart_inbox::SmartInbox;
+use std::time::Duration;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub async fn api_registration_device_node_profile_main(
@@ -38,9 +24,9 @@ pub async fn api_registration_device_node_profile_main(
     node_identity_name: &str,
     node_encryption_pk: EncryptionPublicKey,
     device_encryption_sk: EncryptionStaticKey,
-    device_signature_sk: SignatureStaticKey,
+    device_signature_sk: SigningKey,
     profile_encryption_sk: EncryptionStaticKey,
-    profile_signature_sk: SignatureStaticKey,
+    profile_signature_sk: SigningKey,
     device_name_for_profile: &str,
 ) {
     {
@@ -136,7 +122,7 @@ pub async fn api_registration_profile_node(
     node_identity_name: &str,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     identities_number: usize,
 ) {
     {
@@ -254,7 +240,7 @@ pub async fn api_try_re_register_profile_node(
     node_identity_name: &str,
     node_profile_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    node_subidentity_sk: SignatureStaticKey,
+    node_subidentity_sk: SigningKey,
 ) {
     let (res1_registration_sender, res1_registraton_receiver) = async_channel::bounded(1);
     node_commands_sender
@@ -324,7 +310,7 @@ pub async fn api_agent_registration(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     node_name: &str,
     subidentity_name: &str,
     agent: SerializedAgent,
@@ -417,7 +403,7 @@ pub async fn api_create_job(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
@@ -461,7 +447,7 @@ pub async fn api_message_job(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     sender: &str,
     sender_subidentity: &str,
     recipient_subidentity: &str,
@@ -508,9 +494,9 @@ pub async fn api_initial_registration_with_no_code_for_device(
     node_identity_name: &str,
     node_encryption_pk: EncryptionPublicKey,
     device_encryption_sk: EncryptionStaticKey,
-    device_signature_sk: SignatureStaticKey,
+    device_signature_sk: SigningKey,
     profile_encryption_sk: EncryptionStaticKey,
-    profile_signature_sk: SignatureStaticKey,
+    profile_signature_sk: SigningKey,
     device_name_for_profile: &str,
 ) {
     let recipient = node_identity_name.to_string();
@@ -593,7 +579,7 @@ pub async fn api_get_all_inboxes_from_profile(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     sender: &str,
     sender_subidentity: &str,
     recipient: &str,
@@ -630,7 +616,7 @@ pub async fn api_get_all_smart_inboxes_from_profile(
     node_commands_sender: Sender<NodeCommand>,
     subidentity_encryption_sk: EncryptionStaticKey,
     node_encryption_pk: EncryptionPublicKey,
-    subidentity_signature_sk: SignatureStaticKey,
+    subidentity_signature_sk: SigningKey,
     sender: &str,
     sender_subidentity: &str,
     recipient: &str,
@@ -648,7 +634,7 @@ pub async fn api_get_all_smart_inboxes_from_profile(
             "".to_string(),
             "".to_string(),
             MessageSchemaType::TextContent,
-            EncryptionMethod::None
+            EncryptionMethod::None,
         )
         .external_metadata_with_intra_sender(
             recipient.to_string(),

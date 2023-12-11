@@ -4,36 +4,18 @@ use crate::{
     schemas::{identity::Identity, inbox_permission::InboxPermission},
 };
 use async_channel::Sender;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use log::error;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
-        inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError},
+        shinkai_name::ShinkaiName,
     },
     shinkai_message::{
         shinkai_message::ShinkaiMessage,
         shinkai_message_schemas::{IdentityPermissions, RegistrationCodeType},
     },
-    shinkai_utils::{
-        encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key,
-        },
-        signatures::{clone_signature_secret_key, string_to_signature_public_key},
-    },
 };
 use std::str::FromStr;
-use std::{
-    cell::RefCell,
-    io::{self, Error},
-    net::SocketAddr,
-};
-use tokio::sync::oneshot::error;
-use uuid::Uuid;
-use warp::path::full;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
@@ -108,7 +90,7 @@ impl Node {
     }
 
     pub async fn local_get_all_subidentities_devices_and_agents(&self, res: Sender<Result<Vec<Identity>, APIError>>) {
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
         let result = identity_manager.get_all_subidentities_devices_and_agents();
 
         if let Err(e) = res.send(Ok(result)).await {
@@ -130,7 +112,7 @@ impl Node {
         res: Sender<String>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
@@ -180,12 +162,12 @@ impl Node {
     pub async fn local_remove_inbox_permission(
         &self,
         inbox_name: String,
-        perm_type: String,
+        _: String, // perm_type
         identity_name: String,
         res: Sender<String>,
     ) {
         // Obtain the IdentityManager and ShinkaiDB locks
-        let mut identity_manager = self.identity_manager.lock().await;
+        let identity_manager = self.identity_manager.lock().await;
 
         // Find the identity based on the provided name
         let identity = identity_manager.search_identity(&identity_name).await;
@@ -267,9 +249,10 @@ impl Node {
         };
     }
 
+    // TODO: this interface changed. it's not returning job_id so the tuple is unnecessary
     pub async fn local_job_message(&self, shinkai_message: ShinkaiMessage, res: Sender<(String, String)>) {
         match self.internal_job_message(shinkai_message).await {
-            Ok(job_id) => {
+            Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send((String::new(), String::new())).await;
             }

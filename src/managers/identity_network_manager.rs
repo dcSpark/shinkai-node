@@ -1,16 +1,14 @@
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use lazy_static::lazy_static;
+use ed25519_dalek::VerifyingKey;
 use shinkai_message_primitives::shinkai_utils::{signatures::{signature_public_key_to_string, string_to_signature_public_key}, encryption::string_to_encryption_public_key};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-use std::net::ToSocketAddrs;
+use x25519_dalek::{PublicKey as EncryptionPublicKey};
 
 #[derive(Debug)]
 pub struct NetworkIdentity {
     pub node_identity_name: String,
     pub addr: SocketAddr,
-    pub signature_public_key: SignaturePublicKey,
+    pub signature_public_key: VerifyingKey,
     pub encryption_public_key: EncryptionPublicKey,
 }
 
@@ -102,7 +100,7 @@ impl IdentityNetworkManager {
         }
     }
 
-    pub async fn identity_pk_to_external_identity(&self, pk: SignaturePublicKey) -> Result<String, &'static str> {
+    pub async fn identity_pk_to_external_identity(&self, pk: VerifyingKey) -> Result<String, &'static str> {
         let pk_string = signature_public_key_to_string(pk);
         let identities = self.identities.lock().await;
         for (global_identity, data) in identities.iter() {
@@ -117,7 +115,7 @@ impl IdentityNetworkManager {
         let mut result = Vec::new();
         let identities = self.identities.lock().await;
 
-        for (global_identity, data) in identities.iter() {
+        for (_, data) in identities.iter() {
             if data.addr == addr {
                 result.push(NetworkIdentity {
                     node_identity_name: data.node_identity_name.clone(),

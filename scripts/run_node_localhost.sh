@@ -8,9 +8,18 @@ export IDENTITY_SECRET_KEY="df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce805
 export ENCRYPTION_SECRET_KEY="d83f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81159"
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@localhost.shinkai"
-export RUST_LOG=warn,error,info
+export RUST_LOG=debug,error,info
 export STARTING_NUM_QR_PROFILES="1"
 export STARTING_NUM_QR_DEVICES="1"
 export FIRST_DEVICE_NEEDS_REGISTRATION_CODE="false"
+export LOG_SIMPLE="true"
+export NO_SECRET_FILE="true"
+
+export INITIAL_AGENT_NAMES="o_mistral"
+export INITIAL_AGENT_URLS="http://localhost:11434"
+export INITIAL_AGENT_MODELS="ollama:mistral"
+
+# Add these lines to enable all log options
+export LOG_ALL=1
 
 cargo run

@@ -11,12 +11,6 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
 
-    // Prepare toolkit executor and example toolkit to use with rust tests
-    let output = Command::new("sh")
-        .arg("./scripts/prepare_test_toolkit_runner.sh")
-        .output()
-        .expect("TS test toolkit building and preparation failed");
-
     // Clone repo, build, and copy the Bert.cpp compiled binary server to root
     // prepare_bert_cpp();
 

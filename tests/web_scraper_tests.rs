@@ -3,7 +3,7 @@ mod tests {
     use std::{fs, path::Path, sync::Arc};
 
     use super::*;
-    use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+    use ed25519_dalek::{VerifyingKey, SigningKey};
     use mockito::Server;
     use shinkai_message_primitives::{shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, schemas::shinkai_name::ShinkaiName};
     use shinkai_node::{

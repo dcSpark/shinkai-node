@@ -1,12 +1,8 @@
 use core::fmt;
-use std::convert::TryInto;
 use std::error::Error;
-use chacha20poly1305::aead::{generic_array::GenericArray, Aead, NewAead};
-use chacha20poly1305::ChaCha20Poly1305;
 // Or use ChaCha20Poly1305Ietf
-use rand::rngs::OsRng;
-use rand::RngCore;
 use blake3::Hasher;
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use x25519_dalek::{PublicKey, StaticSecret};
 
@@ -46,9 +42,8 @@ pub fn unsafe_deterministic_encryption_keypair(n: u32) -> (StaticSecret, PublicK
 }
 
 pub fn ephemeral_encryption_keys() -> (StaticSecret, PublicKey) {
-    #[allow(deprecated)]
-    let mut csprng = rand_os::OsRng::new().unwrap();
-    let secret_key = StaticSecret::new(&mut csprng);
+    let mut csprng = OsRng;
+    let secret_key = StaticSecret::random_from_rng(&mut csprng);
     let public_key = PublicKey::from(&secret_key);
     (secret_key, public_key)
 }

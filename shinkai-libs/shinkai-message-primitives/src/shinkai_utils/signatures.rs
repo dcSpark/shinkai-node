@@ -7,53 +7,52 @@ So, you would indeed need to use a different crate (such as ed25519_dalek) to cr
 
  */
 
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature, Signer, Verifier};
-use blake3::{Hasher};
+use blake3::Hasher;
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use rand::rngs::OsRng;
+use std::convert::TryInto;
 
-use crate::shinkai_message::shinkai_message::MessageBody;
-use crate::shinkai_message::shinkai_message::MessageData;
-use crate::shinkai_message::shinkai_message::ShinkaiMessage;
-
-pub fn unsafe_deterministic_signature_keypair(n: u32) -> (SecretKey, PublicKey) {
+pub fn unsafe_deterministic_signature_keypair(n: u32) -> (SigningKey, VerifyingKey) {
     let mut hasher = blake3::Hasher::new();
     hasher.update(&n.to_le_bytes());
     let hash = hasher.finalize();
 
-    let secret_key = SecretKey::from_bytes(hash.as_bytes()).expect("Failed to create SecretKey from hash");
-    let public_key = PublicKey::from(&secret_key);
+    let secret_key = SigningKey::from_bytes(hash.as_bytes());
+    let public_key = VerifyingKey::from(&secret_key);
     (secret_key, public_key)
 }
 
-pub fn ephemeral_signature_keypair() -> (SecretKey, PublicKey) {
-    #[warn(deprecated)]
-    let mut csprng = rand_os::OsRng::new().unwrap();
-    let keypair = Keypair::generate(&mut csprng);
-    (keypair.secret, keypair.public)
+pub fn ephemeral_signature_keypair() -> (SigningKey, VerifyingKey) {
+    let mut csprng = OsRng;
+    let signing_key = SigningKey::generate(&mut csprng);
+    let verifying_key = signing_key.verifying_key();
+    (signing_key, verifying_key)
 }
 
-pub fn clone_signature_secret_key(original: &SecretKey) -> SecretKey {
-    SecretKey::from_bytes(&original.to_bytes()).unwrap()
+pub fn clone_signature_secret_key(original: &SigningKey) -> SigningKey {
+    original.clone()
 }
 
-pub fn signature_secret_key_to_string(secret_key: SecretKey) -> String {
+pub fn signature_secret_key_to_string(secret_key: SigningKey) -> String {
     let bytes = secret_key.as_bytes();
     hex::encode(bytes)
 }
 
-pub fn signature_public_key_to_string(public_key: PublicKey) -> String {
+pub fn signature_public_key_to_string(public_key: VerifyingKey) -> String {
     let bytes = public_key.as_bytes();
     hex::encode(bytes)
 }
 
-pub fn signature_public_key_to_string_ref(public_key: &PublicKey) -> String {
+pub fn signature_public_key_to_string_ref(public_key: &VerifyingKey) -> String {
     signature_public_key_to_string(public_key.clone())
 }
 
-pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SecretKey, &'static str> {
+pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SigningKey, &'static str> {
     match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == ed25519_dalek::SECRET_KEY_LENGTH {
-                SecretKey::from_bytes(&bytes).map_err(|_| "Failed to create SecretKey from bytes")
+                let bytes_array: [u8; 32] = bytes.try_into().unwrap();
+                Ok(SigningKey::from_bytes(&bytes_array))
             } else {
                 Err("Decoded string length does not match SecretKey length")
             }
@@ -62,11 +61,12 @@ pub fn string_to_signature_secret_key(encoded_key: &str) -> Result<SecretKey, &'
     }
 }
 
-pub fn string_to_signature_public_key(encoded_key: &str) -> Result<PublicKey, &'static str> {
+pub fn string_to_signature_public_key(encoded_key: &str) -> Result<VerifyingKey, &'static str> {
     match hex::decode(encoded_key) {
         Ok(bytes) => {
             if bytes.len() == ed25519_dalek::PUBLIC_KEY_LENGTH {
-                PublicKey::from_bytes(&bytes).map_err(|_| "Failed to create PublicKey from bytes")
+                let bytes_array: [u8; 32] = bytes.try_into().unwrap();
+                VerifyingKey::from_bytes(&bytes_array).map_err(|_| "Failed to create PublicKey from bytes")
             } else {
                 Err("Decoded string length does not match PublicKey length")
             }
@@ -75,7 +75,7 @@ pub fn string_to_signature_public_key(encoded_key: &str) -> Result<PublicKey, &'
     }
 }
 
-pub fn hash_signature_public_key(public_key: &PublicKey) -> String {
+pub fn hash_signature_public_key(public_key: &VerifyingKey) -> String {
     let mut hasher = Hasher::new();
     hasher.update(public_key.as_bytes());
     let hash = hasher.finalize();

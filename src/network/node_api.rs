@@ -1,10 +1,8 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
 use futures::Future;
-use futures::FutureExt;
 use futures::StreamExt;
 use futures::TryFutureExt;
-use futures::TryStreamExt;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,8 +15,6 @@ use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use warp::filters::BoxedFilter;
-use warp::reply::Reply;
 use warp::Buf;
 use warp::Filter;
 
@@ -74,17 +70,7 @@ impl From<&str> for APIError {
 
 impl warp::reject::Reject for APIError {}
 
-#[derive(Clone, Debug)]
-pub struct ExtraAPIConfig {
-    pub cron_devops_api_enabled: bool,
-    pub cron_devops_api_token: String,
-}
-
-pub async fn run_api(
-    node_commands_sender: Sender<NodeCommand>,
-    address: SocketAddr,
-    extra_config: Option<ExtraAPIConfig>,
-) {
+pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_name: String) {
     println!("Starting Node API server at: {}", &address);
 
     let log = warp::log::custom(|info| {
@@ -151,10 +137,22 @@ pub async fn run_api(
             .and_then(move |body: ConnectBody| connect_handler(node_commands_sender.clone(), body))
     };
 
+    // POST v1/add_toolkit
+    let add_toolkit = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "add_toolkit")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| add_toolkit_handler(node_commands_sender.clone(), message))
+    };
+
     // GET v1/shinkai_health
-    let shinkai_health = warp::path!("v1" / "shinkai_health")
-        .and(warp::get())
-        .and_then(shinkai_health_handler);
+    let shinkai_health = {
+        let node_name = node_name.clone();
+        warp::path!("v1" / "shinkai_health")
+            .and(warp::get())
+            .and_then(move || shinkai_health_handler(node_name.clone()))
+    };
 
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
@@ -301,6 +299,15 @@ pub async fn run_api(
             })
     };
 
+    // POST v1/change_nodes_name
+    let change_nodes_name = {
+        let node_commands_sender = node_commands_sender.clone();
+        warp::path!("v1" / "change_nodes_name")
+            .and(warp::post())
+            .and(warp::body::json::<ShinkaiMessage>())
+            .and_then(move |message: ShinkaiMessage| change_nodes_name_handler(node_commands_sender.clone(), message))
+    };
+
     // GET v1/get_all_subidentities
     let get_all_subidentities = {
         let node_commands_sender = node_commands_sender.clone();
@@ -345,43 +352,12 @@ pub async fn run_api(
             })
     };
 
-    // GET v1/private_devops_cron_list
-    let extra_config_clone = Arc::new(extra_config.clone());
-    let private_devops_cron_list = {
-        let node_commands_sender = node_commands_sender.clone();
-        let extra_config = extra_config_clone.clone();
-        warp::path!("v1" / "private_devops_cron_list")
-            .and(warp::get())
-            .and(warp::header::<String>("Authorization"))
-            .and_then(move |auth_header: String| {
-                let token = auth_header.strip_prefix("Bearer ").unwrap_or("");
-                let binding = "".to_string();
-                let expected_token = (*extra_config)
-                    .as_ref()
-                    .map(|config| &config.cron_devops_api_token)
-                    .unwrap_or(&binding);
-                if token == expected_token {
-                    Box::pin(private_devops_cron_list_handler(node_commands_sender.clone()))
-                        as Pin<Box<dyn Future<Output = Result<_, _>> + Send>>
-                } else {
-                    Box::pin(async {
-                        Err(warp::reject::custom(APIError::new(
-                            StatusCode::UNAUTHORIZED,
-                            "Unauthorized",
-                            "Invalid token",
-                        )))
-                    })
-                        as Pin<Box<dyn Future<Output = Result<Box<dyn warp::Reply>, warp::Rejection>> + Send>>
-                }
-            })
-    };
-
     let cors = warp::cors() // build the CORS filter
         .allow_any_origin() // allow requests from any origin
         .allow_methods(vec!["GET", "POST", "OPTIONS"]) // allow GET, POST, and OPTIONS methods
         .allow_headers(vec!["Content-Type", "Authorization"]); // allow the Content-Type and Authorization headers
 
-    let routes_without_private = ping_all
+    let routes = ping_all
         .or(send_msg)
         .or(get_peers)
         .or(identity_name_to_external_profile_data)
@@ -405,27 +381,11 @@ pub async fn run_api(
         .or(add_file_to_inbox_with_symmetric_key)
         .or(get_filenames)
         .or(update_job_to_finished)
+        .or(add_toolkit)
+        .or(change_nodes_name)
         .recover(handle_rejection)
         .with(log)
-        .with(cors)
-        .boxed();
-
-    let routes_without_private = routes_without_private.boxed();
-
-    let noop_route = warp::any()
-        .map(warp::reply)
-        .and_then(|reply| async move { Ok::<_, warp::Rejection>(Box::new(reply) as Box<dyn warp::Reply>) })
-        .boxed();
-
-    let routes = if let Some(config) = extra_config.clone() {
-        if config.cron_devops_api_enabled {
-            routes_without_private.or(private_devops_cron_list).boxed()
-        } else {
-            routes_without_private.or(noop_route).boxed()
-        }
-    } else {
-        routes_without_private.or(noop_route).boxed()
-    };
+        .with(cors);
 
     warp::serve(routes).run(address).await;
 
@@ -504,15 +464,31 @@ async fn ping_all_handler(node_commands_sender: Sender<NodeCommand>) -> Result<i
     }
 }
 
-async fn private_devops_cron_list_handler(
+async fn add_toolkit_handler(
     node_commands_sender: Sender<NodeCommand>,
-) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
-    handle_node_command_without_message(
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(
         node_commands_sender,
-        |node_commands_sender, res_sender| NodeCommand::APIPrivateDevopsCronList {
+        message,
+        |node_commands_sender, message, res_sender| NodeCommand::APIAddToolkit {
+            msg: message,
             res: res_sender,
         },
     )
+    .await
+}
+
+async fn change_nodes_name_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    message: ShinkaiMessage,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIChangeNodesName {
+            msg: message,
+            res: res_sender,
+        }
+    })
     .await
 }
 
@@ -670,14 +646,12 @@ async fn get_last_messages_from_inbox_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastMessagesFromInbox {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetLastMessagesFromInbox {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -685,14 +659,12 @@ async fn get_last_unread_messages_from_inbox_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetLastUnreadMessagesFromInbox {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetLastUnreadMessagesFromInbox {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -700,14 +672,12 @@ async fn get_all_inboxes_for_profile_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllInboxesForProfile {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetAllInboxesForProfile {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -715,14 +685,12 @@ async fn get_all_smart_inboxes_for_profile_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetAllSmartInboxesForProfile {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetAllSmartInboxesForProfile {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -730,14 +698,12 @@ async fn update_smart_inbox_name_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateSmartInboxName {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIUpdateSmartInboxName {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -745,14 +711,12 @@ async fn update_job_to_finished_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIUpdateJobToFinished {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIUpdateJobToFinished {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -760,14 +724,12 @@ async fn create_job_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateJob {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APICreateJob {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -775,14 +737,12 @@ async fn add_agent_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAddAgent {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIAddAgent {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -790,14 +750,12 @@ async fn available_agents_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIAvailableAgents {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIAvailableAgents {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -805,14 +763,12 @@ async fn job_message_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIJobMessage {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIJobMessage {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -820,14 +776,12 @@ async fn get_filenames_message_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIGetFilenamesInInbox {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIGetFilenamesInInbox {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -835,14 +789,12 @@ async fn mark_as_read_up_to_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APIMarkAsReadUpTo {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APIMarkAsReadUpTo {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -850,14 +802,12 @@ async fn create_files_inbox_with_symmetric_key_handler(
     node_commands_sender: Sender<NodeCommand>,
     message: ShinkaiMessage,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    handle_node_command(
-        node_commands_sender,
-        message,
-        |node_commands_sender, message, res_sender| NodeCommand::APICreateFilesInboxWithSymmetricKey {
+    handle_node_command(node_commands_sender, message, |_, message, res_sender| {
+        NodeCommand::APICreateFilesInboxWithSymmetricKey {
             msg: message,
             res: res_sender,
-        },
-    )
+        }
+    })
     .await
 }
 
@@ -891,6 +841,7 @@ async fn create_registration_code_handler(
 #[derive(Debug, Deserialize, Clone)]
 pub struct APIUseRegistrationCodeSuccessResponse {
     pub message: String,
+    pub node_name: String,
     pub encryption_public_key: String,
     pub identity_public_key: String,
 }
@@ -914,6 +865,7 @@ async fn use_registration_code_handler(
         Ok(success_response) => {
             let response = serde_json::json!({
                 "message": success_response.message,
+                "node_name": success_response.node_name,
                 "encryption_public_key": success_response.encryption_public_key,
                 "identity_public_key": success_response.identity_public_key
             });
@@ -926,9 +878,11 @@ async fn use_registration_code_handler(
     }
 }
 
-async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
+async fn shinkai_health_handler(node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let version = env!("CARGO_PKG_VERSION");
-    Ok(warp::reply::json(&json!({ "status": "ok", "version": version })))
+    Ok(warp::reply::json(
+        &json!({ "status": "ok", "version": version, "node_name": node_name }),
+    ))
 }
 
 async fn get_all_subidentities_handler(

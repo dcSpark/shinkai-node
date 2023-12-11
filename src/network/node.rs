@@ -2,14 +2,11 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use log::{debug, error, info, trace, warn};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::schemas::inbox_name::InboxNameError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_error::ShinkaiMessageError;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
     IdentityPermissions, JobToolCall, RegistrationCodeType,
 };
@@ -22,14 +19,13 @@ use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
 use crate::db::ShinkaiDB;
-use crate::managers::identity_manager::{self};
 use crate::managers::IdentityManager;
 use crate::network::node_message_handlers::{
     extract_message, handle_based_on_message_content_and_encryption, ping_pong, verify_message_signature, PingPong,
@@ -45,7 +41,7 @@ pub enum NodeCommand {
     // Command to make the node ping all the other nodes it knows about.
     PingAll,
     // Command to request the node's public keys for signing and encryption. The sender will receive the keys.
-    GetPublicKeys(Sender<(SignaturePublicKey, EncryptionPublicKey)>),
+    GetPublicKeys(Sender<(VerifyingKey, EncryptionPublicKey)>),
     // Command to make the node send a `ShinkaiMessage` in an onionized (i.e., anonymous and encrypted) way.
     SendOnionizedMessage {
         msg: ShinkaiMessage,
@@ -225,7 +221,19 @@ pub enum NodeCommand {
     },
     APIPrivateDevopsCronList {
         res: Sender<Result<String, APIError>>,
-    }
+    },
+    APIAddToolkit {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIListToolkits {
+        msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    },
+    APIChangeNodesName {
+        msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    },
 }
 
 // A type alias for a string that represents a profile name.
@@ -236,9 +244,9 @@ pub struct Node {
     // The profile name of the node.
     pub node_profile_name: ShinkaiName,
     // The secret key used for signing operations.
-    pub identity_secret_key: SignatureStaticKey,
+    pub identity_secret_key: SigningKey,
     // The public key corresponding to `identity_secret_key`.
-    pub identity_public_key: SignaturePublicKey,
+    pub identity_public_key: VerifyingKey,
     // The secret key used for encryption and decryption.
     pub encryption_secret_key: EncryptionStaticKey,
     // The public key corresponding to `encryption_secret_key`.
@@ -263,6 +271,8 @@ pub struct Node {
     pub job_manager: Option<Arc<Mutex<JobManager>>>,
     // Cron Manager
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
+    // JS Toolkit Executor Remote
+    pub js_toolkit_executor_remote: Option<String>,
 }
 
 impl Node {
@@ -271,13 +281,14 @@ impl Node {
     pub async fn new(
         node_profile_name: String,
         listen_address: SocketAddr,
-        identity_secret_key: SignatureStaticKey,
+        identity_secret_key: SigningKey,
         encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
         db_path: String,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
+        js_toolkit_executor_remote: Option<String>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -285,7 +296,7 @@ impl Node {
             Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
         }
 
-        let identity_public_key = SignaturePublicKey::from(&identity_secret_key);
+        let identity_public_key = identity_secret_key.verifying_key();
         let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
@@ -327,6 +338,7 @@ impl Node {
             cron_manager: None,
             first_device_needs_registration_code,
             initial_agents,
+            js_toolkit_executor_remote,
         }
     }
 
@@ -376,7 +388,7 @@ impl Node {
         let mut commands_clone = self.commands.clone();
         // TODO: here we can create a task to check the blockchain for new peers and update our list
         let check_peers_interval_secs = 5;
-        let mut check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
+        let _check_peers_interval = async_std::stream::interval(Duration::from_secs(check_peers_interval_secs));
 
         loop {
             let ping_future = ping_interval.next().fuse();
@@ -388,9 +400,9 @@ impl Node {
             pin_mut!(ping_future, commands_future, retry_future);
 
             select! {
-                    retry = retry_future => self.retry_messages().await?,
-                    listen = listen_future => unreachable!(),
-                    ping = ping_future => self.ping_all().await?,
+                    _retry = retry_future => self.retry_messages().await?,
+                    _listen = listen_future => unreachable!(),
+                    _ping = ping_future => self.ping_all().await?,
                     // check_peers = check_peers_future => self.connect_new_peers().await?,
                     command = commands_future => {
                         match command {
@@ -414,7 +426,7 @@ impl Node {
                             Some(NodeCommand::RemoveInboxPermission { inbox_name, perm_type, identity, res }) => self.local_remove_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
-                            Some(NodeCommand::JobMessage { shinkai_message, res }) => self.internal_job_message(shinkai_message).await?,
+                            Some(NodeCommand::JobMessage { shinkai_message, res: _ }) => self.internal_job_message(shinkai_message).await?,
                             Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
                             Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
@@ -439,6 +451,9 @@ impl Node {
                             Some(NodeCommand::APIUpdateSmartInboxName { msg, res }) => self.api_update_smart_inbox_name(msg, res).await?,
                             Some(NodeCommand::APIUpdateJobToFinished { msg, res }) => self.api_update_job_to_finished(msg, res).await?,
                             Some(NodeCommand::APIPrivateDevopsCronList { res }) => self.api_private_devops_cron_list(res).await?,
+                            Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
+                            Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
+                            Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
                             _ => break,
                         }
                     }
@@ -769,7 +784,7 @@ impl Node {
         bytes: &[u8],
         my_node_profile_name: String,
         my_encryption_secret_key: EncryptionStaticKey,
-        my_signature_secret_key: SignatureStaticKey,
+        my_signature_secret_key: SigningKey,
         maybe_db: Arc<Mutex<ShinkaiDB>>,
         maybe_identity_manager: Arc<Mutex<IdentityManager>>,
     ) -> Result<(), NodeError> {

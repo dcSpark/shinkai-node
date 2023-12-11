@@ -1,7 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use core::panic;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -88,7 +88,7 @@ fn subidentity_registration() {
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let mut node1 = Node::new_text(
+        let mut node1 = Node::new(
             node1_identity_name.to_string(),
             addr1,
             clone_signature_secret_key(&node1_identity_sk),
@@ -98,10 +98,11 @@ fn subidentity_registration() {
             node1_db_path,
             true,
             vec![],
+            None
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
-        let mut node2 = Node::new_text(
+        let mut node2 = Node::new(
             node2_identity_name.to_string(),
             addr2,
             clone_signature_secret_key(&node2_identity_sk),
@@ -111,6 +112,7 @@ fn subidentity_registration() {
             node2_db_path,
             true,
             vec![],
+            None
         );
 
         // Printing

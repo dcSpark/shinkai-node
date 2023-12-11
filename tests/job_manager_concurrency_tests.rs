@@ -1,25 +1,21 @@
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
-use futures::Future;
+use ed25519_dalek::{VerifyingKey, SigningKey};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_message_primitives::{
-    schemas::shinkai_name::{ShinkaiName, ShinkaiNameError},
+    schemas::shinkai_name::ShinkaiName,
     shinkai_message::{
-        shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
-        shinkai_message_schemas::{JobCreationInfo, JobMessage, JobPreMessage, MessageSchemaType},
+        shinkai_message::ShinkaiMessage,
+        shinkai_message_schemas::{JobMessage, MessageSchemaType},
     },
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_node::agent::job_manager::JobManager;
 use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::ShinkaiDB;
-use std::collections::HashSet;
-use std::pin::Pin;
 use std::result::Result::Ok;
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, error::Error, sync::Arc};
@@ -31,7 +27,7 @@ mod utils;
 fn generate_message_with_text(
     content: String,
     my_encryption_secret_key: EncryptionStaticKey,
-    my_signature_secret_key: SignatureStaticKey,
+    my_signature_secret_key: SigningKey,
     receiver_public_key: EncryptionPublicKey,
     recipient_subidentity_name: String,
     origin_destination_identity_name: String,
@@ -80,7 +76,7 @@ async fn test_process_job_queue_concurrency() {
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
-    let mock_processing_fn = |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SignatureStaticKey| {
+    let mock_processing_fn = |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SigningKey| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,
@@ -175,7 +171,7 @@ async fn test_sequnetial_process_for_same_job_id() {
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
-    let mock_processing_fn = |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SignatureStaticKey| {
+    let mock_processing_fn = |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SigningKey| {
         Box::pin(async move {
             shinkai_log(
                 ShinkaiLogOption::Tests,

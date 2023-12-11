@@ -1,4 +1,6 @@
-use std::{convert::TryInto, sync::Arc};
+use serde_json::Value as JsonValue;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use super::{
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
@@ -15,6 +17,8 @@ use crate::{
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
+    tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
+    utils::update_global_identity::update_global_identity_name
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
@@ -22,7 +26,7 @@ use aes_gcm::KeyInit;
 use async_channel::Sender;
 use async_std::eprint;
 use blake3::Hasher;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::VerifyingKey;
 use futures::task::{Context, Poll};
 use futures::Stream;
 use futures::StreamExt;
@@ -830,6 +834,7 @@ impl Node {
                             Ok(_) => {
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
+                                    node_name: self.node_profile_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -934,6 +939,7 @@ impl Node {
 
                                 let success_response = APIUseRegistrationCodeSuccessResponse {
                                     message: success,
+                                    node_name: self.node_profile_name.get_node_name().clone(),
                                     encryption_public_key: encryption_public_key_to_string(
                                         self.encryption_public_key.clone(),
                                     ),
@@ -1350,6 +1356,248 @@ impl Node {
         }
     }
 
+    pub async fn api_add_toolkit(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, sender_subidentity) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?;
+
+        let hex_blake3_hash = msg.get_message_content()?;
+
+        let files = {
+            let db_lock = self.db.lock().await;
+            match db_lock.get_all_files_from_inbox(hex_blake3_hash) {
+                Ok(files) => files,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("{}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            }
+        };
+
+        let header_file = files.iter().find(|(name, _)| name.ends_with(".json"));
+        let packaged_toolkit = files.iter().find(|(name, _)| name.ends_with(".js"));
+
+        if header_file.is_none() || packaged_toolkit.is_none() {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: "Required file is missing".to_string(),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+
+        // get and validate packaged_toolkit
+        let toolkit_file = String::from_utf8(packaged_toolkit.unwrap().1.clone());
+        if let Err(err) = toolkit_file {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("{}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let toolkit_file = toolkit_file.unwrap();
+
+        // Get and validate header values file
+        let header_values_json = match String::from_utf8(header_file.unwrap().1.clone()) {
+            Ok(s) => s,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+        let header_values = serde_json::from_str(&header_values_json).unwrap_or(JsonValue::Null);
+
+        // initialize the executor (locally or remotely depending on ENV)
+        let executor_result = match &self.js_toolkit_executor_remote {
+            Some(remote_address) => JSToolkitExecutor::new_remote(remote_address.clone()).await,
+            None => JSToolkitExecutor::new_local().await,
+        };
+
+        let executor = match executor_result {
+            Ok(executor) => executor,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Generate toolkit json from JS source code
+        let toolkit = executor.submit_toolkit_json_request(&toolkit_file).await;
+        if let Err(err) = toolkit {
+            let api_error = APIError {
+                code: StatusCode::BAD_REQUEST.as_u16(),
+                error: "User Error".to_string(),
+                message: format!("{}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let toolkit = toolkit.unwrap();
+
+        {
+            eprintln!("api_add_toolkit> toolkit tool structs: {:?}", toolkit);
+            let db_lock = self.db.lock().await;
+            let init_result = db_lock.init_profile_tool_structs(&profile);
+            if let Err(err) = init_result {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            eprintln!("api_add_toolkit> profile install toolkit: {:?}", profile);
+            let install_result = db_lock.install_toolkit(&toolkit, &profile);
+            if let Err(err) = install_result {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            eprintln!(
+                "api_add_toolkit> profile setting toolkit header values: {:?}",
+                header_values
+            );
+            let set_header_result = db_lock
+                .set_toolkit_header_values(
+                    &toolkit.name.clone(),
+                    &profile.clone(),
+                    &header_values.clone(),
+                    &executor,
+                )
+                .await;
+            if let Err(err) = set_header_result {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+
+            // Instantiate a RemoteEmbeddingGenerator to generate embeddings for the tools being added to the node
+            let embedding_generator = Box::new(RemoteEmbeddingGenerator::new_default());
+            eprintln!("api_add_toolkit> profile activating toolkit: {}", toolkit.name);
+            let activate_toolkit_result = db_lock
+                .activate_toolkit(&toolkit.name.clone(), &profile.clone(), &executor, embedding_generator)
+                .await;
+            if let Err(err) = activate_toolkit_result {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("{}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        }
+        let _ = res.send(Ok("Toolkit installed successfully".to_string())).await;
+        Ok(())
+    }
+
+    pub async fn api_list_toolkits(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<String, APIError>>,
+    ) -> Result<(), NodeError> {
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let (msg, _) = match validation_result {
+            Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        let profile = ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone())?.extract_profile();
+        if let Err(err) = profile {
+            let api_error = APIError {
+                code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                error: "Internal Server Error".to_string(),
+                message: format!("{}", err),
+            };
+            let _ = res.send(Err(api_error)).await;
+            return Ok(());
+        }
+        let profile = profile.unwrap();
+        let toolkit_map;
+        {
+            let db_lock = self.db.lock().await;
+            toolkit_map = match db_lock.get_installed_toolkit_map(&profile) {
+                Ok(t) => t,
+                Err(err) => {
+                    let _ = res
+                        .send(Err(APIError {
+                            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                            error: "Internal Server Error".to_string(),
+                            message: format!("{}", err),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+            };
+        }
+
+        // Convert the toolkit_map into a JSON string
+        let toolkit_map_json = match serde_json::to_string(&toolkit_map) {
+            Ok(json) => json,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("Failed to convert toolkit map to JSON: {}", err),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        let _ = res.send(Ok(toolkit_map_json)).await;
+        Ok(())
+    }
+
     pub async fn api_update_job_to_finished(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1526,7 +1774,11 @@ impl Node {
             }
         };
 
-        eprintln!("api_job_message> msg: {:?}", msg);
+        shinkai_log(
+            ShinkaiLogOption::DetailedAPI,
+            ShinkaiLogLevel::Debug,
+            format!("api_job_message> msg: {:?}", msg).as_str(),
+        );
         // TODO: add permissions to check if the sender has the right permissions to send the job message
 
         match self.internal_job_message(msg).await {
@@ -1850,6 +2102,67 @@ impl Node {
         }
     }
 
+    pub async fn api_change_nodes_name(
+        &self,
+        potentially_encrypted_msg: ShinkaiMessage,
+        res: Sender<Result<(), APIError>>,
+    ) -> Result<(), NodeError> {
+        // TODO: check if name is valid and exists in the blockchain
+        // Send message back to the API
+        // 1 sec later? panic! and exit the program
+        // Validate the message
+
+        let validation_result = self
+            .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
+            .await;
+        let msg = match validation_result {
+            Ok((msg, _)) => msg,
+            Err(api_error) => {
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        // Decrypt the message
+        let decrypted_msg = msg.decrypt_outer_layer(&self.encryption_secret_key, &self.encryption_public_key)?;
+
+        // Extract the content of the message
+        let new_node_name = decrypted_msg.get_message_content()?;
+
+        // Check that new_node_name is valid
+        let new_node_name = match ShinkaiName::from_node_name(new_node_name) {
+            Ok(name) => name,
+            Err(_) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::BAD_REQUEST.as_u16(),
+                        error: "Bad Request".to_string(),
+                        message: "Invalid node name".to_string(),
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
+
+        // Write to .secret file
+        match update_global_identity_name(new_node_name.get_node_name().as_str()) {
+            Ok(_) => {
+                let _ = res.send(Ok(())).await;
+                panic!("Node name changed successfully. Restarting server...");
+            }
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Internal Server Error".to_string(),
+                        message: format!("{}", err),
+                    }))
+                    .await;
+            }
+        };
+        Ok(())
+    }
+
     pub async fn api_handle_send_onionized_message(
         &self,
         potentially_encrypted_msg: ShinkaiMessage,
@@ -1857,6 +2170,16 @@ impl Node {
     ) -> Result<(), NodeError> {
         // This command is used to send messages that are already signed and (potentially) encrypted
         eprintln!("handle_onionized_message msg: {:?}", potentially_encrypted_msg);
+        if self.node_profile_name.get_node_name() == "@@localhost.shinkai" {
+            let _ = res
+                .send(Err(APIError {
+                    code: StatusCode::BAD_REQUEST.as_u16(),
+                    error: "Bad Request".to_string(),
+                    message: "Invalid node name: @@localhost.shinkai".to_string(),
+                }))
+                .await;
+            return Ok(());
+        }
 
         let validation_result = self.validate_message(potentially_encrypted_msg, None).await;
         let (mut msg, _) = match validation_result {

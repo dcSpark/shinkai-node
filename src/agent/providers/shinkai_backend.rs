@@ -12,6 +12,29 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInte
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use tiktoken_rs::model::get_context_size;
 
+fn truncate_image_url_in_payload(payload: &mut JsonValue) {
+    if let Some(messages) = payload.get_mut("messages") {
+        if let Some(array) = messages.as_array_mut() {
+            for message in array {
+                if let Some(content) = message.get_mut("content") {
+                    if let Some(array) = content.as_array_mut() {
+                        for item in array {
+                            if let Some(image_url) = item.get_mut("image_url") {
+                                if let Some(url) = image_url.get_mut("url") {
+                                    if let Some(str_url) = url.as_str() {
+                                        let truncated_url = format!("{}...", &str_url[0..20.min(str_url.len())]);
+                                        *url = JsonValue::String(truncated_url);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl LLMProvider for ShinkaiBackend {
     async fn call_api(
@@ -54,10 +77,12 @@ impl LLMProvider for ShinkaiBackend {
                     payload["response_format"] = json!({ "type": "json_object" });
                 }
 
+                let mut payload_log = payload.clone();
+                truncate_image_url_in_payload(&mut payload_log);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", payload).as_str(),
+                    format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
                 let request = client

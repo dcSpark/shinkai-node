@@ -1,17 +1,13 @@
-use reqwest::header;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
 use shinkai_node::tools::router::ShinkaiTool;
-use shinkai_node::tools::rust_tools::RUST_TOOLKIT;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::vector_resource::VectorResource;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-
 fn setup() {
     let path = Path::new("db_tests/");
     let _ = fs::remove_dir_all(&path);
@@ -27,16 +23,16 @@ fn default_toolkit_json() -> JsonValue {
     parsed_json
 }
 
-fn default_toolkit_header_values() -> HashMap<String, String> {
-    let mut header_values = HashMap::new();
-    header_values.insert("x-shinkai-api-key".to_string(), "example".to_string());
-    header_values.insert("x-shinkai-example-bool".to_string(), "true".to_string());
-
-    header_values
+async fn default_toolkit_header_values() -> Result<JsonValue, Box<dyn std::error::Error>> {
+    // Ok(JsonValue::Null)
+    let path = "./files/example-toolkit-setup.json";
+    let data = tokio::fs::read_to_string(path).await?;
+    let header_values = serde_json::from_str(&data).unwrap_or(JsonValue::Null);
+    Ok(header_values)
 }
 
 fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
-    let path = "./files/packaged-shinkai-toolkit.js";
+    let path = "./files/example-packaged-shinkai-toolkit.js";
     let data = std::fs::read_to_string(path)?;
     Ok(data)
 }
@@ -58,48 +54,49 @@ fn test_default_js_toolkit_json_parsing() {
     assert_eq!(toolkit.author, "Shinkai Team".to_string());
 }
 
-#[test]
-fn test_js_toolkit_execution() {
+#[tokio::test]
+async fn test_js_toolkit_execution() {
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
     // Create the executor
-    let executor = JSToolkitExecutor::new_local().unwrap();
+    let executor = JSToolkitExecutor::new_local().await.unwrap();
 
     // Test submit_toolkit_json_request
-    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
-    assert_eq!(&toolkit.name, "toolkit-example");
+    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).await.unwrap();
+    assert_eq!(&toolkit.name, "@shinkai_network/toolkit-example");
     assert_eq!(toolkit.tools.len(), 2);
 
     // Test submit_headers_validation_request
-    let header_values = &default_toolkit_header_values();
+    let header_values = &default_toolkit_header_values().await.unwrap();
     let headers_validation_result = executor
         .submit_headers_validation_request(&toolkit_js_code, &header_values)
+        .await
         .unwrap();
-
     // Test submit_tool_execution_request
     let tool = "isEven";
     let input_data = &serde_json::json!({"number": 56});
     let tool_execution_result = executor
         .submit_tool_execution_request(tool, input_data, &toolkit_js_code, &header_values)
+        .await
         .unwrap();
 
     assert_eq!(tool_execution_result.result[0].output.as_bool().unwrap(), true);
     assert_eq!(tool_execution_result.tool, "isEven");
 }
 
-#[test]
-fn test_toolkit_installation_and_retrieval() {
+#[tokio::test]
+async fn test_toolkit_installation_and_retrieval() {
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
     // Create the executor
-    let executor = JSToolkitExecutor::new_local().unwrap();
+    let executor = JSToolkitExecutor::new_local().await.unwrap();
 
     // Test submit_toolkit_json_request
-    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
+    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).await.unwrap();
 
     // Install the toolkit
     let db_path = format!("db_tests/{}", "toolkit");
@@ -120,8 +117,8 @@ fn test_toolkit_installation_and_retrieval() {
     assert!(fetched_toolkit.is_err());
 }
 
-#[test]
-fn test_tool_router_and_toolkit_flow() {
+#[tokio::test]
+async fn test_tool_router_and_toolkit_flow() {
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();
@@ -130,10 +127,10 @@ fn test_tool_router_and_toolkit_flow() {
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
 
     // Create the executor
-    let executor = JSToolkitExecutor::new_local().unwrap();
+    let executor = JSToolkitExecutor::new_local().await.unwrap();
 
     // Test submit_toolkit_json_request
-    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).unwrap();
+    let toolkit = executor.submit_toolkit_json_request(&toolkit_js_code).await.unwrap();
 
     // Install the toolkit
     let db_path = format!("db_tests/{}", "toolkit");
@@ -145,40 +142,54 @@ fn test_tool_router_and_toolkit_flow() {
 
     // Set headers and activate the toolkit to add it to the tool router
     shinkai_db
-        .set_toolkit_header_values(&toolkit.name, &profile, &default_toolkit_header_values(), &executor)
+        .set_toolkit_header_values(
+            &toolkit.name,
+            &profile,
+            &default_toolkit_header_values().await.unwrap(),
+            &executor,
+        )
+        .await
         .unwrap();
+    println!("passed setting");
     shinkai_db
         .activate_toolkit(&toolkit.name, &profile, &executor, Box::new(generator.clone()))
+        .await
         .unwrap();
+    println!("passed activating");
 
     // Retrieve the tool router
     let tool_router = shinkai_db.get_tool_router(&profile).unwrap();
+    println!("passed tool router");
 
     // Vector Search
     let query = generator
-        .generate_embedding_default_blocking("Is 25 an odd or even number?")
+        .generate_embedding_default("Is 25 an odd or even number?")
+        .await
         .unwrap();
     let results1 = tool_router.vector_search(query, 10);
     assert_eq!(results1[0].name(), "isEven");
 
     let query = generator
-        .generate_embedding_default_blocking("I want to multiply 500 x 1523 and see if it is greater than 50000")
+        .generate_embedding_default("I want to multiply 500 x 1523 and see if it is greater than 50000")
+        .await
         .unwrap();
     let results2 = tool_router.vector_search(query, 1);
     assert_eq!(results2[0].name(), "CompareNumbers");
 
     let query = generator
-        .generate_embedding_default_blocking(
+        .generate_embedding_default(
             "Send a message to @@alice.shinkai asking her what the status is on the project estimates.",
         )
+        .await
         .unwrap();
     let results3 = tool_router.vector_search(query, 10);
     assert_eq!(results3[0].name(), "Send_Message");
 
     let query = generator
-        .generate_embedding_default_blocking(
+        .generate_embedding_default(
             "Search through my documents and find the pdf with the March company financial report.",
         )
+        .await
         .unwrap();
     let results4 = tool_router.vector_search(query, 10);
     // assert_eq!(results4[0].name(), "User_Data_Vector_Search");
@@ -211,7 +222,7 @@ fn test_tool_router_and_toolkit_flow() {
 
 //     for t in RUST_TOOLKIT.rust_tool_map.values() {
 //         let tool = ShinkaiTool::Rust(t.clone());
-//         let embedding = generator.generate_embedding_default_blocking(&tool.format_embedding_string()).unwrap();
+//         let embedding = generator.generate_embedding_default(&tool.format_embedding_string()).await.unwrap();
 
 //         println!("{}\n{:?}\n\n", tool.name(), embedding.vector)
 //     }

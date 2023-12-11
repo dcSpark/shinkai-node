@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::db::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::tools::error::ToolError;
@@ -7,8 +5,10 @@ use crate::tools::js_toolkit::{InstalledJSToolkitMap, JSToolkit, JSToolkitInfo};
 use crate::tools::js_toolkit_executor::JSToolkitExecutor;
 use crate::tools::router::{ShinkaiTool, ToolRouter};
 use serde_json::from_str;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
+use std::collections::HashMap;
 
 impl ShinkaiDB {
     /// Prepares the `JSToolkit` for saving into the ShinkaiDB.
@@ -79,11 +79,15 @@ impl ShinkaiDB {
 
     /// Fetches the `InstalledJSToolkitMap` from the DB (for the provided profile)
     pub fn get_installed_toolkit_map(&self, profile: &ShinkaiName) -> Result<InstalledJSToolkitMap, ShinkaiDBError> {
-        let bytes = self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::shinkai_db_key(), profile)?;
-        let json_str = std::str::from_utf8(&bytes)?;
-
-        let toolkit_map: InstalledJSToolkitMap = from_str(json_str)?;
-        Ok(toolkit_map)
+        match self.get_cf_pb(Topic::Toolkits, &InstalledJSToolkitMap::shinkai_db_key(), profile) {
+            Ok(bytes) => {
+                let json_str = std::str::from_utf8(&bytes)?;
+                let toolkit_map: InstalledJSToolkitMap = from_str(json_str)?;
+                Ok(toolkit_map)
+            }
+            Err(ShinkaiDBError::FailedFetchingValue) => Ok(InstalledJSToolkitMap::new()), // Return an empty map
+            Err(e) => Err(e),                                                             // Propagate other errors
+        }
     }
 
     /// Fetches the `JSToolkit` from the DB (for the provided profile and toolkit name)
@@ -118,7 +122,7 @@ impl ShinkaiDB {
     /// Activates a JSToolkit and then propagating the internal tools to the ToolRouter. Of note,
     /// this function validates the toolkit headers values are available in DB (or errors), thus after installing
     /// a toolkit they must be set before calling activate.
-    pub fn activate_toolkit(
+    pub async fn activate_toolkit(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
@@ -134,7 +138,9 @@ impl ShinkaiDB {
         // 2. Check that the toolkit headers are set and validate
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         let header_values = self.get_toolkit_header_values(toolkit_name, profile)?;
-        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values)?;
+        toolkit_executor
+            .submit_headers_validation_request(&toolkit.js_code, &header_values)
+            .await?;
 
         // 3. Propagate the internal tools to the ToolRouter
         // TODO: Use a write batch for 3/4
@@ -142,8 +148,9 @@ impl ShinkaiDB {
 
         for tool in toolkit.tools {
             let js_tool = ShinkaiTool::JS(tool);
-            let embedding =
-                embedding_generator.generate_embedding_default_blocking(&js_tool.format_embedding_string())?;
+            let embedding = embedding_generator
+                .generate_embedding_default(&js_tool.format_embedding_string())
+                .await?;
             tool_router.add_shinkai_tool(&js_tool, embedding)?;
         }
 
@@ -182,16 +189,18 @@ impl ShinkaiDB {
 
     /// Sets the toolkit's header values in the db (to be used when a tool in the toolkit is executed).
     /// Of note, this replaces any previous header values that were in the DB.
-    pub fn set_toolkit_header_values(
+    pub async fn set_toolkit_header_values(
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
-        header_values: &HashMap<String, String>,
+        header_values: &JsonValue,
         toolkit_executor: &JSToolkitExecutor,
     ) -> Result<(), ShinkaiDBError> {
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
         // 1. Test the header values by using them with the validation function in the JS toolkit executor
-        toolkit_executor.submit_headers_validation_request(&toolkit.js_code, &header_values)?;
+        toolkit_executor
+            .submit_headers_validation_request(&toolkit.js_code, header_values)
+            .await?;
 
         // 2. Validate that the header_values keys cover the header definitions in the toolkit.
         // If so, save the header values in the db
@@ -210,8 +219,18 @@ impl ShinkaiDB {
             }
         }
 
-        // 3. Write the batch to the DB
+        // 3. Updates the headers_set of the toolkit in the map
+        let mut toolkit_map = self.get_installed_toolkit_map(profile)?;
+        toolkit_map.update_headers_set(toolkit_name, true)?;
+        let (bytes, cf) = self._prepare_profile_toolkit_map(&toolkit_map, profile)?;
+        pb_batch.put_cf_pb(cf, &InstalledJSToolkitMap::shinkai_db_key(), bytes);
+
+        // 4. Write the batch to the DB
         self.write_pb(pb_batch)?;
+        eprintln!(
+            "set_toolkit_header_values> profile set header values: {:?}",
+            header_values
+        );
 
         Ok(())
     }
@@ -221,17 +240,18 @@ impl ShinkaiDB {
         &self,
         toolkit_name: &str,
         profile: &ShinkaiName,
-    ) -> Result<HashMap<String, String>, ShinkaiDBError> {
+    ) -> Result<JsonValue, ShinkaiDBError> {
         let toolkit = self.get_toolkit(toolkit_name, profile)?;
-        let mut header_values = HashMap::new();
+        let mut header_values = serde_json::Map::new();
 
         for header in toolkit.header_definitions {
             let bytes = self.get_cf_pb(Topic::Toolkits, &header.shinkai_db_key(&toolkit_name), profile)?;
-            let value = std::str::from_utf8(&bytes)?;
-            header_values.insert(header.header().clone(), value.to_string());
+            let value_str = std::str::from_utf8(&bytes)?;
+            let value: JsonValue = serde_json::from_str(value_str)?;
+            header_values.insert(header.header().clone(), value);
         }
 
-        Ok(header_values)
+        Ok(JsonValue::Object(header_values))
     }
 
     /// Installs a provided JSToolkit, and saving it to the profile-wide Installed Toolkit List.

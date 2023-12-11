@@ -8,3 +8,4 @@ pub mod tools;
 pub mod utils;
 pub mod cron_tasks;
 pub mod planner;
+pub mod crypto_identities;

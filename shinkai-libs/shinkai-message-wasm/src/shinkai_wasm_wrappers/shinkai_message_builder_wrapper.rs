@@ -3,7 +3,7 @@ use crate::shinkai_wasm_wrappers::{
     shinkai_wasm_error::{ShinkaiWasmError, WasmErrorWrapper},
     wasm_shinkai_message::SerdeWasmMethods,
 };
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use js_sys::Uint8Array;
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::{from_value, to_value};
@@ -424,7 +424,7 @@ impl ShinkaiMessageBuilderWrapper {
         let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
         let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
 
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let registration_code = RegistrationCode {
@@ -476,9 +476,9 @@ impl ShinkaiMessageBuilderWrapper {
         let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
         let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
 
-        let my_subidentity_signature_pk = ed25519_dalek::PublicKey::from(&my_subidentity_signature_sk_type);
+        let my_subidentity_signature_pk = my_subidentity_signature_sk_type.verifying_key();
         let my_subidentity_encryption_pk = x25519_dalek::PublicKey::from(&my_subidentity_encryption_sk_type);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_subidentity_encryption_pk);
@@ -526,9 +526,9 @@ impl ShinkaiMessageBuilderWrapper {
         let profile_encryption_sk_type = string_to_encryption_static_key(&profile_encryption_sk)?;
         let profile_signature_sk_type = string_to_signature_secret_key(&profile_signature_sk)?;
 
-        let my_device_signature_pk = ed25519_dalek::PublicKey::from(&my_device_signature_sk_type);
+        let my_device_signature_pk = my_device_signature_sk_type.verifying_key();
         let my_device_encryption_pk = x25519_dalek::PublicKey::from(&my_device_encryption_sk_type);
-        let profile_signature_pk = ed25519_dalek::PublicKey::from(&profile_signature_sk_type);
+        let profile_signature_pk = profile_signature_sk_type.verifying_key();
         let profile_encryption_pk = x25519_dalek::PublicKey::from(&profile_encryption_sk_type);
 
         let other = encryption_public_key_to_string(my_device_encryption_pk);
@@ -915,10 +915,15 @@ fn convert_jsvalue_to_encryptionstatickey(val: JsValue) -> Result<EncryptionStat
     Ok(EncryptionStaticKey::from(bytes))
 }
 
-fn convert_jsvalue_to_signaturestatickey(val: JsValue) -> Result<SignatureStaticKey, JsValue> {
+fn convert_jsvalue_to_signaturestatickey(val: JsValue) -> Result<SigningKey, JsValue> {
     let arr: Uint8Array = val.dyn_into()?;
     let bytes: Vec<u8> = arr.to_vec();
-    Ok(SignatureStaticKey::from_bytes(&bytes).map_err(|_| JsValue::from_str("Invalid signature key"))?)
+    if bytes.len() != 32 {
+        return Err(JsValue::from_str("Invalid length for signature key"));
+    }
+    let mut array = [0u8; 32];
+    array.copy_from_slice(&bytes);
+    Ok(SigningKey::from_bytes(&array))
 }
 
 fn convert_jsvalue_to_encryptionpublickey(val: JsValue) -> Result<EncryptionPublicKey, JsValue> {
