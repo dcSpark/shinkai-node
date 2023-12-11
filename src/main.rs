@@ -7,8 +7,7 @@ use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use network::node_api::ExtraAPIConfig;
+use ed25519_dalek::VerifyingKey;
 use network::Node;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -19,8 +18,9 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use std::collections::HashMap;
-use std::{env, fs};
+use std::path::Path;
 use std::sync::Arc;
+use std::{env, fs};
 use tokio::runtime::Runtime;
 
 mod agent;
@@ -40,11 +40,15 @@ fn initialize_runtime() -> Runtime {
 }
 
 fn get_db_path(identity_public_key: &VerifyingKey) -> String {
-    format!("db/{}", hash_signature_public_key(identity_public_key))
+    Path::new("db")
+        .join(hash_signature_public_key(identity_public_key))
+        .into_os_string()
+        .into_string()
+        .unwrap()
 }
 
 fn parse_secret_file() -> HashMap<String, String> {
-    let contents = fs::read_to_string(".secret").unwrap_or_default();
+    let contents = fs::read_to_string(Path::new("db").join(".secret")).unwrap_or_default();
     contents
         .lines()
         .map(|line| {
@@ -129,7 +133,7 @@ fn main() {
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
     if !node_env.no_secret_file {
-        std::fs::write(".secret", secret_content).expect("Unable to write to .secret file");
+        std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
     }
 
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
@@ -176,14 +180,9 @@ fn main() {
             let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
 
-        let extra_api_config = ExtraAPIConfig {
-            cron_devops_api_enabled: node_env.cron_devops_api_enabled,
-            cron_devops_api_token: node_env.cron_devops_api_token.clone(),
-        };
-
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address, Some(extra_api_config)).await;
+            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
         });
 
         let _ = tokio::try_join!(api_server, node_task);

@@ -1,13 +1,17 @@
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::shinkai_utils::{
-    encryption::{ephemeral_encryption_keys, string_to_encryption_static_key, clone_static_secret_key, encryption_secret_key_to_string},
+    encryption::{
+        clone_static_secret_key, encryption_secret_key_to_string, ephemeral_encryption_keys,
+        string_to_encryption_static_key,
+    },
     shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
     signatures::{
         clone_signature_secret_key, ephemeral_signature_keypair, signature_secret_key_to_string,
         string_to_signature_secret_key,
     },
 };
-use std::{env, fs, collections::HashMap};
+use std::path::Path;
+use std::{collections::HashMap, env, fs};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 pub struct NodeKeys {
@@ -19,7 +23,7 @@ pub struct NodeKeys {
 
 pub fn generate_or_load_keys() -> NodeKeys {
     // First check for .secret file
-    if let Ok(contents) = fs::read_to_string(".secret") {
+    if let Ok(contents) = fs::read_to_string(Path::new("db").join(".secret")) {
         // Parse the contents of the file
         let lines: HashMap<_, _> = contents
             .lines()
@@ -30,8 +34,9 @@ pub fn generate_or_load_keys() -> NodeKeys {
             .collect();
 
         // Use the values from the file if they exist
-        if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) = 
-            (lines.get("IDENTITY_SECRET_KEY"), lines.get("ENCRYPTION_SECRET_KEY")) {
+        if let (Some(identity_secret_key_string), Some(encryption_secret_key_string)) =
+            (lines.get("IDENTITY_SECRET_KEY"), lines.get("ENCRYPTION_SECRET_KEY"))
+        {
             // Convert the strings back to secret keys
             let identity_secret_key = string_to_signature_secret_key(identity_secret_key_string).unwrap();
             let encryption_secret_key = string_to_encryption_static_key(encryption_secret_key_string).unwrap();

@@ -15,8 +15,6 @@ pub struct NodeEnvironment {
     pub starting_num_qr_profiles: u32,
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
-    pub cron_devops_api_token: String,
-    pub cron_devops_api_enabled: bool,
     pub js_toolkit_executor_remote: Option<String>,
     pub no_secret_file: bool,
 }
@@ -119,16 +117,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse needs registration code");
 
-    let cron_devops_api_enabled: bool = env::var("CRON_DEVOPS_API_ENABLED")
-        .unwrap_or_else(|_| "false".to_string())
-        .parse()
-        .expect("Failed to parse CRON_DEVOPS_API_ENABLED");
-
-    let cron_devops_api_token: String = env::var("CRON_DEVOPS_API_TOKEN")
-        .unwrap_or_else(|_| "".to_string())
-        .parse()
-        .expect("Failed to parse CRON_DEVOPS_API_TOKEN");
-
     let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
 
     let no_secret_file: bool = env::var("NO_SECRET_FILE")
@@ -149,8 +137,6 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         starting_num_qr_profiles,
         starting_num_qr_devices,
         first_device_needs_registration_code,
-        cron_devops_api_token,
-        cron_devops_api_enabled,
         js_toolkit_executor_remote,
         no_secret_file,
     }
