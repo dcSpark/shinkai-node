@@ -2,7 +2,6 @@ use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use core::panic;
-use ed25519_dalek::{PublicKey as SignaturePublicKey, SecretKey as SignatureStaticKey};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -88,6 +87,7 @@ where
             node1_db_path,
             false,
             vec![],
+            None,
         );
 
         eprintln!("Starting Node");

@@ -148,9 +148,8 @@ impl RetrievedNode {
     }
 }
 
-/// Represents a node with an id, content, validated data_tag_names, and optional metadata.
-/// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
-/// data tag names instead in the Node.
+/// Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,
+/// metadata, and other internal relevant data.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub id: String,
