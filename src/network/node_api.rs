@@ -70,10 +70,7 @@ impl From<&str> for APIError {
 
 impl warp::reject::Reject for APIError {}
 
-pub async fn run_api(
-    node_commands_sender: Sender<NodeCommand>,
-    address: SocketAddr,
-) {
+pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_name: String) {
     println!("Starting Node API server at: {}", &address);
 
     let log = warp::log::custom(|info| {
@@ -150,9 +147,12 @@ pub async fn run_api(
     };
 
     // GET v1/shinkai_health
-    let shinkai_health = warp::path!("v1" / "shinkai_health")
-        .and(warp::get())
-        .and_then(shinkai_health_handler);
+    let shinkai_health = {
+        let node_name = node_name.clone();
+        warp::path!("v1" / "shinkai_health")
+            .and(warp::get())
+            .and_then(move || shinkai_health_handler(node_name.clone()))
+    };
 
     // TODO: Implement. Admin Only
     // // POST v1/last_messages?limit={number}&offset={key}
@@ -878,9 +878,11 @@ async fn use_registration_code_handler(
     }
 }
 
-async fn shinkai_health_handler() -> Result<impl warp::Reply, warp::Rejection> {
+async fn shinkai_health_handler(node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
     let version = env!("CARGO_PKG_VERSION");
-    Ok(warp::reply::json(&json!({ "status": "ok", "version": version })))
+    Ok(warp::reply::json(
+        &json!({ "status": "ok", "version": version, "node_name": node_name }),
+    ))
 }
 
 async fn get_all_subidentities_handler(
