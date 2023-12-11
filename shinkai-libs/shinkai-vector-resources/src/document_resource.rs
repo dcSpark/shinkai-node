@@ -267,7 +267,7 @@ impl DocumentVectorResource {
     }
 
     /// Appends a new text node and associated embedding to the document
-    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    /// without checking if tags are valid. Used for internal purposes.
     pub fn _append_node_without_tag_validation(
         &mut self,
         data: NodeContent,
@@ -277,11 +277,12 @@ impl DocumentVectorResource {
     ) {
         let id = self.node_count + 1;
         let node = Node::from_node_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
-        self.data_tag_index.add_node(&node);
-
         // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
+
+        self.data_tag_index.add_node(&node);
+        self.metadata_index.add_node(&node);
         self._append_node(node);
         self.embeddings.push(embedding);
         self.update_last_modified_to_now();
@@ -336,7 +337,8 @@ impl DocumentVectorResource {
 
         match (popped_node, popped_embedding) {
             (Some(node), Some(embedding)) => {
-                // Remove node from data tag index
+                // Remove node from indexes
+                self.metadata_index.remove_node(&node);
                 self.data_tag_index.remove_node(&node);
                 self.node_count -= 1;
                 self.update_last_modified_to_now();
@@ -369,12 +371,15 @@ impl DocumentVectorResource {
 
         // Then deletion of old node from index and addition of new node
         self.data_tag_index.remove_node(&old_node);
+        self.metadata_index.remove_node(&old_node);
         self.data_tag_index.add_node(&new_node);
+        self.metadata_index.add_node(&new_node);
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.embeddings[index] = embedding;
+
         self.update_last_modified_to_now();
 
         Ok(old_node)
@@ -385,6 +390,7 @@ impl DocumentVectorResource {
     pub fn remove_node(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
 
         let index = (id - 1) as usize;
         let deleted_embedding = self.embeddings.remove(index);

@@ -212,6 +212,7 @@ impl MapVectorResource {
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
         self.data_tag_index.add_node(&node);
+        self.metadata_index.add_node(&node);
 
         // Embedding details
         let mut embedding = embedding.clone();
@@ -288,6 +289,8 @@ impl MapVectorResource {
         // Then deletion of old node from index and addition of new node
         self.data_tag_index.remove_node(&old_node);
         self.data_tag_index.add_node(&new_node);
+        self.metadata_index.remove_node(&old_node);
+        self.metadata_index.add_node(&new_node);
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
@@ -303,6 +306,7 @@ impl MapVectorResource {
     pub fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(key)?;
         self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
         let deleted_embedding = self.embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
 
         Ok((deleted_node, deleted_embedding))
