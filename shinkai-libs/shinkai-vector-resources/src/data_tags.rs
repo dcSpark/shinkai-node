@@ -49,7 +49,7 @@ pub struct DataTagIndex {
 }
 
 impl DataTagIndex {
-    /// Initialzies an empty DataTagIndex
+    /// Initializes an empty DataTagIndex
     pub fn new() -> Self {
         Self { index: HashMap::new() }
     }

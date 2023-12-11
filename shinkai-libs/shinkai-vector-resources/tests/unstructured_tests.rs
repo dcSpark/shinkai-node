@@ -216,6 +216,6 @@ fn test_unstructured_parse_html_vector_resource() {
     assert_eq!(
         "The unstructured library aims to simplify and streamline the preprocessing of structured and unstructured documents for downstream tasks. And what that means is no matter where your data is
 and no matter what format that data is in, Unstructured’s toolkit will transform and preprocess that data",
-        res[0].node.get_text_content().unwrap()
+        res[1].node.get_text_content().unwrap()
     );
 }

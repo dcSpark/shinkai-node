@@ -412,7 +412,9 @@ fn subidentity_registration() {
                 )
                 .await;
 
-                eprintln!("Sending message from Node 1 subidentity to Node 1 subidentity 2 using the intra_sender feature");
+                eprintln!(
+                    "Sending message from Node 1 subidentity to Node 1 subidentity 2 using the intra_sender feature"
+                );
                 let message_content =
                     "test encrypted body content from node1 subidentity to node1 subidentity 2".to_string();
                 let unchanged_message = ShinkaiMessageBuilder::new(
