@@ -34,3 +34,4 @@ shinkai-mini-apps/shinkai-tray/src-tauri/models
 shinkai-mini-apps/shinkai-tray/src-tauri/db
 typescript
 .secret
+db/.secret

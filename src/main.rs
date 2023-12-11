@@ -143,7 +143,7 @@ fn main() {
         // This is the async block where you can use `.await`
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             Node::new(
-                global_identity_name.to_string(),
+                global_identity_name.clone().to_string(),
                 node_env.listen_address,
                 clone_signature_secret_key(&node_keys.identity_secret_key),
                 node_keys.encryption_secret_key.clone(),
@@ -182,7 +182,7 @@ fn main() {
 
         // API Server task
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address).await;
+            node_api::run_api(node_commands_sender, node_env.api_listen_address, global_identity_name.clone().to_string()).await;
         });
 
         let _ = tokio::try_join!(api_server, node_task);
