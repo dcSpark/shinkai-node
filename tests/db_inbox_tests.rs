@@ -112,6 +112,17 @@ fn test_insert_messages_with_tree_structure() {
     let mut parent_message_hash: Option<String> = None;
     let mut parent_message_hash_2: Option<String> = None;
     let mut parent_message_hash_4: Option<String> = None;
+    /*
+    The tree that we are creating looks like:
+        1
+        ├── 2
+        │   ├── 4
+        │   │   ├── 6
+        │   │   └── 7
+        │   │       └── 8
+        │   └── 5
+        └── 3
+     */
     for i in 1..=8 {
         let message = generate_message_with_text(
             format!("Hello World {}", i),
@@ -183,14 +194,31 @@ fn test_insert_messages_with_tree_structure() {
     eprintln!("Last messages: {:?}", last_messages_content);
 
     assert_eq!(last_messages_inbox.len(), 3);
+
+    // Check the content of the first message array
+    assert_eq!(last_messages_inbox[0].len(), 2);
     assert_eq!(
         last_messages_inbox[0][0].clone().get_message_content().unwrap(),
         "Hello World 4".to_string()
     );
     assert_eq!(
+        last_messages_inbox[0][1].clone().get_message_content().unwrap(),
+        "Hello World 5".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[1].len(), 2);
+    assert_eq!(
         last_messages_inbox[1][0].clone().get_message_content().unwrap(),
         "Hello World 7".to_string()
     );
+    assert_eq!(
+        last_messages_inbox[1][1].clone().get_message_content().unwrap(),
+        "Hello World 6".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[2].len(), 1);
     assert_eq!(
         last_messages_inbox[2][0].clone().get_message_content().unwrap(),
         "Hello World 8".to_string()

@@ -279,6 +279,7 @@ impl ShinkaiDB {
                 };
                 eprintln!("Current hash key: {}", hash_key);
 
+                let mut added_message_hash: Option<String> = None;
                 // Fetch the message from the AllMessages CF using the hash key
                 match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
                     Some(bytes) => {
@@ -288,6 +289,7 @@ impl ShinkaiDB {
                             hash_key,
                             message.get_message_content()
                         );
+                        added_message_hash = Some(message.calculate_message_hash());
                         path.push(message);
                     }
                     None => {
@@ -337,7 +339,12 @@ impl ShinkaiDB {
                                                                     child_key,
                                                                     message.get_message_content()
                                                                 );
-                                                                path.push(message);
+                                                                // Check if the message to be added is the same as the last added message
+                                                                if Some(message.calculate_message_hash())
+                                                                    != added_message_hash
+                                                                {
+                                                                    path.push(message);
+                                                                }
                                                             }
                                                             None => {
                                                                 println!(
