@@ -66,7 +66,11 @@ impl ShinkaiDB {
     }
 
     // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regard
-    pub fn unsafe_insert_inbox_message(&mut self, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
+    pub fn unsafe_insert_inbox_message(
+        &mut self,
+        message: &ShinkaiMessage,
+        parent_message_key: Option<String>,
+    ) -> Result<(), ShinkaiDBError> {
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
         // If the inbox name is empty, use the get_inbox_name function
@@ -88,7 +92,8 @@ impl ShinkaiDB {
 
         // TODO: should be check that the recipient also has access?
         // Insert the message
-        let _ = self.insert_message_to_all(&message.clone())?;
+        let insert_result = self.insert_message_to_all(&message.clone())?;
+        println!("Insert result: {:?}", insert_result);
 
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
@@ -100,6 +105,7 @@ impl ShinkaiDB {
 
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash();
+        println!("Hash key: {}", hash_key);
 
         // Clone the external_metadata first, then unwrap
         let ext_metadata = message.external_metadata.clone();
@@ -112,7 +118,7 @@ impl ShinkaiDB {
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
-        // println!("Composite key: {}", composite_key);
+        println!("Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -130,7 +136,72 @@ impl ShinkaiDB {
             .expect("Failed to get cf handle for unread_list");
         batch.put_cf(cf_unread_list, &composite_key, &hash_key);
 
+        // If this message has a parent, add this message as a child of the parent
+        if let Some(parent_key) = parent_message_key {
+            eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
+            eprintln!("Inbox name: {}", inbox_name);
+
+            let cf_children_name = format!("{}_children", inbox_name);
+            let cf_children = match self.db.cf_handle(&cf_children_name) {
+                Some(cf) => cf,
+                None => {
+                    eprintln!("Creating cf for children: {}", cf_children_name);
+                    // Create Options for ColumnFamily
+                    let mut cf_opts = Options::default();
+                    cf_opts.create_if_missing(true);
+                    cf_opts.create_missing_column_families(true);
+
+                    // Create column family if it doesn't exist
+                    self.db
+                        .create_cf(&cf_children_name, &cf_opts)
+                        .expect("Failed to create cf for children");
+                    self.db
+                        .cf_handle(&cf_children_name)
+                        .expect("Failed to get cf handle for children")
+                }
+            };
+
+            let existing_children_bytes = self.db.get_cf(cf_children, &parent_key)?.unwrap_or_default();
+            let existing_children = String::from_utf8(existing_children_bytes)
+                .unwrap()
+                .split(',')
+                .map(String::from)
+                .collect::<Vec<String>>();
+
+            let mut children = vec![composite_key];
+            children.extend_from_slice(&existing_children);
+            batch.put_cf(cf_children, &parent_key, children.join(","));
+
+            // Create column family for parents if it doesn't exist
+            let cf_parents_name = format!("{}_parents", inbox_name);
+            let cf_parents = match self.db.cf_handle(&cf_parents_name) {
+                Some(cf) => cf,
+                None => {
+                    // Create Options for ColumnFamily
+                    let mut cf_opts = Options::default();
+                    cf_opts.create_if_missing(true);
+                    cf_opts.create_missing_column_families(true);
+
+                    // Create column family if it doesn't exist
+                    self.db
+                        .create_cf(&cf_parents_name, &cf_opts)
+                        .expect("Failed to create cf for parents");
+                    self.db
+                        .cf_handle(&cf_parents_name)
+                        .expect("Failed to get cf handle for parents")
+                }
+            };
+
+            // Add the parent key to the parents column family with the child key
+            batch.put_cf(cf_parents, &hash_key, parent_key);
+        }
+
         self.db.write(batch)?;
+
+        // Call get_last_messages_from_inbox and print the results
+        // eprintln!("Calling get_last_messages_from_inbox");
+        // let _ = self.get_last_messages_from_inbox(inbox_name.clone(), 10, None)?;
+        // println!("Last messages: {:?}", last_messages);
 
         Ok(())
     }
@@ -140,7 +211,7 @@ impl ShinkaiDB {
         inbox_name: String,
         n: usize,
         until_offset_key: Option<String>,
-    ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
+    ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
         // println!("Getting last {} messages from inbox: {}", n, inbox_name);
         // println!("Offset key: {:?}", until_offset_key);
         // println!("n: {:?}", n);
@@ -159,6 +230,15 @@ impl ShinkaiDB {
         // Fetch the column family for all messages
         let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
 
+        // Fetch the column family for parents
+        let cf_parents_name = format!("{}_parents", inbox_name);
+        let cf_parents = self.db.cf_handle(&cf_parents_name);
+
+        // Fetch the column family for children
+        let cf_children_name = format!("{}_children", inbox_name);
+        let cf_children = self.db.cf_handle(&cf_children_name);
+        eprintln!("cf_children is None: {}", cf_children.is_none());
+
         // Create an iterator for the specified inbox
         let mut iter = match &until_offset_key {
             Some(offset_key) => self.db.iterator_cf(
@@ -169,35 +249,99 @@ impl ShinkaiDB {
         };
 
         let mut skip_first = until_offset_key.is_some();
-        let mut messages = Vec::new();
-        for item in iter.take(n) {
-            // Skip the first entry if an offset_key was provided
-            if skip_first {
-                skip_first = false;
+        let mut paths = Vec::new();
+        let mut current_key: Option<String> = match iter.next() {
+            Some(Ok((key, _))) if !skip_first => Some(String::from_utf8(key.to_vec()).unwrap()),
+            _ => None, // No more messages, so break the loop
+        };
+        skip_first = false;
+
+        for i in 0..n {
+            eprintln!("Fetching next message i: {}", i);
+            eprintln!("Paths: {:?}", paths);
+            let mut path = Vec::new();
+            
+            if current_key.clone().is_none() {
                 continue;
             }
 
-            // Handle the Result returned by the iterator
-            match item {
-                Ok((_, value)) => {
-                    // The value of the inbox CF is the key in the AllMessages CF
-                    let message_key = value.to_vec();
+            let key = current_key.clone().unwrap();
+            loop {
+                println!("Fetching message with key: {}", key);
+                // Fetch the message from the AllMessages CF
+                // Split the composite key to get the hash key
+                let split: Vec<&str> = key.split(":::").collect();
+                let hash_key = if split.len() < 2 {
+                    // If the key does not contain ":::", assume it's a hash key
+                    key.clone()
+                } else {
+                    split[1].to_string()
+                };
+                eprintln!("Current hash key: {}", hash_key);
 
-                    // Fetch the message from the AllMessages CF
-                    match self.db.get_cf(messages_cf, &message_key)? {
-                        Some(bytes) => {
-                            let message = ShinkaiMessage::decode_message_result(bytes)?;
-                            messages.push(message);
-                        }
-                        None => return Err(ShinkaiDBError::MessageNotFound),
+                // Fetch the message from the AllMessages CF using the hash key
+                match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
+                    Some(bytes) => {
+                        let message = ShinkaiMessage::decode_message_result(bytes)?;
+                        eprintln!(
+                            "Found for hash key: {:?} Message: {:?} \n",
+                            hash_key,
+                            message.get_message_content()
+                        );
+                        path.push(message);
+                    }
+                    None => {
+                        println!("Failed to find message with key: {}", hash_key);
+                        return Err(ShinkaiDBError::MessageNotFound);
                     }
                 }
-                Err(e) => return Err(e.into()),
+
+                // Fetch the parent message key from the parents CF
+                if let Some(cf_parents) = &cf_parents {
+                    match self.db.get_cf(cf_parents, hash_key.as_bytes())? {
+                        Some(bytes) => {
+                            let parent_key = String::from_utf8(bytes.to_vec()).unwrap();
+                            eprintln!("Parent key: {}", parent_key);
+                            if !parent_key.is_empty() {
+                                eprintln!("Updating parent key: {}", parent_key);
+                                current_key = Some(parent_key);
+                                break;
+                            }
+                        }
+                        None => break, // No parent message, so we've reached the root of the path
+                    }
+                } else {
+                    break; // No parents CF, so we've reached the root of the path
+                }
+
+                // // Fetch the parent message key from the children CF
+                // if let Some(cf_children) = &cf_children {
+                //     match self.db.get_cf(cf_children, hash_key.as_bytes())? {
+                //         Some(bytes) => {
+                //             let parent_keys = String::from_utf8(bytes.to_vec()).unwrap();
+                //             eprintln!("Parent keys: {}", parent_keys);
+                //             for parent_key in parent_keys.split(',') {
+                //                 let parent_key = parent_key.trim(); // Remove any leading/trailing whitespace
+                //                 eprintln!("Parent key: {}", parent_key);
+                //                 if !parent_key.is_empty() {
+                //                     eprintln!("Updating parent key: {}", parent_key);
+                //                     current_key = parent_key.to_string(); // Update the current_key
+                //                     break;
+                //                 }
+                //             }
+                //         }
+                //         None => break, // No parent message, so we've reached the root of the path
+                //     }
+                // } else {
+                //     break; // No children CF, so we've reached the root of the path
+                // }
             }
+
+            paths.push(path);
         }
-        messages.reverse();
-        // print_content_time_messages(messages.clone());
-        Ok(messages)
+
+        paths.reverse();
+        Ok(paths)
     }
 
     pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_offset: String) -> Result<(), ShinkaiDBError> {
@@ -343,9 +487,7 @@ impl ShinkaiDB {
         let profile_name = profile
             .get_profile_name()
             .clone()
-            .ok_or(ShinkaiDBError::InvalidIdentityName(
-                profile.to_string(),
-            ))?;
+            .ok_or(ShinkaiDBError::InvalidIdentityName(profile.to_string()))?;
 
         // Fetch column family for identity
         let cf_identity =
@@ -568,7 +710,8 @@ impl ShinkaiDB {
             let last_message = self
                 .get_last_messages_from_inbox(inbox_id.clone(), 1, None)?
                 .into_iter()
-                .next();
+                .next()
+                .and_then(|mut v| v.pop());
 
             // Fetch the custom name from the smart_inbox_name column family
             let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_id);

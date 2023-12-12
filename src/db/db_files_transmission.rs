@@ -1,12 +1,8 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
-use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    MessageBody, MessageData 
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    JobMessage, MessageSchemaType,
-};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, MessageData};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 
 impl ShinkaiDB {
     pub fn write_symmetric_key(&self, hex_blake3_hash: &str, private_key: &[u8]) -> Result<(), ShinkaiDBError> {
@@ -233,7 +229,12 @@ impl ShinkaiDB {
             }
 
             // Iterate over the messages
-            for message in &messages {
+            for message_branch in &messages {
+                let message = match message_branch.first() {
+                    Some(message) => message,
+                    None => continue,
+                };
+
                 // Check if the message body is unencrypted
                 if let MessageBody::Unencrypted(body) = &message.body {
                     // Check if the message data is unencrypted
@@ -261,7 +262,10 @@ impl ShinkaiDB {
             }
 
             // Set the offset key for the next page to the key of the last message in the current page
-            offset_key = Some(messages.last().unwrap().calculate_message_hash());
+            offset_key = messages
+                .last()
+                .and_then(|path| path.first())
+                .map(|message| message.calculate_message_hash());
         }
 
         Ok(None)

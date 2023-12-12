@@ -2221,7 +2221,8 @@ impl Node {
                         Ok(_) => {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
-                            db_guard.unsafe_insert_inbox_message(&msg.clone()).map_err(|e| {
+                            // TODO(must): it shouldn't always be None
+                            db_guard.unsafe_insert_inbox_message(&msg.clone(), None).map_err(|e| {
                                 eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
                                 std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
                             })?;

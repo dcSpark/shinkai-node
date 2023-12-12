@@ -20,7 +20,7 @@ use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
@@ -91,6 +91,81 @@ fn generate_message_with_text(
 }
 
 #[test]
+fn test_insert_messages_with_tree_structure() {
+    setup();
+
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+    let mut parent_message = None;
+    let mut parent_message_hash = None;
+
+    for i in 1..=8 {
+        let message = generate_message_with_text(
+            format!("Hello World {}", i),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_subencryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.81{}Z", i),
+        );
+
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, parent_message_hash.clone())
+            .unwrap();
+
+        // Update the parent message according to the tree structure
+        if i == 1 || i == 2 || i == 4 || i == 7 {
+            parent_message_hash = Some(message.calculate_message_hash());
+            parent_message = Some(message);
+        }
+    }
+
+    let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
+
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    eprintln!("\n\n\n Getting messages...");
+
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
+        .unwrap();
+
+    let last_messages_content: Vec<String> = last_messages_inbox
+        .iter()
+        .map(|message_array| message_array[0].clone().get_message_content().unwrap())
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox.len(), 3);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 7".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 8".to_string()
+    );
+}
+
+#[test]
 fn db_inbox() {
     setup();
 
@@ -115,7 +190,7 @@ fn db_inbox() {
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
-    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone());
+    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None);
     println!("Inserted message {:?}", message.encode_message());
     let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
     println!("Decoded message {:?}", result);
@@ -145,7 +220,7 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 1);
     assert_eq!(
-        last_messages_inbox[0].clone().get_message_content().unwrap(),
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
         "Hello World".to_string()
     );
 
@@ -196,22 +271,22 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:55:34.814Z".to_string(),
     );
-    match shinkai_db.unsafe_insert_inbox_message(&message2.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message2.clone(), None) {
         Ok(_) => println!("message2 inserted successfully"),
         Err(e) => println!("Failed to insert message2: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message3.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message3.clone(), None) {
         Ok(_) => println!("message3 inserted successfully"),
         Err(e) => println!("Failed to insert message3: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message4.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message4.clone(), None) {
         Ok(_) => println!("message4 inserted successfully"),
         Err(e) => println!("Failed to insert message4: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message5.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message5.clone(), None) {
         Ok(_) => println!("message5 inserted successfully"),
         Err(e) => println!("Failed to insert message5: {}", e),
     }
@@ -261,7 +336,7 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_unread_messages_inbox_page2.len(), 1);
     assert_eq!(
-        last_unread_messages_inbox_page2[0]
+        last_unread_messages_inbox_page2[0][0]
             .clone()
             .get_message_content()
             .unwrap(),
@@ -340,8 +415,8 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:53:34.816Z".to_string(),
     );
-    shinkai_db.unsafe_insert_inbox_message(&message4).unwrap();
-    shinkai_db.unsafe_insert_inbox_message(&message5).unwrap();
+    shinkai_db.unsafe_insert_inbox_message(&message4, None).unwrap();
+    shinkai_db.unsafe_insert_inbox_message(&message5, None).unwrap();
 
     // Test get_inboxes_for_profile
     let node1_profile_identity = StandardIdentity::new(
@@ -398,20 +473,18 @@ fn db_inbox() {
         if let Some(last_message) = smart_inbox.last_message {
             match last_message.body {
                 MessageBody::Unencrypted(ref body) => match body.message_data {
-                    MessageData::Unencrypted(ref data) => {
-                        match smart_inbox.inbox_id.as_str() {
-                            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 5");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 6");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 7");
-                            }
-                            _ => panic!("Unexpected inbox_id"),
+                    MessageData::Unencrypted(ref data) => match smart_inbox.inbox_id.as_str() {
+                        "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 5");
                         }
-                    }
+                        "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 6");
+                        }
+                        "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 7");
+                        }
+                        _ => panic!("Unexpected inbox_id"),
+                    },
                     _ => panic!("Expected unencrypted message data"),
                 },
                 _ => panic!("Expected unencrypted message body"),
@@ -500,7 +573,12 @@ fn test_permission_errors() {
         result.unwrap_err(),
         ShinkaiDBError::IdentityNotFound(format!(
             "Identity not found for: {}",
-            nonexistent_identity.clone().full_identity_name.get_profile_name().unwrap().to_string()
+            nonexistent_identity
+                .clone()
+                .full_identity_name
+                .get_profile_name()
+                .unwrap()
+                .to_string()
         ))
     );
 
