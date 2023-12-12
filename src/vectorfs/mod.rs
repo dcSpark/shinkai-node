@@ -1,2 +1,2 @@
-pub mod internals;
+pub mod fs_internals;
 pub mod vectorfs;

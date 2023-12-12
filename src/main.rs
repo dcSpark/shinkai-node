@@ -128,7 +128,6 @@ fn main() {
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
-
     let secret_content = format!(
         "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}",
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
@@ -137,9 +136,8 @@ fn main() {
         std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
     }
 
-    let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
-
     // Create a new node
+    let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(
         // This is the async block where you can use `.await`
         tokio::runtime::Runtime::new().unwrap().block_on(async {

@@ -1,3 +1,4 @@
+use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
@@ -8,8 +9,6 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::path::Path;
-
-use super::db_errors::ShinkaiDBError;
 
 pub enum Topic {
     Inbox,
@@ -498,5 +497,5 @@ impl ShinkaiDB {
         }
 
         Ok(messages)
-    }   
+    }
 }
