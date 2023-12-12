@@ -1,6 +1,5 @@
 use crate::schemas::{agents::serialized_agent::SerializedAgent, inbox_name::InboxName, shinkai_name::ShinkaiName};
 use crate::shinkai_utils::job_scope::JobScope;
-use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
 use std::fmt;

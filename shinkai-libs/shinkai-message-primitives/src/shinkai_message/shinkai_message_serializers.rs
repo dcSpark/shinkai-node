@@ -1,12 +1,4 @@
-use core::panic;
-
-use super::{
-    shinkai_message::{
-        EncryptedShinkaiBody, EncryptedShinkaiData, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiVersion,
-    },
-    shinkai_message_error::ShinkaiMessageError,
-};
-use serde::{de::Error, ser::SerializeMap};
+use super::shinkai_message::ShinkaiVersion;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 impl Serialize for ShinkaiVersion {

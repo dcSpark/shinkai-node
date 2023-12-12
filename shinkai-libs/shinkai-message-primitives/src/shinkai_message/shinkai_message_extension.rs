@@ -1,7 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::shinkai_message::shinkai_message::ShinkaiVersion;
 
 use super::{
     shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -49,7 +46,7 @@ impl ShinkaiMessage {
                 } else {
                     Some(body.internal_metadata.sender_subidentity.clone())
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -66,7 +63,7 @@ impl ShinkaiMessage {
                 } else {
                     Some(body.internal_metadata.recipient_subidentity.clone())
                 }
-            },
+            }
             _ => None,
         }
     }
@@ -105,9 +102,11 @@ impl ShinkaiMessage {
                 }
             }
         }
-    
+
         // If JSON deserialization failed, return an error
-        Err(ShinkaiMessageError::DecryptionError("Failed to decode message".to_string()))
+        Err(ShinkaiMessageError::DecryptionError(
+            "Failed to decode message".to_string(),
+        ))
     }
 
     pub fn validate_message_schema(&self, schema: MessageSchemaType) -> Result<(), ShinkaiMessageError> {

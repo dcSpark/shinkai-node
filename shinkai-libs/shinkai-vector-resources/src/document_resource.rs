@@ -5,14 +5,14 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::{ShinkaiFileType, VRSource};
+use crate::source::VRSource;
 use crate::vector_resource::{
     Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
 };
 use serde_json;
 use std::collections::HashMap;
 
-/// A VectorResource which uses an internal numbered/ordered list data model,  
+/// A VectorResource which uses an internal numbered/ordered list data model,
 /// thus providing an ideal interface for document-like content such as PDFs,
 /// epubs, web content, written works, and more.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

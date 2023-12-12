@@ -30,7 +30,7 @@ impl ShinkaiTime {
             chrono::NaiveTime::from_hms(hr, min, sec),
         );
 
-        let datetime: DateTime<Utc> = DateTime::from_utc(naive_datetime, Utc);
+        let datetime: DateTime<Utc> = DateTime::from_naive_utc_and_offset(naive_datetime, Utc);
         let timestamp = datetime.format("%Y-%m-%dT%H:%M:%S.%f").to_string();
         let scheduled_time = format!("{}Z", &timestamp[..23]);
         scheduled_time

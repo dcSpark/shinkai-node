@@ -6,10 +6,9 @@ use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRSource;
-use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
+use crate::vector_resource::{Node, NodeContent, VectorResource};
 use serde_json;
 use std::collections::HashMap;
-use std::fs::Metadata;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as spreadsheet ingestion,

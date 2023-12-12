@@ -1,8 +1,4 @@
-use std::fs::Metadata;
-
-use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
-use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
@@ -14,11 +10,10 @@ use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRLocation;
-use crate::source::VRSource;
+pub use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
-use env_logger::filter::Filter;
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,

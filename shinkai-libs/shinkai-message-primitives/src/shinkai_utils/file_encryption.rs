@@ -1,15 +1,14 @@
-use blake3::Hasher;
+use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::Aes256Gcm;
-use aes_gcm::aead::{generic_array::GenericArray};
 use aes_gcm::KeyInit;
-use rand::rngs::OsRng;
-use rand::RngCore;
+use blake3::Hasher;
 use hex;
+use rand::RngCore;
 
 pub fn random_aes_encryption_key() -> [u8; 32] {
     let mut symmetrical = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut symmetrical);
-    
+
     let key = GenericArray::from_slice(&symmetrical);
     let _cipher = Aes256Gcm::new(key);
 

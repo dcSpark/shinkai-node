@@ -104,16 +104,7 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
             ShinkaiLogLevel::Debug => ("(DEBUG)", Box::new(|s: &str| s.normal())),
         };
 
-        let message_with_header = if std::env::var("LOG_SIMPLE").is_ok() {
-            format!("{} {} - {} - {}", time, level_str, option_str, message)
-        } else {
-            let hostname = "localhost";
-            let app_name = "shinkai";
-            let proc_id = std::process::id().to_string();
-            let msg_id = "-"; // No specific message ID
-            let header = format!("{} {} {} {} {}", time, hostname, app_name, proc_id, msg_id);
-            format!("{} - {} - {} - {}", header, level_str, option_str, message)
-        };
+        let message_with_header = format!("{} {} - {} - {}", time, level_str, option_str, message);
 
         match level.to_log_level() {
             log::Level::Error => eprintln!("{}", color_fn(&message_with_header)),

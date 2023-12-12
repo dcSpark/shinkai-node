@@ -7,7 +7,6 @@ use crate::source::VRLocation;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
-use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;
