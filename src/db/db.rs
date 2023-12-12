@@ -75,7 +75,7 @@ impl Topic {
 /// base interface, however fully profile-bounded. In other words
 /// all puts add the profile name as a prefix to all keys.
 pub struct ProfileBoundWriteBatch {
-    write_batch: rocksdb::WriteBatch,
+    pub write_batch: rocksdb::WriteBatch,
     pub profile_name: String,
 }
 

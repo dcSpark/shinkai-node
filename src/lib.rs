@@ -9,4 +9,4 @@ pub mod resources;
 pub mod schemas;
 pub mod tools;
 pub mod utils;
-pub mod vectorfs;
+pub mod vector_fs;
