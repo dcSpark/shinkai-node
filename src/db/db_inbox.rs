@@ -93,7 +93,7 @@ impl ShinkaiDB {
         // TODO: should be check that the recipient also has access?
         // Insert the message
         let insert_result = self.insert_message_to_all(&message.clone())?;
-        println!("Insert result: {:?}", insert_result);
+        // println!("Insert result: {:?}", insert_result);
 
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
@@ -105,7 +105,7 @@ impl ShinkaiDB {
 
         // Calculate the hash of the message for the key
         let hash_key = message.calculate_message_hash();
-        println!("Hash key: {}", hash_key);
+        // println!("Hash key: {}", hash_key);
 
         // Clone the external_metadata first, then unwrap
         let ext_metadata = message.external_metadata.clone();
@@ -118,7 +118,7 @@ impl ShinkaiDB {
 
         // Create the composite key by concatenating the time_key and the hash_key, with a separator
         let composite_key = format!("{}:::{}", time_key, hash_key);
-        println!("Composite key: {}", composite_key);
+        // println!("Composite key: {}", composite_key);
 
         let mut batch = rocksdb::WriteBatch::default();
 
@@ -138,14 +138,14 @@ impl ShinkaiDB {
 
         // If this message has a parent, add this message as a child of the parent
         if let Some(parent_key) = parent_message_key {
-            eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
-            eprintln!("Inbox name: {}", inbox_name);
+            // eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
+            // eprintln!("Inbox name: {}", inbox_name);
 
             let cf_children_name = format!("{}_children", inbox_name);
             let cf_children = match self.db.cf_handle(&cf_children_name) {
                 Some(cf) => cf,
                 None => {
-                    eprintln!("Creating cf for children: {}", cf_children_name);
+                    // eprintln!("Creating cf for children: {}", cf_children_name);
                     // Create Options for ColumnFamily
                     let mut cf_opts = Options::default();
                     cf_opts.create_if_missing(true);
@@ -258,9 +258,9 @@ impl ShinkaiDB {
 
         for i in 0..n {
             eprintln!("Fetching next message i: {}", i);
-            eprintln!("Paths: {:?}", paths);
+            // eprintln!("Paths: {:?}", paths);
             let mut path = Vec::new();
-            
+
             if current_key.clone().is_none() {
                 continue;
             }
@@ -304,7 +304,56 @@ impl ShinkaiDB {
                             eprintln!("Parent key: {}", parent_key);
                             if !parent_key.is_empty() {
                                 eprintln!("Updating parent key: {}", parent_key);
-                                current_key = Some(parent_key);
+                                current_key = Some(parent_key.clone());
+                                // break;
+
+                                // Fetch the children of the parent message
+                                if let Some(cf_children) = &cf_children {
+                                    match self.db.get_cf(cf_children, parent_key.as_bytes())? {
+                                        Some(bytes) => {
+                                            let children_keys = String::from_utf8(bytes.to_vec()).unwrap();
+                                            eprintln!("Children keys: {}", children_keys);
+                                            for child_key in children_keys.split(',') {
+                                                let child_key = child_key.trim(); // Remove any leading/trailing whitespace
+                                                eprintln!("Child key: {}", child_key);
+                                                if !child_key.is_empty() {
+                                                    // Split the composite key to get the hash key
+                                                    let split: Vec<&str> = child_key.split(":::").collect();
+                                                    let hash_key = if split.len() < 2 {
+                                                        // If the key does not contain ":::", assume it's a hash key
+                                                        child_key.to_string()
+                                                    } else {
+                                                        split[1].to_string()
+                                                    };
+
+                                                    if hash_key != key {
+                                                        // Fetch the child message from the AllMessages CF using the hash key
+                                                        match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
+                                                            Some(bytes) => {
+                                                                let message =
+                                                                    ShinkaiMessage::decode_message_result(bytes)?;
+                                                                eprintln!(
+                                                                    "Found for child key: {:?} Message: {:?} \n",
+                                                                    child_key,
+                                                                    message.get_message_content()
+                                                                );
+                                                                path.push(message);
+                                                            }
+                                                            None => {
+                                                                println!(
+                                                                    "Failed to find message with key: {}",
+                                                                    hash_key
+                                                                );
+                                                                return Err(ShinkaiDBError::MessageNotFound);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        None => {} // No children messages, so do nothing
+                                    }
+                                }
                                 break;
                             }
                         }
@@ -313,28 +362,6 @@ impl ShinkaiDB {
                 } else {
                     break; // No parents CF, so we've reached the root of the path
                 }
-
-                // // Fetch the parent message key from the children CF
-                // if let Some(cf_children) = &cf_children {
-                //     match self.db.get_cf(cf_children, hash_key.as_bytes())? {
-                //         Some(bytes) => {
-                //             let parent_keys = String::from_utf8(bytes.to_vec()).unwrap();
-                //             eprintln!("Parent keys: {}", parent_keys);
-                //             for parent_key in parent_keys.split(',') {
-                //                 let parent_key = parent_key.trim(); // Remove any leading/trailing whitespace
-                //                 eprintln!("Parent key: {}", parent_key);
-                //                 if !parent_key.is_empty() {
-                //                     eprintln!("Updating parent key: {}", parent_key);
-                //                     current_key = parent_key.to_string(); // Update the current_key
-                //                     break;
-                //                 }
-                //             }
-                //         }
-                //         None => break, // No parent message, so we've reached the root of the path
-                //     }
-                // } else {
-                //     break; // No children CF, so we've reached the root of the path
-                // }
             }
 
             paths.push(path);

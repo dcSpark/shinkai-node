@@ -107,8 +107,11 @@ fn test_insert_messages_with_tree_structure() {
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
     let mut parent_message = None;
-    let mut parent_message_hash = None;
 
+    eprintln!("Inserting messages...\n\n");
+    let mut parent_message_hash: Option<String> = None;
+    let mut parent_message_hash_2: Option<String> = None;
+    let mut parent_message_hash_4: Option<String> = None;
     for i in 1..=8 {
         let message = generate_message_with_text(
             format!("Hello World {}", i),
@@ -120,15 +123,39 @@ fn test_insert_messages_with_tree_structure() {
             format!("2023-07-02T20:53:34.81{}Z", i),
         );
 
+        // Necessary to extract the inbox
+        parent_message = Some(message.clone());
+
+        let parent_hash: Option<String> = match i {
+            2 | 3 => parent_message_hash.clone(),
+            4 | 5 => parent_message_hash_2.clone(),
+            6 | 7 => parent_message_hash.clone(),
+            8 => parent_message_hash_4.clone(),
+            _ => None,
+        };
+
         shinkai_db
-            .unsafe_insert_inbox_message(&message, parent_message_hash.clone())
+            .unsafe_insert_inbox_message(&message, parent_hash.clone())
             .unwrap();
 
         // Update the parent message according to the tree structure
-        if i == 1 || i == 2 || i == 4 || i == 7 {
+        if i == 1 {
             parent_message_hash = Some(message.calculate_message_hash());
-            parent_message = Some(message);
+        } else if i == 2 {
+            parent_message_hash_2 = Some(message.calculate_message_hash());
+        } else if i == 4 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 7 {
+            parent_message_hash_4 = Some(message.calculate_message_hash());
         }
+
+        // Print the message hash, content, and parent hash
+        println!(
+            "message hash: {} message content: {} message parent hash: {}",
+            message.calculate_message_hash(),
+            message.get_message_content().unwrap(),
+            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        );
     }
 
     let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
@@ -143,9 +170,14 @@ fn test_insert_messages_with_tree_structure() {
         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
         .unwrap();
 
-    let last_messages_content: Vec<String> = last_messages_inbox
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
         .iter()
-        .map(|message_array| message_array[0].clone().get_message_content().unwrap())
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
         .collect();
 
     eprintln!("Last messages: {:?}", last_messages_content);
