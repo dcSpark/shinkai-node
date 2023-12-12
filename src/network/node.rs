@@ -2,7 +2,7 @@ use async_channel::{Receiver, Sender};
 use chashmap::CHashMap;
 use chrono::Utc;
 use core::panic;
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -15,6 +15,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use std::sync::Arc;
 use std::{io, net::SocketAddr, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -22,6 +23,8 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
+use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
+use super::node_error::NodeError;
 use crate::agent::job_manager::JobManager;
 use crate::cron_tasks::cron_manager::CronManager;
 use crate::db::db_retry::RetryMessage;
@@ -32,9 +35,7 @@ use crate::network::node_message_handlers::{
 };
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
-
-use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
-use super::node_error::NodeError;
+use crate::vector_fs::vector_fs::VectorFS;
 
 pub enum NodeCommand {
     Shutdown,
@@ -273,6 +274,10 @@ pub struct Node {
     pub cron_manager: Option<Arc<Mutex<CronManager>>>,
     // JS Toolkit Executor Remote
     pub js_toolkit_executor_remote: Option<String>,
+    // The Node's VectorFS
+    pub vector_fs: Arc<Mutex<VectorFS>>,
+    // The default embedding model used by the node for generating all new VectorResources
+    pub default_embedding_model_type: EmbeddingModelType,
 }
 
 impl Node {
@@ -289,6 +294,7 @@ impl Node {
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
+        vector_fs_db_path: String,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -296,13 +302,14 @@ impl Node {
             Err(_) => panic!("Invalid node identity name: {}", node_profile_name),
         }
 
-        let identity_public_key = identity_secret_key.verifying_key();
-        let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
+        // Get public keys, and update the local node keys in the db
         let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
             panic!("Failed to open database: {}", db_path)
         });
         let db_arc = Arc::new(Mutex::new(db));
+        let identity_public_key = identity_secret_key.verifying_key();
+        let encryption_public_key = EncryptionPublicKey::from(&encryption_secret_key);
         let node_profile_name = ShinkaiName::new(node_profile_name).unwrap();
         {
             let db_lock = db_arc.lock().await;
@@ -317,10 +324,26 @@ impl Node {
             // TODO: maybe check if the keys in the Blockchain match and if not, then prints a warning message to update the keys
         }
 
+        // Setup Identity Manager
         let subidentity_manager = IdentityManager::new(db_arc.clone(), node_profile_name.clone())
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+
+        // Initialize/setup the VectorFS. For now we just hardcode the default/supported embedding models here.
+        // TODO: Later on read the embedding models from ShinkaiDB which will be the source of truth.
+        let default_embedding_model_type =
+            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+        let vector_fs = VectorFS::new(
+            default_embedding_model_type.clone(),
+            vec![default_embedding_model_type.clone()],
+            &vector_fs_db_path,
+        )
+        .unwrap_or_else(|e| {
+            eprintln!("Error: {:?}", e);
+            panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
+        });
+        let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
 
         Node {
             node_profile_name,
@@ -339,6 +362,8 @@ impl Node {
             first_device_needs_registration_code,
             initial_agents,
             js_toolkit_executor_remote,
+            vector_fs: vector_fs_arc,
+            default_embedding_model_type,
         }
     }
 
@@ -354,7 +379,11 @@ impl Node {
             .await,
         )));
 
-        shinkai_log(ShinkaiLogOption::Node, ShinkaiLogLevel::Info, &format!("Starting node with name: {}", self.node_profile_name));
+        shinkai_log(
+            ShinkaiLogOption::Node,
+            ShinkaiLogLevel::Info,
+            &format!("Starting node with name: {}", self.node_profile_name),
+        );
         self.cron_manager = match &self.job_manager {
             Some(job_manager) => Some(Arc::new(Mutex::new(
                 CronManager::new(
@@ -363,7 +392,8 @@ impl Node {
                     self.node_profile_name.clone(),
                     Arc::clone(job_manager),
                 )
-                .await))),
+                .await,
+            ))),
             None => None,
         };
 

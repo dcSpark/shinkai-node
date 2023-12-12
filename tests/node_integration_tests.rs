@@ -1,7 +1,7 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
 use core::panic;
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
@@ -84,7 +84,9 @@ fn subidentity_registration() {
             bounded(100);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
         let node2_db_path = format!("db_tests/{}", hash_string(node2_identity_name.clone()));
+        let node2_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node2_identity_name.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -98,7 +100,8 @@ fn subidentity_registration() {
             node1_db_path,
             true,
             vec![],
-            None
+            None,
+            node1_fs_db_path,
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
@@ -112,7 +115,8 @@ fn subidentity_registration() {
             node2_db_path,
             true,
             vec![],
-            None
+            None,
+            node2_fs_db_path,
         );
 
         // Printing

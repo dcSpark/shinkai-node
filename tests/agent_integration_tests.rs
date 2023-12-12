@@ -63,6 +63,7 @@ fn node_agent_registration() {
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
 
         // Agent pre-creation
 
@@ -149,6 +150,7 @@ fn node_agent_registration() {
             true,
             vec![agent],
             None,
+            node1_fs_db_path,
         );
 
         let node1_handler = tokio::spawn(async move {

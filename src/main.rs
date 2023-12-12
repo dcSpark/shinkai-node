@@ -35,11 +35,13 @@ mod resources;
 mod schemas;
 mod tools;
 mod utils;
+mod vector_fs;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
+/// Machine filesystem path to the main ShinkaiDB database
 fn get_db_path(identity_public_key: &VerifyingKey) -> String {
     Path::new("db")
         .join(hash_signature_public_key(identity_public_key))
@@ -48,6 +50,17 @@ fn get_db_path(identity_public_key: &VerifyingKey) -> String {
         .unwrap()
 }
 
+/// Machine filesystem path to the main VectorFS database
+fn get_vector_fs_db_path(identity_public_key: &VerifyingKey) -> String {
+    Path::new("vector_fs_db")
+        .join(hash_signature_public_key(identity_public_key))
+        .into_os_string()
+        .into_string()
+        .unwrap()
+}
+
+/// Parses the secrets file ( `db.secret`) from the machine's filesystem
+/// This file holds the user's keys.
 fn parse_secret_file() -> HashMap<String, String> {
     let contents = fs::read_to_string(Path::new("db").join(".secret")).unwrap_or_default();
     contents
@@ -63,7 +76,6 @@ fn parse_secret_file() -> HashMap<String, String> {
 
 fn main() {
     env_logger::init();
-
     // Placeholder for now. Maybe it should be a parameter that the user sets
     // and then it's checked with onchain data for matching with the keys provided
     let secrets = parse_secret_file();
@@ -72,26 +84,17 @@ fn main() {
         .cloned()
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string()));
 
-    // Initialization
+    // Initialization, creating Tokio runtime and fetching needed startup data
     let args = parse_args();
-
-    // Create Tokio runtime
     let mut _rt = initialize_runtime();
     let node_keys = generate_or_load_keys();
     let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key);
+    let vector_fs_db_path = get_vector_fs_db_path(&node_keys.identity_public_key);
     let initial_agents = fetch_agent_env(global_identity_name.clone());
-
-    shinkai_log(
-        ShinkaiLogOption::Node,
-        ShinkaiLogLevel::Info,
-        format!("Initial Agent: {:?}", initial_agents).as_str(),
-    );
-
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
-
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
 
@@ -100,8 +103,8 @@ fn main() {
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
         format!(
-            "Starting node with address: {}, db path: {}",
-            node_env.api_listen_address, db_path
+            "Starting node with address: {}, db path: {}, vector fs db path: {}",
+            node_env.api_listen_address, db_path, vector_fs_db_path
         )
         .as_str(),
     );
@@ -117,14 +120,19 @@ fn main() {
         )
         .as_str(),
     );
+    shinkai_log(
+        ShinkaiLogOption::Node,
+        ShinkaiLogLevel::Info,
+        format!("Initial Agent: {:?}", initial_agents).as_str(),
+    );
 
-    // CLI
+    // CLI check
     if args.create_message {
         cli_handle_create_message(args, &node_keys, &global_identity_name);
         return;
     }
 
-    // Store to .secret file
+    // Store secrets into machine filesystem `db.secret` file (needed if new secrets were generated)
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
@@ -136,10 +144,9 @@ fn main() {
         std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
     }
 
-    // Create a new node
+    // Now that all core init data acquired, start running the node itself
     let (node_commands_sender, node_commands_receiver): (Sender<NodeCommand>, Receiver<NodeCommand>) = bounded(100);
     let node = std::sync::Arc::new(tokio::sync::Mutex::new(
-        // This is the async block where you can use `.await`
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             Node::new(
                 global_identity_name.clone().to_string(),
@@ -152,15 +159,13 @@ fn main() {
                 node_env.first_device_needs_registration_code,
                 initial_agents,
                 node_env.js_toolkit_executor_remote.clone(),
+                vector_fs_db_path,
             )
             .await
         }),
     ));
-
-    // Clone the Arc<Mutex<Node>> for use in each task
+    // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
-
-    // Create a new Tokio runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -175,15 +180,13 @@ fn main() {
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {
             println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-
             let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
 
-        // API Server task
+        // Setup API Server task
         let api_server = tokio::spawn(async move {
             node_api::run_api(node_commands_sender, node_env.api_listen_address, global_identity_name.clone().to_string()).await;
         });
-
         let _ = tokio::try_join!(api_server, node_task);
     });
 }
