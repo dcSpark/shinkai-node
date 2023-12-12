@@ -94,7 +94,7 @@ pub trait VectorResource {
     fn initialize_compatible_embeddings_generator(
         &self,
         api_url: &str,
-        api_key: Option<&str>,
+        api_key: Option<String>,
     ) -> Box<dyn EmbeddingGenerator> {
         Box::new(RemoteEmbeddingGenerator::new(
             self.embedding_model_used(),
@@ -407,6 +407,7 @@ pub trait VectorResource {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
+        let mut query = query.clone();
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
@@ -442,11 +443,31 @@ pub trait VectorResource {
                                 skip_traversing_deeper = true;
                                 break;
                             }
-                            // If node Resource does not have same base type as LimitTraversalToType then
-                            // then skip going deeper into it
-                            if let TraversalOption::LimitTraversalToType(base_type) = option {
-                                if &node_resource.resource_base_type() != base_type {
-                                    skip_traversing_deeper = true;
+                        }
+                        // If node Resource does not have same base type as LimitTraversalToType then
+                        // then skip going deeper into it
+                        if let TraversalOption::LimitTraversalToType(base_type) = option {
+                            if &node_resource.resource_base_type() != base_type {
+                                skip_traversing_deeper = true;
+                            }
+                        }
+
+                        // If we're dynamically resolving embedding models
+                        if let TraversalOption::DynamicResolveEmbeddingModelsBlocking(query_text, api_url, api_key) =
+                            option
+                        {
+                            // If the node_resource embedding model is different
+                            if self.embedding_model_used() != node_resource.as_trait_object().embedding_model_used() {
+                                // Initialize the generator based on the embedding model type in the node_resource
+                                let generator = node_resource
+                                    .as_trait_object()
+                                    .initialize_compatible_embeddings_generator(api_url, api_key.clone());
+                                // Attempt to generate the embedding, and on success re-set the query embedding before progressing in code
+                                if let Ok(query_embedding) = generator.generate_embedding_blocking(query_text, "") {
+                                    query = query_embedding
+                                // If embedding generation failed, then we can't
+                                } else {
+                                    continue;
                                 }
                             }
                         }

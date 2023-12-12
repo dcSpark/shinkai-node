@@ -23,6 +23,7 @@ const N_EMBD: usize = 384;
 #[async_trait]
 pub trait EmbeddingGenerator: Sync + Send {
     fn model_type(&self) -> EmbeddingModelType;
+    fn set_model_type(&mut self, model_type: EmbeddingModelType);
     fn box_clone(&self) -> Box<dyn EmbeddingGenerator>;
 
     /// Generates an embedding from the given input string, and assigns the
@@ -218,16 +219,21 @@ impl EmbeddingGenerator for RemoteEmbeddingGenerator {
     fn model_type(&self) -> EmbeddingModelType {
         self.model_type.clone()
     }
+
+    /// Sets the EmbeddingModelType
+    fn set_model_type(&mut self, model_type: EmbeddingModelType) {
+        self.model_type = model_type
+    }
 }
 
 #[cfg(feature = "native-http")]
 impl RemoteEmbeddingGenerator {
     /// Create a RemoteEmbeddingGenerator
-    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<&str>) -> RemoteEmbeddingGenerator {
+    pub fn new(model_type: EmbeddingModelType, api_url: &str, api_key: Option<String>) -> RemoteEmbeddingGenerator {
         RemoteEmbeddingGenerator {
             model_type,
             api_url: api_url.to_string(),
-            api_key: api_key.map(|a| a.to_string()),
+            api_key: api_key,
         }
     }
 

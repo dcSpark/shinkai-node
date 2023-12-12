@@ -11,6 +11,7 @@ use crate::vector_resource::VectorResource;
 use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 /// A node that was retrieved from a search.
 /// Includes extra data like the resource_header of the resource it was from
@@ -431,7 +432,7 @@ impl VRHeader {
 
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
 }
@@ -497,6 +498,12 @@ impl VRPath {
     /// Formats the VRPath to a string
     pub fn format_to_string(&self) -> String {
         format!("/{}", self.path_ids.join("/"))
+    }
+}
+
+impl Hash for VRPath {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.format_to_string().hash(state);
     }
 }
 
