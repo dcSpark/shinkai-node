@@ -111,7 +111,7 @@ pub trait VectorResource {
             .description()
             .map(|description| format!(", Description: {}", description))
             .unwrap_or_default();
-        let source_string = self.source().format_source_string();
+        let source_string = format!("Source: {}", self.source().format_source_string());
 
         // Take keywords until we hit an upper 500 character cap to ensure
         // we do not go past the embedding LLM context window.
@@ -123,7 +123,11 @@ pub trait VectorResource {
             }
         }
 
-        format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
+        let mut result = format!("{}{}{}, Keywords: [{}]", name, source_string, desc, keyword_string);
+        if result.len() > MAX_EMBEDDING_STRING_SIZE {
+            result.truncate(MAX_EMBEDDING_STRING_SIZE);
+        }
+        result
     }
 
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
