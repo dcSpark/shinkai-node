@@ -218,9 +218,30 @@ impl ShinkaiDB {
             // Add the path to the list of paths
             paths.push(path);
 
+            // We check if no parent was found, which means we reached the root of the path
+            // If so, let's check if there is a solitary message if not then break
             if current_key.clone().is_none() {
-                eprintln!("current key: {:?}", current_key);
-                break;
+                eprintln!("current key is None. Key: {:?}", key);
+                // Move the iterator forward until it matches the current key
+                while let Some(Ok((new_key, _))) = iter.next() {
+                    let new_key_str = String::from_utf8(new_key.to_vec()).unwrap();
+                    let new_key_hash = new_key_str.split(":::").nth(1).unwrap_or("");
+                    if new_key_hash == key {
+                        eprintln!("Found the current key in the iterator: {:?}", new_key_str);
+                        break;
+                    }
+                }
+                // Get the next key from the iterator
+                current_key = match iter.next() {
+                    Some(Ok((key, _))) => Some(String::from_utf8(key.to_vec()).unwrap()),
+                    _ => None, // No more messages, so break the loop
+                };
+
+                if current_key.is_none() {
+                    eprintln!("Couldn't find a new key");
+                    break;
+                }
+                eprintln!("New key found: {:?}", current_key);
             }
         }
 

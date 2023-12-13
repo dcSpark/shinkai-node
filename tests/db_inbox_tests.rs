@@ -209,6 +209,132 @@ fn test_insert_messages_with_simple_tree_structure() {
 }
 
 #[test]
+fn test_insert_messages_with_simple_tree_structure_and_root() {
+    setup();
+
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+    let mut parent_message = None;
+
+    eprintln!("Inserting messages...\n\n");
+    let mut parent_message_hash: Option<String> = None;
+    let mut parent_message_hash_2: Option<String> = None;
+
+    /*
+    The tree that we are creating looks like:
+        0
+        1
+        ├── 2
+        │   ├── 4
+        └── 3
+     */
+    for i in 0..=4 {
+        let message = generate_message_with_text(
+            format!("Hello World {}", i),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.81{}Z", i),
+        );
+
+        // Necessary to extract the inbox
+        parent_message = Some(message.clone());
+
+        let parent_hash: Option<String> = match i {
+            2 | 3 => parent_message_hash.clone(),
+            4 => parent_message_hash_2.clone(),
+            _ => None,
+        };
+
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, parent_hash.clone())
+            .unwrap();
+
+        // Update the parent message according to the tree structure
+        if i == 1 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 2 {
+            parent_message_hash_2 = Some(message.calculate_message_hash());
+        }
+
+        // Print the message hash, content, and parent hash
+        println!(
+            "message hash: {} message content: {} message parent hash: {}",
+            message.calculate_message_hash(),
+            message.get_message_content().unwrap(),
+            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        );
+    }
+
+    let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
+
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    eprintln!("\n\n\n Getting messages...");
+
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
+        .unwrap();
+
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox.len(), 4);
+
+    // Check the content of the first message array
+    assert_eq!(last_messages_inbox[0].len(), 1);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 0".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[1].len(), 1);
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 1".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[2].len(), 2);
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 2".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[2][1].clone().get_message_content().unwrap(),
+        "Hello World 3".to_string()
+    );
+
+    // Check the content of the fourth message array
+    assert_eq!(last_messages_inbox[3].len(), 1);
+    assert_eq!(
+        last_messages_inbox[3][0].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+}
+
+#[test]
 fn test_insert_messages_with_tree_structure() {
     setup();
 
