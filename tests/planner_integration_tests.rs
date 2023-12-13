@@ -387,6 +387,27 @@ fn planner_integration_test() {
                 }
             }
             {
+                // Send a dummy Message to test that the algorithm can still find the kaijob file
+                eprintln!("\n\nSend a message for the Job");
+                let start = Instant::now();
+                api_message_job(
+                    node1_commands_sender.clone(),
+                    clone_static_secret_key(&node1_profile_encryption_sk),
+                    node1_encryption_pk.clone(),
+                    clone_signature_secret_key(&node1_profile_identity_sk),
+                    node1_identity_name.clone().as_str(),
+                    node1_profile_name.clone().as_str(),
+                    &agent_subidentity.clone(),
+                    &job_id.clone().to_string(),
+                    "dummy message",
+                    "",
+                )
+                .await;
+
+                let duration = start.elapsed(); // Get the time elapsed since the start of the timer
+                eprintln!("Time elapsed in api_message_job is: {:?}", duration);
+            }
+            {
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone().to_string()).unwrap();
 
                 // Create a ShinkaiMessage for the command
