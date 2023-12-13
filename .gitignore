@@ -35,3 +35,4 @@ shinkai-mini-apps/shinkai-tray/src-tauri/db
 typescript
 .secret
 db/.secret
+vector_fs_db
