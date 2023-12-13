@@ -18,7 +18,7 @@ use crate::{
         smart_inbox::SmartInbox,
     },
     tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
-    utils::update_global_identity::update_global_identity_name
+    utils::update_global_identity::update_global_identity_name,
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
@@ -1649,21 +1649,58 @@ impl Node {
                     let db_lock = self.db.lock().await;
                     match db_lock.update_job_to_finished(job_id) {
                         Ok(_) => {
-                            let kai_file = db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await?;
+                            match db_lock.get_kai_file_from_inbox(inbox_name.to_string()).await {
+                                Ok(Some((_, kai_file_bytes))) => {
+                                    let kai_file_str = match String::from_utf8(kai_file_bytes) {
+                                        Ok(s) => s,
+                                        Err(_) => {
+                                            let _ = res
+                                                .send(Err(APIError {
+                                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                                    error: "Bad Request".to_string(),
+                                                    message: "Failed to convert bytes to string".to_string(),
+                                                }))
+                                                .await;
+                                            return Ok(());
+                                        }
+                                    };
 
-                            if let Some((_, kai_file_bytes)) = kai_file {
-                                let kai_file_str = String::from_utf8(kai_file_bytes).map_err(|e| NodeError {
-                                    message: format!("Failed to convert bytes to string: {}", e),
-                                })?;
+                                    let kai_file: KaiJobFile = match KaiJobFile::from_json_str(&kai_file_str) {
+                                        Ok(k) => k,
+                                        Err(_) => {
+                                            let _ = res
+                                                .send(Err(APIError {
+                                                    code: StatusCode::BAD_REQUEST.as_u16(),
+                                                    error: "Bad Request".to_string(),
+                                                    message: "Failed to parse KaiJobFile".to_string(),
+                                                }))
+                                                .await;
+                                            return Ok(());
+                                        }
+                                    };
 
-                                let kai_file: KaiJobFile =
-                                    KaiJobFile::from_json_str(&kai_file_str).map_err(|e| NodeError {
-                                        message: format!("Failed to parse KaiJobFile: {}", e),
-                                    })?;
-
-                                match KaiJobFileManager::execute(kai_file, self).await {
-                                    Ok(_) => (),
-                                    Err(e) => eprintln!("Error executing KaiJobFileManager: {:?}", e),
+                                    match KaiJobFileManager::execute(kai_file, self).await {
+                                        Ok(_) => (),
+                                        Err(e) => shinkai_log(
+                                            ShinkaiLogOption::DetailedAPI,
+                                            ShinkaiLogLevel::Error,
+                                            format!("Error executing KaiJobFileManager: {}", e).as_str(),
+                                        ),
+                                    }
+                                }
+                                Ok(None) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::DetailedAPI,
+                                        ShinkaiLogLevel::Error,
+                                        format!("No file found in the inbox").as_str(),
+                                    )
+                                }
+                                Err(err) => {
+                                    shinkai_log(
+                                        ShinkaiLogOption::DetailedAPI,
+                                        ShinkaiLogLevel::Error,
+                                        format!("Error getting file from inbox: {:?}", err).as_str(),
+                                    )
                                 }
                             }
 
