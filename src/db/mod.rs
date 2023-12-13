@@ -14,3 +14,4 @@ pub mod db_retry;
 pub mod db_files_transmission;
 pub mod db_job_queue;
 pub mod db_cron_task;
+pub mod db_inbox_get_messages;
