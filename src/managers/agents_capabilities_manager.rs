@@ -283,7 +283,11 @@ impl AgentsCapabilitiesManager {
             }
             AgentLLMInterface::GenericAPI(genericapi) => {
                 // Fill in the appropriate logic for GenericAPI
-                4096
+                if genericapi.model_type == "mistralai/Mixtral-8x7B-Instruct-v0.1" {
+                    32_000
+                } else {
+                    4096
+                }
             }
             AgentLLMInterface::LocalLLM(_) => {
                 // Fill in the appropriate logic for LocalLLM
