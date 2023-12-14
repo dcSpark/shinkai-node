@@ -1,6 +1,6 @@
 use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -9,7 +9,6 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMes
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 

@@ -61,7 +61,7 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    // This fn doesn't validate access to the inbox (not really a responsibility of the db) so it's unsafe in that regard
+    // This fn doesn't validate access to the inbox (not really a responsibility of this db fn) so it's unsafe in that regard
     pub fn unsafe_insert_inbox_message(
         &mut self,
         message: &ShinkaiMessage,
@@ -132,7 +132,25 @@ impl ShinkaiDB {
         batch.put_cf(cf_unread_list, &composite_key, &hash_key);
 
         // If this message has a parent, add this message as a child of the parent
-        if let Some(parent_key) = parent_message_key {
+        let maybe_parent_key = match parent_message_key {
+            Some(key) => Some(key),
+            None => {
+                // Fetch the most recent message from the inbox
+                let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 1, None)?;
+                if let Some(first_batch) = last_messages.first() {
+                    if let Some(last_message) = first_batch.first() {
+                        Some(last_message.calculate_message_hash())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+        };
+
+        // If this message has a parent, add this message as a child of the parent
+        if let Some(parent_key) = maybe_parent_key {
             // eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
             // eprintln!("Inbox name: {}", inbox_name);
 

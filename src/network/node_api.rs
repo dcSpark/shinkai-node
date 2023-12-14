@@ -1,6 +1,5 @@
 use super::node::NodeCommand;
 use async_channel::Sender;
-use futures::Future;
 use futures::StreamExt;
 use futures::TryFutureExt;
 use reqwest::StatusCode;
@@ -13,8 +12,6 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::signatures::signature_public_key_to_string;
 use std::net::SocketAddr;
-use std::pin::Pin;
-use std::sync::Arc;
 use warp::Buf;
 use warp::Filter;
 
