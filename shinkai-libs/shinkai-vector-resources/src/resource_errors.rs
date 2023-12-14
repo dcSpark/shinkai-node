@@ -22,6 +22,7 @@ pub enum VRError {
     FailedParsingUnstructedAPIJSON(String),
     CouldNotDetectFileType(String),
     InvalidReferenceString(String),
+    InvalidDateTimeString(String),
 }
 
 impl fmt::Display for VRError {
@@ -55,6 +56,9 @@ impl fmt::Display for VRError {
             }
             VRError::InvalidReferenceString(ref s) => {
                 write!(f, "Vector Resource reference string is invalid: {}", s)
+            }
+            VRError::InvalidDateTimeString(ref s) => {
+                write!(f, "Provided datetime string does not match RFC3339: {}", s)
             }
         }
     }

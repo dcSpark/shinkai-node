@@ -2,6 +2,8 @@ use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiTime;
+use crate::source::VRLocation;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -146,41 +148,44 @@ impl RetrievedNode {
     }
 }
 
-/// Represents a node with an id, content, validated data_tag_names, and optional metadata.
-/// Note: `DataTag` type is excessively heavy when we convert to JSON, thus we just use the
-/// data tag names instead in the Node.
+/// Represents a Vector Resource Node which holds a unique id, one of the types of NodeContent,
+/// metadata, and other internal relevant data.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub id: String,
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
+    pub last_modified_datetime: String,
 }
 
 impl Node {
     /// Create a new text-holding Node with a provided String id
-    pub fn new(
+    pub fn new_text(
         id: String,
         text: &str,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
+
         Self {
             id,
             content: NodeContent::Text(text.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
+            last_modified_datetime: current_time,
         }
     }
 
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
-    pub fn new_with_integer_id(
+    pub fn new_text_with_integer_id(
         id: u64,
         text: &str,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
-        Self::new(id.to_string(), text, metadata, data_tag_names)
+        Self::new_text(id.to_string(), text, metadata, data_tag_names)
     }
 
     /// Create a new BaseVectorResource-holding Node with a provided String id
@@ -189,11 +194,13 @@ impl Node {
         vector_resource: &BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Node {
             id: id,
             content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
+            last_modified_datetime: current_time,
         }
     }
 
@@ -212,11 +219,13 @@ impl Node {
         external_content: &SourceReference,
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Node {
             id,
             content: NodeContent::ExternalContent(external_content.clone()),
             metadata,
             data_tag_names: vec![],
+            last_modified_datetime: current_time,
         }
     }
 
@@ -229,29 +238,65 @@ impl Node {
         Self::new_external_content(id.to_string(), external_content, metadata)
     }
 
-    /// Creates a new Node from given content with a String id.
-    pub fn from_content(
+    /// Create a new VRHeader-holding Node with a provided String id
+    pub fn new_vrheader(
+        id: String,
+        vrheader: &VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
+
+        Self {
+            id,
+            content: NodeContent::VRHeader(vrheader.clone()),
+            metadata,
+            data_tag_names: data_tag_names.clone(),
+            last_modified_datetime: current_time,
+        }
+    }
+
+    /// Create a new VRHeader-holding Node with a provided u64 id, which gets converted to string internally
+    pub fn new_vrheader_with_integer_id(
+        id: u64,
+        vrheader: &VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        data_tag_names: &Vec<String>,
+    ) -> Self {
+        Self::new_vrheader(id.to_string(), vrheader, metadata, data_tag_names)
+    }
+
+    /// Creates a new Node using provided content with a String id.
+    pub fn from_node_content(
         id: String,
         content: NodeContent,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: Vec<String>,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         Self {
             id,
             content,
             metadata,
             data_tag_names,
+            last_modified_datetime: current_time,
         }
     }
 
-    /// Creates a new Node from given content with a u64 id
-    pub fn from_content_with_integer_id(
+    /// Creates a new Node using provided content with a u64 id
+    pub fn from_node_content_with_integer_id(
         id: u64,
         content: NodeContent,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: Vec<String>,
     ) -> Self {
-        Self::from_content(id.to_string(), content, metadata, data_tag_names)
+        Self::from_node_content(id.to_string(), content, metadata, data_tag_names)
+    }
+
+    /// Updates the last_modified_datetime to the current time
+    pub fn update_last_modified_to_now(&mut self) {
+        let current_time = ShinkaiTime::generate_time_now();
+        self.last_modified_datetime = current_time;
     }
 
     /// Attempts to return the text content from the Node. Errors if is different type
@@ -277,6 +322,14 @@ impl Node {
             _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
+
+    /// Returns the keys of all kv pairs in the Node's metadata field
+    /// None if Metadata is None
+    pub fn metadata_keys(&self) -> Option<Vec<String>> {
+        self.metadata
+            .as_ref()
+            .map(|metadata| metadata.keys().cloned().collect())
+    }
 }
 
 /// Contents of a Node. Either the String text itself, or another VectorResource
@@ -285,6 +338,7 @@ pub enum NodeContent {
     Text(String),
     Resource(BaseVectorResource),
     ExternalContent(SourceReference),
+    VRHeader(VRHeader),
 }
 
 /// Struct which holds descriptive information about a given Vector Resource.
@@ -295,8 +349,12 @@ pub struct VRHeader {
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSource,
     pub resource_embedding: Option<Embedding>,
+    pub resource_created_datetime: String,
+    pub resource_last_modified_datetime: String,
+    /// The location where the VectorResource is held. Will be None for VectorResources
+    /// held inside of nodes of an existing VectorResource.
+    pub resource_location: Option<VRLocation>,
     pub data_tag_names: Vec<String>,
-    // pub metadata: HashMap<String, String>,
 }
 
 impl VRHeader {
@@ -308,6 +366,9 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
+        resource_created_datetime: String,
+        resource_last_modified_datetime: String,
+        resource_location: Option<VRLocation>,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -316,6 +377,9 @@ impl VRHeader {
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
             resource_source,
+            resource_created_datetime,
+            resource_last_modified_datetime,
+            resource_location,
         }
     }
 
@@ -326,6 +390,9 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
+        resource_created_datetime: String,
+        resource_last_modified_datetime: String,
+        resource_location: Option<VRLocation>,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -341,6 +408,9 @@ impl VRHeader {
             resource_embedding: resource_embedding.clone(),
             data_tag_names: data_tag_names,
             resource_source,
+            resource_created_datetime,
+            resource_last_modified_datetime,
+            resource_location,
         })
     }
 
@@ -359,14 +429,8 @@ impl VRHeader {
     }
 }
 
-impl From<Box<dyn VectorResource>> for VRHeader {
-    fn from(resource: Box<dyn VectorResource>) -> Self {
-        resource.generate_resource_header()
-    }
-}
-
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
-/// Internally the path is made up of an ordered list of Node ids (Int strings for Docs, any string for Maps).
+/// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VRPath {
     pub path_ids: Vec<String>,

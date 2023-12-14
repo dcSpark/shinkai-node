@@ -1,8 +1,19 @@
 use super::db_handlers::setup;
 use async_channel::{bounded, Receiver, Sender};
+use async_std::println;
+use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::Future;
-use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, MessageSchemaType, RegistrationCodeType,
+};
+use shinkai_message_primitives::shinkai_utils::encryption::{
+    encryption_public_key_to_string, encryption_secret_key_to_string, unsafe_deterministic_encryption_keypair,
+    EncryptionMethod,
+};
+use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
 };
@@ -10,8 +21,9 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::Node;
 use std::net::{IpAddr, Ipv4Addr};
+use std::path::Path;
 use std::pin::Pin;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -75,7 +87,7 @@ where
             node1_db_path,
             false,
             vec![],
-            None
+            None,
         );
 
         eprintln!("Starting Node");

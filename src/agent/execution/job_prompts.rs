@@ -1,4 +1,4 @@
-use super::super::{error::AgentError};
+use super::super::error::AgentError;
 use crate::{agent::job::JobStepResult, tools::router::ShinkaiTool};
 use futures::stream::ForEach;
 use lazy_static::lazy_static;
@@ -264,7 +264,7 @@ impl JobPromptGenerator {
         );
         prompt.add_content(
             String::from(
-                r#"No, I need it to be properly formatted as JSON. Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one. ```json"#,
+                r#"No, I need it to be properly formatted as JSON. Look at the EBNF definitions you provided earlier and respond exactly the same but formatted using the best matching one. Remember to escape `\"` any quotes that you include in the content. ```json"#,
             ),
             SubPromptType::User, 100
         );
@@ -713,7 +713,7 @@ impl JobPromptGenerator {
         //         100);
 
         prompt.add_ebnf(
-            String::from(r#"'{' 'answer' ':' string '}'"#), // 'explanation' ':' string, 
+            String::from(r#"'{' 'answer' ':' string '}'"#), // 'explanation' ':' string,
             SubPromptType::System,
             100,
         );

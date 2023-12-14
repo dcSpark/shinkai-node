@@ -1,8 +1,7 @@
-use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
-
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
-use super::shared::openai::{MessageContent, OpenAIApiMessage, OpenAIResponse, openai_prepare_messages};
+use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIApiMessage, OpenAIResponse};
 use super::LLMProvider;
+use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -56,7 +55,11 @@ impl LLMProvider for OpenAI {
                 let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
                 let messages_json = match result.value {
                     PromptResultEnum::Value(v) => v,
-                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
+                    _ => {
+                        return Err(AgentError::UnexpectedPromptResultVariant(
+                            "Expected Value variant in PromptResultEnum".to_string(),
+                        ))
+                    }
                 };
 
                 let mut payload = json!({
@@ -65,7 +68,7 @@ impl LLMProvider for OpenAI {
                     "temperature": 0.7,
                     "max_tokens": result.remaining_tokens,
                 });
-                
+
                 // Openai doesn't support json_object response format for vision models. wut?
                 if !self.model_type.contains("vision") {
                     payload["response_format"] = json!({ "type": "json_object" });
@@ -86,7 +89,6 @@ impl LLMProvider for OpenAI {
                     .json(&payload)
                     .send()
                     .await?;
-
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
@@ -94,13 +96,12 @@ impl LLMProvider for OpenAI {
                 );
 
                 let response_text = res.text().await?;
+                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
-
-                let data_resp: Result<JsonValue, _> = serde_json::from_str(&response_text);
 
                 match data_resp {
                     Ok(value) => {

@@ -1,9 +1,11 @@
 use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::source::VRSource;
+use crate::shinkai_time::ShinkaiTime;
+use crate::source::{ShinkaiFileType, VRSource};
 use crate::vector_resource::{
     Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
 };
@@ -26,11 +28,35 @@ pub struct DocumentVectorResource {
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
+    created_datetime: String,
+    last_modified_datetime: String,
+    metadata_index: MetadataIndex,
 }
 
 impl VectorResource for DocumentVectorResource {
+    /// RFC3339 Datetime when then Vector Resource was created
+    fn created_datetime(&self) -> String {
+        self.created_datetime.clone()
+    }
+    /// RFC3339 Datetime when then Vector Resource was last modified
+    fn last_modified_datetime(&self) -> String {
+        self.last_modified_datetime.clone()
+    }
+    /// Set a RFC Datetime of when then Vector Resource was last modified
+    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError> {
+        if ShinkaiTime::validate_datetime_string(&datetime) {
+            self.last_modified_datetime = datetime;
+            return Ok(());
+        }
+        return Err(VRError::InvalidDateTimeString(datetime));
+    }
+
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
+    }
+
+    fn metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -70,10 +96,12 @@ impl VectorResource for DocumentVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
+        self.update_last_modified_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
+        self.update_last_modified_to_now();
         self.resource_embedding = embedding;
     }
 
@@ -116,6 +144,7 @@ impl DocumentVectorResource {
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         DocumentVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
@@ -128,6 +157,9 @@ impl DocumentVectorResource {
             embedding_model_used,
             resource_base_type: VRBaseType::Document,
             data_tag_index: DataTagIndex::new(),
+            created_datetime: current_time.clone(),
+            last_modified_datetime: current_time,
+            metadata_index: MetadataIndex::new(),
         }
     }
 
@@ -193,38 +225,13 @@ impl DocumentVectorResource {
                 nodes.push(RetrievedNode {
                     node: node.clone(),
                     score: 0.00,
-                    resource_header: self.generate_resource_header(),
+                    resource_header: self.generate_resource_header(None),
                     retrieval_path: VRPath::new(),
                 });
             }
         }
 
         Ok(nodes)
-    }
-
-    /// Returns all Nodes with a matching key/value pair in the metadata hashmap.
-    /// Does not perform any traversal, meaning only searches at root depth.
-    pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
-        let mut matching_nodes = Vec::new();
-
-        for node in &self.nodes {
-            match &node.metadata {
-                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_nodes
-                    .push(RetrievedNode {
-                        node: node.clone(),
-                        score: 0.00,
-                        resource_header: self.generate_resource_header(),
-                        retrieval_path: VRPath::new(),
-                    }),
-                _ => (),
-            }
-        }
-
-        if matching_nodes.is_empty() {
-            return Err(VRError::NoNodeFound);
-        }
-
-        Ok(matching_nodes)
     }
 
     /// Appends a new node (with a BaseVectorResource) to the document
@@ -260,7 +267,7 @@ impl DocumentVectorResource {
     }
 
     /// Appends a new text node and associated embedding to the document
-    /// without checking if tags are valid. Used for internal purposes/the routing resource.
+    /// without checking if tags are valid. Used for internal purposes.
     pub fn _append_node_without_tag_validation(
         &mut self,
         data: NodeContent,
@@ -269,14 +276,16 @@ impl DocumentVectorResource {
         tag_names: &Vec<String>,
     ) {
         let id = self.node_count + 1;
-        let node = Node::from_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
-        self.data_tag_index.add_node(&node);
-
+        let node = Node::from_node_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
         // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
+
+        self.data_tag_index.add_node(&node);
+        self.metadata_index.add_node(&node);
         self._append_node(node);
         self.embeddings.push(embedding);
+        self.update_last_modified_to_now();
     }
 
     /// Replaces an existing node and associated embedding in the Document resource
@@ -328,9 +337,11 @@ impl DocumentVectorResource {
 
         match (popped_node, popped_embedding) {
             (Some(node), Some(embedding)) => {
-                // Remove node from data tag index
+                // Remove node from indexes
+                self.metadata_index.remove_node(&node);
                 self.data_tag_index.remove_node(&node);
                 self.node_count -= 1;
+                self.update_last_modified_to_now();
                 Ok((node, embedding))
             }
             _ => Err(VRError::VectorResourceEmpty),
@@ -355,17 +366,21 @@ impl DocumentVectorResource {
 
         // Next create the new node, and replace the old node in the nodes list
         let new_node =
-            Node::from_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
+            Node::from_node_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
 
         // Then deletion of old node from index and addition of new node
         self.data_tag_index.remove_node(&old_node);
+        self.metadata_index.remove_node(&old_node);
         self.data_tag_index.add_node(&new_node);
+        self.metadata_index.add_node(&new_node);
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id_with_integer(id);
         self.embeddings[index] = embedding;
+
+        self.update_last_modified_to_now();
 
         Ok(old_node)
     }
@@ -375,6 +390,7 @@ impl DocumentVectorResource {
     pub fn remove_node(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
 
         let index = (id - 1) as usize;
         let deleted_embedding = self.embeddings.remove(index);
@@ -399,6 +415,7 @@ impl DocumentVectorResource {
             let node_id: u64 = node.id.parse().unwrap();
             node.id = format!("{}", node_id - 1);
         }
+        self.update_last_modified_to_now();
         Ok(removed_node)
     }
 
@@ -406,6 +423,7 @@ impl DocumentVectorResource {
     fn _append_node(&mut self, mut node: Node) {
         self.node_count += 1;
         node.id = self.node_count.to_string();
+        self.update_last_modified_to_now();
         self.nodes.push(node);
     }
 
@@ -415,5 +433,6 @@ impl DocumentVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+        self.update_last_modified_to_now();
     }
 }
