@@ -182,6 +182,7 @@ impl Node {
             }
         };
 
+        let result = result.into_iter().filter_map(|mut path| path.pop()).collect();
         result
     }
 

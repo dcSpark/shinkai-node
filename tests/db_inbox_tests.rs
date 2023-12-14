@@ -20,7 +20,7 @@ use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::path::Path;
 
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::SigningKey;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[test]
@@ -91,6 +91,480 @@ fn generate_message_with_text(
 }
 
 #[test]
+fn test_insert_messages_with_simple_tree_structure() {
+    setup();
+
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+    let mut parent_message = None;
+
+    eprintln!("Inserting messages...\n\n");
+    let mut parent_message_hash: Option<String> = None;
+    let mut parent_message_hash_2: Option<String> = None;
+
+    /*
+    The tree that we are creating looks like:
+        1
+        ├── 2
+        │   ├── 4
+        └── 3
+     */
+    for i in 1..=4 {
+        let message = generate_message_with_text(
+            format!("Hello World {}", i),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.81{}Z", i),
+        );
+
+        // Necessary to extract the inbox
+        parent_message = Some(message.clone());
+
+        let parent_hash: Option<String> = match i {
+            2 | 3 => parent_message_hash.clone(),
+            4 => parent_message_hash_2.clone(),
+            _ => None,
+        };
+
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, parent_hash.clone())
+            .unwrap();
+
+        // Update the parent message according to the tree structure
+        if i == 1 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 2 {
+            parent_message_hash_2 = Some(message.calculate_message_hash());
+        }
+
+        // Print the message hash, content, and parent hash
+        println!(
+            "message hash: {} message content: {} message parent hash: {}",
+            message.calculate_message_hash(),
+            message.get_message_content().unwrap(),
+            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        );
+    }
+
+    let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
+
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    eprintln!("\n\n\n Getting messages...");
+
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
+        .unwrap();
+
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox.len(), 3);
+
+    // Check the content of the first message array
+    assert_eq!(last_messages_inbox[0].len(), 1);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 1".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[1].len(), 2);
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 2".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[1][1].clone().get_message_content().unwrap(),
+        "Hello World 3".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[2].len(), 1);
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+}
+
+#[test]
+fn test_insert_messages_with_simple_tree_structure_and_root() {
+    setup();
+
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+    let mut parent_message = None;
+
+    eprintln!("Inserting messages...\n\n");
+    let mut parent_message_hash: Option<String> = None;
+    let mut parent_message_hash_2: Option<String> = None;
+
+    /*
+    The tree that we are creating looks like:
+        0
+        1
+        ├── 2
+        │   ├── 4
+        └── 3
+     */
+    for i in 0..=4 {
+        let message = generate_message_with_text(
+            format!("Hello World {}", i),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.81{}Z", i),
+        );
+
+        // Necessary to extract the inbox
+        parent_message = Some(message.clone());
+
+        let parent_hash: Option<String> = match i {
+            2 | 3 => parent_message_hash.clone(),
+            4 => parent_message_hash_2.clone(),
+            _ => None,
+        };
+
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, parent_hash.clone())
+            .unwrap();
+
+        // Update the parent message according to the tree structure
+        if i == 1 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 2 {
+            parent_message_hash_2 = Some(message.calculate_message_hash());
+        }
+
+        // Print the message hash, content, and parent hash
+        println!(
+            "message hash: {} message content: {} message parent hash: {}",
+            message.calculate_message_hash(),
+            message.get_message_content().unwrap(),
+            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        );
+    }
+
+    let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
+
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    eprintln!("\n\n\n Getting messages...");
+
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 4, None)
+        .unwrap();
+
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox.len(), 4);
+
+    // Check the content of the first message array
+    assert_eq!(last_messages_inbox[0].len(), 1);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 0".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[1].len(), 1);
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 1".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[2].len(), 2);
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 2".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[2][1].clone().get_message_content().unwrap(),
+        "Hello World 3".to_string()
+    );
+
+    // Check the content of the fourth message array
+    assert_eq!(last_messages_inbox[3].len(), 1);
+    assert_eq!(
+        last_messages_inbox[3][0].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+}
+
+#[test]
+fn test_insert_messages_with_tree_structure() {
+    setup();
+
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+
+    let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
+
+    let mut parent_message = None;
+
+    eprintln!("Inserting messages...\n\n");
+    let mut parent_message_hash: Option<String> = None;
+    let mut parent_message_hash_2: Option<String> = None;
+    let mut parent_message_hash_4: Option<String> = None;
+    let mut parent_message_hash_5: Option<String> = None;
+    /*
+    The tree that we are creating looks like:
+        1
+        ├── 2
+        │   ├── 4
+        │   │   ├── 6
+        │   │   └── 7
+        │   │       └── 8
+        │   └── 5
+        └── 3
+     */
+    for i in 1..=8 {
+        let message = generate_message_with_text(
+            format!("Hello World {}", i),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_subencryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.81{}Z", i),
+        );
+
+        // Necessary to extract the inbox
+        parent_message = Some(message.clone());
+
+        let parent_hash: Option<String> = match i {
+            2 | 3 => parent_message_hash.clone(),
+            4 | 5 => parent_message_hash_2.clone(),
+            6 | 7 => parent_message_hash.clone(),
+            8 => parent_message_hash_4.clone(),
+            _ => None,
+        };
+
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, parent_hash.clone())
+            .unwrap();
+
+        // Update the parent message according to the tree structure
+        if i == 1 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 2 {
+            parent_message_hash_2 = Some(message.calculate_message_hash());
+        } else if i == 4 {
+            parent_message_hash = Some(message.calculate_message_hash());
+        } else if i == 7 {
+            parent_message_hash_4 = Some(message.calculate_message_hash());
+        } else if i == 5 {
+            parent_message_hash_5 = Some(message.calculate_message_hash());
+        }
+
+        // Print the message hash, content, and parent hash
+        println!(
+            "message hash: {} message content: {} message parent hash: {}",
+            message.calculate_message_hash(),
+            message.get_message_content().unwrap(),
+            parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+        );
+    }
+
+    let inbox_name = InboxName::from_message(&parent_message.unwrap()).unwrap();
+
+    let inbox_name_value = match inbox_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    };
+
+    eprintln!("\n\n\n Getting messages...");
+
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, None)
+        .unwrap();
+
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox.len(), 3);
+
+    // Check the content of the first message array
+    assert_eq!(last_messages_inbox[0].len(), 2);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[0][1].clone().get_message_content().unwrap(),
+        "Hello World 5".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[1].len(), 2);
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 7".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[1][1].clone().get_message_content().unwrap(),
+        "Hello World 6".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[2].len(), 1);
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 8".to_string()
+    );
+
+    /*
+    Now we are updating the tree to looks like this:
+        1
+        ├── 2
+        │   ├── 4
+        │   │   ├── 6
+        │   │   └── 7
+        │   │       └── 8
+        │   └── 5
+        |       └── 9
+        └── 3
+
+        So the new path should be: [1], [2,3], [5,4], [9] (if we request >5 for n)
+     */
+
+    // Add message 9 as a child of message 5
+    let message = generate_message_with_text(
+        "Hello World 9".to_string(),
+        node1_encryption_sk.clone(),
+        clone_signature_secret_key(&node1_identity_sk),
+        node1_subencryption_pk,
+        node1_subidentity_name.to_string(),
+        node1_identity_name.to_string(),
+        "2023-07-02T20:53:34.819Z".to_string(),
+    );
+
+    // Get the hash of message 5 to set as the parent of message 9
+    let parent_hash = parent_message_hash_5.clone();
+
+    shinkai_db
+        .unsafe_insert_inbox_message(&message, parent_hash.clone())
+        .unwrap();
+
+    // Print the message hash, content, and parent hash
+    println!(
+        "message hash: {} message content: {} message parent hash: {}",
+        message.calculate_message_hash(),
+        message.get_message_content().unwrap(),
+        parent_hash.as_ref().map(|hash| hash.as_str()).unwrap_or("None")
+    );
+
+    // Get the last 5 messages from the inbox
+    let last_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 5, None)
+        .unwrap();
+
+    let last_messages_content: Vec<Vec<String>> = last_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Last messages: {:?}", last_messages_content);
+
+    assert_eq!(last_messages_inbox[3].len(), 1);
+    assert_eq!(
+        last_messages_inbox[3][0].clone().get_message_content().unwrap(),
+        "Hello World 9".to_string()
+    );
+
+    // Check the content of the second message array
+    assert_eq!(last_messages_inbox[2].len(), 2);
+    assert_eq!(
+        last_messages_inbox[2][0].clone().get_message_content().unwrap(),
+        "Hello World 5".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[2][1].clone().get_message_content().unwrap(),
+        "Hello World 4".to_string()
+    );
+
+    // Check the content of the third message array
+    assert_eq!(last_messages_inbox[1].len(), 2);
+    assert_eq!(
+        last_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 2".to_string()
+    );
+    assert_eq!(
+        last_messages_inbox[1][1].clone().get_message_content().unwrap(),
+        "Hello World 3".to_string()
+    );
+
+    assert_eq!(last_messages_inbox[0].len(), 1);
+    assert_eq!(
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 1".to_string()
+    );
+}
+
+#[test]
 fn db_inbox() {
     setup();
 
@@ -115,7 +589,7 @@ fn db_inbox() {
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
-    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone());
+    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None);
     println!("Inserted message {:?}", message.encode_message());
     let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
     println!("Decoded message {:?}", result);
@@ -145,7 +619,7 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_messages_inbox.len(), 1);
     assert_eq!(
-        last_messages_inbox[0].clone().get_message_content().unwrap(),
+        last_messages_inbox[0][0].clone().get_message_content().unwrap(),
         "Hello World".to_string()
     );
 
@@ -196,22 +670,22 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:55:34.814Z".to_string(),
     );
-    match shinkai_db.unsafe_insert_inbox_message(&message2.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message2.clone(), None) {
         Ok(_) => println!("message2 inserted successfully"),
         Err(e) => println!("Failed to insert message2: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message3.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message3.clone(), None) {
         Ok(_) => println!("message3 inserted successfully"),
         Err(e) => println!("Failed to insert message3: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message4.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message4.clone(), None) {
         Ok(_) => println!("message4 inserted successfully"),
         Err(e) => println!("Failed to insert message4: {}", e),
     }
 
-    match shinkai_db.unsafe_insert_inbox_message(&message5.clone()) {
+    match shinkai_db.unsafe_insert_inbox_message(&message5.clone(), None) {
         Ok(_) => println!("message5 inserted successfully"),
         Err(e) => println!("Failed to insert message5: {}", e),
     }
@@ -261,7 +735,7 @@ fn db_inbox() {
         .unwrap();
     assert_eq!(last_unread_messages_inbox_page2.len(), 1);
     assert_eq!(
-        last_unread_messages_inbox_page2[0]
+        last_unread_messages_inbox_page2[0][0]
             .clone()
             .get_message_content()
             .unwrap(),
@@ -340,8 +814,8 @@ fn db_inbox() {
         node1_identity_name.to_string(),
         "2023-07-02T20:53:34.816Z".to_string(),
     );
-    shinkai_db.unsafe_insert_inbox_message(&message4).unwrap();
-    shinkai_db.unsafe_insert_inbox_message(&message5).unwrap();
+    shinkai_db.unsafe_insert_inbox_message(&message4, None).unwrap();
+    shinkai_db.unsafe_insert_inbox_message(&message5, None).unwrap();
 
     // Test get_inboxes_for_profile
     let node1_profile_identity = StandardIdentity::new(
@@ -398,20 +872,18 @@ fn db_inbox() {
         if let Some(last_message) = smart_inbox.last_message {
             match last_message.body {
                 MessageBody::Unencrypted(ref body) => match body.message_data {
-                    MessageData::Unencrypted(ref data) => {
-                        match smart_inbox.inbox_id.as_str() {
-                            "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 5");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 6");
-                            }
-                            "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
-                                assert_eq!(data.message_raw_content, "Hello World 7");
-                            }
-                            _ => panic!("Unexpected inbox_id"),
+                    MessageData::Unencrypted(ref data) => match smart_inbox.inbox_id.as_str() {
+                        "inbox::@@node1.shinkai::@@node1.shinkai/main_profile_node1::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 5");
                         }
-                    }
+                        "inbox::@@node1.shinkai::@@node1.shinkai/other_inbox::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 6");
+                        }
+                        "inbox::@@node1.shinkai::@@node1.shinkai/yet_another_inbox::false" => {
+                            assert_eq!(data.message_raw_content, "Hello World 7");
+                        }
+                        _ => panic!("Unexpected inbox_id"),
+                    },
                     _ => panic!("Expected unencrypted message data"),
                 },
                 _ => panic!("Expected unencrypted message body"),
@@ -500,7 +972,12 @@ fn test_permission_errors() {
         result.unwrap_err(),
         ShinkaiDBError::IdentityNotFound(format!(
             "Identity not found for: {}",
-            nonexistent_identity.clone().full_identity_name.get_profile_name().unwrap().to_string()
+            nonexistent_identity
+                .clone()
+                .full_identity_name
+                .get_profile_name()
+                .unwrap()
+                .to_string()
         ))
     );
 

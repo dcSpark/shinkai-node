@@ -229,7 +229,12 @@ impl ShinkaiDB {
             }
 
             // Iterate over the messages
-            for message in &messages {
+            for message_branch in &messages {
+                let message = match message_branch.first() {
+                    Some(message) => message,
+                    None => continue,
+                };
+
                 // Check if the message body is unencrypted
                 if let MessageBody::Unencrypted(body) = &message.body {
                     // Check if the message data is unencrypted
@@ -262,7 +267,10 @@ impl ShinkaiDB {
             }
 
             // Set the offset key for the next page to the key of the last message in the current page
-            offset_key = Some(messages.last().unwrap().calculate_message_hash());
+            offset_key = messages
+                .last()
+                .and_then(|path| path.first())
+                .map(|message| message.calculate_message_hash());
         }
 
         Ok(None)
