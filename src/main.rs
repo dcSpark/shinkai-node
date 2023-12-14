@@ -35,6 +35,7 @@ mod resources;
 mod schemas;
 mod tools;
 mod utils;
+mod payments;
 
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
