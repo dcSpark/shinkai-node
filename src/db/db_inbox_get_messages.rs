@@ -1,18 +1,5 @@
-use chrono::DateTime;
-use rocksdb::{Error, Options, WriteBatch};
-use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
-    shinkai_message::shinkai_message::ShinkaiMessage,
-    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
-};
-
-use crate::schemas::{
-    identity::{IdentityType, StandardIdentity},
-    inbox_permission::InboxPermission,
-    smart_inbox::SmartInbox,
-};
-
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 
 impl ShinkaiDB {
     fn fetch_message_and_hash(
@@ -23,16 +10,16 @@ impl ShinkaiDB {
         match self.db.get_cf(messages_cf, hash_key.as_bytes())? {
             Some(bytes) => {
                 let message = ShinkaiMessage::decode_message_result(bytes)?;
-                eprintln!(
-                    "Found for hash key: {:?} Message: {:?} \n",
-                    hash_key,
-                    message.get_message_content()
-                );
+                // eprintln!(
+                //     "Found for hash key: {:?} Message: {:?} \n",
+                //     hash_key,
+                //     message.get_message_content()
+                // );
                 let message_hash = message.calculate_message_hash();
                 Ok((message, message_hash))
             }
             None => {
-                println!("Failed to find message with key: {}", hash_key);
+                // println!("Failed to find message with key: {}", hash_key);
                 Err(ShinkaiDBError::MessageNotFound)
             }
         }
@@ -58,7 +45,7 @@ impl ShinkaiDB {
         parent_key: &str,
         messages_cf: &rocksdb::ColumnFamily,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
-        eprintln!("Fetching children for parent: {:?}", parent_key);
+        // eprintln!("Fetching children for parent: {:?}", parent_key);
         let mut children_messages = Vec::new();
         match self.db.get_cf(cf_children, parent_key.as_bytes())? {
             Some(bytes) => {
@@ -91,15 +78,19 @@ impl ShinkaiDB {
         Ok(children_messages)
     }
 
+    /*
+    Get the last messages from an inbox
+    Note: This code is messy because the messages could be in a tree, sequential or a mix of both
+     */
     pub fn get_last_messages_from_inbox(
         &self,
         inbox_name: String,
         n: usize,
         until_offset_key: Option<String>,
     ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
-        // println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        // println!("Offset key: {:?}", until_offset_key);
-        // println!("n: {:?}", n);
+        println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        println!("Offset key: {:?}", until_offset_key);
+        println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
@@ -131,7 +122,8 @@ impl ShinkaiDB {
         };
 
         // Skip the first message if an offset key is provided so it doesn't get included
-        let mut skip_first = until_offset_key.is_some();
+        let skip_first = until_offset_key.is_some();
+        eprintln!("skip_first: {:?}", skip_first);
         let mut paths = Vec::new();
 
         // Get the next key from the iterator, unless we're skipping the first one
@@ -139,12 +131,28 @@ impl ShinkaiDB {
             Some(Ok((key, _))) if !skip_first => Some(String::from_utf8(key.to_vec()).unwrap()),
             _ => None, // No more messages, so break the loop
         };
-        skip_first = false;
+
+         // If skip_first is true, get the next key
+         if skip_first {
+            current_key = match iter.next() {
+                Some(Ok((key, _))) => Some(String::from_utf8(key.to_vec()).unwrap()),
+                _ => None, // No more messages, so break the loop
+            };
+        }
+
+        // If empty return early
+        if current_key.is_none() {
+            return Ok(paths);
+        }
+
+        // TODO(Nico): Need to adjust this once we add the offset back
+        // skip_first = false;
         eprintln!("current key before start: {:?}", current_key);
 
         // Loop through the messages
         // This loop is for fetching 'n' messages
         let mut first_iteration = true;
+        let mut tree_found = false;
         eprintln!("n: {}", n);
         for i in 0..n {
             eprintln!("\n\n------\niteration: {}", i);
@@ -184,6 +192,7 @@ impl ShinkaiDB {
             if let Some(cf_parents) = &cf_parents {
                 if let Some(parent_key) = self.fetch_parent_message(cf_parents, &hash_key)? {
                     if !parent_key.is_empty() {
+                        tree_found = true;
                         // Update the current key to the parent key
                         current_key = Some(parent_key.clone());
                         eprintln!("Parent key fetched: {}", parent_key);
@@ -213,7 +222,6 @@ impl ShinkaiDB {
             } else {
                 eprintln!("No parents CF, reached the root of the path");
             }
-            first_iteration = false;
 
             // Add the path to the list of paths
             paths.push(path);
@@ -223,14 +231,18 @@ impl ShinkaiDB {
             if current_key.clone().is_none() {
                 eprintln!("current key is None. Key: {:?}", key);
                 // Move the iterator forward until it matches the current key
-                while let Some(Ok((new_key, _))) = iter.next() {
-                    let new_key_str = String::from_utf8(new_key.to_vec()).unwrap();
-                    let new_key_hash = new_key_str.split(":::").nth(1).unwrap_or("");
-                    if new_key_hash == key {
-                        eprintln!("Found the current key in the iterator: {:?}", new_key_str);
-                        break;
+                if tree_found {
+                    while let Some(Ok((new_key, _))) = iter.next() {
+                        let new_key_str = String::from_utf8(new_key.to_vec()).unwrap();
+                        let new_key_hash = new_key_str.split(":::").nth(1).unwrap_or("");
+                        eprintln!("new_key_hash: {:?}", new_key_hash);
+                        if new_key_hash == key {
+                            eprintln!("Found the current key in the iterator: {:?}", new_key_str);
+                            break;
+                        }
                     }
                 }
+
                 // Get the next key from the iterator
                 current_key = match iter.next() {
                     Some(Ok((key, _))) => Some(String::from_utf8(key.to_vec()).unwrap()),
@@ -243,6 +255,9 @@ impl ShinkaiDB {
                 }
                 eprintln!("New key found: {:?}", current_key);
             }
+
+            // First iteration false
+            first_iteration = false;
         }
 
         // Reverse the paths to match the desired output order. Most recent at the end.
