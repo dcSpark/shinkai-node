@@ -109,7 +109,7 @@ impl ShinkaiDB {
 
             // Add the resource_header to the router, then putting the router
             // into the batch
-            let resource_header = resource.as_trait_object().generate_resource_header();
+            let resource_header = resource.as_trait_object().generate_resource_header(None);
             router.add_resource_header(&resource_header)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router)?;
             pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);

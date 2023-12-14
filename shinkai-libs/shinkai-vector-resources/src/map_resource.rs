@@ -1,12 +1,15 @@
 use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRSource;
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
 use serde_json;
 use std::collections::HashMap;
+use std::fs::Metadata;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as spreadsheet ingestion,
@@ -24,11 +27,35 @@ pub struct MapVectorResource {
     node_count: u64,
     nodes: HashMap<String, Node>,
     data_tag_index: DataTagIndex,
+    created_datetime: String,
+    last_modified_datetime: String,
+    metadata_index: MetadataIndex,
 }
 
 impl VectorResource for MapVectorResource {
+    /// RFC3339 Datetime when then Vector Resource was created
+    fn created_datetime(&self) -> String {
+        self.created_datetime.clone()
+    }
+    /// RFC3339 Datetime when then Vector Resource was last modified
+    fn last_modified_datetime(&self) -> String {
+        self.last_modified_datetime.clone()
+    }
+    /// Set a RFC Datetime of when then Vector Resource was last modified
+    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError> {
+        if ShinkaiTime::validate_datetime_string(&datetime) {
+            self.last_modified_datetime = datetime;
+            return Ok(());
+        }
+        return Err(VRError::InvalidDateTimeString(datetime));
+    }
+
     fn data_tag_index(&self) -> &DataTagIndex {
         &self.data_tag_index
+    }
+
+    fn metadata_index(&self) -> &MetadataIndex {
+        &self.metadata_index
     }
 
     fn embedding_model_used(&self) -> EmbeddingModelType {
@@ -68,10 +95,12 @@ impl VectorResource for MapVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
+        self.update_last_modified_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
+        self.update_last_modified_to_now();
         self.resource_embedding = embedding;
     }
 
@@ -104,6 +133,7 @@ impl MapVectorResource {
         nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
+        let current_time = ShinkaiTime::generate_time_now();
         MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
@@ -116,6 +146,9 @@ impl MapVectorResource {
             nodes,
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
+            created_datetime: current_time.clone(),
+            last_modified_datetime: current_time,
+            metadata_index: MetadataIndex::new(),
         }
     }
 
@@ -131,31 +164,6 @@ impl MapVectorResource {
             HashMap::new(),
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
         )
-    }
-
-    /// Returns all Nodes with a matching key/value pair in the metadata hashmap
-    /// Does not perform any traversal, meaning only searches in root depth.
-    pub fn metadata_search(&self, metadata_key: &str, metadata_value: &str) -> Result<Vec<RetrievedNode>, VRError> {
-        let mut matching_nodes = Vec::new();
-
-        for node in self.nodes.values() {
-            match &node.metadata {
-                Some(metadata) if metadata.get(metadata_key) == Some(&metadata_value.to_string()) => matching_nodes
-                    .push(RetrievedNode {
-                        node: node.clone(),
-                        score: 0.00,
-                        resource_header: self.generate_resource_header(),
-                        retrieval_path: VRPath::new(),
-                    }),
-                _ => (),
-            }
-        }
-
-        if matching_nodes.is_empty() {
-            return Err(VRError::NoNodeFound);
-        }
-
-        Ok(matching_nodes)
     }
 
     /// Inserts a new node (with a BaseVectorResource) and associated embeddings
@@ -202,14 +210,16 @@ impl MapVectorResource {
         embedding: &Embedding,
         tag_names: &Vec<String>,
     ) {
-        let node = Node::from_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
+        let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
         self.data_tag_index.add_node(&node);
+        self.metadata_index.add_node(&node);
 
         // Embedding details
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
         self._insert_node(node.clone());
         self.embeddings.insert(node.id.clone(), embedding);
+        self.update_last_modified_to_now();
     }
 
     /// Replaces an existing node & associated embedding with a new
@@ -264,7 +274,7 @@ impl MapVectorResource {
         new_tag_names: &Vec<String>,
     ) -> Result<Node, VRError> {
         // Next create the new node, and replace the old node in the nodes list
-        let new_node = Node::from_content(
+        let new_node = Node::from_node_content(
             key.to_string(),
             new_data.clone(),
             new_metadata.clone(),
@@ -279,11 +289,14 @@ impl MapVectorResource {
         // Then deletion of old node from index and addition of new node
         self.data_tag_index.remove_node(&old_node);
         self.data_tag_index.add_node(&new_node);
+        self.metadata_index.remove_node(&old_node);
+        self.metadata_index.add_node(&new_node);
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
         embedding.set_id(key.to_string());
         self.embeddings.insert(key.to_string(), embedding);
+        self.update_last_modified_to_now();
 
         Ok(old_node)
     }
@@ -293,6 +306,7 @@ impl MapVectorResource {
     pub fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(key)?;
         self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
         let deleted_embedding = self.embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
 
         Ok((deleted_node, deleted_embedding))
@@ -302,6 +316,7 @@ impl MapVectorResource {
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
+        self.update_last_modified_to_now();
         Ok(removed_node)
     }
 
@@ -309,6 +324,7 @@ impl MapVectorResource {
     fn _insert_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
+        self.update_last_modified_to_now();
     }
 
     pub fn from_json(json: &str) -> Result<Self, VRError> {
@@ -317,5 +333,6 @@ impl MapVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
+        self.update_last_modified_to_now();
     }
 }

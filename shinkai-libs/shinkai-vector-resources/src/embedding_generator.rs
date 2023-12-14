@@ -50,6 +50,23 @@ pub trait EmbeddingGenerator: Sync + Send {
         self.generate_embeddings_blocking(input_strings, &ids)
     }
 
+    /// Generates embeddings from the given list of input strings and ids.
+    /// Uses the `max_input_length` to cut any input strings short before sending them
+    /// to have an embedding generated.
+    /// Note: This is a blocking method.
+    fn generate_embeddings_blocking_shorten_inputs(
+        &self,
+        input_strings: &Vec<String>,
+        ids: &Vec<String>,
+        max_input_length: u64,
+    ) -> Result<Vec<Embedding>, VRError> {
+        let shortened_input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(max_input_length as usize).collect())
+            .collect();
+        self.generate_embeddings_blocking(&shortened_input_strings, ids)
+    }
+
     /// Generates an embedding from the given input string, and assigns the
     /// provided id.
     async fn generate_embedding(&self, input_string: &str, id: &str) -> Result<Embedding, VRError>;
@@ -71,6 +88,22 @@ pub trait EmbeddingGenerator: Sync + Send {
     async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Embedding>, VRError> {
         let ids: Vec<String> = vec!["".to_string(); input_strings.len()];
         self.generate_embeddings(input_strings, &ids).await
+    }
+
+    /// Generates embeddings from the given list of input strings and ids.
+    /// Uses the `max_input_length` to cut any input strings short before sending them
+    /// to have an embedding generated.
+    async fn generate_embeddings_shorten_inputs(
+        &self,
+        input_strings: &Vec<String>,
+        ids: &Vec<String>,
+        max_input_length: u64,
+    ) -> Result<Vec<Embedding>, VRError> {
+        let shortened_input_strings: Vec<String> = input_strings
+            .iter()
+            .map(|s| s.chars().take(max_input_length as usize).collect())
+            .collect();
+        self.generate_embeddings(&shortened_input_strings, ids).await
     }
 }
 

@@ -9,7 +9,6 @@ pub struct TogetherAPIResponse {
     pub prompt: Vec<String>,
     pub model: String,
     pub model_owner: String,
-    pub tags: serde_json::Map<String, serde_json::Value>,
     pub num_returns: i32,
     pub args: Args,
     pub subjobs: Vec<String>,

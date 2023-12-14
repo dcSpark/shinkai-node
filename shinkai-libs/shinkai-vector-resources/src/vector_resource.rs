@@ -1,3 +1,5 @@
+use std::fs::Metadata;
+
 use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
@@ -7,66 +9,16 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiTime;
+use crate::source::VRLocation;
 use crate::source::VRSource;
 pub use crate::vector_resource_types::*;
+pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
-
-/// An enum that represents the different traversal approaches
-/// supported by Vector Searching. In other words these allow the developer to
-/// choose how the searching algorithm
-#[derive(Debug, Clone, PartialEq)]
-pub enum TraversalMethod {
-    /// Efficiently only goes deeper into Vector Resources if they are the highest scored Nodes at their level.
-    /// Will go infinitely deep until hitting a level where no BaseVectorResources are part of the highest scored.
-    Efficient,
-    /// Traverses through all levels of depth and scores all content holding nodes.
-    Exhaustive,
-    /// Iterates exhaustively going through all levels while doing absolutely no scoring/similarity checking,
-    /// returning every single Node at any level. Also returns the Vector Resources in addition to their
-    /// Nodes they hold inside, thus providing all nodes that exist within the root Vector Resource.
-    /// Note: This is not for vector searching, but for retrieving all possible Nodes.
-    UnscoredAllNodes,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TraversalOption {
-    /// Limits traversal into deeper Vector Resources only if they match the provided VRBaseType
-    LimitTraversalToType(VRBaseType),
-    /// Limits returned result to be within a percentage range (0.0 - 1.0) of the highest scored result.
-    /// For example, you can set a tolerance range of 0.1 which means only nodes with a similarity score
-    /// within 10% of the top result will be returned.
-    ToleranceRangeResults(f32),
-    /// Limits returned results to be greater than a specific score (0.0 - 1.0)
-    MinimumScore(f32),
-    /// Efficiently traverses until (and including) the specified depth is hit (or until there are no more levels to go).
-    /// Will return BaseVectorResource Nodes if they are the highest scored at the specified depth.
-    /// Top/root level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
-    UntilDepth(u64),
-    /// By default Vector Search scoring only weighs a node based on it's single embedding alone.
-    /// Alternate scoring modes are available which allow weighing a node base on relative scores
-    /// above/below/beside, or otherwise to get potentially higher quality results.
-    SetScoringMode(ScoringMode),
-    /// Set a prefilter mode while performing a vector search. These modes use pre-processed indices in the Vector Resource
-    /// to efficiently filter out all unrelated nodes before performing any semantic search logic.
-    SetPrefilterMode(PrefilterMode),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum ScoringMode {
-    /// While traversing, averages out the score all the way to each final node. In other words, the final score
-    /// of each node weighs-in the scores of the Vector Resources that it was inside all the way up to the root.
-    HierarchicalAverageScoring,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PrefilterMode {
-    /// Perform a Syntactic Vector Search.
-    /// A syntactic vector search efficiently pre-filters all Nodes held internally to a subset that
-    /// matches the provided list of data tag names (Strings).
-    SyntacticVectorSearch(Vec<String>),
-}
+use env_logger::filter::Filter;
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
@@ -83,6 +35,7 @@ pub trait VectorResource {
     fn embedding_model_used(&self) -> EmbeddingModelType;
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType);
     fn data_tag_index(&self) -> &DataTagIndex;
+    fn metadata_index(&self) -> &MetadataIndex;
     /// Retrieves an Embedding given its id, at the root level depth.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
@@ -91,6 +44,12 @@ pub trait VectorResource {
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
+    /// ISO RFC3339 when then Vector Resource was created
+    fn created_datetime(&self) -> String;
+    /// ISO RFC3339 when then Vector Resource was last modified
+    fn last_modified_datetime(&self) -> String;
+    /// Set a RFC3339 Datetime of when then Vector Resource was last modified
+    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
 
@@ -120,6 +79,12 @@ pub trait VectorResource {
         let new_embedding = generator.generate_embedding_blocking(&formatted, "RE")?;
         self.set_resource_embedding(new_embedding);
         Ok(())
+    }
+
+    /// Updates the last_modified_datetime to the current time
+    fn update_last_modified_to_now(&mut self) {
+        let current_time = ShinkaiTime::generate_time_now();
+        self.set_last_modified_datetime(current_time).unwrap();
     }
 
     #[cfg(feature = "native-http")]
@@ -162,13 +127,15 @@ pub trait VectorResource {
     }
 
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
-    /// This is also used in the Shinkai Node as the key where the VectorResource is stored in the DB.
+    /// This is also used as the unique identifier of the Vector Resource in the VectorFS.
     fn reference_string(&self) -> String {
         VRHeader::generate_resource_reference_string(self.name().to_string(), self.resource_id().to_string())
     }
 
-    /// Generates a VRHeader out of the VectorResource
-    fn generate_resource_header(&self) -> VRHeader {
+    /// Generates a VRHeader out of the VectorResource.
+    /// Allows specifying a resource_location to identify where the VectorResource is
+    /// being stored.
+    fn generate_resource_header(&self, resource_location: Option<VRLocation>) -> VRHeader {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
@@ -180,6 +147,9 @@ pub trait VectorResource {
             Some(embedding),
             tag_names,
             self.source(),
+            self.created_datetime(),
+            self.last_modified_datetime(),
+            resource_location,
         )
     }
 
@@ -235,6 +205,11 @@ pub trait VectorResource {
                 NodeContent::ExternalContent(external_content) => {
                     println!("");
                     format!("External: {}", external_content)
+                }
+
+                NodeContent::VRHeader(header) => {
+                    println!("");
+                    format!("Header For Vector Resource: {}", header.reference_string())
                 }
             };
             println!("{}: {}", path, data);
@@ -366,12 +341,12 @@ pub trait VectorResource {
     ) -> Vec<RetrievedNode> {
         // First we fetch the embeddings we want to score
         let mut embeddings_to_score = vec![];
-        let syntactic_search_option = traversal_options.iter().find_map(|option| {
-            if let TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tags)) = option {
+        // Check for syntactic search prefilter mode
+        let syntactic_search_option = traversal_options.iter().find_map(|option| match option {
+            TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tags)) => {
                 Some(data_tags.clone())
-            } else {
-                None
             }
+            _ => None,
         });
         if let Some(data_tag_names) = syntactic_search_option {
             // If SyntacticVectorSearch is in traversal_options, fetch nodes with matching data tags
@@ -432,10 +407,23 @@ pub trait VectorResource {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
+
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
             if let Ok(node) = self.get_node(id) {
-                // Check if it's a resource
+                // Perform validations based on Filter Mode
+                let filter_mode = traversal_options.get_set_filter_mode_option();
+                if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {
+                    if !FilterMode::node_metadata_any_check(&node, &kv_pairs) {
+                        continue;
+                    }
+                }
+                if let Some(FilterMode::ContainsAllMetadataKeyValues(kv_pairs)) = filter_mode {
+                    if !FilterMode::node_metadata_all_check(&node, &kv_pairs) {
+                        continue;
+                    }
+                }
+                // Perform validations related to node content type
                 if let NodeContent::Resource(node_resource) = node.content.clone() {
                     // Keep track for later sorting efficiency
                     vector_resource_count += 1;
@@ -447,7 +435,7 @@ pub trait VectorResource {
                                 let ret_node = RetrievedNode {
                                     node: node.clone(),
                                     score,
-                                    resource_header: self.generate_resource_header(),
+                                    resource_header: self.generate_resource_header(None),
                                     retrieval_path: traversal_path.clone(),
                                 };
                                 current_level_results.push(ret_node);
@@ -528,7 +516,7 @@ pub trait VectorResource {
                     current_level_results.push(RetrievedNode {
                         node: node.clone(),
                         score,
-                        resource_header: self.generate_resource_header(),
+                        resource_header: self.generate_resource_header(None),
                         retrieval_path: new_traversal_path,
                     });
                 }
@@ -546,7 +534,7 @@ pub trait VectorResource {
                 current_level_results.push(RetrievedNode {
                     node: node.clone(),
                     score,
-                    resource_header: self.generate_resource_header(),
+                    resource_header: self.generate_resource_header(None),
                     retrieval_path: new_traversal_path,
                 });
             }
@@ -594,37 +582,6 @@ pub trait VectorResource {
         }
 
         filtered_results
-    }
-
-    /// Fetches all nodes which contain tags matching the input name list
-    /// (including fetching inside all depths of Vector Resources exhaustively)
-    /// TODO: Fix the retrieval path/depth to be proper on retrieved nodes
-    fn get_all_syntactic_matches(&self, data_tag_names: &Vec<String>) -> Vec<RetrievedNode> {
-        // Fetch all nodes with matching data tags
-        let mut matching_nodes = vec![];
-        let ids = self._syntactic_search_id_fetch(data_tag_names);
-        for id in ids {
-            if let Ok(node) = self.get_node(id.clone()) {
-                match node.content {
-                    NodeContent::Resource(resource) => {
-                        let sub_results = resource.as_trait_object().get_all_syntactic_matches(data_tag_names);
-                        matching_nodes.extend(sub_results);
-                    }
-                    _ => {
-                        let resource_header = self.generate_resource_header();
-                        let retrieved_node = RetrievedNode {
-                            node: node,
-                            score: 0.0,
-                            resource_header,
-                            retrieval_path: VRPath::new(),
-                        };
-                        matching_nodes.push(retrieved_node);
-                    }
-                }
-            }
-        }
-
-        matching_nodes
     }
 
     /// Internal method to fetch all node ids for syntactic searches
