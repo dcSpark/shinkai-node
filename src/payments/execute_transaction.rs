@@ -1,13 +1,14 @@
-use super::payment_methods::{CryptoWallet, CryptoToken};
+use super::payment_methods::{CryptoToken, CryptoWallet};
 use aes_gcm::aead::generic_array::GenericArray;
 use ethers::{core::k256::SecretKey, prelude::*};
 use std::convert::TryFrom;
+use crate::payments::payment_manager::PaymentManagerError;
 
-async fn execute_transaction(
-    from_wallet: &CryptoWallet,
-    to_wallet: &CryptoWallet,
-    token: &CryptoToken,
-) -> Result<(), &'static str> {
+pub async fn execute_transaction(
+    from_wallet: CryptoWallet,
+    to_wallet: CryptoWallet,
+    token: CryptoToken,
+) -> Result<(), PaymentManagerError> {
     // Here you would add the logic to send a transaction based on the wallet details.
     // For example, if you're sending an EVM transaction:
     let provider = Provider::<Http>::try_from("http://localhost:8545").unwrap();
@@ -26,7 +27,7 @@ async fn execute_transaction(
     tx.value = Some(ethers::utils::parse_ether(&token.amount.to_string()).unwrap());
 
     // Send the transaction
-    let _tx_hash = client.send_transaction(tx, None).await.unwrap();
+    client.send_transaction(tx, None).await.map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
 
     Ok(())
 }
