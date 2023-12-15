@@ -88,9 +88,9 @@ impl ShinkaiDB {
         n: usize,
         until_offset_key: Option<String>,
     ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
-        println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        println!("Offset key: {:?}", until_offset_key);
-        println!("n: {:?}", n);
+        // println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        // println!("Offset key: {:?}", until_offset_key);
+        // println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
@@ -123,7 +123,6 @@ impl ShinkaiDB {
 
         // Skip the first message if an offset key is provided so it doesn't get included
         let skip_first = until_offset_key.is_some();
-        eprintln!("skip_first: {:?}", skip_first);
         let mut paths = Vec::new();
 
         // Get the next key from the iterator, unless we're skipping the first one
@@ -145,23 +144,19 @@ impl ShinkaiDB {
             return Ok(paths);
         }
 
-        // TODO(Nico): Need to adjust this once we add the offset back
-        // skip_first = false;
-        eprintln!("current key before start: {:?}", current_key);
-
         // Loop through the messages
         // This loop is for fetching 'n' messages
         let mut first_iteration = true;
         let mut tree_found = false;
-        eprintln!("n: {}", n);
+        // eprintln!("n: {}", n);
         for i in 0..n {
-            eprintln!("\n\n------\niteration: {}", i);
+            // eprintln!("\n\n------\niteration: {}", i);
             let mut path = Vec::new();
 
             let key = current_key.clone().unwrap();
             current_key = None;
             // This loop is for traversing up the tree from the current message
-            println!("Fetching message with key: {}", key);
+            // println!("Fetching message with key: {}", key);
 
             // Fetch the message from the AllMessages CF
             // Split the composite key to get the hash key
@@ -172,7 +167,7 @@ impl ShinkaiDB {
             } else {
                 split[1].to_string()
             };
-            eprintln!("Current hash key: {}", hash_key);
+            // eprintln!("Current hash key: {}", hash_key);
 
             let mut added_message_hash_tmp: Option<String> = None;
             // Fetch the message from the AllMessages CF using the hash key
@@ -180,10 +175,10 @@ impl ShinkaiDB {
                 Ok((message, added_message_hash)) => {
                     added_message_hash_tmp = Some(added_message_hash);
                     path.push(message.clone());
-                    eprintln!(
-                        "Message fetched and added to path. Message content: {}",
-                        message.clone().get_message_content().unwrap()
-                    );
+                    // eprintln!(
+                    //     "Message fetched and added to path. Message content: {}",
+                    //     message.clone().get_message_content().unwrap()
+                    // );
                 }
                 Err(e) => return Err(e),
             }
@@ -195,11 +190,11 @@ impl ShinkaiDB {
                         tree_found = true;
                         // Update the current key to the parent key
                         current_key = Some(parent_key.clone());
-                        eprintln!("Parent key fetched: {}", parent_key);
+                        // eprintln!("Parent key fetched: {}", parent_key);
 
                         // Fetch the children of the parent message
                         if let Some(cf_children) = &cf_children {
-                            eprintln!("first_iteration? {:?}", first_iteration);
+                            // eprintln!("first_iteration? {:?}", first_iteration);
                             // Skip fetching children for the first message
                             if !first_iteration {
                                 let children_messages =
@@ -207,20 +202,20 @@ impl ShinkaiDB {
                                 for message in children_messages {
                                     if Some(message.calculate_message_hash()) != added_message_hash_tmp {
                                         path.push(message.clone());
-                                        eprintln!(
-                                            "Child message added to path. Message content: {}",
-                                            message.clone().get_message_content().unwrap()
-                                        );
+                                        // eprintln!(
+                                        //     "Child message added to path. Message content: {}",
+                                        //     message.clone().get_message_content().unwrap()
+                                        // );
                                     }
                                 }
                             }
                         }
                     }
                 } else {
-                    eprintln!("No parent message, reached the root of the path");
+                    // eprintln!("No parent message, reached the root of the path");
                 }
             } else {
-                eprintln!("No parents CF, reached the root of the path");
+                // eprintln!("No parents CF, reached the root of the path");
             }
 
             // Add the path to the list of paths
@@ -229,15 +224,15 @@ impl ShinkaiDB {
             // We check if no parent was found, which means we reached the root of the path
             // If so, let's check if there is a solitary message if not then break
             if current_key.clone().is_none() {
-                eprintln!("current key is None. Key: {:?}", key);
+                // eprintln!("current key is None. Key: {:?}", key);
                 // Move the iterator forward until it matches the current key
                 if tree_found {
                     while let Some(Ok((new_key, _))) = iter.next() {
                         let new_key_str = String::from_utf8(new_key.to_vec()).unwrap();
                         let new_key_hash = new_key_str.split(":::").nth(1).unwrap_or("");
-                        eprintln!("new_key_hash: {:?}", new_key_hash);
+                        // eprintln!("new_key_hash: {:?}", new_key_hash);
                         if new_key_hash == key {
-                            eprintln!("Found the current key in the iterator: {:?}", new_key_str);
+                            // eprintln!("Found the current key in the iterator: {:?}", new_key_str);
                             break;
                         }
                     }
@@ -250,10 +245,10 @@ impl ShinkaiDB {
                 };
 
                 if current_key.is_none() {
-                    eprintln!("Couldn't find a new key");
+                    // eprintln!("Couldn't find a new key");
                     break;
                 }
-                eprintln!("New key found: {:?}", current_key);
+                // eprintln!("New key found: {:?}", current_key);
             }
 
             // First iteration false
