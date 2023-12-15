@@ -3,8 +3,8 @@ mod tests {
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent};
     use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
     use shinkai_node::db::ShinkaiDB;
-    use shinkai_node::managers::agents_capabilities_manager::{
-        AgentCapability, AgentCost, AgentPrivacy, AgentsCapabilitiesManager,
+    use shinkai_node::managers::model_capabilities_manager::{
+        ModelCapability, ModelCost, ModelPrivacy, ModelCapabilitiesManager,
     };
     use tokio::sync::Mutex;
 
@@ -43,19 +43,19 @@ mod tests {
             allowed_message_senders: vec![],
         };
 
-        let manager = AgentsCapabilitiesManager {
+        let manager = ModelCapabilitiesManager {
             db,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![gpt_3_5_agent.clone()],
         };
 
-        assert!(manager.has_capability(AgentCapability::TextInference).await);
-        assert!(!manager.has_capability(AgentCapability::ImageAnalysis).await);
+        assert!(manager.has_capability(ModelCapability::TextInference).await);
+        assert!(!manager.has_capability(ModelCapability::ImageAnalysis).await);
 
-        let capabilities = AgentsCapabilitiesManager::get_capability(&gpt_3_5_agent);
-        assert_eq!(capabilities.0, vec![AgentCapability::TextInference]);
-        assert_eq!(capabilities.1, AgentCost::Cheap);
-        assert_eq!(capabilities.2, AgentPrivacy::RemoteGreedy);
+        let capabilities = ModelCapabilitiesManager::get_capability(&gpt_3_5_agent);
+        assert_eq!(capabilities.0, vec![ModelCapability::TextInference]);
+        assert_eq!(capabilities.1, ModelCost::Cheap);
+        assert_eq!(capabilities.2, ModelPrivacy::RemoteGreedy);
     }
 
     #[tokio::test]
@@ -83,15 +83,15 @@ mod tests {
             allowed_message_senders: vec![],
         };
 
-        let manager = AgentsCapabilitiesManager {
+        let manager = ModelCapabilitiesManager {
             db,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![gpt_4_vision_agent],
         };
 
-        assert!(manager.has_capability(AgentCapability::TextInference).await);
-        assert!(manager.has_capability(AgentCapability::ImageAnalysis).await);
-        assert!(!manager.has_capability(AgentCapability::ImageGeneration).await);
+        assert!(manager.has_capability(ModelCapability::TextInference).await);
+        assert!(manager.has_capability(ModelCapability::ImageAnalysis).await);
+        assert!(!manager.has_capability(ModelCapability::ImageGeneration).await);
     }
 
     #[tokio::test]
@@ -119,14 +119,14 @@ mod tests {
             allowed_message_senders: vec![],
         };
 
-        let manager = AgentsCapabilitiesManager {
+        let manager = ModelCapabilitiesManager {
             db,
             profile: ShinkaiName::new("@@localhost.shinkai/test_profile".to_string()).unwrap(),
             agents: vec![fake_gpt_agent],
         };
 
-        assert!(manager.has_capability(AgentCapability::TextInference).await);
-        assert!(!manager.has_capability(AgentCapability::ImageAnalysis).await);
-        assert!(!manager.has_capability(AgentCapability::ImageGeneration).await);
+        assert!(manager.has_capability(ModelCapability::TextInference).await);
+        assert!(!manager.has_capability(ModelCapability::ImageAnalysis).await);
+        assert!(!manager.has_capability(ModelCapability::ImageGeneration).await);
     }
 }

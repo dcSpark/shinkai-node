@@ -1,4 +1,4 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::agents_capabilities_manager::AgentsCapabilitiesManagerError};
+use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -46,7 +46,7 @@ pub enum AgentError {
     AnyhowError(AnyhowError),
     AgentMissingCapabilities(String),
     UnexpectedPromptResult(String),
-    AgentsCapabilitiesManagerError(AgentsCapabilitiesManagerError),
+    AgentsCapabilitiesManagerError(ModelCapabilitiesManagerError),
     UnexpectedPromptResultVariant(String)
 }
 
@@ -179,8 +179,8 @@ impl From<InboxNameError> for AgentError {
     }
 }
 
-impl From<AgentsCapabilitiesManagerError> for AgentError {
-    fn from(error: AgentsCapabilitiesManagerError) -> Self {
+impl From<ModelCapabilitiesManagerError> for AgentError {
+    fn from(error: ModelCapabilitiesManagerError) -> Self {
         AgentError::AgentsCapabilitiesManagerError(error)
     }
 }

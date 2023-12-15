@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json;
 use shinkai_message_primitives::{schemas::agents::serialized_agent::AgentLLMInterface, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel}};
-use crate::{agent::{execution::job_prompts::Prompt, error::AgentError}, managers::agents_capabilities_manager::{PromptResult, PromptResultEnum}};
+use crate::{agent::{execution::job_prompts::Prompt, error::AgentError}, managers::model_capabilities_manager::{PromptResult, PromptResultEnum}};
 
 #[derive(Serialize, Deserialize)]
 pub struct TogetherAPIResponse {

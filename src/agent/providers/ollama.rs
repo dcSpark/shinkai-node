@@ -1,18 +1,15 @@
-use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResult, PromptResultEnum};
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::shared::ollama::OllamaAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use serde_json;
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, Ollama};
+use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, Ollama};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use tiktoken_rs::get_chat_completion_max_tokens;
-use tiktoken_rs::num_tokens_from_messages;
 
 #[async_trait]
 impl LLMProvider for Ollama {
@@ -30,7 +27,7 @@ impl LLMProvider for Ollama {
                     model_type: self.model_type.clone(),
                 };
                 let model = AgentLLMInterface::Ollama(ollama);
-                let messages_result = AgentsCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
+                let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
                 let messages_string = match messages_result.value {
                     PromptResultEnum::Text(v) => v,
                     _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
