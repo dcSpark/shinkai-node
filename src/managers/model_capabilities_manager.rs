@@ -2,15 +2,16 @@ use crate::{
     agent::{
         error::AgentError,
         execution::job_prompts::Prompt,
-        providers::shared::{openai::openai_prepare_messages, togetherai::llama_prepare_messages},
+        providers::shared::{openai::openai_prepare_messages, togetherai::{llama_prepare_messages, llava_prepare_messages}},
     },
     db::ShinkaiDB,
 };
+use regex::Regex;
 use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
 };
-use std::sync::Arc;
+use std::{sync::Arc, fmt};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
@@ -43,8 +44,18 @@ pub struct PromptResult {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Base64ImageString(pub String);
+
+impl fmt::Display for Base64ImageString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum PromptResultEnum {
     Text(String),
+    ImageAnalysis(String, Base64ImageString),
     Value(serde_json::Value),
 }
 
@@ -269,10 +280,20 @@ impl ModelCapabilitiesManager {
                 shinkai_backend.model_type.clone(),
             )),
             AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("mistral") {
+                if ollama.model_type.starts_with("mistral")
+                    || ollama.model_type.starts_with("llama2")
+                    || ollama.model_type.starts_with("starling-lm")
+                    || ollama.model_type.starts_with("neural-chat")
+                    || ollama.model_type.starts_with("vicuna")
+                {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =
                         llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
+                    Ok(messages_string)
+                } else if ollama.model_type.starts_with("llava") || ollama.model_type.starts_with("bakllava") {
+                    let total_tokens = Self::get_max_tokens(model);
+                    let messages_string =
+                        llava_prepare_messages(model, ollama.clone().model_type.clone(), prompt, total_tokens)?;
                     Ok(messages_string)
                 } else {
                     Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
@@ -311,9 +332,13 @@ impl ModelCapabilitiesManager {
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())
                 }
             }
-            AgentLLMInterface::Ollama(_) => {
-                // Fill in the appropriate logic for Ollama
-                4096
+            AgentLLMInterface::Ollama(ollama) => {
+                // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
+                let re = Regex::new(r"(\d+)k").unwrap();
+                match re.captures(&ollama.model_type) {
+                    Some(caps) => caps.get(1).map_or(4096, |m| m.as_str().parse().unwrap_or(4096)),
+                    None => 4096,
+                }
             }
         }
     }

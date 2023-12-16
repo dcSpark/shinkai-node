@@ -28,8 +28,9 @@ impl LLMProvider for Ollama {
                 };
                 let model = AgentLLMInterface::Ollama(ollama);
                 let messages_result = ModelCapabilitiesManager::route_prompt_with_model(prompt, &model).await?;
-                let messages_string = match messages_result.value {
-                    PromptResultEnum::Text(v) => v,
+                let (messages_string, asset_content) = match messages_result.value {
+                    PromptResultEnum::Text(v) => (v, None),
+                    PromptResultEnum::ImageAnalysis(v, i) => (v, Some(i)),
                     _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
                 };
 
@@ -39,7 +40,7 @@ impl LLMProvider for Ollama {
                     format!("Messages JSON: {:?}", messages_string).as_str(),
                 );
 
-                let payload = json!({
+                let mut payload = json!({
                     "model": self.model_type,
                     "prompt": messages_string,
                     "format": "json",
@@ -47,6 +48,11 @@ impl LLMProvider for Ollama {
                     // Include any other optional parameters as needed
                     // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
                 });
+
+                if let Some(asset_content) = asset_content {
+                    let asset_content_str = asset_content.to_string();
+                    payload["images"] = json!([asset_content_str]);
+                }
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,

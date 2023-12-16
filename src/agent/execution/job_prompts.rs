@@ -1131,7 +1131,7 @@ impl Prompt {
         }
 
         let output = messages.join(" ");
-        eprintln!("generate_genericapi_messages output: {:?}", output);
+        // eprintln!("generate_genericapi_messages output: {:?}", output);
         Ok(output)
     }
 }

@@ -2,27 +2,23 @@ use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
+    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedAgent,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key
-};
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key,
-};
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
-use std::time::Instant;
 use std::env;
 use std::time::Duration;
+use std::time::Instant;
 use utils::test_boilerplate::run_test_one_node_network;
 
 mod utils;
@@ -112,19 +108,25 @@ fn job_image_analysis() {
                     model_type: "gpt-4-vision-preview".to_string(),
                 };
 
+                let ollama = Ollama {
+                    model_type: "llava".to_string(),
+                };
+
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
 
                 let agent = SerializedAgent {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
-                    external_url: Some("https://api.openai.com".to_string()),
+                    external_url: Some("http://localhost:11435".to_string()),
+                    // external_url: Some("https://api.openai.com".to_string()),
                     api_key: Some(api_key),
                     // external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
+                    // model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
+                    model: AgentLLMInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
