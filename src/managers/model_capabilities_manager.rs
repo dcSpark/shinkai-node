@@ -145,6 +145,8 @@ impl ModelCapabilitiesManager {
                     vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("mistral") {
                     vec![ModelCapability::TextInference]
+                } else if ollama.model_type.starts_with("mixtral") {
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("deepseek") {
                     vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("meditron") {
@@ -285,6 +287,7 @@ impl ModelCapabilitiesManager {
                     || ollama.model_type.starts_with("starling-lm")
                     || ollama.model_type.starts_with("neural-chat")
                     || ollama.model_type.starts_with("vicuna")
+                    || ollama.model_type.starts_with("mixtral")
                 {
                     let total_tokens = Self::get_max_tokens(model);
                     let messages_string =

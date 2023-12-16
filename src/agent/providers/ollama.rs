@@ -11,6 +11,19 @@ use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, Ollama};
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 
+fn truncate_image_content_in_payload(payload: &mut JsonValue) {
+    if let Some(images) = payload.get_mut("images") {
+        if let Some(array) = images.as_array_mut() {
+            for image in array {
+                if let Some(str_image) = image.as_str() {
+                    let truncated_image = format!("{}...", &str_image[0..20.min(str_image.len())]);
+                    *image = JsonValue::String(truncated_image);
+                }
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl LLMProvider for Ollama {
     async fn call_api(
@@ -31,7 +44,11 @@ impl LLMProvider for Ollama {
                 let (messages_string, asset_content) = match messages_result.value {
                     PromptResultEnum::Text(v) => (v, None),
                     PromptResultEnum::ImageAnalysis(v, i) => (v, Some(i)),
-                    _ => return Err(AgentError::UnexpectedPromptResultVariant("Expected Value variant in PromptResultEnum".to_string())),
+                    _ => {
+                        return Err(AgentError::UnexpectedPromptResultVariant(
+                            "Expected Value variant in PromptResultEnum".to_string(),
+                        ))
+                    }
                 };
 
                 shinkai_log(
@@ -54,10 +71,13 @@ impl LLMProvider for Ollama {
                     payload["images"] = json!([asset_content_str]);
                 }
 
+                let mut payload_log = payload.clone();
+                truncate_image_content_in_payload(&mut payload_log);
+
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Debug,
-                    format!("Call API Body: {:?}", payload).as_str(),
+                    format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
                 let res = client
@@ -90,7 +110,7 @@ impl LLMProvider for Ollama {
                             Ok(deserialized_json) => {
                                 let response_string = deserialized_json.to_string();
                                 Self::extract_first_json_object(&response_string)
-                            },
+                            }
                             Err(e) => {
                                 shinkai_log(
                                     ShinkaiLogOption::JobExecution,
