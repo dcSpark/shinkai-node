@@ -60,7 +60,7 @@ pub fn llama_prepare_messages(
     shinkai_log(
         ShinkaiLogOption::JobExecution,
         ShinkaiLogLevel::Info,
-        format!("Messages JSON: {:?}", messages_string).as_str(),
+        format!("Messages JSON (generic): {:?}", messages_string).as_str(),
     );
 
     Ok(PromptResult {
@@ -90,7 +90,7 @@ pub fn llava_prepare_messages(
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
-            format!("Messages JSON: {:?}", messages_string).as_str(),
+            format!("Messages JSON (image analysis): {:?}", messages_string).as_str(),
         );
 
         Ok(PromptResult {

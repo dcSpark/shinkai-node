@@ -16,7 +16,7 @@ export LOG_SIMPLE="true"
 export NO_SECRET_FILE="true"
 
 export INITIAL_AGENT_NAMES="o_mixtral,o_llava"
-export INITIAL_AGENT_URLS="http://localhost:11434,http://localhost:11435"
+export INITIAL_AGENT_URLS="http://localhost:11435,http://localhost:11435"
 export INITIAL_AGENT_MODELS="ollama:mixtral:8x7b-instruct-v0.1-q4_1,ollama:llava"
 export INITIAL_AGENT_API_KEYS=","
 

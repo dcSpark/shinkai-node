@@ -34,7 +34,7 @@ impl LLMProvider for Ollama {
         prompt: Prompt,
     ) -> Result<JsonValue, AgentError> {
         if let Some(base_url) = url {
-            if let Some(key) = api_key {
+            if let Some(_) = api_key {
                 let url = format!("{}{}", base_url, "/api/generate");
                 let ollama = Ollama {
                     model_type: self.model_type.clone(),
@@ -82,8 +82,6 @@ impl LLMProvider for Ollama {
 
                 let res = client
                     .post(url)
-                    .bearer_auth(key)
-                    .header("Content-Type", "application/json")
                     .json(&payload)
                     .send()
                     .await?;
