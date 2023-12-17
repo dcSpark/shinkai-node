@@ -1,4 +1,4 @@
-use crate::managers::agents_capabilities_manager::{AgentsCapabilitiesManager, PromptResultEnum};
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::shared::openai::{openai_prepare_messages, MessageContent, OpenAIResponse};
@@ -53,7 +53,7 @@ impl LLMProvider for ShinkaiBackend {
                     model_type: self.model_type.clone(),
                 };
                 let model = AgentLLMInterface::OpenAI(open_ai);
-                let max_tokens = AgentsCapabilitiesManager::get_max_tokens(&model);
+                let max_tokens = ModelCapabilitiesManager::get_max_tokens(&model);
                 // Note(Nico): we can use prepare_messages directly or we could had called AgentsCapabilitiesManager
                 let result = openai_prepare_messages(&model, self.model_type.clone(), prompt, max_tokens)?;
                 let messages_json = match result.value {

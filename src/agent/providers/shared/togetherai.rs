@@ -1,7 +1,16 @@
+use crate::{
+    agent::{
+        error::AgentError,
+        execution::job_prompts::{Prompt, SubPrompt},
+    },
+    managers::model_capabilities_manager::{Base64ImageString, PromptResult, PromptResultEnum},
+};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use shinkai_message_primitives::{schemas::agents::serialized_agent::AgentLLMInterface, shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel}};
-use crate::{agent::{execution::job_prompts::Prompt, error::AgentError}, managers::agents_capabilities_manager::{PromptResult, PromptResultEnum}};
+use shinkai_message_primitives::{
+    schemas::agents::serialized_agent::AgentLLMInterface,
+    shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct TogetherAPIResponse {
@@ -37,7 +46,12 @@ pub struct Choice {
     pub text: String,
 }
 
-pub fn llama_prepare_messages(model: &AgentLLMInterface, model_type: String, prompt: Prompt, total_tokens: usize) -> Result<PromptResult, AgentError> {
+pub fn llama_prepare_messages(
+    model: &AgentLLMInterface,
+    model_type: String,
+    prompt: Prompt,
+    total_tokens: usize,
+) -> Result<PromptResult, AgentError> {
     let mut messages_string = prompt.generate_genericapi_messages(None)?;
     if !messages_string.ends_with(" ```") {
         messages_string.push_str(" ```json");
@@ -46,11 +60,49 @@ pub fn llama_prepare_messages(model: &AgentLLMInterface, model_type: String, pro
     shinkai_log(
         ShinkaiLogOption::JobExecution,
         ShinkaiLogLevel::Info,
-        format!("Messages JSON: {:?}", messages_string).as_str(),
+        format!("Messages JSON (generic): {:?}", messages_string).as_str(),
     );
 
     Ok(PromptResult {
         value: PromptResultEnum::Text(messages_string.clone()),
         remaining_tokens: total_tokens - messages_string.len(),
     })
+}
+
+pub fn llava_prepare_messages(
+    model: &AgentLLMInterface,
+    model_type: String,
+    prompt: Prompt,
+    total_tokens: usize,
+) -> Result<PromptResult, AgentError> {
+    let mut messages_string = prompt.generate_genericapi_messages(None)?;
+    if !messages_string.ends_with(" ```") {
+        messages_string.push_str(" ```json");
+    }
+
+    if let Some((_, _, asset_content, _, _)) = prompt.sub_prompts.iter().rev().find_map(|sub_prompt| {
+        if let SubPrompt::Asset(prompt_type, asset_type, asset_content, asset_detail, priority) = sub_prompt {
+            Some((prompt_type, asset_type, asset_content, asset_detail, priority))
+        } else {
+            None
+        }
+    }) {
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Info,
+            format!("Messages JSON (image analysis): {:?}", messages_string).as_str(),
+        );
+
+        Ok(PromptResult {
+            value: PromptResultEnum::ImageAnalysis(messages_string.clone(), Base64ImageString(asset_content.clone())),
+            remaining_tokens: total_tokens - messages_string.len(),
+        })
+    } else {
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Error,
+            format!("Image content not found: {:?}", messages_string).as_str(),
+        );
+        Err(AgentError::ImageContentNotFound("Image content not found".to_string()))
+    }
 }

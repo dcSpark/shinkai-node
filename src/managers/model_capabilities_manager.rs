@@ -1,33 +1,41 @@
-use crate::{agent::{execution::job_prompts::Prompt, providers::shared::{openai::openai_prepare_messages, togetherai::llama_prepare_messages}, error::AgentError}, db::ShinkaiDB};
+use crate::{
+    agent::{
+        error::AgentError,
+        execution::job_prompts::Prompt,
+        providers::shared::{openai::openai_prepare_messages, togetherai::{llama_prepare_messages, llava_prepare_messages}},
+    },
+    db::ShinkaiDB,
+};
+use regex::Regex;
 use shinkai_message_primitives::schemas::{
     agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
     shinkai_name::ShinkaiName,
 };
-use std::sync::Arc;
+use std::{sync::Arc, fmt};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
-pub enum AgentsCapabilitiesManagerError {
+pub enum ModelCapabilitiesManagerError {
     GeneralError(String),
     NotImplemented(String),
 }
 
-impl std::fmt::Display for AgentsCapabilitiesManagerError {
+impl std::fmt::Display for ModelCapabilitiesManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            AgentsCapabilitiesManagerError::GeneralError(err) => write!(f, "General error: {}", err),
-            AgentsCapabilitiesManagerError::NotImplemented(model) => write!(f, "Model not implemented: {}", model),
+            ModelCapabilitiesManagerError::GeneralError(err) => write!(f, "General error: {}", err),
+            ModelCapabilitiesManagerError::NotImplemented(model) => write!(f, "Model not implemented: {}", model),
         }
     }
 }
 
-impl From<AgentError> for AgentsCapabilitiesManagerError {
+impl From<AgentError> for ModelCapabilitiesManagerError {
     fn from(error: AgentError) -> Self {
-        AgentsCapabilitiesManagerError::GeneralError(error.to_string())
+        ModelCapabilitiesManagerError::GeneralError(error.to_string())
     }
 }
 
-impl std::error::Error for AgentsCapabilitiesManagerError {}
+impl std::error::Error for ModelCapabilitiesManagerError {}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PromptResult {
@@ -36,14 +44,24 @@ pub struct PromptResult {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Base64ImageString(pub String);
+
+impl fmt::Display for Base64ImageString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum PromptResultEnum {
     Text(String),
+    ImageAnalysis(String, Base64ImageString),
     Value(serde_json::Value),
 }
 
 // Enum for capabilities
 #[derive(Clone, Debug, PartialEq)]
-pub enum AgentCapability {
+pub enum ModelCapability {
     TextInference,
     ImageGeneration,
     ImageAnalysis,
@@ -51,7 +69,7 @@ pub enum AgentCapability {
 
 // Enum for cost
 #[derive(Clone, Debug, PartialEq)]
-pub enum AgentCost {
+pub enum ModelCost {
     Unknown,
     Cheap,
     GoodValue,
@@ -60,7 +78,7 @@ pub enum AgentCost {
 
 // Enum for privacy
 #[derive(Clone, Debug, PartialEq)]
-pub enum AgentPrivacy {
+pub enum ModelPrivacy {
     Unknown,
     Local,
     RemotePrivate,
@@ -68,13 +86,13 @@ pub enum AgentPrivacy {
 }
 
 // Struct for AgentsCapabilitiesManager
-pub struct AgentsCapabilitiesManager {
+pub struct ModelCapabilitiesManager {
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub profile: ShinkaiName,
     pub agents: Vec<SerializedAgent>,
 }
 
-impl AgentsCapabilitiesManager {
+impl ModelCapabilitiesManager {
     // Constructor
     pub async fn new(db: Arc<Mutex<ShinkaiDB>>, profile: ShinkaiName) -> Self {
         let agents = Self::get_agents(&db, profile.clone()).await;
@@ -88,7 +106,7 @@ impl AgentsCapabilitiesManager {
     }
 
     // Static method to get capability of an agent
-    pub fn get_capability(agent: &SerializedAgent) -> (Vec<AgentCapability>, AgentCost, AgentPrivacy) {
+    pub fn get_capability(agent: &SerializedAgent) -> (Vec<ModelCapability>, ModelCost, ModelPrivacy) {
         let capabilities = Self::get_agent_capabilities(&agent.model);
         let cost = Self::get_agent_cost(&agent.model);
         let privacy = Self::get_agent_privacy(&agent.model);
@@ -97,50 +115,56 @@ impl AgentsCapabilitiesManager {
     }
 
     // Static method to get capabilities of an agent model
-    pub fn get_agent_capabilities(model: &AgentLLMInterface) -> Vec<AgentCapability> {
+    pub fn get_agent_capabilities(model: &AgentLLMInterface) -> Vec<ModelCapability> {
         match model {
             AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-3.5-turbo-1106" => vec![AgentCapability::TextInference],
-                "gpt-4-1106-preview" => vec![AgentCapability::TextInference],
-                "gpt-4-vision-preview" => vec![AgentCapability::ImageAnalysis, AgentCapability::TextInference],
-                "dall-e-3" => vec![AgentCapability::ImageGeneration],
-                model_type if model_type.starts_with("gpt-") => vec![AgentCapability::TextInference],
+                "gpt-3.5-turbo-1106" => vec![ModelCapability::TextInference],
+                "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
+                "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis, ModelCapability::TextInference],
+                "dall-e-3" => vec![ModelCapability::ImageGeneration],
+                model_type if model_type.starts_with("gpt-") => vec![ModelCapability::TextInference],
                 _ => vec![],
             },
             AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
-                "togethercomputer/llama-2-70b-chat" => vec![AgentCapability::TextInference],
-                "yorickvp/llava-13b" => vec![AgentCapability::ImageAnalysis],
+                "togethercomputer/llama-2-70b-chat" => vec![ModelCapability::TextInference],
+                "yorickvp/llava-13b" => vec![ModelCapability::ImageAnalysis],
                 model_type if model_type.starts_with("togethercomputer/llama-2") => {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 }
                 _ => vec![],
             },
             AgentLLMInterface::LocalLLM(_) => vec![],
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => vec![AgentCapability::TextInference],
-                "gpt-vision" | "gpt-4-vision-preview" => vec![AgentCapability::ImageAnalysis],
-                "dall-e" => vec![AgentCapability::ImageGeneration],
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => vec![ModelCapability::TextInference],
+                "gpt-vision" | "gpt-4-vision-preview" => vec![ModelCapability::ImageAnalysis],
+                "dall-e" => vec![ModelCapability::ImageGeneration],
                 _ => vec![],
             },
             AgentLLMInterface::Ollama(ollama) => {
                 if ollama.model_type.starts_with("llama-2") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("mistral") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
+                } else if ollama.model_type.starts_with("mixtral") {
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("deepseek") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("meditron") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("starling-lm") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("orca2") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("yi") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else if ollama.model_type.starts_with("yarn-mistral") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
+                } else if ollama.model_type.starts_with("llava") {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
+                } else if ollama.model_type.starts_with("bakllava") {
+                    vec![ModelCapability::TextInference, ModelCapability::ImageAnalysis]
                 } else if ollama.model_type.starts_with("yarn-llama2") {
-                    vec![AgentCapability::TextInference]
+                    vec![ModelCapability::TextInference]
                 } else {
                     vec![]
                 }
@@ -149,77 +173,77 @@ impl AgentsCapabilitiesManager {
     }
 
     // Static method to get cost of an agent model
-    pub fn get_agent_cost(model: &AgentLLMInterface) -> AgentCost {
+    pub fn get_agent_cost(model: &AgentLLMInterface) -> ModelCost {
         match model {
             AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-3.5-turbo-1106" => AgentCost::Cheap,
-                "gpt-4-1106-preview" => AgentCost::GoodValue,
-                "gpt-4-vision-preview" => AgentCost::GoodValue,
-                "dall-e-3" => AgentCost::GoodValue,
-                _ => AgentCost::Unknown,
+                "gpt-3.5-turbo-1106" => ModelCost::Cheap,
+                "gpt-4-1106-preview" => ModelCost::GoodValue,
+                "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "dall-e-3" => ModelCost::GoodValue,
+                _ => ModelCost::Unknown,
             },
             AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
-                "togethercomputer/llama-2-70b-chat" => AgentCost::Cheap,
-                "yorickvp/llava-13b" => AgentCost::Expensive,
-                _ => AgentCost::Unknown,
+                "togethercomputer/llama-2-70b-chat" => ModelCost::Cheap,
+                "yorickvp/llava-13b" => ModelCost::Expensive,
+                _ => ModelCost::Unknown,
             },
-            AgentLLMInterface::LocalLLM(_) => AgentCost::Cheap,
+            AgentLLMInterface::LocalLLM(_) => ModelCost::Cheap,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => AgentCost::Expensive,
-                "gpt-vision" | "gpt-4-vision-preview" => AgentCost::GoodValue,
-                "dall-e" => AgentCost::GoodValue,
-                _ => AgentCost::Unknown,
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => ModelCost::Expensive,
+                "gpt-vision" | "gpt-4-vision-preview" => ModelCost::GoodValue,
+                "dall-e" => ModelCost::GoodValue,
+                _ => ModelCost::Unknown,
             },
-            AgentLLMInterface::Ollama(_) => AgentCost::Cheap,
+            AgentLLMInterface::Ollama(_) => ModelCost::Cheap,
         }
     }
 
     // Static method to get privacy of an agent model
-    pub fn get_agent_privacy(model: &AgentLLMInterface) -> AgentPrivacy {
+    pub fn get_agent_privacy(model: &AgentLLMInterface) -> ModelPrivacy {
         match model {
             AgentLLMInterface::OpenAI(openai) => match openai.model_type.as_str() {
-                "gpt-3.5-turbo-1106" => AgentPrivacy::RemoteGreedy,
-                "gpt-4-1106-preview" => AgentPrivacy::RemoteGreedy,
-                "gpt-4-vision-preview" => AgentPrivacy::RemoteGreedy,
-                "dall-e-3" => AgentPrivacy::RemoteGreedy,
-                _ => AgentPrivacy::Unknown,
+                "gpt-3.5-turbo-1106" => ModelPrivacy::RemoteGreedy,
+                "gpt-4-1106-preview" => ModelPrivacy::RemoteGreedy,
+                "gpt-4-vision-preview" => ModelPrivacy::RemoteGreedy,
+                "dall-e-3" => ModelPrivacy::RemoteGreedy,
+                _ => ModelPrivacy::Unknown,
             },
             AgentLLMInterface::GenericAPI(genericapi) => match genericapi.model_type.as_str() {
-                "togethercomputer/llama-2-70b-chat" => AgentPrivacy::RemoteGreedy,
-                "yorickvp/llava-13b" => AgentPrivacy::RemoteGreedy,
-                _ => AgentPrivacy::Unknown,
+                "togethercomputer/llama-2-70b-chat" => ModelPrivacy::RemoteGreedy,
+                "yorickvp/llava-13b" => ModelPrivacy::RemoteGreedy,
+                _ => ModelPrivacy::Unknown,
             },
-            AgentLLMInterface::LocalLLM(_) => AgentPrivacy::Local,
+            AgentLLMInterface::LocalLLM(_) => ModelPrivacy::Local,
             AgentLLMInterface::ShinkaiBackend(shinkai_backend) => match shinkai_backend.model_type.as_str() {
-                "gpt" | "gpt4" | "gpt-4-1106-preview" => AgentPrivacy::RemoteGreedy,
-                "gpt-vision" | "gpt-4-vision-preview" => AgentPrivacy::RemoteGreedy,
-                "dall-e" => AgentPrivacy::RemoteGreedy,
-                _ => AgentPrivacy::Unknown,
+                "gpt" | "gpt4" | "gpt-4-1106-preview" => ModelPrivacy::RemoteGreedy,
+                "gpt-vision" | "gpt-4-vision-preview" => ModelPrivacy::RemoteGreedy,
+                "dall-e" => ModelPrivacy::RemoteGreedy,
+                _ => ModelPrivacy::Unknown,
             },
-            AgentLLMInterface::Ollama(_) => AgentPrivacy::Local,
+            AgentLLMInterface::Ollama(_) => ModelPrivacy::Local,
         }
     }
 
     // Function to check capabilities
-    pub async fn check_capabilities(&self) -> Vec<(Vec<AgentCapability>, AgentCost, AgentPrivacy)> {
+    pub async fn check_capabilities(&self) -> Vec<(Vec<ModelCapability>, ModelCost, ModelPrivacy)> {
         let agents = self.agents.clone();
         agents.into_iter().map(|agent| Self::get_capability(&agent)).collect()
     }
 
     // Function to check if a specific capability is available
-    pub async fn has_capability(&self, capability: AgentCapability) -> bool {
+    pub async fn has_capability(&self, capability: ModelCapability) -> bool {
         let capabilities = self.check_capabilities().await;
         capabilities.iter().any(|(caps, _, _)| caps.contains(&capability))
     }
 
     // Function to check if a specific cost is available
-    pub async fn has_cost(&self, cost: AgentCost) -> bool {
+    pub async fn has_cost(&self, cost: ModelCost) -> bool {
         let capabilities = self.check_capabilities().await;
         capabilities.iter().any(|(_, c, _)| c == &cost)
     }
 
     // Function to check if a specific privacy is available
-    pub async fn has_privacy(&self, privacy: AgentPrivacy) -> bool {
+    pub async fn has_privacy(&self, privacy: ModelPrivacy) -> bool {
         let capabilities = self.check_capabilities().await;
         capabilities.iter().any(|(_, _, p)| p == &privacy)
     }
@@ -227,47 +251,57 @@ impl AgentsCapabilitiesManager {
     pub async fn route_prompt_with_model(
         prompt: Prompt,
         model: &AgentLLMInterface,
-    ) -> Result<PromptResult, AgentsCapabilitiesManagerError> {
+    ) -> Result<PromptResult, ModelCapabilitiesManagerError> {
         match model {
             AgentLLMInterface::OpenAI(openai) => {
                 if openai.model_type.starts_with("gpt-") {
                     let total_tokens = Self::get_max_tokens(model);
-                    let tiktoken_messages = openai_prepare_messages(model, openai.clone().model_type, prompt, total_tokens)?;
+                    let tiktoken_messages =
+                        openai_prepare_messages(model, openai.clone().model_type, prompt, total_tokens)?;
                     Ok(tiktoken_messages)
                 } else {
-                    Err(AgentsCapabilitiesManagerError::NotImplemented(
-                        openai.model_type.clone(),
-                    ))
+                    Err(ModelCapabilitiesManagerError::NotImplemented(openai.model_type.clone()))
                 }
-            },
+            }
             AgentLLMInterface::GenericAPI(genericapi) => {
                 if genericapi.model_type.starts_with("togethercomputer/llama-2") {
                     let total_tokens = Self::get_max_tokens(model);
-                    let messages_string = llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;
+                    let messages_string =
+                        llama_prepare_messages(model, genericapi.clone().model_type, prompt, total_tokens)?;
                     Ok(messages_string)
                 } else {
-                    Err(AgentsCapabilitiesManagerError::NotImplemented(
+                    Err(ModelCapabilitiesManagerError::NotImplemented(
                         genericapi.model_type.clone(),
                     ))
                 }
-            },
-            AgentLLMInterface::LocalLLM(_) => {
-                Err(AgentsCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
             }
-            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(AgentsCapabilitiesManagerError::NotImplemented(
+            AgentLLMInterface::LocalLLM(_) => {
+                Err(ModelCapabilitiesManagerError::NotImplemented("LocalLLM".to_string()))
+            }
+            AgentLLMInterface::ShinkaiBackend(shinkai_backend) => Err(ModelCapabilitiesManagerError::NotImplemented(
                 shinkai_backend.model_type.clone(),
             )),
             AgentLLMInterface::Ollama(ollama) => {
-                if ollama.model_type.starts_with("mistral") {
+                if ollama.model_type.starts_with("mistral")
+                    || ollama.model_type.starts_with("llama2")
+                    || ollama.model_type.starts_with("starling-lm")
+                    || ollama.model_type.starts_with("neural-chat")
+                    || ollama.model_type.starts_with("vicuna")
+                    || ollama.model_type.starts_with("mixtral")
+                {
                     let total_tokens = Self::get_max_tokens(model);
-                    let messages_string = llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
+                    let messages_string =
+                        llama_prepare_messages(model, ollama.clone().model_type, prompt, total_tokens)?;
+                    Ok(messages_string)
+                } else if ollama.model_type.starts_with("llava") || ollama.model_type.starts_with("bakllava") {
+                    let total_tokens = Self::get_max_tokens(model);
+                    let messages_string =
+                        llava_prepare_messages(model, ollama.clone().model_type.clone(), prompt, total_tokens)?;
                     Ok(messages_string)
                 } else {
-                    Err(AgentsCapabilitiesManagerError::NotImplemented(
-                        ollama.model_type.clone(),
-                    ))
+                    Err(ModelCapabilitiesManagerError::NotImplemented(ollama.model_type.clone()))
                 }
-            },
+            }
         }
     }
 
@@ -301,9 +335,13 @@ impl AgentsCapabilitiesManager {
                     tiktoken_rs::model::get_context_size(normalized_model.as_str())
                 }
             }
-            AgentLLMInterface::Ollama(_) => {
-                // Fill in the appropriate logic for Ollama
-                4096
+            AgentLLMInterface::Ollama(ollama) => {
+                // This searches for xxk in the name and it uses that if found, otherwise it uses 4096
+                let re = Regex::new(r"(\d+)k").unwrap();
+                match re.captures(&ollama.model_type) {
+                    Some(caps) => caps.get(1).map_or(4096, |m| m.as_str().parse().unwrap_or(4096)),
+                    None => 4096,
+                }
             }
         }
     }
