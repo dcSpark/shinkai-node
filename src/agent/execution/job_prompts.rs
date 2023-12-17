@@ -128,7 +128,7 @@ impl JobPromptGenerator {
         }
 
         prompt.add_content(format!("The user has asked: "), SubPromptType::System, 100);
-        prompt.add_content(job_task, SubPromptType::User, 100);
+        prompt.add_content(format!("{}.\n", job_task), SubPromptType::User, 100);
 
         prompt.add_content(
             format!("If you have enough information to directly answer the user's question:"),

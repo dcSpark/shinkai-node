@@ -39,7 +39,10 @@ impl Agent {
         storage_bucket_permissions: Vec<String>,
         allowed_message_senders: Vec<String>,
     ) -> Self {
-        let client = Client::new();
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(50))
+            .build()
+            .unwrap();
         Self {
             id,
             full_identity_name,
@@ -107,9 +110,7 @@ impl Agent {
 }
 
 impl Agent {
-    pub fn from_serialized_agent(
-        serialized_agent: SerializedAgent,
-    ) -> Self {
+    pub fn from_serialized_agent(serialized_agent: SerializedAgent) -> Self {
         Self::new(
             serialized_agent.id,
             serialized_agent.full_identity_name,
