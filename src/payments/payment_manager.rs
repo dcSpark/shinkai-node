@@ -1,6 +1,4 @@
-use super::payment_methods::{CryptoWallet, CryptoToken};
-use ethers::prelude::*;
-use std::convert::TryFrom;
+use super::payment_methods::{CryptoWallet, CryptoToken, CryptoPayment, CryptoTokenAmount};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -23,18 +21,18 @@ impl std::fmt::Display for PaymentManagerError {
 impl std::error::Error for PaymentManagerError {}
 
 pub struct PaymentManager {
-    execute_transaction_bitcoin: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-    execute_transaction_evm: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-    execute_transaction_solana: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-    execute_transaction_cardano: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+    execute_transaction_bitcoin: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+    execute_transaction_evm: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+    execute_transaction_solana: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+    execute_transaction_cardano: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
 }
 
 impl PaymentManager {
     pub fn new(
-        execute_transaction_bitcoin: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-        execute_transaction_evm: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-        execute_transaction_solana: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
-        execute_transaction_cardano: fn(CryptoWallet, CryptoWallet, CryptoToken) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+        execute_transaction_bitcoin: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+        execute_transaction_evm: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+        execute_transaction_solana: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
+        execute_transaction_cardano: fn(CryptoWallet, CryptoWallet, CryptoToken, CryptoTokenAmount, String) -> Pin<Box<dyn Future<Output = Result<(), PaymentManagerError>> + Send>>,
     ) -> Self {
         Self {
             execute_transaction_bitcoin,
@@ -44,13 +42,12 @@ impl PaymentManager {
         }
     }
 
-    pub async fn send_transaction(&self, from_wallet: &CryptoWallet, to_wallet: &CryptoWallet, token: &CryptoToken) -> Result<(), PaymentManagerError> {
-        match from_wallet.network.as_str() {
-            "Bitcoin" => (self.execute_transaction_bitcoin)(from_wallet.clone(), to_wallet.clone(), token.clone()).await,
-            "EVM" => (self.execute_transaction_evm)(from_wallet.clone(), to_wallet.clone(), token.clone()).await,
-            "Solana" => (self.execute_transaction_solana)(from_wallet.clone(), to_wallet.clone(), token.clone()).await,
-            "Cardano" => (self.execute_transaction_cardano)(from_wallet.clone(), to_wallet.clone(), token.clone()).await,
-            _ => Err(PaymentManagerError::UnsupportedNetwork),
+    pub async fn send_transaction(&self, from: &CryptoPayment, to: &CryptoWallet, token: &CryptoToken, send_token: &CryptoTokenAmount, provider_url: String) -> Result<(), PaymentManagerError> {
+        match from {
+            CryptoPayment::BitcoinVM(wallet) => (self.execute_transaction_bitcoin)(wallet.clone(), to.clone(), token.clone(), send_token.clone(), provider_url.clone()).await,
+            CryptoPayment::EVM(wallet) => (self.execute_transaction_evm)(wallet.clone(), to.clone(), token.clone(), send_token.clone(), provider_url.clone()).await,
+            CryptoPayment::SolanaVM(wallet) => (self.execute_transaction_solana)(wallet.clone(), to.clone(), token.clone(), send_token.clone(), provider_url.clone()).await,
+            CryptoPayment::CardanoVM(wallet) => (self.execute_transaction_cardano)(wallet.clone(), to.clone(), token.clone(), send_token.clone(), provider_url.clone()).await,
         }
     }
 }
