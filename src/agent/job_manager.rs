@@ -5,6 +5,7 @@ pub use crate::agent::execution::job_execution_core::*;
 use crate::agent::job::JobLike;
 use crate::db::ShinkaiDB;
 use crate::managers::IdentityManager;
+use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -17,6 +18,8 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
 use std::mem;
 use std::pin::Pin;
@@ -35,6 +38,12 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
+    // The Node's VectorFS
+    pub vector_fs: Arc<Mutex<VectorFS>>,
+    // An EmbeddingGenerator initialized with the Node's default embedding model + server info
+    pub embedding_generator: RemoteEmbeddingGenerator,
+    /// Unstructured server connection
+    pub unstructured_api: UnstructuredAPI,
 }
 
 impl JobManager {
@@ -43,6 +52,9 @@ impl JobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
+        vector_fs: Arc<Mutex<VectorFS>>,
+        embedding_generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -87,6 +99,9 @@ impl JobManager {
             agents,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
+            vector_fs,
+            embedding_generator,
+            unstructured_api,
         };
 
         job_manager
@@ -354,7 +369,7 @@ impl JobManager {
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db);
 
-        self.add_job_message_to_job_queue(&job_message, &profile).await?; 
+        self.add_job_message_to_job_queue(&job_message, &profile).await?;
 
         Ok(job_message.job_id.clone().to_string())
     }

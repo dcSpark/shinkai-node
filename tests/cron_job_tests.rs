@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use std::env;
     use core::panic;
     use ed25519_dalek::SigningKey;
     use futures::Future;
@@ -20,6 +19,7 @@ mod tests {
         db::{db_cron_task::CronTask, ShinkaiDB},
         managers::IdentityManager,
     };
+    use std::env;
     use std::{fs, path::Path, pin::Pin, sync::Arc, time::Duration};
     use tokio::sync::Mutex;
 
@@ -103,6 +103,9 @@ mod tests {
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
+                VectorFS::new_empty(),
+                RemoteEmbeddingGenerator::new_default(),
+                UnstructuredAPI::new_default(),
             )
             .await,
         ));
@@ -125,22 +128,21 @@ mod tests {
             }
         }
 
-        let process_job_message_queued_wrapper =
-            |job: CronTask,
-             db: Arc<Mutex<ShinkaiDB>>,
-             identity_sk: SigningKey,
-             job_manager: Arc<Mutex<JobManager>>,
-             node_profile_name: ShinkaiName,
-             profile: String | {
-                Box::pin(CronManager::process_job_message_queued(
-                    job,
-                    db,
-                    identity_sk,
-                    job_manager.clone(),
-                    node_profile_name.clone(),
-                    profile,
-                )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
-            };
+        let process_job_message_queued_wrapper = |job: CronTask,
+                                                  db: Arc<Mutex<ShinkaiDB>>,
+                                                  identity_sk: SigningKey,
+                                                  job_manager: Arc<Mutex<JobManager>>,
+                                                  node_profile_name: ShinkaiName,
+                                                  profile: String| {
+            Box::pin(CronManager::process_job_message_queued(
+                job,
+                db,
+                identity_sk,
+                job_manager.clone(),
+                node_profile_name.clone(),
+                profile,
+            )) as Pin<Box<dyn Future<Output = Result<bool, CronManagerError>> + Send>>
+        };
 
         let job_queue_handler = CronManager::process_job_queue(
             db.clone(),

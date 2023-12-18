@@ -39,11 +39,6 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-/// Hard-coded embedding model used by the node as its default.
-/// TODO: Allow model to be selected, and saved in the main DB as the source of truth.
-pub static DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
-    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
-
 pub enum NodeCommand {
     Shutdown,
     // Command to make the node ping all the other nodes it knows about.
@@ -341,11 +336,14 @@ impl Node {
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
 
-        // Initialize/setup the VectorFS. For now we just hardcode the default/supported embedding models here.
-        // TODO: Later on read the embedding models from ShinkaiDB which will be the source of truth.
+        // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
+        let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
+        let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
+
+        // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
-            DEFAULT_EMBEDDING_MODEL.clone(),
-            vec![DEFAULT_EMBEDDING_MODEL.clone()],
+            embedding_generator.model_type.clone(),
+            vec![embedding_generator.model_type.clone()],
             &vector_fs_db_path,
         )
         .unwrap_or_else(|e| {
@@ -353,10 +351,6 @@ impl Node {
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
-
-        // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
-        let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
-        let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
         Node {
             node_profile_name,
@@ -389,6 +383,9 @@ impl Node {
                 Arc::clone(&self.identity_manager),
                 clone_signature_secret_key(&self.identity_secret_key),
                 self.node_profile_name.clone(),
+                self.vector_fs.clone(),
+                self.embedding_generator.clone(),
+                self.unstructured_api.clone(),
             )
             .await,
         )));

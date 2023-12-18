@@ -10,7 +10,7 @@ use reqwest::{blocking::multipart as blocking_multipart, multipart};
 use scraper::{Html, Selector};
 use serde_json::Value as JsonValue;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg(feature = "native-http")]
 pub struct UnstructuredAPI {
     api_url: String,

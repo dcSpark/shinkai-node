@@ -3,12 +3,21 @@ mod tests {
     use std::{fs, path::Path, sync::Arc};
 
     use super::*;
-    use ed25519_dalek::{VerifyingKey, SigningKey};
+    use ed25519_dalek::{SigningKey, VerifyingKey};
     use mockito::Server;
-    use shinkai_message_primitives::{shinkai_utils::signatures::{unsafe_deterministic_signature_keypair, clone_signature_secret_key}, schemas::shinkai_name::ShinkaiName};
+    use shinkai_message_primitives::{
+        schemas::shinkai_name::ShinkaiName,
+        shinkai_utils::signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+    };
     use shinkai_node::{
+        agent::job_manager::JobManager,
         cron_tasks::{cron_manager::CronManager, web_scrapper::WebScraper},
-        db::{db_cron_task::CronTask, ShinkaiDB}, managers::IdentityManager, agent::job_manager::JobManager,
+        db::{db_cron_task::CronTask, ShinkaiDB},
+        managers::IdentityManager,
+        vector_fs::vector_fs::VectorFS,
+    };
+    use shinkai_vector_resources::{
+        embedding_generator::RemoteEmbeddingGenerator, unstructured::unstructured_api::UnstructuredAPI,
     };
     use tokio::sync::Mutex;
     use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
@@ -25,7 +34,6 @@ mod tests {
         assert_eq!(links.len(), 30);
     }
 
-    
     #[tokio::test]
     #[ignore]
     async fn test_web_scraper() {
@@ -80,13 +88,24 @@ mod tests {
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
+                VectorFS::new_empty(),
+                RemoteEmbeddingGenerator::new_default(),
+                UnstructuredAPI::new_default(),
             )
             .await,
         ));
 
         // TODO: mock up the other 30 websites lol
         // TODO: let's modify this so it only returns one link
-        let result = CronManager::process_job_message_queued(scraper.task.clone(), db, identity_secret_key, job_manager, node_profile_name, "main_profile".to_string()).await;
+        let result = CronManager::process_job_message_queued(
+            scraper.task.clone(),
+            db,
+            identity_secret_key,
+            job_manager,
+            node_profile_name,
+            "main_profile".to_string(),
+        )
+        .await;
 
         // let result = scraper.download_and_parse().await;
         eprintln!("result: {:?}", result);

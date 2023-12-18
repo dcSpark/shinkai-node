@@ -12,6 +12,7 @@ pub struct VectorFS {
 }
 
 impl VectorFS {
+    /// Initializes the VectorFS
     pub fn new(
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -39,5 +40,14 @@ impl VectorFS {
             },
             db,
         })
+    }
+
+    /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
+    /// Simply creates a barebones struct to be used to satisfy required types.
+    pub fn new_empty() -> Self {
+        Self {
+            internals: VectorFSInternals::new_empty(), // assuming you have a similar method for VectorFSInternals
+            db: VectorFSDB::new_empty(),
+        }
     }
 }

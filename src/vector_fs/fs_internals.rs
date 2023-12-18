@@ -1,7 +1,9 @@
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
-    map_resource::MapVectorResource, model_type::EmbeddingModelType, vector_search_traversal::VRPath,
+    map_resource::MapVectorResource,
+    model_type::{EmbeddingModelType, TextEmbeddingsInference},
+    vector_search_traversal::{VRPath, VRSource},
 };
 use std::collections::HashMap;
 
@@ -34,6 +36,22 @@ impl VectorFSInternals {
             subscription_index,
             default_embedding_model,
             supported_embedding_models,
+        }
+    }
+
+    /// IMPORTANT: This creates a barebones empty struct, intended to be used for tests
+    /// that do not require a real filled out internals struct.
+    pub fn new_empty() -> Self {
+        Self {
+            file_system_resource: MapVectorResource::new_empty("", None, VRSource::None, ""),
+            identity_permissions_index: HashMap::new(),
+            metadata_key_index: HashMap::new(),
+            data_tag_index: HashMap::new(),
+            subscription_index: HashMap::new(),
+            default_embedding_model: EmbeddingModelType::TextEmbeddingsInference(
+                TextEmbeddingsInference::AllMiniLML6v2,
+            ),
+            supported_embedding_models: Vec::new(),
         }
     }
 

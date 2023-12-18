@@ -1,5 +1,7 @@
 use super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
 use crate::db::db::ProfileBoundWriteBatch;
+use rand::Rng;
+use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
     Options, SingleThreaded, WriteBatch, DB,
@@ -59,6 +61,20 @@ impl VectorFSDB {
             db,
             path: db_path.to_string(),
         })
+    }
+
+    /// Creates a new empty DB, intended only to be used as a mock for tests
+    pub fn new_empty() -> Self {
+        let random_string: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(8)
+            .map(char::from)
+            .collect();
+        let db_path = format!("db_tests/empty_vec_fs_db_{}", random_string);
+        Self {
+            db: DB::open_default(&db_path).unwrap(),
+            path: db_path,
+        }
     }
 
     /// Fetches the ColumnFamily handle.
