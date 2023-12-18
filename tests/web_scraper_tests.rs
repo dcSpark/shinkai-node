@@ -81,6 +81,7 @@ mod tests {
             .await
             .unwrap();
         let identity_manager = Arc::new(Mutex::new(subidentity_manager));
+        let vector_fs = Arc::new(Mutex::new(VectorFS::new_empty()));
 
         let job_manager = Arc::new(Mutex::new(
             JobManager::new(
@@ -88,7 +89,7 @@ mod tests {
                 Arc::clone(&identity_manager),
                 clone_signature_secret_key(&identity_secret_key),
                 node_profile_name.clone(),
-                VectorFS::new_empty(),
+                vector_fs,
                 RemoteEmbeddingGenerator::new_default(),
                 UnstructuredAPI::new_default(),
             )

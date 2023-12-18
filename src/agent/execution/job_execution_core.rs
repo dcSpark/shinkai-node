@@ -3,7 +3,7 @@ use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
-use crate::managers::model_capabilities_manager::{ModelCapability, ModelCapabilitiesManager};
+use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, ModelCapability};
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -27,6 +27,7 @@ impl JobManager {
         job_message: JobForProcessing,
         db: Arc<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
+        generator: RemoteEmbeddingGenerator,
     ) -> Result<String, AgentError> {
         let job_id = job_message.job_message.job_id.clone();
         // Fetch data we need to execute job step
@@ -56,6 +57,7 @@ impl JobManager {
             &mut full_job,
             job_message.profile,
             false,
+            generator.clone(),
         )
         .await?;
 
@@ -67,6 +69,7 @@ impl JobManager {
             agent_found.clone(),
             profile_name.clone(),
             user_profile,
+            generator,
         )
         .await
         {
@@ -117,6 +120,7 @@ impl JobManager {
         agent_found: Option<SerializedAgent>,
         profile_name: String,
         user_profile: Option<ShinkaiName>,
+        generator: RemoteEmbeddingGenerator,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();
         shinkai_log(
@@ -137,7 +141,6 @@ impl JobManager {
             ShinkaiLogLevel::Debug,
             &format!("Prev Execution Context: {:?}", prev_execution_context),
         );
-        let generator = RemoteEmbeddingGenerator::new_default();
         let start = Instant::now();
 
         // Call the inference chain router to choose which chain to use, and call it
@@ -362,6 +365,7 @@ impl JobManager {
         full_job: &mut Job,
         profile: ShinkaiName,
         save_to_db_directly: bool,
+        generator: RemoteEmbeddingGenerator,
     ) -> Result<(), AgentError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -376,6 +380,7 @@ impl JobManager {
                 job_message.files_inbox.clone(),
                 profile,
                 save_to_db_directly,
+                generator,
             )
             .await;
 
@@ -447,6 +452,7 @@ impl JobManager {
         files_inbox: String,
         profile: ShinkaiName,
         save_to_db_directly: bool,
+        generator: RemoteEmbeddingGenerator,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
         // Handle the None case if the agent is not found
         let agent = match agent {
@@ -455,7 +461,6 @@ impl JobManager {
         };
 
         // Create the RemoteEmbeddingGenerator instance
-        let generator = Arc::new(RemoteEmbeddingGenerator::new_default());
         let mut files_map: HashMap<String, ScopeEntry> = HashMap::new();
 
         // Get the files from the DB
@@ -478,7 +483,7 @@ impl JobManager {
             );
             let resource = JobManager::parse_file_into_resource_gen_desc(
                 content.clone(),
-                &*generator,
+                &generator,
                 filename.clone(),
                 &vec![],
                 agent.clone(),
