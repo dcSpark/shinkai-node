@@ -62,36 +62,36 @@ mod tests {
             Ok(mnemonic) => {
                 // Create a Mnemonic instance from the phrase
                 let mnemonic = Mnemonic::from_phrase(&mnemonic, Language::English)?;
-    
+
                 // Generate a Seed from the Mnemonic
                 let seed = Seed::new(&mnemonic, "");
-    
+
                 // Generate a `SecretKey<Secp256k1>` from the seed
                 let secret_key = SecretKey::from_slice(&seed.as_bytes()[0..32])?;
-    
+
                 // Generate a wallet from the secret key
                 let wallet: LocalWallet = LocalWallet::from(secret_key);
-    
+
                 Ok(wallet)
-            },
+            }
             Err(_) => {
                 // If mnemonic is not found, try to read the private key from the environment variable
                 match env::var("FROM_WALLET_PRIVATE_KEY") {
                     Ok(private_key) => {
                         // Parse the private key from hex
                         let private_key_bytes = hex::decode(private_key)?;
-    
+
                         // Generate a `SecretKey<Secp256k1>` from the private key
                         let secret_key = SecretKey::from_slice(&private_key_bytes)?;
-    
+
                         // Generate a wallet from the secret key
                         let wallet: LocalWallet = LocalWallet::from(secret_key);
-    
+
                         Ok(wallet)
-                    },
+                    }
                     Err(e) => Err(Box::new(e)),
                 }
-            },
+            }
         }
     }
 
@@ -115,7 +115,13 @@ mod tests {
                     let token = token.clone();
                     let send_amount = send_amount.clone();
                     let sepolia_rpc = sepolia_rpc.clone();
-                    Box::pin(execute_transaction(from_wallet, to_wallet, token, send_amount, sepolia_rpc))
+                    Box::pin(execute_transaction(
+                        from_wallet,
+                        to_wallet,
+                        token,
+                        send_amount,
+                        sepolia_rpc,
+                    ))
                 }
             };
 
@@ -137,7 +143,7 @@ mod tests {
                 chain_id: "11155111".to_string(),
                 rpc_url: sepolia_rpc.to_string(),
             },
-            tokens: DashMap::new()
+            tokens: DashMap::new(),
         };
 
         let to_wallet = CryptoWallet {
@@ -148,7 +154,7 @@ mod tests {
                 chain_id: "11155111".to_string(),
                 rpc_url: sepolia_rpc.to_string(),
             },
-            tokens: DashMap::new()
+            tokens: DashMap::new(),
         };
 
         let token = CryptoToken {
@@ -168,7 +174,7 @@ mod tests {
             amount: 10u128.pow(13),
         };
 
-        let result = match payment {
+        let result = match payment.clone() {
             Payment::Crypto(crypto) => match crypto.clone() {
                 CryptoPayment::EVM(_) => {
                     manager
@@ -182,5 +188,43 @@ mod tests {
 
         eprintln!("Result: {:?}", result);
         assert!(result.is_ok());
+
+        // Create SHIN token
+        let shin_token = CryptoToken {
+            name: "SHIN".to_string(),
+            symbol: "SHIN".to_string(),
+            address: Some("0xdbed03a7D17FcAA42a34f577d1609101fBce6099".to_string()),
+            amount: CryptoTokenAmount {
+                decimals_places: 18,
+                amount: 10u128.pow(16), // 0.1 SHIN
+            },
+        };
+
+        // Send SHIN
+        let send_shin_token = CryptoTokenAmount {
+            decimals_places: 18,
+            amount: 10u128.pow(16), // 0.1 SHIN
+        };
+
+        let result_shin = match payment {
+            Payment::Crypto(crypto) => match crypto.clone() {
+                CryptoPayment::EVM(_) => {
+                    manager
+                        .send_transaction(
+                            &crypto,
+                            &to_wallet,
+                            &shin_token,
+                            &send_shin_token,
+                            sepolia_rpc.to_string(),
+                        )
+                        .await
+                }
+                _ => Err(PaymentManagerError::UnsupportedNetwork),
+            },
+            _ => Err(PaymentManagerError::UnsupportedNetwork),
+        };
+
+        eprintln!("SHIN Result: {:?}", result_shin);
+        assert!(result_shin.is_ok());
     }
 }
