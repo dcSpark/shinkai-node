@@ -562,26 +562,6 @@ pub trait VectorResource: Send + Sync {
                                 skip_traversing_deeper = true;
                             }
                         }
-
-                        // If we're dynamically resolving embedding models
-                        if let TraversalOption::DynamicResolveEmbeddingModelsBlocking(query_text, api_url, api_key) =
-                            option
-                        {
-                            // If the node_resource embedding model is different
-                            if self.embedding_model_used() != node_resource.as_trait_object().embedding_model_used() {
-                                // Initialize the generator based on the embedding model type in the node_resource
-                                let generator = node_resource
-                                    .as_trait_object()
-                                    .initialize_compatible_embeddings_generator(api_url, api_key.clone());
-                                // Attempt to generate the embedding, and on success re-set the query embedding before progressing in code
-                                if let Ok(query_embedding) = generator.generate_embedding_blocking(query_text, "") {
-                                    query = query_embedding
-                                // If embedding generation failed, then we can't
-                                } else {
-                                    continue;
-                                }
-                            }
-                        }
                     }
                 }
                 if skip_traversing_deeper {

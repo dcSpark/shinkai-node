@@ -42,18 +42,7 @@ pub enum TraversalOption {
     /// Set a filter mode while performing a vector search. These modes allow filtering elements during a Vector Search
     /// dynamically based on data within each found node. They do not use an indices, so are slower than prefiler modes.
     SetFilterMode(FilterMode),
-    /// By default Vector Searches take in an input Embedding, which means they support only a single Embedding model.
-    /// This option allows providing an input SearchQuery and API url/key Strings to a hosted Embedding generation server.
-    /// If the provided server supports the EmbeddingModelType used by any internal Vector Resource held in Nodes, then the SearchQuery
-    /// will be used to dynamically generate a new Embedding before searching into the Vector Resource. If the model isn't supported or
-    /// Embedding generation fails for whatever reason, an Error is returned.
-    /// NOTE: Currently only supports a blocking interface only, async to be added in the future.
-    DynamicResolveEmbeddingModelsBlocking(SearchQuery, APIUrl, Option<APIKey>),
 }
-
-type SearchQuery = String;
-type APIUrl = String;
-type APIKey = String;
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ScoringMode {
@@ -130,7 +119,6 @@ pub trait TraversalOptionVecExt {
     fn get_set_scoring_mode_option(&self) -> Option<ScoringMode>;
     fn get_set_prefilter_mode_option(&self) -> Option<PrefilterMode>;
     fn get_set_filter_mode_option(&self) -> Option<FilterMode>;
-    fn get_dynamic_resolve_embedding_models(&self) -> Option<(SearchQuery, APIUrl, Option<APIKey>)>;
 }
 
 impl TraversalOptionVecExt for Vec<TraversalOption> {
@@ -198,16 +186,6 @@ impl TraversalOptionVecExt for Vec<TraversalOption> {
         self.iter().find_map(|option| {
             if let TraversalOption::SetFilterMode(value) = option {
                 Some(value.clone())
-            } else {
-                None
-            }
-        })
-    }
-
-    fn get_dynamic_resolve_embedding_models(&self) -> Option<(SearchQuery, APIUrl, Option<APIKey>)> {
-        self.iter().find_map(|option| {
-            if let TraversalOption::DynamicResolveEmbeddingModelsBlocking(query, url, key) = option {
-                Some((query.clone(), url.clone(), key.clone()))
             } else {
                 None
             }
