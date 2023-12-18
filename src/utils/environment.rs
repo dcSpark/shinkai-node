@@ -16,8 +16,8 @@ pub struct NodeEnvironment {
     pub starting_num_qr_devices: u32,
     pub first_device_needs_registration_code: bool,
     pub js_toolkit_executor_remote: Option<String>,
-    pub no_secret_file: bool,
-    pub secret_file_path: Option<String>,
+    pub no_secrets_file: bool,
+    pub secrets_file_path: Option<String>,
     pub main_db_path: Option<String>,
     pub vector_fs_db_path: Option<String>,
 }
@@ -122,12 +122,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
 
-    // Secret file env vars
-    let no_secret_file: bool = env::var("NO_SECRET_FILE")
+    // secrets file env vars
+    let no_secrets_file: bool = env::var("NO_secretsS_FILE")
         .unwrap_or_else(|_| "false".to_string())
         .parse()
-        .expect("Failed to parse NO_SECRET_FILE");
-    let secret_file_path: Option<String> = env::var("NODE_SECRET_FILE_PATH").ok();
+        .expect("Failed to parse NO_secretsS_FILE");
+    let secrets_file_path: Option<String> = env::var("NODE_secretsS_FILE_PATH").ok();
 
     // DB Path Env Vars
     let main_db_path: Option<String> = env::var("NODE_MAIN_DB_PATH").ok();
@@ -147,9 +147,9 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         starting_num_qr_devices,
         first_device_needs_registration_code,
         js_toolkit_executor_remote,
-        no_secret_file,
+        no_secrets_file,
         main_db_path,
         vector_fs_db_path,
-        secret_file_path,
+        secrets_file_path,
     }
 }

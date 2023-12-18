@@ -45,9 +45,9 @@ fn main() {
     let args = parse_args();
     let node_env = fetch_node_environment();
 
-    // Acquire the Node's keys from secrets file.
-    // TODO: Should check with on onchain data to verify matching pubkeys.
-    let secrets = parse_secret_file(&node_env);
+    // Acquire the Node's keys. TODO: Should check with on
+    // and then it's with onchain data for matching with the keys provided
+    let secrets = parse_secrets_file(&node_env);
     let global_identity_name = secrets
         .get("GLOBAL_IDENTITY_NAME")
         .cloned()
@@ -107,7 +107,7 @@ fn main() {
         "GLOBAL_IDENTITY_NAME={}\nIDENTITY_SECRET_KEY={}\nENCRYPTION_SECRET_KEY={}",
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
-    if !node_env.no_secret_file {
+    if !node_env.no_secrets_file {
         std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
     }
 
@@ -197,8 +197,8 @@ fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvi
 
 /// Parses the secrets file ( `db.secret`) from the machine's filesystem
 /// This file holds the user's keys.
-fn parse_secret_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
-    let path = if let Some(path) = node_env.secret_file_path.clone() {
+fn parse_secrets_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
+    let path = if let Some(path) = node_env.secrets_file_path.clone() {
         Path::new(&path)
             .to_str()
             .expect("Invalid NODE_SECRET_FILE_PATH")
