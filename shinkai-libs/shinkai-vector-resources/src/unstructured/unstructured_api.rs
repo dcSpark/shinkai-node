@@ -26,7 +26,7 @@ impl UnstructuredAPI {
     //
     pub fn new_default() -> Self {
         Self {
-            api_url: format!("https://internal.shinkai.com/x-unstructured-api/general/v0/general"),
+            api_url: format!("https://internal.shinkai.com/"),
             api_key: None,
         }
     }
