@@ -2,6 +2,7 @@ use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
+#[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
