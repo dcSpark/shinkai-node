@@ -23,6 +23,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{env, fs};
 use tokio::runtime::Runtime;
+use utils::environment::NodeEnvironment;
 
 mod agent;
 mod cron_tasks;
@@ -37,26 +38,41 @@ mod tools;
 mod utils;
 mod vector_fs;
 
+/// Initialzied Tokio runtime
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
-/// Machine filesystem path to the main ShinkaiDB database
-fn get_db_path(identity_public_key: &VerifyingKey) -> String {
-    Path::new("db")
-        .join(hash_signature_public_key(identity_public_key))
-        .into_os_string()
-        .into_string()
-        .unwrap()
+/// Machine filesystem path to the main ShinkaiDB database. Uses env var first, else pub key based.
+fn get_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
+    if let Some(path) = node_env.main_db_path.clone() {
+        Path::new(&path)
+            .to_str()
+            .expect("Invalid NODE_MAIN_DB_PATH")
+            .to_string()
+    } else {
+        Path::new("db")
+            .join(hash_signature_public_key(identity_public_key))
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
 }
 
-/// Machine filesystem path to the main VectorFS database
-fn get_vector_fs_db_path(identity_public_key: &VerifyingKey) -> String {
-    Path::new("vector_fs_db")
-        .join(hash_signature_public_key(identity_public_key))
-        .into_os_string()
-        .into_string()
-        .unwrap()
+/// Machine filesystem path to the main VectorFS database. Uses env var first, else pub key based.
+fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
+    if let Some(path) = node_env.vector_fs_db_path.clone() {
+        Path::new(&path)
+            .to_str()
+            .expect("Invalid NODE_VEC_FS_DB_PATH")
+            .to_string()
+    } else {
+        Path::new("vector_fs_db")
+            .join(hash_signature_public_key(identity_public_key))
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
 }
 
 /// Parses the secrets file ( `db.secret`) from the machine's filesystem
@@ -89,8 +105,8 @@ fn main() {
     let mut _rt = initialize_runtime();
     let node_keys = generate_or_load_keys();
     let node_env = fetch_node_environment();
-    let db_path = get_db_path(&node_keys.identity_public_key);
-    let vector_fs_db_path = get_vector_fs_db_path(&node_keys.identity_public_key);
+    let db_path = get_db_path(&node_keys.identity_public_key, &node_env);
+    let vector_fs_db_path = get_vector_fs_db_path(&node_keys.identity_public_key, &node_env);
     let initial_agents = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));

@@ -17,6 +17,8 @@ pub struct NodeEnvironment {
     pub first_device_needs_registration_code: bool,
     pub js_toolkit_executor_remote: Option<String>,
     pub no_secret_file: bool,
+    pub main_db_path: Option<String>,
+    pub vector_fs_db_path: Option<String>,
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
@@ -124,6 +126,10 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         .parse()
         .expect("Failed to parse NO_SECRET_FILE");
 
+    // DB Path Env Vars
+    let main_db_path: Option<String> = env::var("NODE_MAIN_DB_PATH").ok();
+    let vector_fs_db_path: Option<String> = env::var("NODE_VEC_FS_DB_PATH").ok();
+
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
@@ -139,5 +145,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         first_device_needs_registration_code,
         js_toolkit_executor_remote,
         no_secret_file,
+        main_db_path,
+        vector_fs_db_path,
     }
 }
