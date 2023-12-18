@@ -5,6 +5,7 @@ pub use crate::agent::execution::job_execution_core::*;
 use crate::agent::job::JobLike;
 use crate::db::ShinkaiDB;
 use crate::managers::IdentityManager;
+use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -17,6 +18,8 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::signatures::clone_signature_secret_key,
 };
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashSet;
 use std::mem;
 use std::pin::Pin;
@@ -35,6 +38,12 @@ pub struct JobManager {
     pub job_queue_manager: Arc<Mutex<JobQueueManager<JobForProcessing>>>,
     pub node_profile_name: ShinkaiName,
     pub job_processing_task: Option<tokio::task::JoinHandle<()>>,
+    // The Node's VectorFS
+    pub vector_fs: Arc<Mutex<VectorFS>>,
+    // An EmbeddingGenerator initialized with the Node's default embedding model + server info
+    pub embedding_generator: RemoteEmbeddingGenerator,
+    /// Unstructured server connection
+    pub unstructured_api: UnstructuredAPI,
 }
 
 impl JobManager {
@@ -43,6 +52,9 @@ impl JobManager {
         identity_manager: Arc<Mutex<IdentityManager>>,
         identity_secret_key: SigningKey,
         node_profile_name: ShinkaiName,
+        vector_fs: Arc<Mutex<VectorFS>>,
+        embedding_generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
     ) -> Self {
         let jobs_map = Arc::new(Mutex::new(HashMap::new()));
         {
@@ -74,7 +86,17 @@ impl JobManager {
             db.clone(),
             NUM_THREADS,
             clone_signature_secret_key(&identity_secret_key),
-            |job, db, identity_sk| Box::pin(JobManager::process_job_message_queued(job, db, identity_sk)),
+            embedding_generator.clone(),
+            unstructured_api.clone(),
+            |job, db, identity_sk, generator, unstructured_api| {
+                Box::pin(JobManager::process_job_message_queued(
+                    job,
+                    db,
+                    identity_sk,
+                    generator,
+                    unstructured_api,
+                ))
+            },
         )
         .await;
 
@@ -87,6 +109,9 @@ impl JobManager {
             agents,
             job_queue_manager: job_queue_manager.clone(),
             job_processing_task: Some(job_queue_handler),
+            vector_fs,
+            embedding_generator,
+            unstructured_api,
         };
 
         job_manager
@@ -97,10 +122,14 @@ impl JobManager {
         db: Arc<Mutex<ShinkaiDB>>,
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
+        generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Arc<Mutex<ShinkaiDB>>,
                 SigningKey,
+                RemoteEmbeddingGenerator,
+                UnstructuredAPI,
             ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send>>
             + Send
             + Sync
@@ -159,6 +188,8 @@ impl JobManager {
                     let db_clone_2 = db_clone.clone();
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                     let job_processing_fn = Arc::clone(&job_processing_fn);
+                    let cloned_generator = generator.clone();
+                    let cloned_unstructured_api = unstructured_api.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -174,7 +205,14 @@ impl JobManager {
                             Ok(Some(job)) => {
                                 // Acquire the lock, process the job, and immediately release the lock
                                 let result = {
-                                    let result = job_processing_fn(job, db_clone_2, identity_sk_clone).await;
+                                    let result = job_processing_fn(
+                                        job,
+                                        db_clone_2,
+                                        identity_sk_clone,
+                                        cloned_generator,
+                                        cloned_unstructured_api,
+                                    )
+                                    .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
                                         result
                                     } else {
@@ -354,7 +392,7 @@ impl JobManager {
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
         std::mem::drop(shinkai_db);
 
-        self.add_job_message_to_job_queue(&job_message, &profile).await?; 
+        self.add_job_message_to_job_queue(&job_message, &profile).await?;
 
         Ok(job_message.job_id.clone().to_string())
     }

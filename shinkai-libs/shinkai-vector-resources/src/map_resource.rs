@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fs::Metadata;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
-/// native key-value interface. Ideal for use cases such as spreadsheet ingestion,
+/// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
 /// constantly-updating data streams, or any unordered/mutating source data.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MapVectorResource {

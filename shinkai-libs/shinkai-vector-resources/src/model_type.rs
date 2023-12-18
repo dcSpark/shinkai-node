@@ -1,7 +1,7 @@
 // pub use llm::ModelArchitecture;
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum EmbeddingModelType {
     TextEmbeddingsInference(TextEmbeddingsInference),
     BertCPP(BertCPP),
@@ -20,7 +20,7 @@ impl fmt::Display for EmbeddingModelType {
 
 /// Hugging Face's Text Embeddings Inference
 /// (https://github.com/huggingface/text-embeddings-inference)
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TextEmbeddingsInference {
     AllMiniLML6v2,
     AllMiniLML12v2,
@@ -58,7 +58,7 @@ impl fmt::Display for TextEmbeddingsInference {
 }
 
 /// Bert.CPP (https://github.com/skeskinen/bert.cpp)
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BertCPP {
     AllMiniLML6v2,
     AllMiniLML12v2,
@@ -67,7 +67,7 @@ pub enum BertCPP {
 }
 
 /// OpenAI
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum OpenAI {
     OpenAITextEmbeddingAda002,
 }

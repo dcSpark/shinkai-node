@@ -1,3 +1,4 @@
+use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
     AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
@@ -8,8 +9,6 @@ use shinkai_message_primitives::{
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::path::Path;
-
-use super::db_errors::ShinkaiDBError;
 
 pub enum Topic {
     Inbox,
@@ -76,7 +75,7 @@ impl Topic {
 /// base interface, however fully profile-bounded. In other words
 /// all puts add the profile name as a prefix to all keys.
 pub struct ProfileBoundWriteBatch {
-    write_batch: rocksdb::WriteBatch,
+    pub write_batch: rocksdb::WriteBatch,
     pub profile_name: String,
 }
 
@@ -498,5 +497,5 @@ impl ShinkaiDB {
         }
 
         Ok(messages)
-    }   
+    }
 }

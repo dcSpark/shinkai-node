@@ -187,7 +187,7 @@ impl DocumentVectorResource {
         query: Embedding,
         proximity_window: u64,
     ) -> Result<Vec<RetrievedNode>, VRError> {
-        let search_results = self.vector_seach_customized(
+        let search_results = self.vector_search_customized(
             query,
             1,
             TraversalMethod::Exhaustive,

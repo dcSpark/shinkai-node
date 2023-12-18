@@ -74,6 +74,7 @@ where
         let (node1_device_encryption_sk, node1_device_encryption_pk) = unsafe_deterministic_encryption_keypair(200);
 
         let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+        let node1_fs_db_path = format!("db_tests/vec_fs{}", hash_string(node1_identity_name.clone()));
 
         // Create node1 and node2
         let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
@@ -87,6 +88,9 @@ where
             node1_db_path,
             false,
             vec![],
+            None,
+            node1_fs_db_path,
+            None,
             None,
         );
 

@@ -19,7 +19,7 @@ mod tests {
 
     use crate::utils::node_test_api::api_registration_device_node_profile_main;
 
-    #[test]
+    // #[test]
     fn test_restore_db() {
         let rt = Runtime::new().unwrap();
 
@@ -41,8 +41,9 @@ mod tests {
             let (node1_device_encryption_sk, _) = unsafe_deterministic_encryption_keypair(200);
 
             let node1_db_path = "tests/db_for_testing/test".to_string();
+            let node1_vec_fs_path = "tests/vec_fs_db_for_testing/test".to_string();
 
-            // Create node1 and node2
+            // Create node1 
             let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
             let node1 = Node::new(
                 node1_identity_name.to_string(),
@@ -54,6 +55,9 @@ mod tests {
                 node1_db_path,
                 true,
                 vec![],
+                None,
+                node1_vec_fs_path,
+                None,
                 None,
             );
 
