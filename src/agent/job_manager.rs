@@ -87,8 +87,15 @@ impl JobManager {
             NUM_THREADS,
             clone_signature_secret_key(&identity_secret_key),
             embedding_generator.clone(),
-            |job, db, identity_sk, generator| {
-                Box::pin(JobManager::process_job_message_queued(job, db, identity_sk, generator))
+            unstructured_api.clone(),
+            |job, db, identity_sk, generator, unstructured_api| {
+                Box::pin(JobManager::process_job_message_queued(
+                    job,
+                    db,
+                    identity_sk,
+                    generator,
+                    unstructured_api,
+                ))
             },
         )
         .await;
@@ -116,11 +123,13 @@ impl JobManager {
         max_parallel_jobs: usize,
         identity_sk: SigningKey,
         generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
         job_processing_fn: impl Fn(
                 JobForProcessing,
                 Arc<Mutex<ShinkaiDB>>,
                 SigningKey,
                 RemoteEmbeddingGenerator,
+                UnstructuredAPI,
             ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send>>
             + Send
             + Sync
@@ -180,6 +189,7 @@ impl JobManager {
                     let identity_sk_clone = clone_signature_secret_key(&identity_sk);
                     let job_processing_fn = Arc::clone(&job_processing_fn);
                     let cloned_generator = generator.clone();
+                    let cloned_unstructured_api = unstructured_api.clone();
 
                     let handle = tokio::spawn(async move {
                         let _permit = semaphore.acquire().await.unwrap();
@@ -195,8 +205,14 @@ impl JobManager {
                             Ok(Some(job)) => {
                                 // Acquire the lock, process the job, and immediately release the lock
                                 let result = {
-                                    let result =
-                                        job_processing_fn(job, db_clone_2, identity_sk_clone, cloned_generator).await;
+                                    let result = job_processing_fn(
+                                        job,
+                                        db_clone_2,
+                                        identity_sk_clone,
+                                        cloned_generator,
+                                        cloned_unstructured_api,
+                                    )
+                                    .await;
                                     if let Ok(Some(_)) = job_queue_manager.lock().await.dequeue(&job_id.clone()).await {
                                         result
                                     } else {

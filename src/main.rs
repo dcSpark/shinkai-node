@@ -255,5 +255,7 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
         .clone()
         .expect("EMBEDDINGS_SERVER_URL not found in node_env");
     let api_key = node_env.embeddings_server_api_key.clone();
-    RemoteEmbeddingGenerator::new(DEFAULT_EMBEDDING_MODEL.clone(), &api_url, api_key)
+    // TODO: Replace this hard-coded model to having the default being saved/read from the DB
+    let model = DEFAULT_EMBEDDING_MODEL.clone();
+    RemoteEmbeddingGenerator::new(model, &api_url, api_key)
 }

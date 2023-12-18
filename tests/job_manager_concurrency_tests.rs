@@ -18,6 +18,8 @@ use shinkai_node::agent::job_manager::JobManager;
 use shinkai_node::agent::queue::job_queue_manager::{JobForProcessing, JobQueueManager};
 use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::unstructured;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::time::{Duration, Instant};
 use std::{collections::HashMap, error::Error, sync::Arc};
@@ -78,37 +80,40 @@ async fn test_process_job_queue_concurrency() {
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
-    let mock_processing_fn =
-        |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SigningKey, generator: RemoteEmbeddingGenerator| {
-            Box::pin(async move {
-                shinkai_log(
-                    ShinkaiLogOption::Tests,
-                    ShinkaiLogLevel::Debug,
-                    format!("Processing job: {:?}", job.job_message.content).as_str(),
-                );
-                tokio::time::sleep(Duration::from_millis(200)).await;
+    let mock_processing_fn = |job: JobForProcessing,
+                              db: Arc<Mutex<ShinkaiDB>>,
+                              _: SigningKey,
+                              _: RemoteEmbeddingGenerator,
+                              _: UnstructuredAPI| {
+        Box::pin(async move {
+            shinkai_log(
+                ShinkaiLogOption::Tests,
+                ShinkaiLogLevel::Debug,
+                format!("Processing job: {:?}", job.job_message.content).as_str(),
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
 
-                let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-                let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+            let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+            let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-                // Create a message
-                let message = generate_message_with_text(
-                    job.job_message.content,
-                    node1_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_identity_sk),
-                    node1_encryption_pk,
-                    "".to_string(),
-                    "@@node1.shinkai".to_string(),
-                    "2023-07-02T20:53:34.812Z".to_string(),
-                );
+            // Create a message
+            let message = generate_message_with_text(
+                job.job_message.content,
+                node1_encryption_sk.clone(),
+                clone_signature_secret_key(&node1_identity_sk),
+                node1_encryption_pk,
+                "".to_string(),
+                "@@node1.shinkai".to_string(),
+                "2023-07-02T20:53:34.812Z".to_string(),
+            );
 
-                // Write the message to an inbox with the job name
-                let mut db = db.lock().await;
-                let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
+            // Write the message to an inbox with the job name
+            let mut db = db.lock().await;
+            let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
 
-                Ok("Success".to_string())
-            })
-        };
+            Ok("Success".to_string())
+        })
+    };
 
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
@@ -120,7 +125,10 @@ async fn test_process_job_queue_concurrency() {
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
-        move |job, db, identity_sk, generator| mock_processing_fn(job, db, identity_sk, generator),
+        UnstructuredAPI::new_default(),
+        move |job, db, identity_sk, generator, unstructured_api| {
+            mock_processing_fn(job, db, identity_sk, generator, unstructured_api)
+        },
     )
     .await;
 
@@ -175,37 +183,40 @@ async fn test_sequnetial_process_for_same_job_id() {
     let (node_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
 
     // Mock job processing function
-    let mock_processing_fn =
-        |job: JobForProcessing, db: Arc<Mutex<ShinkaiDB>>, _: SigningKey, generator: RemoteEmbeddingGenerator| {
-            Box::pin(async move {
-                shinkai_log(
-                    ShinkaiLogOption::Tests,
-                    ShinkaiLogLevel::Debug,
-                    format!("Processing job: {:?}", job.job_message.content).as_str(),
-                );
-                tokio::time::sleep(Duration::from_millis(200)).await;
+    let mock_processing_fn = |job: JobForProcessing,
+                              db: Arc<Mutex<ShinkaiDB>>,
+                              _: SigningKey,
+                              _: RemoteEmbeddingGenerator,
+                              _: UnstructuredAPI| {
+        Box::pin(async move {
+            shinkai_log(
+                ShinkaiLogOption::Tests,
+                ShinkaiLogLevel::Debug,
+                format!("Processing job: {:?}", job.job_message.content).as_str(),
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
 
-                let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-                let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+            let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+            let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-                // Create a message
-                let message = generate_message_with_text(
-                    job.job_message.content,
-                    node1_encryption_sk.clone(),
-                    clone_signature_secret_key(&node1_identity_sk),
-                    node1_encryption_pk,
-                    "".to_string(),
-                    "@@node1.shinkai".to_string(),
-                    "2023-07-02T20:53:34.812Z".to_string(),
-                );
+            // Create a message
+            let message = generate_message_with_text(
+                job.job_message.content,
+                node1_encryption_sk.clone(),
+                clone_signature_secret_key(&node1_identity_sk),
+                node1_encryption_pk,
+                "".to_string(),
+                "@@node1.shinkai".to_string(),
+                "2023-07-02T20:53:34.812Z".to_string(),
+            );
 
-                // Write the message to an inbox with the job name
-                let mut db = db.lock().await;
-                let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
+            // Write the message to an inbox with the job name
+            let mut db = db.lock().await;
+            let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
 
-                Ok("Success".to_string())
-            })
-        };
+            Ok("Success".to_string())
+        })
+    };
 
     let mut job_queue = JobQueueManager::<JobForProcessing>::new(Arc::clone(&db)).await.unwrap();
     let job_queue_manager = Arc::new(Mutex::new(job_queue.clone()));
@@ -217,7 +228,10 @@ async fn test_sequnetial_process_for_same_job_id() {
         NUM_THREADS,
         clone_signature_secret_key(&node_identity_sk),
         RemoteEmbeddingGenerator::new_default(),
-        move |job, db, identity_sk, generator| mock_processing_fn(job, db, identity_sk, generator),
+        UnstructuredAPI::new_default(),
+        move |job, db, identity_sk, generator, unstructured_api| {
+            mock_processing_fn(job, db, identity_sk, generator, unstructured_api)
+        },
     )
     .await;
 

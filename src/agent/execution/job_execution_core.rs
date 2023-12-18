@@ -16,6 +16,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
@@ -28,6 +29,7 @@ impl JobManager {
         db: Arc<Mutex<ShinkaiDB>>,
         identity_secret_key: SigningKey,
         generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<String, AgentError> {
         let job_id = job_message.job_message.job_id.clone();
         // Fetch data we need to execute job step
@@ -58,6 +60,7 @@ impl JobManager {
             job_message.profile,
             false,
             generator.clone(),
+            unstructured_api,
         )
         .await?;
 
@@ -366,6 +369,7 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_db_directly: bool,
         generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<(), AgentError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -381,6 +385,7 @@ impl JobManager {
                 profile,
                 save_to_db_directly,
                 generator,
+                unstructured_api,
             )
             .await;
 
@@ -453,6 +458,7 @@ impl JobManager {
         profile: ShinkaiName,
         save_to_db_directly: bool,
         generator: RemoteEmbeddingGenerator,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<HashMap<String, ScopeEntry>, AgentError> {
         // Handle the None case if the agent is not found
         let agent = match agent {
@@ -488,6 +494,7 @@ impl JobManager {
                 &vec![],
                 agent.clone(),
                 400,
+                unstructured_api.clone(),
             )
             .await?;
 
