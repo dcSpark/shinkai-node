@@ -333,7 +333,7 @@ impl Node {
     }
 }
 
-/// Contents of a Node. Either the String text itself, or another VectorResource
+/// Contents of a Node
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum NodeContent {
     Text(String),

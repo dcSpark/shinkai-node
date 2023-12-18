@@ -111,9 +111,9 @@ pub trait EmbeddingGenerator: Sync + Send {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg(feature = "native-http")]
 pub struct RemoteEmbeddingGenerator {
-    model_type: EmbeddingModelType,
-    api_url: String,
-    api_key: Option<String>,
+    pub model_type: EmbeddingModelType,
+    pub api_url: String,
+    pub api_key: Option<String>,
 }
 
 #[cfg(feature = "native-http")]
