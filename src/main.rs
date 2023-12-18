@@ -38,73 +38,24 @@ mod tools;
 mod utils;
 mod vector_fs;
 
-/// Initialzied Tokio runtime
-fn initialize_runtime() -> Runtime {
-    Runtime::new().unwrap()
-}
-
-/// Machine filesystem path to the main ShinkaiDB database. Uses env var first, else pub key based.
-fn get_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
-    if let Some(path) = node_env.main_db_path.clone() {
-        Path::new(&path)
-            .to_str()
-            .expect("Invalid NODE_MAIN_DB_PATH")
-            .to_string()
-    } else {
-        Path::new("db")
-            .join(hash_signature_public_key(identity_public_key))
-            .into_os_string()
-            .into_string()
-            .unwrap()
-    }
-}
-
-/// Machine filesystem path to the main VectorFS database. Uses env var first, else pub key based.
-fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
-    if let Some(path) = node_env.vector_fs_db_path.clone() {
-        Path::new(&path)
-            .to_str()
-            .expect("Invalid NODE_VEC_FS_DB_PATH")
-            .to_string()
-    } else {
-        Path::new("vector_fs_db")
-            .join(hash_signature_public_key(identity_public_key))
-            .into_os_string()
-            .into_string()
-            .unwrap()
-    }
-}
-
-/// Parses the secrets file ( `db.secret`) from the machine's filesystem
-/// This file holds the user's keys.
-fn parse_secret_file() -> HashMap<String, String> {
-    let contents = fs::read_to_string(Path::new("db").join(".secret")).unwrap_or_default();
-    contents
-        .lines()
-        .map(|line| {
-            let mut parts = line.splitn(2, '=');
-            let key = parts.next().unwrap_or_default().to_string();
-            let value = parts.next().unwrap_or_default().to_string();
-            (key, value)
-        })
-        .collect()
-}
-
 fn main() {
     env_logger::init();
-    // Placeholder for now. Maybe it should be a parameter that the user sets
-    // and then it's checked with onchain data for matching with the keys provided
-    let secrets = parse_secret_file();
+
+    // Fetch Env vars/args
+    let args = parse_args();
+    let node_env = fetch_node_environment();
+
+    // Acquire the Node's keys from secrets file.
+    // TODO: Should check with on onchain data to verify matching pubkeys.
+    let secrets = parse_secret_file(&node_env);
     let global_identity_name = secrets
         .get("GLOBAL_IDENTITY_NAME")
         .cloned()
         .unwrap_or_else(|| env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string()));
 
     // Initialization, creating Tokio runtime and fetching needed startup data
-    let args = parse_args();
     let mut _rt = initialize_runtime();
     let node_keys = generate_or_load_keys();
-    let node_env = fetch_node_environment();
     let db_path = get_db_path(&node_keys.identity_public_key, &node_env);
     let vector_fs_db_path = get_vector_fs_db_path(&node_keys.identity_public_key, &node_env);
     let initial_agents = fetch_agent_env(global_identity_name.clone());
@@ -205,4 +156,69 @@ fn main() {
         });
         let _ = tokio::try_join!(api_server, node_task);
     });
+}
+
+/// Initialzied Tokio runtime
+fn initialize_runtime() -> Runtime {
+    Runtime::new().unwrap()
+}
+
+/// Machine filesystem path to the main ShinkaiDB database. Uses env var first, else pub key based.
+fn get_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
+    if let Some(path) = node_env.main_db_path.clone() {
+        Path::new(&path)
+            .to_str()
+            .expect("Invalid NODE_MAIN_DB_PATH")
+            .to_string()
+    } else {
+        Path::new("db")
+            .join(hash_signature_public_key(identity_public_key))
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
+}
+
+/// Machine filesystem path to the main VectorFS database. Uses env var first, else pub key based.
+fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
+    if let Some(path) = node_env.vector_fs_db_path.clone() {
+        Path::new(&path)
+            .to_str()
+            .expect("Invalid NODE_VEC_FS_DB_PATH")
+            .to_string()
+    } else {
+        Path::new("vector_fs_db")
+            .join(hash_signature_public_key(identity_public_key))
+            .into_os_string()
+            .into_string()
+            .unwrap()
+    }
+}
+
+/// Parses the secrets file ( `db.secret`) from the machine's filesystem
+/// This file holds the user's keys.
+fn parse_secret_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
+    let path = if let Some(path) = node_env.secret_file_path.clone() {
+        Path::new(&path)
+            .to_str()
+            .expect("Invalid NODE_SECRET_FILE_PATH")
+            .to_string()
+    } else {
+        Path::new("db")
+            .join(".secret")
+            .to_str()
+            .expect("Invalid NODE_SECRET_FILE_PATH")
+            .to_string()
+    };
+
+    let contents = fs::read_to_string(path).unwrap_or_default();
+    contents
+        .lines()
+        .map(|line| {
+            let mut parts = line.splitn(2, '=');
+            let key = parts.next().unwrap_or_default().to_string();
+            let value = parts.next().unwrap_or_default().to_string();
+            (key, value)
+        })
+        .collect()
 }
