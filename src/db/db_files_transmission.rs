@@ -1,12 +1,8 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use chrono::Utc;
 use rocksdb::{Error, IteratorMode, Options, WriteBatch};
-use shinkai_message_primitives::shinkai_message::shinkai_message::{
-    MessageBody, MessageData 
-};
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    JobMessage, MessageSchemaType,
-};
+use shinkai_message_primitives::shinkai_message::shinkai_message::{MessageBody, MessageData};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 
 impl ShinkaiDB {
     pub fn write_symmetric_key(&self, hex_blake3_hash: &str, private_key: &[u8]) -> Result<(), ShinkaiDBError> {
@@ -233,7 +229,12 @@ impl ShinkaiDB {
             }
 
             // Iterate over the messages
-            for message in &messages {
+            for message_branch in &messages {
+                let message = match message_branch.first() {
+                    Some(message) => message,
+                    None => continue,
+                };
+
                 // Check if the message body is unencrypted
                 if let MessageBody::Unencrypted(body) = &message.body {
                     // Check if the message data is unencrypted
@@ -244,16 +245,21 @@ impl ShinkaiDB {
                             let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)?;
 
                             // Get all file names from the file inbox
-                            let file_names = self.get_all_filenames_from_inbox(job_message.files_inbox.clone())?;
-
-                            // Check if any file ends with .jobkai
-                            for file_name in file_names {
-                                if file_name.ends_with(".jobkai") {
-                                    // Get the file content
-                                    let file_content =
-                                        self.get_file_from_inbox(job_message.files_inbox.clone(), file_name.clone())?;
-                                    return Ok(Some((file_name, file_content)));
+                            match self.get_all_filenames_from_inbox(job_message.files_inbox.clone()) {
+                                Ok(file_names) => {
+                                    // Check if any file ends with .jobkai
+                                    for file_name in file_names {
+                                        if file_name.ends_with(".jobkai") {
+                                            // Get the file content
+                                            if let Ok(file_content) = self
+                                                .get_file_from_inbox(job_message.files_inbox.clone(), file_name.clone())
+                                            {
+                                                return Ok(Some((file_name, file_content)));
+                                            }
+                                        }
+                                    }
                                 }
+                                Err(_) => {} // Ignore the error and continue
                             }
                         }
                     }
@@ -261,7 +267,10 @@ impl ShinkaiDB {
             }
 
             // Set the offset key for the next page to the key of the last message in the current page
-            offset_key = Some(messages.last().unwrap().calculate_message_hash());
+            offset_key = messages
+                .last()
+                .and_then(|path| path.first())
+                .map(|message| message.calculate_message_hash());
         }
 
         Ok(None)

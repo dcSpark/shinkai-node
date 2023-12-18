@@ -2,7 +2,6 @@ use super::execution::job_prompts::Prompt;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::{schemas::inbox_name::InboxName, shinkai_utils::job_scope::JobScope};
 use std::collections::HashMap;
-use std::fmt;
 
 pub type JobId = String;
 

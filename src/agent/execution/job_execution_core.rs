@@ -3,7 +3,7 @@ use crate::agent::job::{Job, JobLike};
 use crate::agent::job_manager::JobManager;
 use crate::agent::queue::job_queue_manager::JobForProcessing;
 use crate::db::ShinkaiDB;
-use crate::managers::agents_capabilities_manager::{AgentCapability, AgentsCapabilitiesManager};
+use crate::managers::model_capabilities_manager::{ModelCapability, ModelCapabilitiesManager};
 use crate::planner::kai_files::{KaiJobFile, KaiSchemaType};
 use ed25519_dalek::SigningKey;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
@@ -312,8 +312,8 @@ impl JobManager {
                         &format!("Found an image file: {}", filename),
                     );
 
-                    let agent_capabilities = AgentsCapabilitiesManager::new(db.clone(), profile.clone()).await;
-                    let has_image_analysis = agent_capabilities.has_capability(AgentCapability::ImageAnalysis).await;
+                    let agent_capabilities = ModelCapabilitiesManager::new(db.clone(), profile.clone()).await;
+                    let has_image_analysis = agent_capabilities.has_capability(ModelCapability::ImageAnalysis).await;
 
                     if !has_image_analysis {
                         shinkai_log(
