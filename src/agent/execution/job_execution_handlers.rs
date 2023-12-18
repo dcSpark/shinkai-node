@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName},
+    schemas::{agents::serialized_agent::{SerializedAgent, AgentLLMInterface}, shinkai_name::ShinkaiName},
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -256,7 +256,16 @@ impl JobManager {
         file_extension: String,
     ) -> Result<(), AgentError> {
         let prev_execution_context = full_job.execution_context.clone();
-        let base64_image = format!("data:image/{};base64,{}", file_extension, base64::encode(&content));
+
+        let base64_image = match &agent_found {
+            Some(agent) => match agent.model {
+                AgentLLMInterface::OpenAI(_) => {
+                    format!("data:image/{};base64,{}", file_extension, base64::encode(&content))
+                }
+                _ => base64::encode(&content),
+            },
+            None => base64::encode(&content),
+        };
 
         // TODO: fix the new_execution_context
         let (inference_response_content, _) = JobManager::image_analysis_chain(

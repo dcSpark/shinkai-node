@@ -12,9 +12,9 @@ use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, Sh
 use serde_json::Value as JsonValue;
 use crate::agent::error::AgentError;
 use crate::agent::execution::job_prompts::Prompt;
-use crate::managers::agents_capabilities_manager::AgentsCapabilitiesManager;
-use crate::managers::agents_capabilities_manager::PromptResult;
-use crate::managers::agents_capabilities_manager::PromptResultEnum;
+use crate::managers::model_capabilities_manager::ModelCapabilitiesManager;
+use crate::managers::model_capabilities_manager::PromptResult;
+use crate::managers::model_capabilities_manager::PromptResultEnum;
 
 #[derive(Debug, Deserialize)]
 pub struct OpenAIResponse {
@@ -114,11 +114,11 @@ pub fn openai_prepare_messages(model: &AgentLLMInterface, model_type: String, pr
         .collect();
 
     let used_tokens = tiktoken_rs::num_tokens_from_messages(
-        AgentsCapabilitiesManager::normalize_model(&model.clone()).as_str(),
+        ModelCapabilitiesManager::normalize_model(&model.clone()).as_str(),
         &filtered_tiktoken_messages,
     )?;
     let mut max_tokens = std::cmp::max(5, total_tokens - used_tokens);
-    max_tokens = std::cmp::min(max_tokens, AgentsCapabilitiesManager::get_max_output_tokens(&model.clone()));
+    max_tokens = std::cmp::min(max_tokens, ModelCapabilitiesManager::get_max_output_tokens(&model.clone()));
 
     let mut messages: Vec<OpenAIApiMessage> = tiktoken_messages
         .into_iter()

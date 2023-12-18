@@ -1,4 +1,4 @@
-use crate::{db::db_errors::ShinkaiDBError, managers::agents_capabilities_manager::AgentsCapabilitiesManagerError};
+use crate::{db::db_errors::ShinkaiDBError, managers::model_capabilities_manager::ModelCapabilitiesManagerError};
 use anyhow::Error as AnyhowError;
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
@@ -46,8 +46,9 @@ pub enum AgentError {
     AnyhowError(AnyhowError),
     AgentMissingCapabilities(String),
     UnexpectedPromptResult(String),
-    AgentsCapabilitiesManagerError(AgentsCapabilitiesManagerError),
-    UnexpectedPromptResultVariant(String)
+    AgentsCapabilitiesManagerError(ModelCapabilitiesManagerError),
+    UnexpectedPromptResultVariant(String),
+    ImageContentNotFound(String),
 }
 
 impl fmt::Display for AgentError {
@@ -104,6 +105,7 @@ impl fmt::Display for AgentError {
             AgentError::UnexpectedPromptResult(s) => write!(f, "Unexpected prompt result: {}", s),
             AgentError::AgentsCapabilitiesManagerError(err) => write!(f, "AgentsCapabilitiesManager error: {}", err),
             AgentError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
+            AgentError::ImageContentNotFound(s) => write!(f, "Image content not found: {}", s),
         }
     }
 }
@@ -179,8 +181,8 @@ impl From<InboxNameError> for AgentError {
     }
 }
 
-impl From<AgentsCapabilitiesManagerError> for AgentError {
-    fn from(error: AgentsCapabilitiesManagerError) -> Self {
+impl From<ModelCapabilitiesManagerError> for AgentError {
+    fn from(error: ModelCapabilitiesManagerError) -> Self {
         AgentError::AgentsCapabilitiesManagerError(error)
     }
 }
