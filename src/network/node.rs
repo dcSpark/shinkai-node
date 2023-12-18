@@ -1,28 +1,3 @@
-use async_channel::{Receiver, Sender};
-use chashmap::CHashMap;
-use chrono::Utc;
-use core::panic;
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use futures::{future::FutureExt, pin_mut, prelude::*, select};
-use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
-    IdentityPermissions, JobToolCall, RegistrationCodeType,
-};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-};
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
-use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
-use std::sync::Arc;
-use std::{io, net::SocketAddr, time::Duration};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Mutex;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
-
 use super::node_api::{APIError, APIUseRegistrationCodeSuccessResponse};
 use super::node_error::NodeError;
 use crate::agent::job_manager::JobManager;
@@ -36,6 +11,38 @@ use crate::network::node_message_handlers::{
 use crate::schemas::identity::{Identity, StandardIdentity};
 use crate::schemas::smart_inbox::SmartInbox;
 use crate::vector_fs::vector_fs::VectorFS;
+use async_channel::{Receiver, Sender};
+use chashmap::CHashMap;
+use chrono::Utc;
+use core::panic;
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use futures::future::Remote;
+use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{
+    IdentityPermissions, JobToolCall, RegistrationCodeType,
+};
+use shinkai_message_primitives::shinkai_utils::encryption::{
+    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
+};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use std::sync::Arc;
+use std::{io, net::SocketAddr, time::Duration};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Mutex;
+use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+
+/// Hard-coded embedding model used by the node as its default.
+/// TODO: Allow model to be selected, and saved in the main DB as the source of truth.
+pub static DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
+    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
 
 pub enum NodeCommand {
     Shutdown,
@@ -276,8 +283,10 @@ pub struct Node {
     pub js_toolkit_executor_remote: Option<String>,
     // The Node's VectorFS
     pub vector_fs: Arc<Mutex<VectorFS>>,
-    // The default embedding model used by the node for generating all new VectorResources
-    pub default_embedding_model_type: EmbeddingModelType,
+    // An EmbeddingGenerator initialized with the Node's default embedding model + server info
+    pub embedding_generator: RemoteEmbeddingGenerator,
+    /// Unstructured server connection
+    pub unstructured_api: UnstructuredAPI,
 }
 
 impl Node {
@@ -295,6 +304,8 @@ impl Node {
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
         vector_fs_db_path: String,
+        embedding_generator: Option<RemoteEmbeddingGenerator>,
+        unstructured_api: Option<UnstructuredAPI>,
     ) -> Node {
         // if is_valid_node_identity_name_and_no_subidentities is false panic
         match ShinkaiName::new(node_profile_name.to_string().clone()) {
@@ -332,11 +343,9 @@ impl Node {
 
         // Initialize/setup the VectorFS. For now we just hardcode the default/supported embedding models here.
         // TODO: Later on read the embedding models from ShinkaiDB which will be the source of truth.
-        let default_embedding_model_type =
-            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
         let vector_fs = VectorFS::new(
-            default_embedding_model_type.clone(),
-            vec![default_embedding_model_type.clone()],
+            DEFAULT_EMBEDDING_MODEL.clone(),
+            vec![DEFAULT_EMBEDDING_MODEL.clone()],
             &vector_fs_db_path,
         )
         .unwrap_or_else(|e| {
@@ -344,6 +353,10 @@ impl Node {
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
+
+        // Initialize default UnstructuredAPI/RemoteEmbeddingGenerator if none provided
+        let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
+        let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
         Node {
             node_profile_name,
@@ -363,7 +376,8 @@ impl Node {
             initial_agents,
             js_toolkit_executor_remote,
             vector_fs: vector_fs_arc,
-            default_embedding_model_type,
+            embedding_generator,
+            unstructured_api,
         }
     }
 

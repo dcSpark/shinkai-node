@@ -20,6 +20,10 @@ pub struct NodeEnvironment {
     pub secrets_file_path: Option<String>,
     pub main_db_path: Option<String>,
     pub vector_fs_db_path: Option<String>,
+    pub unstructured_server_url: Option<String>,
+    pub unstructured_server_api_key: Option<String>,
+    pub embeddings_server_url: Option<String>,
+    pub embeddings_server_api_key: Option<String>,
 }
 
 pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
@@ -137,6 +141,12 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
 
+    // External server env vars
+    let unstructured_server_url: Option<String> = env::var("UNSTRUCTURED_SERVER_URL").ok();
+    let unstructured_server_api_key: Option<String> = env::var("UNSTRUCTURED_SERVER_API_KEY").ok();
+    let embeddings_server_url: Option<String> = env::var("EMBEDDINGS_SERVER_URL").ok();
+    let embeddings_server_api_key: Option<String> = env::var("EMBEDDINGS_SERVER_API_KEY").ok();
+
     NodeEnvironment {
         global_identity_name,
         listen_address,
@@ -151,5 +161,9 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         main_db_path,
         vector_fs_db_path,
         secrets_file_path,
+        unstructured_server_url,
+        unstructured_server_api_key,
+        embeddings_server_url,
+        embeddings_server_api_key,
     }
 }

@@ -96,6 +96,8 @@ fn node_retrying_test() {
             vec![],
             None,
             node1_fs_db_path,
+            None,
+            None,
         );
 
         let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
@@ -111,6 +113,8 @@ fn node_retrying_test() {
             vec![],
             None,
             node2_fs_db_path,
+            None,
+            None,
         );
 
         eprintln!("Starting nodes");

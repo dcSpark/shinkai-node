@@ -1,5 +1,6 @@
 // main.rs
 use crate::network::node::NodeCommand;
+use crate::network::node::DEFAULT_EMBEDDING_MODEL;
 use crate::network::node_api;
 use crate::utils::args::parse_args;
 use crate::utils::cli::cli_handle_create_message;
@@ -18,6 +19,8 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
 };
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -64,6 +67,10 @@ fn main() {
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
+
+    // Initialize Embedding Generator & Unstructured API
+    let embedding_generator = init_embedding_generator(&node_env);
+    let unstructured_api = init_unstructured_api(&node_env);
 
     // Log the address, port, and public_key
     shinkai_log(
@@ -127,6 +134,8 @@ fn main() {
                 initial_agents,
                 node_env.js_toolkit_executor_remote.clone(),
                 vector_fs_db_path,
+                Some(embedding_generator),
+                Some(unstructured_api),
             )
             .await
         }),
@@ -221,4 +230,24 @@ fn parse_secrets_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
             (key, value)
         })
         .collect()
+}
+
+/// Initializes UnstructuredAPI struct using node environment
+fn init_unstructured_api(node_env: &NodeEnvironment) -> UnstructuredAPI {
+    let api_url = node_env
+        .unstructured_server_url
+        .clone()
+        .expect("UNSTRUCTURED_SERVER_URL not found in node_env");
+    let api_key = node_env.unstructured_server_api_key.clone();
+    UnstructuredAPI::new(api_url, api_key)
+}
+
+/// Initializes RemoteEmbeddingGenerator struct using node environment/default embedding model for now
+fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenerator {
+    let api_url = node_env
+        .embeddings_server_url
+        .clone()
+        .expect("EMBEDDINGS_SERVER_URL not found in node_env");
+    let api_key = node_env.embeddings_server_api_key.clone();
+    RemoteEmbeddingGenerator::new(DEFAULT_EMBEDDING_MODEL.clone(), &api_url, api_key)
 }

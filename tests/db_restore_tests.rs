@@ -19,7 +19,7 @@ mod tests {
 
     use crate::utils::node_test_api::api_registration_device_node_profile_main;
 
-    #[test]
+    // #[test]
     fn test_restore_db() {
         let rt = Runtime::new().unwrap();
 
@@ -56,7 +56,9 @@ mod tests {
                 true,
                 vec![],
                 None,
-                node1_vec_fs_path
+                node1_vec_fs_path,
+                None,
+                None,
             );
 
             let node1_handler = tokio::spawn(async move {

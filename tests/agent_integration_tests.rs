@@ -151,6 +151,8 @@ fn node_agent_registration() {
             vec![agent],
             None,
             node1_fs_db_path,
+            None,
+            None,
         );
 
         let node1_handler = tokio::spawn(async move {
