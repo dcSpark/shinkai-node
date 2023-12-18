@@ -60,10 +60,12 @@ pub async fn execute_transaction(
     eprintln!("Sending transaction: {:?}", tx);
 
     // Send the transaction
-    client
-        .send_transaction(tx, None)
-        .await
-        .map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
+    // Send the transaction and wait for one confirmation
+    let pending_tx = client.send_transaction(tx, None).await.map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
+    eprintln!("Pending transaction: {:?}", pending_tx);
+
+    let receipt = pending_tx.confirmations(1).await.map_err(|err| PaymentManagerError::TransactionError(err.to_string()))?;
+    eprintln!("Transaction receipt: {:?}", receipt);
 
     Ok(())
 }
