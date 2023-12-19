@@ -61,3 +61,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+        env:
+          FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
+          FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
