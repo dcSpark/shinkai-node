@@ -77,30 +77,25 @@ fn job_image_analysis() {
                 )
                 .unwrap();
 
+                // Note: this is mocked for Ollamas API
                 let _m = server
-                    .mock("POST", "/v1/chat/completions")
-                    .match_header("authorization", "Bearer mockapikey")
+                    .mock("POST", "/api/generate")
                     .with_status(200)
                     .with_header("content-type", "application/json")
                     .with_body(
                         r#"{
-                    "id": "chatcmpl-123",
-                    "object": "chat.completion",
-                    "created": 1677652288,
-                    "choices": [{
-                        "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": "\n\n{\"answer\": \"Hello there, how may I assist you today?\"}"
-                        },
-                        "finish_reason": "stop"
-                    }],
-                    "usage": {
-                        "prompt_tokens": 9,
-                        "completion_tokens": 12,
-                        "total_tokens": 21
-                    }
-                }"#,
+                            "model":"llava",
+                            "created_at":"2023-12-19T11:18:05.31733973Z",
+                            "response":"{\"answer\": \"A bright blue, clear sky\"}",
+                            "done":true,
+                            "context":[29871,13,11889,29901,887,526,263,1407,8444,20255,393,29915,29879,1407,1781,472,1614,1259,263,3414,29889,448,450,1857,1667,3414,472,1361,338,29901,421,2783,29581,278,1967,29952,2538,2818,773,278,1494,382,29933,22498,322,13312,3078,1683,29901,525,10998,525,12011,29915,525,11283,1347,525,10162,29871,7521,3126,13,22933,5425,1254,13566,29901,8853,12011,1115,376,29909,11785,7254,29892,2821,14744,9092],
+                            "total_duration":3482767354,
+                            "load_duration":2553548600,
+                            "prompt_eval_count":1,
+                            "prompt_eval_duration":798772000,
+                            "eval_count":11,
+                            "eval_duration":127775000
+                        }"#,
                     )
                     .create();
 
@@ -118,11 +113,12 @@ fn job_image_analysis() {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
-                    external_url: Some("http://localhost:11435".to_string()),
+                    // external_url: Some("http://localhost:11435".to_string()),
                     // external_url: Some("https://api.openai.com".to_string()),
-                    api_key: Some(api_key),
-                    // external_url: Some(server.url()),
-                    // api_key: Some("mockapikey".to_string()),
+                    // api_key: Some("".to_string()),
+                    // api_key: Some(api_key),
+                    external_url: Some(server.url()),
+                    api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
                     // model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),

@@ -9,6 +9,8 @@ export ENCRYPTION_SECRET_KEY="60abdd721024f0ff4e0b3f4c2fc13bc5bad42d0b7851d456d8
 export PING_INTERVAL_SECS="0"
 export GLOBAL_IDENTITY_NAME="@@node2.shinkai"
 export RUST_LOG=warn,error,info,debug
+export EMBEDDINGS_SERVER_URL="https://internal.shinkai.com/x-embed-api/embed"
+export UNSTRUCTURED_SERVER_URL="https://internal.shinkai.com"
 
 if [ -z "$1" ]
 then
