@@ -6,6 +6,7 @@ use reqwest::multipart::{Form, Part};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use uuid::Uuid;
 
 use crate::db::db_cron_task::CronTask;
@@ -42,7 +43,7 @@ impl fmt::Display for CronTaskRequestResponse {
 #[derive(Debug, Clone)]
 pub struct WebScraper {
     pub task: CronTask,
-    pub api_url: String,
+    pub unstructured_api: UnstructuredAPI,
 }
 
 #[derive(Debug, Clone)]
@@ -107,7 +108,7 @@ impl WebScraper {
 
         let client = reqwest::Client::new();
         let response = client
-            .post(&self.api_url)
+            .post(&self.unstructured_api.endpoint_url())
             .headers(headers)
             .multipart(form)
             .send()

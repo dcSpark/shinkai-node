@@ -74,7 +74,7 @@ mod tests {
 
         let scraper = WebScraper {
             task,
-            api_url: unstructured_server.url(),
+            unstructured_api: UnstructuredAPI::new_default(),
         };
 
         let subidentity_manager = IdentityManager::new(db.clone(), node_profile_name.clone())

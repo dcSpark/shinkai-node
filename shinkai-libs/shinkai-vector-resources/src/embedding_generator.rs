@@ -15,7 +15,7 @@ use std::io::{prelude::*, Cursor};
 use std::net::TcpStream;
 
 lazy_static! {
-    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/embed";
+    pub static ref DEFAULT_EMBEDDINGS_SERVER_URL: &'static str = "https://internal.shinkai.com/x-embed-api/";
 }
 const N_EMBD: usize = 384;
 
@@ -251,6 +251,16 @@ impl RemoteEmbeddingGenerator {
         }
     }
 
+    /// String of the main endpoint url for generating embeddings via
+    /// Hugging face's Text Embedding Interface server
+    fn tei_endpoint_url(&self) -> String {
+        if self.api_url.ends_with('/') {
+            format!("{}embed", self.api_url)
+        } else {
+            format!("{}embed", self.api_url)
+        }
+    }
+
     #[cfg(feature = "native-http")]
     /// Generates embeddings using Hugging Face's Text Embedding Interface server
     pub async fn generate_embedding_tei(
@@ -268,7 +278,7 @@ impl RemoteEmbeddingGenerator {
 
         // Build the request
         let mut request = client
-            .post(&format!("{}", self.api_url))
+            .post(&format!("{}", self.tei_endpoint_url()))
             .header("Content-Type", "application/json")
             .json(&request_body);
 
@@ -335,7 +345,7 @@ impl RemoteEmbeddingGenerator {
 
         // Build the request
         let mut request = client
-            .post(&format!("{}", self.api_url))
+            .post(&format!("{}", self.tei_endpoint_url()))
             .header("Content-Type", "application/json")
             .json(&request_body);
 
