@@ -26,7 +26,7 @@ impl UnstructuredAPI {
     //
     pub fn new_default() -> Self {
         Self {
-            api_url: format!("https://internal.shinkai.com/"),
+            api_url: format!("https://internal.shinkai.com/x-unstructured-api/"),
             api_key: None,
         }
     }
@@ -34,9 +34,9 @@ impl UnstructuredAPI {
     /// String of the main endpoint url for processing files
     fn endpoint_url(&self) -> String {
         if self.api_url.ends_with('/') {
-            format!("{}x-unstructured-api/general/v0/general", self.api_url)
+            format!("{}general/v0/general", self.api_url)
         } else {
-            format!("{}/x-unstructured-api/general/v0/general", self.api_url)
+            format!("{}/general/v0/general", self.api_url)
         }
     }
 

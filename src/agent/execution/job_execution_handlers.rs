@@ -3,7 +3,10 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::{SerializedAgent, AgentLLMInterface}, shinkai_name::ShinkaiName},
+    schemas::{
+        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+        shinkai_name::ShinkaiName,
+    },
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -114,7 +117,7 @@ impl JobManager {
         // Create a new instance of the WebScraper
         let scraper = WebScraper {
             task: cron_job.clone(),
-            // TODO: Move to ENV
+            // TODO: Read from ENV
             api_url: "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string(),
         };
 
