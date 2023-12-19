@@ -44,6 +44,7 @@ impl JobManager {
             full_job.clone(),
             job_message.profile.clone(),
             clone_signature_secret_key(&identity_secret_key),
+            unstructured_api.clone(),
         )
         .await?;
 
@@ -60,7 +61,7 @@ impl JobManager {
             job_message.profile,
             false,
             generator.clone(),
-            unstructured_api,
+            unstructured_api.clone(),
         )
         .await?;
 
@@ -203,6 +204,7 @@ impl JobManager {
         full_job: Job,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<bool, AgentError> {
         if !job_message.files_inbox.is_empty() {
             shinkai_log(
@@ -294,6 +296,7 @@ impl JobManager {
                                 cron_task,
                                 profile.clone(),
                                 clone_signature_secret_key(&identity_secret_key),
+                                unstructured_api,
                             )
                             .await?;
                             return Ok(true);

@@ -32,7 +32,7 @@ impl UnstructuredAPI {
     }
 
     /// String of the main endpoint url for processing files
-    fn endpoint_url(&self) -> String {
+    pub fn endpoint_url(&self) -> String {
         if self.api_url.ends_with('/') {
             format!("{}general/v0/general", self.api_url)
         } else {
