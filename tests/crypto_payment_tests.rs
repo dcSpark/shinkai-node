@@ -95,6 +95,7 @@ mod tests {
         }
     }
 
+    #[ignore]
     #[tokio::test]
     async fn test_payment_manager() {
         let sepolia_rpc = "https://ethereum-sepolia.publicnode.com";
