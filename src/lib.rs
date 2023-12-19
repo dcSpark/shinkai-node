@@ -1,7 +1,10 @@
 pub mod agent;
+pub mod cron_tasks;
+pub mod crypto_identities;
 pub mod db;
 pub mod managers;
 pub mod network;
+pub mod planner;
 pub mod resources;
 pub mod schemas;
 pub mod tools;
@@ -10,3 +13,4 @@ pub mod cron_tasks;
 pub mod planner;
 pub mod crypto_identities;
 pub mod payments;
+pub mod vector_fs;

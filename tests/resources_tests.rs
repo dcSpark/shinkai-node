@@ -7,6 +7,7 @@ use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{SourceReference, VRSource};
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::VectorResource;
 use std::fs;
 use std::path::Path;
@@ -41,6 +42,7 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
                 Some(desc.to_string()),
                 data_tags,
                 500,
+                UnstructuredAPI::new_default(),
             )
             .await;
         })
@@ -65,9 +67,9 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
-            "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
-            res[0].node.get_text_content().unwrap()
-        );
+        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
+        res[0].node.get_text_content().unwrap()
+    );
 
     let query_string = "What about up-front costs?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();

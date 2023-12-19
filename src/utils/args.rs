@@ -1,4 +1,3 @@
-// This can be in a new args.rs file
 use clap::{App, Arg};
 
 pub struct Args {
@@ -40,12 +39,7 @@ pub fn parse_args() -> Args {
                 .long("recipient")
                 .takes_value(true),
         )
-        .arg(
-            clap::Arg::new("other")
-                .short('o')
-                .long("other")
-                .takes_value(true),
-        )
+        .arg(clap::Arg::new("other").short('o').long("other").takes_value(true))
         .arg(
             clap::Arg::new("sender_subidentity")
                 .short('s')
@@ -58,12 +52,7 @@ pub fn parse_args() -> Args {
                 .long("receiver_subidentity")
                 .takes_value(true),
         )
-        .arg(
-            clap::Arg::new("inbox")
-                .short('i')
-                .long("inbox")
-                .takes_value(true),
-        )
+        .arg(clap::Arg::new("inbox").short('i').long("inbox").takes_value(true))
         .arg(
             clap::Arg::new("body_content")
                 .short('b')

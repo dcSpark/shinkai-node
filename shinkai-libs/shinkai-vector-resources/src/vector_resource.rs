@@ -1,9 +1,8 @@
-use std::fs::Metadata;
-
 use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
+#[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
@@ -19,12 +18,14 @@ pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
 use env_logger::filter::Filter;
+use std::collections::HashMap;
+use std::fs::Metadata;
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
 #[async_trait]
-pub trait VectorResource {
+pub trait VectorResource: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
@@ -94,7 +95,7 @@ pub trait VectorResource {
     fn initialize_compatible_embeddings_generator(
         &self,
         api_url: &str,
-        api_key: Option<&str>,
+        api_key: Option<String>,
     ) -> Box<dyn EmbeddingGenerator> {
         Box::new(RemoteEmbeddingGenerator::new(
             self.embedding_model_used(),
@@ -111,7 +112,7 @@ pub trait VectorResource {
             .description()
             .map(|description| format!(", Description: {}", description))
             .unwrap_or_default();
-        let source_string = self.source().format_source_string();
+        let source_string = format!("Source: {}", self.source().format_source_string());
 
         // Take keywords until we hit an upper 500 character cap to ensure
         // we do not go past the embedding LLM context window.
@@ -123,7 +124,11 @@ pub trait VectorResource {
             }
         }
 
-        format!("{}{}{}, Keywords: [{}]", name, desc, source_string, keyword_string)
+        let mut result = format!("{}{}{}, Keywords: [{}]", name, source_string, desc, keyword_string);
+        if result.len() > MAX_EMBEDDING_STRING_SIZE {
+            result.truncate(MAX_EMBEDDING_STRING_SIZE);
+        }
+        result
     }
 
     /// Returns a "reference string" that uniquely identifies the VectorResource (formatted as: `{name}:::{resource_id}`).
@@ -163,7 +168,7 @@ pub trait VectorResource {
     /// else starts at root. If resources_only is true, only Vector Resources are returned.
     fn get_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
         let empty_embedding = Embedding::new("", vec![]);
-        let mut nodes = self.vector_seach_customized(
+        let mut nodes = self.vector_search_customized(
             empty_embedding,
             0,
             TraversalMethod::UnscoredAllNodes,
@@ -242,10 +247,117 @@ pub trait VectorResource {
         Ok(node)
     }
 
+    #[cfg(feature = "native-http")]
+    /// Performs a Dynamic Vector Search that returns the most similar nodes based on the query with
+    /// default traversal method/options.
+    /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
+    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    async fn dynamic_vector_search(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self.dynamic_vector_search_customized(
+            input_query,
+            num_of_results,
+            &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+            None,
+            embedding_generator,
+        )
+        .await
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
+    /// The input options allows the developer to choose how the search interacts through the levels.
+    /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
+    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    async fn dynamic_vector_search_customized(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        // We only traverse 1 level of depth at a time to be able to re-process the input_query as needed
+        let mut traversal_options = traversal_options.clone();
+        traversal_options.push(TraversalOption::UntilDepth(0));
+        // Create a hash_map to save the embedding queries generated based on model type
+        let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
+
+        // First manually embedding generate & search the self Vector Resource
+        let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+        input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
+        let mut latest_returned_results = self.vector_search_customized(
+            query_embedding,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &traversal_options,
+            starting_path.clone(),
+        );
+
+        // Keep looping until we go through all nodes in the Vector Resource while carrying foward the score weighting
+        // through the deeper levels of the Vector Resource
+        let mut node_results = vec![];
+        while let Some(ret_node) = latest_returned_results.pop() {
+            match ret_node.node.content {
+                NodeContent::Resource(ref resource) => {
+                    // Reuse a previously generated query embedding if matching is available
+                    if let Some(embedding) =
+                        input_query_embeddings.get(&resource.as_trait_object().embedding_model_used())
+                    {
+                        query_embedding = embedding.clone();
+                    }
+                    // If a new embedding model is found for this resource, then initialize a new generator & generate the embedding
+                    else {
+                        let new_generator = resource.as_trait_object().initialize_compatible_embeddings_generator(
+                            &embedding_generator.api_url,
+                            embedding_generator.api_key.clone(),
+                        );
+                        query_embedding = new_generator.generate_embedding_default(&input_query).await?;
+                        input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
+                    }
+
+                    // Call vector_search() on the resource to get all the next depth Nodes from it
+                    let new_results = resource.as_trait_object().vector_search_customized(
+                        query_embedding,
+                        num_of_results,
+                        TraversalMethod::Exhaustive,
+                        &traversal_options,
+                        starting_path.clone(),
+                    );
+                    // Take into account current resource score, then push the new results to latest_returned_results to be further processed
+                    if let Some(ScoringMode::HierarchicalAverageScoring) =
+                        traversal_options.get_set_scoring_mode_option()
+                    {
+                        // Average resource's score into the retrieved results scores, then push them to latest_returned_results
+                        for result in new_results {
+                            let mut updated_result = result.clone();
+                            updated_result.score =
+                                vec![updated_result.score, ret_node.score].iter().sum::<f32>() / 2 as f32;
+                            latest_returned_results.push(updated_result)
+                        }
+                    }
+                }
+                _ => {
+                    // For any non-Vector Resource nodes, simply push them into the results
+                    node_results.push(ret_node);
+                }
+            }
+        }
+
+        // Now that we have all of the node results, sort them efficiently and return the expected number of results
+        let final_results = RetrievedNode::sort_by_score(&node_results, num_of_results);
+
+        Ok(final_results)
+    }
+
     /// Performs a vector search that returns the most similar nodes based on the query with
     /// default traversal method/options.
     fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
-        self.vector_seach_customized(
+        self.vector_search_customized(
             query,
             num_of_results,
             TraversalMethod::Exhaustive,
@@ -255,10 +367,10 @@ pub trait VectorResource {
     }
 
     /// Performs a vector search that returns the most similar nodes based on the query.
-    /// The input trtaversal_method/options allows the developer to choose how the search moves through the levels.
+    /// The input traversal_method/options allows the developer to choose how the search moves through the levels.
     /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
     /// held internally at a specific path.
-    fn vector_seach_customized(
+    fn vector_search_customized(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -270,7 +382,7 @@ pub trait VectorResource {
             match self.get_node_with_path(path.clone()) {
                 Ok(node) => {
                     if let NodeContent::Resource(resource) = node.content {
-                        return resource.as_trait_object()._vector_seach_customized_core(
+                        return resource.as_trait_object()._vector_search_customized_core(
                             query,
                             num_of_results,
                             traversal_method,
@@ -284,7 +396,7 @@ pub trait VectorResource {
             }
         }
         // Perform the vector search and continue forward
-        let mut results = self._vector_seach_customized_core(
+        let mut results = self._vector_search_customized_core(
             query.clone(),
             num_of_results,
             traversal_method.clone(),
@@ -330,7 +442,7 @@ pub trait VectorResource {
     }
 
     /// Internal method which is used to keep track of traversal info
-    fn _vector_seach_customized_core(
+    fn _vector_search_customized_core(
         &self,
         query: Embedding,
         num_of_results: u64,
@@ -407,6 +519,7 @@ pub trait VectorResource {
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
+        let mut query = query.clone();
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
@@ -442,12 +555,12 @@ pub trait VectorResource {
                                 skip_traversing_deeper = true;
                                 break;
                             }
-                            // If node Resource does not have same base type as LimitTraversalToType then
-                            // then skip going deeper into it
-                            if let TraversalOption::LimitTraversalToType(base_type) = option {
-                                if &node_resource.resource_base_type() != base_type {
-                                    skip_traversing_deeper = true;
-                                }
+                        }
+                        // If node Resource does not have same base type as LimitTraversalToType then
+                        // then skip going deeper into it
+                        if let TraversalOption::LimitTraversalToType(base_type) = option {
+                            if &node_resource.resource_base_type() != base_type {
+                                skip_traversing_deeper = true;
                             }
                         }
                     }
@@ -500,7 +613,7 @@ pub trait VectorResource {
         match &node.content {
             NodeContent::Resource(resource) => {
                 // If no data tag names provided, it means we are doing a normal vector search
-                let sub_results = resource.as_trait_object()._vector_seach_customized_core(
+                let sub_results = resource.as_trait_object()._vector_search_customized_core(
                     query.clone(),
                     num_of_results,
                     traversal_method.clone(),
@@ -550,7 +663,7 @@ pub trait VectorResource {
         num_of_results: u64,
         data_tag_names: &Vec<String>,
     ) -> Vec<RetrievedNode> {
-        self.vector_seach_customized(
+        self.vector_search_customized(
             query,
             num_of_results,
             TraversalMethod::Exhaustive,

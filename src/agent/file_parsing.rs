@@ -7,7 +7,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAge
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
@@ -43,9 +43,10 @@ impl JobManager {
         parsing_tags: &Vec<DataTag>,
         agent: SerializedAgent,
         max_node_size: u64,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
         let (resource_id, source, elements) =
-            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone()).await?;
+            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
         let desc = Self::generate_description(&elements, agent).await?;
         ParsingHelper::parse_elements_into_resource(
             elements,
@@ -79,9 +80,10 @@ impl ParsingHelper {
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
         let (resource_id, source, elements) =
-            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone()).await?;
+            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
 
         Self::parse_elements_into_resource(
             elements,
@@ -128,9 +130,9 @@ impl ParsingHelper {
     async fn parse_file_helper(
         file_buffer: Vec<u8>,
         name: String,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<(String, VRSource, Vec<UnstructuredElement>), AgentError> {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let unstructured_api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
         let source = VRSource::from_file(&name, &file_buffer)?;
         let elements = unstructured_api.file_request(file_buffer, &name).await?;
         Ok((resource_id, source, elements))
