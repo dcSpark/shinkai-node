@@ -70,8 +70,6 @@ pub async fn execute_transaction(
     let local_wallet = LocalWallet::from(secret_key).with_chain_id(chain_id);
     let client = SignerMiddleware::new(provider.clone(), local_wallet);
 
-    // TODO(Nico): this is just for a PoC. Expand to read the token to it supports ERC20 and others.
-
     // Create a transaction
     let mut tx = TransactionRequest::new();
     tx.to = Some(to_wallet.address.parse().unwrap());
@@ -111,7 +109,6 @@ pub async fn execute_transaction(
 
     eprintln!("Sending transaction: {:?}", tx);
 
-    // Send the transaction
     // Send the transaction and wait for one confirmation
     let pending_tx = client
         .send_transaction(tx, None)
