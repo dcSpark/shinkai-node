@@ -26,7 +26,7 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-mod utils;
+use super::utils;
 
 fn generate_message_with_text(
     content: String,
@@ -175,7 +175,7 @@ async fn test_process_job_queue_concurrency() {
 
 #[tokio::test]
 async fn test_sequnetial_process_for_same_job_id() {
-    utils::db_handlers::setup();
+    super::utils::db_handlers::setup();
 
     let NUM_THREADS = 8;
     let db_path = "db_tests/";

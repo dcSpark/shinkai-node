@@ -15,18 +15,18 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use utils::test_boilerplate::run_test_one_node_network;
+use super::utils::test_boilerplate::run_test_one_node_network;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
-use crate::utils::node_test_api::{
+use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main, api_initial_registration_with_no_code_for_device,
 };
 
-mod utils;
+use super::utils;
 
 #[test]
 fn simple_node_registration_test() {

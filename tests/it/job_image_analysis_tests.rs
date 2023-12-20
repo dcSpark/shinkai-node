@@ -1,53 +1,35 @@
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use async_channel::{bounded, Receiver, Sender};
-use serde_json::json;
 use shinkai_message_primitives::schemas::agents::serialized_agent::{
-    AgentLLMInterface, GenericAPI, OpenAI, SerializedAgent,
+    AgentLLMInterface, GenericAPI, Ollama, OpenAI, SerializedAgent,
 };
-use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
-use shinkai_message_primitives::shinkai_utils::encryption::{
-    clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-    ephemeral_encryption_keys, unsafe_deterministic_encryption_keypair, EncryptionMethod,
-};
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::JobMessage;
+use shinkai_message_primitives::shinkai_utils::encryption::clone_static_secret_key;
 use shinkai_message_primitives::shinkai_utils::file_encryption::{
     aes_encryption_key_to_string, aes_nonce_to_hex_string, hash_of_aes_encryption_key_hex,
     unsafe_deterministic_aes_encryption_key,
 };
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_message_primitives::shinkai_utils::signatures::{
-    clone_signature_secret_key, unsafe_deterministic_signature_keypair,
-};
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
-use shinkai_node::agent::agent;
-use shinkai_node::agent::error::AgentError;
+use shinkai_message_primitives::shinkai_utils::signatures::clone_signature_secret_key;
 use shinkai_node::db::db_cron_task::CronTask;
 use shinkai_node::network::node::NodeCommand;
-use shinkai_node::network::node_api::APIError;
-use shinkai_node::network::Node;
 use shinkai_node::planner::kai_files::{KaiJobFile, KaiSchemaType};
-use shinkai_vector_resources::resource_errors::VRError;
-use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use std::env;
+use std::time::Duration;
 use std::time::Instant;
-use std::{env, fs};
-use std::{net::SocketAddr, time::Duration};
-use tokio::runtime::Runtime;
-use utils::test_boilerplate::run_test_one_node_network;
+use super::utils::test_boilerplate::run_test_one_node_network;
 
-mod utils;
-use crate::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
-    api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
+use super::utils;
+use super::utils::node_test_api::{
+    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
 
 #[test]
 #[ignore]
-fn job_from_cron_multi_page() {
+fn job_image_analysis() {
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();
@@ -123,11 +105,11 @@ fn job_from_cron_multi_page() {
                     .create();
 
                 let open_ai = OpenAI {
-                    model_type: "gpt-4-1106-preview".to_string(),
+                    model_type: "gpt-4-vision-preview".to_string(),
                 };
 
-                let generic_api = GenericAPI {
-                    model_type: "togethercomputer/llama-2-70b-chat".to_string(),
+                let ollama = Ollama {
+                    model_type: "llava".to_string(),
                 };
 
                 let api_key = env::var("INITIAL_AGENT_API_KEY").expect("API_KEY must be set");
@@ -136,13 +118,15 @@ fn job_from_cron_multi_page() {
                     id: node1_agent.clone().to_string(),
                     full_identity_name: agent_name,
                     perform_locally: false,
-                    external_url: Some("https://api.openai.com".to_string()),
+                    external_url: Some("http://localhost:11435".to_string()),
+                    // external_url: Some("https://api.openai.com".to_string()),
                     api_key: Some(api_key),
                     // external_url: Some(server.url()),
                     // api_key: Some("mockapikey".to_string()),
                     // external_url: Some("https://api.together.xyz".to_string()),
-                    model: AgentLLMInterface::OpenAI(open_ai),
+                    // model: AgentLLMInterface::OpenAI(open_ai),
                     // model: AgentLLMInterface::GenericAPI(generic_api),
+                    model: AgentLLMInterface::Ollama(ollama),
                     toolkit_permissions: vec![],
                     storage_bucket_permissions: vec![],
                     allowed_message_senders: vec![],
@@ -200,26 +184,8 @@ fn job_from_cron_multi_page() {
             }
             {
                 eprintln!("\n\n### Sending message (APIAddFileToInboxWithSymmetricKey) from profile subidentity to node 1\n\n");
-                // Prepare the file to be read
-                let cron_task = CronTask {
-                    task_id: "123".to_string(),
-                    cron: "* * * * *".to_string(),
-                    prompt: "summarize this website if it has some AI news otherwise say no AI news".to_string(),
-                    subprompt: "".to_string(),
-                    url: "https://news.ycombinator.com".to_string(),
-                    crawl_links: true,
-                    created_at: "2021-08-01T00:00:00Z".to_string(),
-                    agent_id: agent_subidentity.clone(),
-                };
-
-                let data = KaiJobFile {
-                    schema: KaiSchemaType::CronJob(cron_task),
-                    shinkai_profile: None,
-                    agent_id: agent_subidentity.clone(),
-                };
-
-                // Read the file into a buffer
-                let file_data = serde_json::to_vec(&data).unwrap();
+                let file_path = "files/blue_64x64.png";
+                let file_data = std::fs::read(file_path).expect("Failed to read file");
 
                 // Encrypt the file using Aes256Gcm
                 let cipher = Aes256Gcm::new(GenericArray::from_slice(&symmetrical_sk));
@@ -234,7 +200,7 @@ fn job_from_cron_multi_page() {
                 // Send the command
                 node1_commands_sender
                     .send(NodeCommand::APIAddFileToInboxWithSymmetricKey {
-                        filename: "one_page.jobkai".to_string(),
+                        filename: "samurai_undewater.png".to_string(),
                         file: ciphertext,
                         public_key: hash_of_aes_encryption_key_hex(symmetrical_sk),
                         encrypted_nonce: nonce_str,
@@ -247,7 +213,7 @@ fn job_from_cron_multi_page() {
                 let response = res_receiver.recv().await.unwrap().expect("Failed to receive response");
                 eprintln!("response: {:?}", response);
             }
-            let job_message_content = "".to_string();
+            let job_message_content = "describe the image".to_string();
             {
                 // Send a Message to the Job for processing
                 eprintln!("\n\nSend a message for the Job");
@@ -271,7 +237,7 @@ fn job_from_cron_multi_page() {
             }
             {
                 eprintln!("Waiting for the Job to finish");
-                for _ in 0..100 {
+                for _ in 0..50 {
                     let (res1_sender, res1_receiver) = async_channel::bounded(1);
                     node1_commands_sender
                         .send(NodeCommand::FetchLastMessages {
@@ -283,24 +249,24 @@ fn job_from_cron_multi_page() {
                     let node1_last_messages = res1_receiver.recv().await.unwrap();
                     eprintln!("node1_last_messages: {:?}", node1_last_messages);
 
-                    // match node1_last_messages[0].get_message_content() {
-                    //     Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
-                    //         Ok(job_message) => {
-                    //             eprintln!("message_content: {}", message_content);
-                    //             if job_message.content != job_message_content {
-                    //                 // assert!(true);
-                    //                 // break;
-                    //             }
-                    //         }
-                    //         Err(_) => {
-                    //             eprintln!("error: message_content: {}", message_content);
-                    //         }
-                    //     },
-                    //     Err(_) => {
-                    //         // nothing
-                    //     }
-                    // }
-                    tokio::time::sleep(Duration::from_secs(20)).await;
+                    match node1_last_messages[0].get_message_content() {
+                        Ok(message_content) => match serde_json::from_str::<JobMessage>(&message_content) {
+                            Ok(job_message) => {
+                                // eprintln!("message_content: {}", message_content);
+                                if job_message.content != job_message_content {
+                                    assert!(true);
+                                    break;
+                                }
+                            }
+                            Err(_) => {
+                                eprintln!("error: message_content: {}", message_content);
+                            }
+                        },
+                        Err(_) => {
+                            // nothing
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_secs(10)).await;
                 }
             }
         })

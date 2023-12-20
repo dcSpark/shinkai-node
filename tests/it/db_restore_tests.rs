@@ -8,7 +8,7 @@ use shinkai_node::network::Node;
 use std::net::SocketAddr;
 use std::net::{IpAddr, Ipv4Addr};
 
-mod utils;
+use super::utils;
 
 #[cfg(test)]
 mod tests {
@@ -17,7 +17,7 @@ mod tests {
     use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
     use tokio::runtime::Runtime;
 
-    use crate::utils::node_test_api::api_registration_device_node_profile_main;
+    use super::utils::node_test_api::api_registration_device_node_profile_main;
 
     // #[test]
     fn test_restore_db() {
