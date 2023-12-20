@@ -40,10 +40,10 @@ use std::time::Instant;
 use std::{env, fs};
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
-use utils::test_boilerplate::run_test_one_node_network;
+use super::utils::test_boilerplate::run_test_one_node_network;
 
-mod utils;
-use crate::utils::node_test_api::{
+use super::utils;
+use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_get_all_inboxes_from_profile, api_get_all_smart_inboxes_from_profile,
     api_initial_registration_with_no_code_for_device, api_message_job, api_registration_device_node_profile_main,
 };

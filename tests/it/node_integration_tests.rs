@@ -27,11 +27,11 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-mod utils;
-use crate::utils::node_test_api::{
+use super::utils;
+use super::utils::node_test_api::{
     api_registration_device_node_profile_main, api_registration_profile_node, api_try_re_register_profile_node,
 };
-use crate::utils::node_test_local::local_registration_profile_node;
+use super::utils::node_test_local::local_registration_profile_node;
 
 #[test]
 fn setup() {
