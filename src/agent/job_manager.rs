@@ -27,7 +27,7 @@ use std::result::Result::Ok;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
 
-const NUM_THREADS: usize = 2;
+const NUM_THREADS: usize = 4;
 
 pub struct JobManager {
     pub jobs: Arc<Mutex<HashMap<String, Box<dyn JobLike>>>>,

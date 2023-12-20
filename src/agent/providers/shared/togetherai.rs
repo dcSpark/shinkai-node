@@ -57,12 +57,6 @@ pub fn llama_prepare_messages(
         messages_string.push_str(" ```json");
     }
 
-    shinkai_log(
-        ShinkaiLogOption::JobExecution,
-        ShinkaiLogLevel::Info,
-        format!("Messages JSON (generic): {:?}", messages_string).as_str(),
-    );
-
     Ok(PromptResult {
         value: PromptResultEnum::Text(messages_string.clone()),
         remaining_tokens: total_tokens - messages_string.len(),

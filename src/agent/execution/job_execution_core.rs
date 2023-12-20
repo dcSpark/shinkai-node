@@ -32,6 +32,7 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
     ) -> Result<String, AgentError> {
         let job_id = job_message.job_message.job_id.clone();
+        shinkai_log(ShinkaiLogOption::JobExecution, ShinkaiLogLevel::Debug, &format!("Processing job: {}", job_id));
         // Fetch data we need to execute job step
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
@@ -126,11 +127,6 @@ impl JobManager {
         generator: RemoteEmbeddingGenerator,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            &format!("Processing job: {}", job_id),
-        );
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,

@@ -30,6 +30,10 @@ pub struct Job {
     /// An inbox where messages to the agent from the user and messages from the agent are stored,
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
+    
+    // Note(Nico): step_history should be a tree
+    // Note(Nico): execution_context should be a tree
+
     /// The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
     pub step_history: Vec<JobStepResult>,
     /// An ordered list of the latest messages sent to the job which are yet to be processed

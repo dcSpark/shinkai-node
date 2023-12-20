@@ -272,7 +272,6 @@ impl ShinkaiDB {
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
 
         let mut conversation_inbox: Option<InboxName> = None;
-        let mut _step_history: Option<Vec<JobStepResult>> = if fetch_step_history { Some(Vec::new()) } else { None };
         let conversation_inbox_value = self
             .db
             .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
