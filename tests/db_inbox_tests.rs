@@ -29,25 +29,6 @@ fn setup() {
     let _ = fs::remove_dir_all(&path);
 }
 
-fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
-    // Calculate the hash of the message for the key
-    let hash_key = message.calculate_message_hash();
-
-    // Clone the external_metadata first, then unwrap
-    let ext_metadata = message.external_metadata.clone();
-
-    // Get the scheduled time or calculate current time
-    let time_key = match ext_metadata.scheduled_time.is_empty() {
-        true => ShinkaiTime::generate_time_now(),
-        false => ext_metadata.scheduled_time.clone(),
-    };
-
-    // Create the composite key by concatenating the time_key and the hash_key, with a separator
-    let composite_key = format!("{}:::{}", time_key, hash_key);
-
-    Ok(composite_key)
-}
-
 fn generate_message_with_text(
     content: String,
     my_encryption_secret_key: EncryptionStaticKey,
@@ -743,14 +724,14 @@ fn db_inbox() {
     assert_eq!(last_unread_messages_inbox.len(), 2);
     assert_eq!(
         last_unread_messages_inbox[0].clone().get_message_content().unwrap(),
-        "Hello World".to_string()
+        "Hello World 4".to_string()
     );
     assert_eq!(
         last_unread_messages_inbox[1].clone().get_message_content().unwrap(),
-        "Hello World 2".to_string()
+        "Hello World 5".to_string()
     );
 
-    let offset = get_message_offset_db_key(&last_unread_messages_inbox[1].clone()).unwrap();
+    let offset = last_unread_messages_inbox[1].clone().calculate_message_hash();
     println!("\n\n ### Offset: {}", offset);
     println!("Last unread messages: {:?}", last_unread_messages_inbox[1]);
     // check pagination for last unread
@@ -763,34 +744,34 @@ fn db_inbox() {
             .clone()
             .get_message_content()
             .unwrap(),
-        "Hello World 3".to_string()
+        "Hello World 2".to_string()
     );
 
     // check pagination for inbox messages
     let last_unread_messages_inbox_page2 = shinkai_db
         .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 3, Some(offset))
         .unwrap();
-    assert_eq!(last_unread_messages_inbox_page2.len(), 1);
+    assert_eq!(last_unread_messages_inbox_page2.len(), 3);
     assert_eq!(
         last_unread_messages_inbox_page2[0][0]
             .clone()
             .get_message_content()
             .unwrap(),
-        "Hello World".to_string()
+        "Hello World 2".to_string()
     );
 
     // Mark as read up to a certain time
     shinkai_db
         .mark_as_read_up_to(
             inbox_name_value.clone().to_string(),
-            "2023-07-03T00:00:00.000Z".to_string(),
+            last_unread_messages_inbox_page2[2][0].clone().calculate_message_hash(),
         )
         .unwrap();
 
     let last_messages_inbox = shinkai_db
         .get_last_unread_messages_from_inbox(inbox_name_value.clone().to_string(), 2, None)
         .unwrap();
-    assert_eq!(last_messages_inbox.len(), 0);
+    assert_eq!(last_messages_inbox.len(), 1);
 
     // Test permissions
     let subidentity_name = "device1";

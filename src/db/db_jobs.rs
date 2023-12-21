@@ -52,7 +52,7 @@ impl ShinkaiDB {
         let cf_job_id_name = format!("jobtopic_{}", &job_id);
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
         let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
-        let cf_job_id_unread_list_name = format!("job_inbox::{}::false_unread_list", &job_id);
+        let cf_job_id_read_list_name = format!("job_inbox::{}::false_read_list", &job_id); 
         let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
         let cf_job_id_execution_context_name = format!("{}_execution_context", &job_id);
         let cf_job_id_smart_inbox_name = format!("job_inbox::{}::false_smart_inbox_name", &job_id);
@@ -65,7 +65,7 @@ impl ShinkaiDB {
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
             || self.db.cf_handle(&cf_job_id_perms_name).is_some()
-            || self.db.cf_handle(&cf_job_id_unread_list_name).is_some()
+            || self.db.cf_handle(&cf_job_id_read_list_name).is_some()
             || self.db.cf_handle(&cf_job_id_unprocessed_messages_name).is_some()
             || self.db.cf_handle(&cf_job_id_execution_context_name).is_some()
             || self.db.cf_handle(&cf_job_id_smart_inbox_name).is_some()
@@ -83,7 +83,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_job_id_step_history_name, &cf_opts)?;
         self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_unread_list_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_read_list_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_unprocessed_messages_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_execution_context_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_smart_inbox_name, &cf_opts)?;
@@ -248,7 +248,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_job_id_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
-        let cf_job_id_step_history = self
+        let _ = self
             .db
             .cf_handle(&cf_job_id_step_history_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
@@ -509,11 +509,8 @@ impl ShinkaiDB {
                 // Fetch the most recent message from the job's inbox
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
                 let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
-                eprintln!("Found messages: {:?}", last_messages);
                 if let Some(message) = last_messages.first() {
-                    eprintln!("Found message (first): {:?}", message);
                     if let Some(message) = message.first() {
-                        eprintln!("\n## Found message (second): {:?}", message);
                         message.calculate_message_hash()
                     } else {
                         return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
@@ -539,9 +536,6 @@ impl ShinkaiDB {
             .to_json()
             .map_err(|e| ShinkaiDBError::DataConversionError(e.to_string()))?;
 
-        // Create the composite key by concatenating the current_time and the hash of the json, with a separator
-        let hash_key = hash_string(&json);
-
         let cf_handle = match self.db.cf_handle(&cf_name) {
             Some(cf) => cf,
             None => {
@@ -561,7 +555,7 @@ impl ShinkaiDB {
         self.db.put_cf(cf_handle, current_time.as_bytes(), json.as_bytes())?;
 
         // After adding the step to the history, fetch the updated step history
-        let step_history = self.get_step_history(&job_id, true)?;
+        // let step_history = self.get_step_history(&job_id, true)?;
 
         // You can print the step history or do something else with it here
         // eprintln!("Updated step history: {:?}", step_history);

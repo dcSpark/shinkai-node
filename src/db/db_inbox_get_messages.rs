@@ -1,5 +1,6 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 
 impl ShinkaiDB {
     fn fetch_message_and_hash(
@@ -78,6 +79,25 @@ impl ShinkaiDB {
         Ok(children_messages)
     }
 
+    fn get_message_offset_db_key(message: &ShinkaiMessage) -> Result<String, ShinkaiDBError> {
+        // Calculate the hash of the message for the key
+        let hash_key = message.calculate_message_hash();
+
+        // Clone the external_metadata first, then unwrap
+        let ext_metadata = message.external_metadata.clone();
+
+        // Get the scheduled time or calculate current time
+        let time_key = match ext_metadata.scheduled_time.is_empty() {
+            true => ShinkaiTime::generate_time_now(),
+            false => ext_metadata.scheduled_time.clone(),
+        };
+
+        // Create the composite key by concatenating the time_key and the hash_key, with a separator
+        let composite_key = format!("{}:::{}", time_key, hash_key);
+
+        Ok(composite_key)
+    }
+
     /*
     Get the last messages from an inbox
     Note: This code is messy because the messages could be in a tree, sequential or a mix of both
@@ -86,11 +106,11 @@ impl ShinkaiDB {
         &self,
         inbox_name: String,
         n: usize,
-        until_offset_key: Option<String>,
+        until_offset_hash_key: Option<String>,
     ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
-        println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        println!("Offset key: {:?}", until_offset_key);
-        println!("n: {:?}", n);
+        // println!("Getting last {} messages from inbox: {}", n, inbox_name);
+        // println!("Offset key: {:?}", until_offset_key);
+        // println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox
         let inbox_cf = match self.db.cf_handle(&inbox_name) {
@@ -125,20 +145,31 @@ impl ShinkaiDB {
         // eprintln!("until_offset_key: {:?}", until_offset_key);
 
         // If an until_offset_key is provided, skip over keys until we find a match
-        if let Some(offset_key) = &until_offset_key {
-            while let Some(key) = &current_key {
-                let hash_part_of_key = key.split(":::").nth(1).unwrap_or("");
-                if hash_part_of_key == offset_key {
-                    // We've found the offset key, so break the loop
-
-                    break;
-                } else {
-                    // This isn't the offset key, so get the next key and continue the loop
-                    current_key = match iter.next() {
-                        Some(Ok((key, _))) => Some(String::from_utf8(key.to_vec()).unwrap()),
-                        _ => None, // No more messages, so break the loop
+        if let Some(hash_key) = &until_offset_hash_key {
+            // Fetch the message from the AllMessages CF using the hash key
+            match self.fetch_message_and_hash(messages_cf, &hash_key) {
+                Ok((message, _)) => {
+                    // Get the offset key from the fetched message
+                    let offset_key = match Self::get_message_offset_db_key(&message) {
+                        Ok(key) => key,
+                        Err(_) => return Err(ShinkaiDBError::MessageNotFound),
                     };
+        
+                    // Compare the offset key with the keys from the iterator
+                    while let Some(key) = &current_key {
+                        if key == &offset_key {
+                            // We've found the offset key, so break the loop
+                            break;
+                        } else {
+                            // This isn't the offset key, so get the next key and continue the loop
+                            current_key = match iter.next() {
+                                Some(Ok((key, _))) => Some(String::from_utf8(key.to_vec()).unwrap()),
+                                _ => None, // No more messages, so break the loop
+                            };
+                        }
+                    }
                 }
+                Err(e) => return Err(e),
             }
         }
         // eprintln!("new current_key: {:?}", current_key);
@@ -157,7 +188,7 @@ impl ShinkaiDB {
         let mut first_iteration = true;
         let mut tree_found = false;
         // eprintln!("n: {}", n);
-        let total_elements = until_offset_key.is_some().then(|| n + 1).unwrap_or(n);
+        let total_elements = until_offset_hash_key.is_some().then(|| n + 1).unwrap_or(n);
         for i in 0..total_elements {
             // eprintln!("\n\n------\niteration: {}", i);
             let mut path = Vec::new();
@@ -268,7 +299,7 @@ impl ShinkaiDB {
         paths.reverse();
 
         // If an until_offset_key is provided, drop the last element of the paths array
-        if until_offset_key.is_some() {
+        if until_offset_hash_key.is_some() {
             paths.pop();
         }
 

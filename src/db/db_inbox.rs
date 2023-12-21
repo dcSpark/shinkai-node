@@ -29,13 +29,13 @@ impl ShinkaiDB {
         // Create ColumnFamilyDescriptors for inbox and permission lists
         let cf_name_inbox = inbox_name.clone();
         let cf_name_perms = format!("{}_perms", &inbox_name);
-        let cf_name_unread_list = format!("{}_unread_list", &inbox_name);
+        let cf_name_read_list = format!("{}_read_list", &inbox_name);
         let cf_name_smart_inbox_name = format!("{}_smart_inbox_name", &inbox_name);
 
         // Create column families
         self.db.create_cf(&cf_name_inbox, &cf_opts)?;
         self.db.create_cf(&cf_name_perms, &cf_opts)?;
-        self.db.create_cf(&cf_name_unread_list, &cf_opts)?;
+        self.db.create_cf(&cf_name_read_list, &cf_opts)?;
         self.db.create_cf(&cf_name_smart_inbox_name, &cf_opts)?;
 
         // Start a write batch
@@ -112,13 +112,6 @@ impl ShinkaiDB {
             .cf_handle(&inbox_name)
             .expect("Failed to get cf handle for inbox");
         batch.put_cf(cf_inbox, &composite_key, &hash_key);
-
-        // Add the message to the unread_list inbox
-        let cf_unread_list = self
-            .db
-            .cf_handle(&format!("{}_unread_list", inbox_name))
-            .expect("Failed to get cf handle for unread_list");
-        batch.put_cf(cf_unread_list, &composite_key, &hash_key);
 
         // If this message has a parent, add this message as a child of the parent
         let parent_key = match maybe_parent_message_key {
@@ -208,10 +201,9 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_offset: String) -> Result<(), ShinkaiDBError> {
-        // Fetch the column family for the specified unread_list
-        let cf_name_unread_list = format!("{}_unread_list", inbox_name);
-        let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
+    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_message_hash_offset: String) -> Result<(), ShinkaiDBError> {
+        let cf_name_read_list = format!("{}_read_list", inbox_name);
+        let read_list_cf = match self.db.cf_handle(&cf_name_read_list) {
             Some(cf) => cf,
             None => {
                 return Err(ShinkaiDBError::InboxNotFound(format!(
@@ -221,114 +213,64 @@ impl ShinkaiDB {
             }
         };
 
-        // Create an iterator for the specified unread_list, starting from the beginning
-        let iter = self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start);
-
-        // Iterate through the unread_list and delete all messages up to the specified offset
-        for item in iter {
-            // Handle the Result returned by the iterator
-            match item {
-                Ok((key, _)) => {
-                    let key_str = match String::from_utf8(key.to_vec()) {
-                        Ok(s) => s,
-                        Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
-                    };
-
-                    if key_str <= up_to_offset {
-                        // Delete the message from the unread_list
-                        self.db.delete_cf(unread_list_cf, key)?;
-                    } else {
-                        // We've passed the up_to_offset, so we can break the loop
-                        break;
-                    }
-                }
-                Err(e) => return Err(e.into()),
-            }
-        }
+        // Store the up_to_offset message in the read_list
+        self.db.put_cf(read_list_cf, &up_to_message_hash_offset, &up_to_message_hash_offset)?;
 
         Ok(())
+    }
+
+    pub fn get_last_read_message_from_inbox(&self, inbox_name: String) -> Result<Option<String>, ShinkaiDBError> {
+        let cf_name_read_list = format!("{}_read_list", inbox_name);
+        let read_list_cf = match self.db.cf_handle(&cf_name_read_list) {
+            Some(cf) => cf,
+            None => {
+                return Err(ShinkaiDBError::InboxNotFound(format!(
+                    "Inbox not found: {}",
+                    inbox_name
+                )))
+            }
+        };
+
+        let mut iter = self.db.iterator_cf(read_list_cf, rocksdb::IteratorMode::End);
+
+        match iter.next() {
+            Some(Ok((key, _))) => {
+                let key_str = match String::from_utf8(key.to_vec()) {
+                    Ok(s) => s,
+                    Err(_) => return Err(ShinkaiDBError::SomeError("UTF-8 conversion error".to_string())),
+                };
+                Ok(Some(key_str))
+            }
+            _ => Ok(None),
+        }
     }
 
     pub fn get_last_unread_messages_from_inbox(
         &self,
         inbox_name: String,
-        mut n: usize,
-        from_offset_key: Option<String>,
+        n: usize,
+        from_offset_hash_key: Option<String>,
     ) -> Result<Vec<ShinkaiMessage>, ShinkaiDBError> {
-        // Fetch the column family for the specified unread_list
-        let cf_name_unread_list = format!("{}_unread_list", inbox_name);
-        let unread_list_cf = match self.db.cf_handle(&cf_name_unread_list) {
-            Some(cf) => cf,
-            None => {
-                return Err(ShinkaiDBError::InboxNotFound(format!(
-                    "Inbox not found: {}",
-                    inbox_name
-                )))
+        // Fetch the last read message
+        let last_read_message = self.get_last_read_message_from_inbox(inbox_name.clone())?;
+
+        // Fetch the last n messages from the inbox starting from the offset
+        let messages = self.get_last_messages_from_inbox(inbox_name, n, from_offset_hash_key)?;
+
+        // Flatten the Vec<Vec<ShinkaiMessage>> to Vec<ShinkaiMessage>
+        let messages: Vec<ShinkaiMessage> = messages.into_iter().flatten().collect();
+
+        // Iterate over the messages in reverse order until you reach the last read message
+        let mut unread_messages = Vec::new();
+        for message in messages.into_iter().rev() {
+            if Some(message.calculate_message_hash()) == last_read_message {
+                break;
             }
-        };
-
-        // Fetch the column family for all messages
-        let messages_cf = self.cf_handle(Topic::AllMessages.as_str())?;
-
-        // Create an iterator for the specified unread_list
-        let mut iter = match &from_offset_key {
-            Some(from_key) => self.db.iterator_cf(
-                unread_list_cf,
-                rocksdb::IteratorMode::From(from_key.as_bytes(), rocksdb::Direction::Forward),
-            ),
-            None => self.db.iterator_cf(unread_list_cf, rocksdb::IteratorMode::Start),
-        };
-
-        let offset_hash = match &from_offset_key {
-            Some(offset_key) => {
-                let split: Vec<&str> = offset_key.split(":::").collect();
-                if split.len() < 2 {
-                    return Err(ShinkaiDBError::SomeError("Invalid offset key format".to_string()));
-                }
-                Some(split[1].to_string())
-            }
-            None => None,
-        };
-
-        let mut messages = Vec::new();
-        let mut first_message = true;
-        if from_offset_key.is_some() {
-            n += 1;
-        }
-        for item in iter.take(n) {
-            // Handle the Result returned by the iterator
-            match item {
-                Ok((_, value)) => {
-                    // The value of the unread_list CF is the key in the AllMessages CF
-                    let message_key = value.to_vec();
-
-                    // Fetch the message from the AllMessages CF
-                    match self.db.get_cf(messages_cf, &message_key)? {
-                        Some(bytes) => {
-                            let message = ShinkaiMessage::decode_message_result(bytes)?;
-
-                            // Check if the message hash matches the offset's
-                            if first_message {
-                                if let Some(offset_hash) = &offset_hash {
-                                    if message.calculate_message_hash() == *offset_hash {
-                                        first_message = false;
-                                        continue;
-                                    }
-                                }
-                                first_message = false;
-                            }
-
-                            messages.push(message);
-                        }
-                        None => return Err(ShinkaiDBError::MessageNotFound),
-                    }
-                }
-                Err(e) => return Err(e.into()),
-            }
+            unread_messages.push(message);
         }
 
-        // print_content_time_messages(messages.clone());
-        Ok(messages)
+        unread_messages.reverse();
+        Ok(unread_messages)
     }
 
     pub fn add_permission(
