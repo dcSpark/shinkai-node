@@ -23,7 +23,6 @@ impl UnstructuredAPI {
         Self { api_url, api_key }
     }
 
-    //
     pub fn new_default() -> Self {
         Self {
             api_url: format!("https://internal.shinkai.com/x-unstructured-api/"),

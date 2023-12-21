@@ -13,10 +13,6 @@ use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElem
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
 use std::io::Cursor;
 
-lazy_static! {
-    pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
-}
-
 impl JobManager {
     /// Given a list of UnstructuredElements generates a description using the Agent's LLM
     pub async fn generate_description(
