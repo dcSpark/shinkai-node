@@ -4,6 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
+use shinkai_node::agent::execution::job_prompts::SubPromptType::{User, Assistant};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
 
@@ -469,7 +470,7 @@ mod tests {
             let mut execution_context = HashMap::new();
             execution_context.insert("context".to_string(), results.join(", "));
             shinkai_db
-                .set_job_execution_context(&job_id.clone(), execution_context)
+                .set_job_execution_context(job_id.clone(), execution_context, None)
                 .unwrap();
 
             // Update the parent message according to the tree structure
@@ -521,13 +522,44 @@ mod tests {
 
         // Check the step history and execution context
         let job = shinkai_db.get_job(&job_id.clone()).unwrap();
-        for i in 1..=4 {
-            let step = job.step_history.get(i - 1).unwrap();
-            eprintln!("{:?}", step);
-            // assert_eq!(step.step, "".to_string());
-            // assert_eq!(step.result, format!("Inference Response Content {}", i));
-            // assert_eq!(job.execution_context, format!("Context {}", i));
-        }
+
+        // Check the execution context
+        assert_eq!(
+            job.execution_context.get("context").unwrap(),
+            "Result 1, Result 2, Result 4"
+        );
+
+        // Check the step history
+        let step1 = &job.step_history[0];
+        let step2 = &job.step_history[1];
+        let step4 = &job.step_history[2];
+
+        assert_eq!(
+            step1.step_revisions[0].sub_prompts[0],
+            SubPrompt::Content(User, "Step 1 Level 0".to_string(), 100)
+        );
+        assert_eq!(
+            step1.step_revisions[0].sub_prompts[1],
+            SubPrompt::Content(Assistant, "Result 1".to_string(), 100)
+        );
+
+        assert_eq!(
+            step2.step_revisions[0].sub_prompts[0],
+            SubPrompt::Content(User, "Step 2 Level 1".to_string(), 100)
+        );
+        assert_eq!(
+            step2.step_revisions[0].sub_prompts[1],
+            SubPrompt::Content(Assistant, "Result 2".to_string(), 100)
+        );
+
+        assert_eq!(
+            step4.step_revisions[0].sub_prompts[0],
+            SubPrompt::Content(User, "Step 4 Level 2".to_string(), 100)
+        );
+        assert_eq!(
+            step4.step_revisions[0].sub_prompts[1],
+            SubPrompt::Content(Assistant, "Result 4".to_string(), 100)
+        );
     }
 
     #[test]

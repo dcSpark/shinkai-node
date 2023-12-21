@@ -191,7 +191,7 @@ impl JobManager {
             None,
         )?;
         shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)?;
-        shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
+        shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
     }
