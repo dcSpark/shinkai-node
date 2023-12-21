@@ -110,6 +110,7 @@ impl VectorResourceRouter {
                         ret_node.node.last_modified_datetime.clone(),
                         ret_node.node.last_modified_datetime.clone(),
                         None,
+                        vec![],
                     );
                     if let Ok(resource_header) = resource_header {
                         resource_headers.push(resource_header);

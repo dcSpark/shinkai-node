@@ -144,6 +144,7 @@ pub trait VectorResource: Send + Sync {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
+        let metadata_index_keys = self.metadata_index().get_all_metadata_keys();
 
         VRHeader::new(
             self.name(),
@@ -155,6 +156,7 @@ pub trait VectorResource: Send + Sync {
             self.created_datetime(),
             self.last_modified_datetime(),
             resource_location,
+            metadata_index_keys,
         )
     }
 

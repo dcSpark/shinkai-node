@@ -324,12 +324,28 @@ impl Node {
         }
     }
 
-    /// Returns the keys of all kv pairs in the Node's metadata field
-    /// None if Metadata is None
+    /// Returns the keys of all kv pairs in the Node's metadata field,
+    /// and all metadata keys of internal nodes for Vector Resources and VRHeaders.
+    /// None if no keys exist.
     pub fn metadata_keys(&self) -> Option<Vec<String>> {
-        self.metadata
+        let mut keys = self
+            .metadata
             .as_ref()
-            .map(|metadata| metadata.keys().cloned().collect())
+            .map(|metadata| metadata.keys().cloned().collect::<Vec<String>>())
+            .unwrap_or_else(Vec::new);
+
+        if let NodeContent::Resource(resource) = &self.content {
+            let internal_keys = resource.as_trait_object().metadata_index().get_all_metadata_keys();
+            keys.extend(internal_keys);
+        } else if let NodeContent::VRHeader(header) = &self.content {
+            keys.extend(header.metadata_index_keys.clone());
+        }
+
+        if keys.is_empty() {
+            None
+        } else {
+            Some(keys)
+        }
     }
 }
 
@@ -355,7 +371,10 @@ pub struct VRHeader {
     /// The location where the VectorResource is held. Will be None for VectorResources
     /// held inside of nodes of an existing VectorResource.
     pub resource_location: Option<VRLocation>,
+    /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
+    /// List of metadata keys held in internal nodes
+    pub metadata_index_keys: Vec<String>,
 }
 
 impl VRHeader {
@@ -370,6 +389,7 @@ impl VRHeader {
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
+        metadata_index_keys: Vec<String>,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -381,6 +401,7 @@ impl VRHeader {
             resource_created_datetime,
             resource_last_modified_datetime,
             resource_location,
+            metadata_index_keys,
         }
     }
 
@@ -394,6 +415,7 @@ impl VRHeader {
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
+        metadata_index_keys: Vec<String>,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -412,6 +434,7 @@ impl VRHeader {
             resource_created_datetime,
             resource_last_modified_datetime,
             resource_location,
+            metadata_index_keys,
         })
     }
 
