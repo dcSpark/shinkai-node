@@ -5,8 +5,9 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::VRSource;
+use crate::source::{SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
+use crate::vector_search_traversal::VRHeader;
 use serde_json;
 use std::collections::HashMap;
 use std::fs::Metadata;
@@ -166,21 +167,33 @@ impl MapVectorResource {
         )
     }
 
-    /// Inserts a new node (with a BaseVectorResource) and associated embeddings
-    /// at the specified key in the Map resource, and updates the data tags index.
+    /// Inserts a new node (with a BaseVectorResource) with the provided embedding
+    /// at the specified key in the Map resource, and updates the indexes.
     pub fn insert_vector_resource_node(
+        &mut self,
+        key: &str,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
+        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+    }
+
+    /// Inserts a new node (with a BaseVectorResource) with the resource's included embedding
+    /// at the specified key in the Map resource, and updates the indexes.
+    pub fn insert_vector_resource_node_auto(
         &mut self,
         key: &str,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
-        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+        self.insert_vector_resource_node(key, resource, metadata, &embedding)
     }
 
-    /// Inserts a new text node and associated embeddings
-    /// at the specified key in the Map resource, and updates the data tags index.
+    /// Inserts a new text node and associated embedding
+    /// at the specified key in the Map resource.
     pub fn insert_text_node(
         &mut self,
         key: &str,
@@ -200,8 +213,46 @@ impl MapVectorResource {
         )
     }
 
+    /// Inserts a new node (with ExternalContent) at the specified key in the Map resource.
+    /// Uses the supplied Embedding.
+    pub fn insert_external_content_node(
+        &mut self,
+        key: &str,
+        external_content: SourceReference,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        // As ExternalContent doesn't have data tags, we pass an empty vector
+        self._insert_kv_without_tag_validation(
+            key,
+            NodeContent::ExternalContent(external_content),
+            metadata,
+            embedding,
+            &Vec::new(),
+        )
+    }
+
+    /// Inserts a new node (with VRHeader) at the specified key in the Map resource.
+    /// Uses the supplied Embedding.
+    pub fn insert_vr_header_node(
+        &mut self,
+        key: &str,
+        vr_header: VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        let data_tag_names = vr_header.data_tag_names.clone();
+        self._insert_kv_without_tag_validation(
+            key,
+            NodeContent::VRHeader(vr_header),
+            metadata,
+            embedding,
+            &data_tag_names,
+        )
+    }
+
     /// Insert a new node and associated embeddings to the Map resource
-    /// without checking if tags are valid. Also used by resource router.
+    /// without checking if tags are valid.
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -223,7 +274,7 @@ impl MapVectorResource {
     }
 
     /// Replaces an existing node & associated embedding with a new
-    /// BaseVectorResource, and updates the data tags index.
+    /// BaseVectorResource.
     pub fn replace_with_vector_resource_node(
         &mut self,
         key: &str,
@@ -241,8 +292,7 @@ impl MapVectorResource {
         )
     }
 
-    /// Replaces an existing node & associated embedding with a new text node
-    /// and updates the data tags index.
+    /// Replaces an existing node & associated embedding with a new text node.
     pub fn replace_with_text_node(
         &mut self,
         key: &str,
@@ -264,7 +314,7 @@ impl MapVectorResource {
     }
 
     /// Replaces an existing node & associated embeddings in the Map resource
-    /// without checking if tags are valid. Used for resource router.
+    /// without checking if tags are valid.
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -301,8 +351,7 @@ impl MapVectorResource {
         Ok(old_node)
     }
 
-    /// Deletes a node and associated embedding from the resource
-    /// and updates the data tags index.
+    /// Deletes a node and associated embedding from the resource.
     pub fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(key)?;
         self.data_tag_index.remove_node(&deleted_node);

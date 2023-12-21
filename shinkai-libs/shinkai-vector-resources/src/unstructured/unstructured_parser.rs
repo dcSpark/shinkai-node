@@ -207,7 +207,7 @@ impl UnstructuredParser {
                     grouped_text.embedding.clone(),
                 )
                 .await?;
-                doc.append_vector_resource_node(new_doc, metadata);
+                doc.append_vector_resource_node_auto(new_doc, metadata);
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;
@@ -264,7 +264,7 @@ impl UnstructuredParser {
                     &new_resource_id,
                     grouped_text.embedding.clone(),
                 )?;
-                doc.append_vector_resource_node(new_doc, metadata);
+                doc.append_vector_resource_node_auto(new_doc, metadata);
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;

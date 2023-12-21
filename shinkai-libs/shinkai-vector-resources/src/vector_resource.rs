@@ -250,7 +250,7 @@ pub trait VectorResource: Send + Sync {
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
-    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
     async fn dynamic_vector_search(
         &self,
         input_query: String,
@@ -270,7 +270,7 @@ pub trait VectorResource: Send + Sync {
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
-    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
     /// NOTE: Not all traversal_options (ex. UntilDepth) will work with Dynamic Vector Searches.
     async fn dynamic_vector_search_customized(
         &self,

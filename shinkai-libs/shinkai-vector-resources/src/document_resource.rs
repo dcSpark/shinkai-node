@@ -5,10 +5,11 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::{ShinkaiFileType, VRSource};
+use crate::source::{ShinkaiFileType, SourceReference, VRSource};
 use crate::vector_resource::{
     Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
 };
+use crate::vector_search_traversal::VRHeader;
 use serde_json;
 use std::collections::HashMap;
 
@@ -235,20 +236,30 @@ impl DocumentVectorResource {
     }
 
     /// Appends a new node (with a BaseVectorResource) to the document
-    /// and updates the data tags index. Of note, we use the resource's data tags
-    /// and resource embedding.
+    /// Uses the supplied Embedding rather than
+    /// automatically using the resource's embedding (useful when Embedding models differ).
     pub fn append_vector_resource_node(
+        &mut self,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
+        self._append_node_without_tag_validation(NodeContent::Resource(resource), metadata, embedding, &tag_names)
+    }
+
+    /// Appends a new node (with a BaseVectorResource) to the document
+    /// Automatically uses the existing resource embedding.
+    pub fn append_vector_resource_node_auto(
         &mut self,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
     ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
-        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._append_node_without_tag_validation(NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+        self.append_vector_resource_node(resource, metadata, &embedding)
     }
 
-    /// Appends a new text node and an associated embedding to the document
-    /// and updates the data tags index.
+    /// Appends a new text node and an associated embedding to the document.
     pub fn append_text_node(
         &mut self,
         text: &str,
@@ -264,6 +275,35 @@ impl DocumentVectorResource {
             embedding,
             &data_tag_names,
         )
+    }
+
+    /// Appends a new node (with ExternalContent) to the document.
+    /// Uses the supplied Embedding.
+    pub fn append_external_content_node(
+        &mut self,
+        external_content: SourceReference,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        // As ExternalContent doesn't have data tags, we pass an empty vector
+        self._append_node_without_tag_validation(
+            NodeContent::ExternalContent(external_content),
+            metadata,
+            embedding,
+            &Vec::new(),
+        )
+    }
+
+    /// Appends a new node (with VRHeader) to the document.
+    /// Uses the supplied Embedding.
+    pub fn append_vr_header_node(
+        &mut self,
+        vr_header: VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) {
+        let data_tag_names = vr_header.data_tag_names.clone();
+        self._append_node_without_tag_validation(NodeContent::VRHeader(vr_header), metadata, embedding, &data_tag_names)
     }
 
     /// Appends a new text node and associated embedding to the document
@@ -289,14 +329,14 @@ impl DocumentVectorResource {
     }
 
     /// Replaces an existing node and associated embedding in the Document resource
-    /// with a BaseVectorResource in the new Node, and updates the data tags index.
+    /// with a BaseVectorResource in the new Node.
     pub fn replace_with_vector_resource_node(
         &mut self,
         id: u64,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
     ) -> Result<Node, VRError> {
-        let embedding = new_resource.as_trait_object().resource_embedding().clone();
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_node_without_tag_validation(
             id,

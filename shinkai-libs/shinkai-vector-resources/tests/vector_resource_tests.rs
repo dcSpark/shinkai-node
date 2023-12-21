@@ -123,7 +123,7 @@ fn test_manual_resource_vector_search() {
     // Insert the document resource into the map resource
     // To allow for this composability we need to convert the doc into a BaseVectorResource
     let doc_resource = BaseVectorResource::from(doc);
-    map_resource.insert_vector_resource_node("doc_key", doc_resource, None);
+    map_resource.insert_vector_resource_node_auto("doc_key", doc_resource, None);
 
     //
     // Create a third resource, a DocumentVectorResource about fruits
@@ -146,7 +146,7 @@ fn test_manual_resource_vector_search() {
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
-    fruit_doc.append_vector_resource_node(map_resource, None);
+    fruit_doc.append_vector_resource_node_auto(map_resource, None);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
