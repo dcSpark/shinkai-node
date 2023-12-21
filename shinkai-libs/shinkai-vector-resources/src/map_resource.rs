@@ -313,6 +313,42 @@ impl MapVectorResource {
         )
     }
 
+    /// Replaces an existing node & associated embedding with a new ExternalContent node.
+    pub fn replace_with_external_content_node(
+        &mut self,
+        key: &str,
+        new_external_content: SourceReference,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<Node, VRError> {
+        // As ExternalContent doesn't have data tags, we pass an empty vector
+        self._replace_kv_without_tag_validation(
+            key,
+            NodeContent::ExternalContent(new_external_content),
+            new_metadata,
+            embedding,
+            &Vec::new(),
+        )
+    }
+
+    /// Replaces an existing node & associated embedding with a new VRHeader node.
+    pub fn replace_with_vr_header_node(
+        &mut self,
+        key: &str,
+        new_vr_header: VRHeader,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<Node, VRError> {
+        let data_tag_names = new_vr_header.data_tag_names.clone();
+        self._replace_kv_without_tag_validation(
+            key,
+            NodeContent::VRHeader(new_vr_header),
+            new_metadata,
+            embedding,
+            &data_tag_names,
+        )
+    }
+
     /// Replaces an existing node & associated embeddings in the Map resource
     /// without checking if tags are valid.
     pub fn _replace_kv_without_tag_validation(
@@ -323,24 +359,27 @@ impl MapVectorResource {
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
     ) -> Result<Node, VRError> {
-        // Next create the new node, and replace the old node in the nodes list
+        // Next create the new node, and replace the old node in the nodes by inserting (updating)
         let new_node = Node::from_node_content(
             key.to_string(),
             new_data.clone(),
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-
         let old_node = self
             .nodes
             .insert(key.to_string(), new_node.clone())
             .ok_or(VRError::InvalidNodeId)?;
 
-        // Then deletion of old node from index and addition of new node
-        self.data_tag_index.remove_node(&old_node);
-        self.data_tag_index.add_node(&new_node);
-        self.metadata_index.remove_node(&old_node);
-        self.metadata_index.add_node(&new_node);
+        // Then deletion of old node from indexes and addition of new node
+        if old_node.data_tag_names != new_node.data_tag_names {
+            self.data_tag_index.remove_node(&old_node);
+            self.data_tag_index.add_node(&new_node);
+        }
+        if old_node.metadata_keys() != new_node.metadata_keys() {
+            self.metadata_index.remove_node(&old_node);
+            self.metadata_index.add_node(&new_node);
+        }
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();

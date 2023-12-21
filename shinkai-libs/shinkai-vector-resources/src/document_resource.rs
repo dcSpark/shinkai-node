@@ -347,7 +347,7 @@ impl DocumentVectorResource {
         )
     }
 
-    /// Replaces an existing node & associated embedding and updates the data tags index.
+    /// Replaces an existing node & associated embedding.
     /// * `id` - The id of the node to be replaced.
     pub fn replace_with_text_node(
         &mut self,
@@ -369,27 +369,44 @@ impl DocumentVectorResource {
         )
     }
 
-    /// Pops and returns the last node and associated embedding
-    /// and updates the data tags index.
-    pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
-        let popped_node = self.nodes.pop();
-        let popped_embedding = self.embeddings.pop();
+    /// Replaces an existing node & associated embedding with a new ExternalContent node.
+    pub fn replace_with_external_content_node(
+        &mut self,
+        id: u64,
+        new_external_content: SourceReference,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<Node, VRError> {
+        // As ExternalContent doesn't have data tags, we pass an empty vector
+        self._replace_node_without_tag_validation(
+            id,
+            NodeContent::ExternalContent(new_external_content),
+            new_metadata,
+            embedding,
+            &Vec::new(),
+        )
+    }
 
-        match (popped_node, popped_embedding) {
-            (Some(node), Some(embedding)) => {
-                // Remove node from indexes
-                self.metadata_index.remove_node(&node);
-                self.data_tag_index.remove_node(&node);
-                self.node_count -= 1;
-                self.update_last_modified_to_now();
-                Ok((node, embedding))
-            }
-            _ => Err(VRError::VectorResourceEmpty),
-        }
+    /// Replaces an existing node & associated embedding with a new VRHeader node.
+    pub fn replace_with_vr_header_node(
+        &mut self,
+        id: u64,
+        new_vr_header: VRHeader,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<Node, VRError> {
+        let data_tag_names = new_vr_header.data_tag_names.clone();
+        self._replace_node_without_tag_validation(
+            id,
+            NodeContent::VRHeader(new_vr_header),
+            new_metadata,
+            embedding,
+            &data_tag_names,
+        )
     }
 
     /// Replaces an existing node & associated embedding in the Document resource
-    /// without checking if tags are valid. Used for resource router.
+    /// without checking if tags are valid.
     pub fn _replace_node_without_tag_validation(
         &mut self,
         id: u64,
@@ -409,11 +426,15 @@ impl DocumentVectorResource {
             Node::from_node_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
 
-        // Then deletion of old node from index and addition of new node
-        self.data_tag_index.remove_node(&old_node);
-        self.metadata_index.remove_node(&old_node);
-        self.data_tag_index.add_node(&new_node);
-        self.metadata_index.add_node(&new_node);
+        // Then deletion of old node from indexes and addition of new node
+        if old_node.data_tag_names != new_node.data_tag_names {
+            self.data_tag_index.remove_node(&old_node);
+            self.data_tag_index.add_node(&new_node);
+        }
+        if old_node.metadata_keys() != new_node.metadata_keys() {
+            self.metadata_index.remove_node(&old_node);
+            self.metadata_index.add_node(&new_node);
+        }
 
         // Finally replacing the embedding
         let mut embedding = embedding.clone();
@@ -425,8 +446,25 @@ impl DocumentVectorResource {
         Ok(old_node)
     }
 
-    /// Deletes a node and associated embedding from the resource
-    /// and updates the data tags index.
+    /// Pops and returns the last node and associated embedding.
+    pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
+        let popped_node = self.nodes.pop();
+        let popped_embedding = self.embeddings.pop();
+
+        match (popped_node, popped_embedding) {
+            (Some(node), Some(embedding)) => {
+                // Remove node from indexes
+                self.metadata_index.remove_node(&node);
+                self.data_tag_index.remove_node(&node);
+                self.node_count -= 1;
+                self.update_last_modified_to_now();
+                Ok((node, embedding))
+            }
+            _ => Err(VRError::VectorResourceEmpty),
+        }
+    }
+
+    /// Deletes a node and associated embedding from the resource.
     pub fn remove_node(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
