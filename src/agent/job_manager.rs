@@ -389,7 +389,7 @@ impl JobManager {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
             shinkai_db.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
         }
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message)?;
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message, None)?;
         std::mem::drop(shinkai_db);
 
         self.add_job_message_to_job_queue(&job_message, &profile).await?;

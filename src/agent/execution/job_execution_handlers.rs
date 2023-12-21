@@ -89,9 +89,9 @@ impl JobManager {
                 );
 
                 // Save response data to DB
-                let shinkai_db = db.lock().await;
-                shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content, agg_response)?;
-                shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
+                let mut shinkai_db = db.lock().await;
+                shinkai_db.add_step_history(job_message.job_id.clone(), job_message.content, agg_response, None)?;
+                shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)?;
                 shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
 
                 Ok(true)
@@ -166,9 +166,9 @@ impl JobManager {
 
                 // Save response data to DB
                 {
-                    let shinkai_db = db.lock().await;
-                    shinkai_db.add_step_history(job_id.clone(), "".to_string(), inference_response_content.clone())?;
-                    shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
+                    let mut shinkai_db = db.lock().await;
+                    shinkai_db.add_step_history(job_id.clone(), "".to_string(), inference_response_content.clone(), None)?;
+                    shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
                     shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                 }
 
@@ -211,13 +211,14 @@ impl JobManager {
                                 .unwrap();
 
                                 // Save response data to DB
-                                let shinkai_db = db.lock().await;
+                                let mut shinkai_db = db.lock().await;
                                 shinkai_db.add_step_history(
                                     job_id.clone(),
                                     "".to_string(),
                                     inference_response_content.clone(),
+                                    None,
                                 )?;
-                                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
+                                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
                                 shinkai_db.set_job_execution_context(&job_id.clone(), new_execution_context)?;
                             }
                             Err(e) => {
@@ -298,13 +299,14 @@ impl JobManager {
         );
 
         // Save response data to DB
-        let shinkai_db = db.lock().await;
+        let mut shinkai_db = db.lock().await;
         shinkai_db.add_step_history(
             full_job.job_id.clone(),
             "".to_string(),
             inference_response_content.to_string(),
+            None,
         )?;
-        shinkai_db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message)?;
+        shinkai_db.add_message_to_job_inbox(&full_job.job_id.clone(), &shinkai_message, None)?;
         shinkai_db.set_job_execution_context(&full_job.job_id.clone(), prev_execution_context)?;
 
         Ok(())

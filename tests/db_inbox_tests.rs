@@ -96,10 +96,10 @@ fn test_insert_messages_with_simple_tree_structure() {
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
@@ -214,10 +214,10 @@ fn test_insert_messages_with_simple_tree_structure_and_root() {
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+    let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
@@ -332,6 +332,44 @@ fn test_insert_messages_with_simple_tree_structure_and_root() {
         last_messages_inbox[3][0].clone().get_message_content().unwrap(),
         "Hello World 4".to_string()
     );
+
+    // Testing Pagination
+    // Get the hash of the first message of the first element of the first array returned
+    let until_offset_key = last_messages_inbox[3][0].calculate_message_hash();
+
+    // Get the last 2 messages with pagination
+    let paginated_messages_inbox = shinkai_db
+        .get_last_messages_from_inbox(inbox_name_value.clone().to_string(), 2, Some(until_offset_key))
+        .unwrap();
+
+    let paginated_messages_content: Vec<Vec<String>> = paginated_messages_inbox
+        .iter()
+        .map(|message_array| {
+            message_array
+                .iter()
+                .map(|message| message.clone().get_message_content().unwrap())
+                .collect()
+        })
+        .collect();
+
+    eprintln!("Paginated messages: {:?}", paginated_messages_content);
+
+    // Check that the results obtained by using pagination match the ones that don't require pagination
+    assert_eq!(paginated_messages_inbox.len(), 2);
+    assert_eq!(paginated_messages_inbox[0].len(), 1);
+    assert_eq!(
+        paginated_messages_inbox[0][0].clone().get_message_content().unwrap(),
+        "Hello World 1".to_string()
+    );
+    assert_eq!(paginated_messages_inbox[1].len(), 2);
+    assert_eq!(
+        paginated_messages_inbox[1][0].clone().get_message_content().unwrap(),
+        "Hello World 2".to_string()
+    );
+    assert_eq!(
+        paginated_messages_inbox[1][1].clone().get_message_content().unwrap(),
+        "Hello World 3".to_string()
+    );
 }
 
 #[test]
@@ -340,13 +378,12 @@ fn test_insert_messages_with_tree_structure() {
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
 
-    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
 
@@ -573,10 +610,10 @@ fn db_inbox() {
     let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let (node1_subidentity_sk, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
-    let (node1_subencryption_sk, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
+    let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
+    let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name.clone()));
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_identity_name));
 
     let message = generate_message_with_text(
         "Hello World".to_string(),
@@ -925,7 +962,7 @@ fn test_permission_errors() {
     let (_, node1_subidentity_pk) = unsafe_deterministic_signature_keypair(100);
     let (_, node1_subencryption_pk) = unsafe_deterministic_encryption_keypair(100);
 
-    let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name.clone()));
+    let node1_db_path = format!("db_tests/{}", hash_string(node1_subidentity_name));
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
     let subidentity_name = "device1";

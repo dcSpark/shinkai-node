@@ -65,7 +65,7 @@ impl ShinkaiDB {
     pub fn unsafe_insert_inbox_message(
         &mut self,
         message: &ShinkaiMessage,
-        parent_message_key: Option<String>,
+        maybe_parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
         let inbox_name_manager = InboxName::from_message(message).map_err(ShinkaiDBError::from)?;
 
@@ -79,23 +79,12 @@ impl ShinkaiDB {
             return Err(ShinkaiDBError::SomeError("Inbox name is empty".to_string()));
         }
 
-        if let Err(_) | Ok(false) = inbox_name_manager.has_sender_creation_access(message.clone()) {
-            // TODO: check if it has "manual" permissions for this adding identity is required as an input to this fn
-            return Err(ShinkaiDBError::SomeError(
-                "Sender doesn't have creation access".to_string(),
-            ));
-        }
-
-        // TODO: should be check that the recipient also has access?
         // Insert the message
         let _ = self.insert_message_to_all(&message.clone())?;
 
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
             self.create_empty_inbox(inbox_name.clone())?;
-
-            // TODO: review how to add permissions to keep stuff in sync
-            // we need the identity as an input to this fn
         }
 
         // Calculate the hash of the message for the key
@@ -132,7 +121,7 @@ impl ShinkaiDB {
         batch.put_cf(cf_unread_list, &composite_key, &hash_key);
 
         // If this message has a parent, add this message as a child of the parent
-        let maybe_parent_key = match parent_message_key {
+        let parent_key = match maybe_parent_message_key {
             Some(key) => Some(key),
             None => {
                 // Fetch the most recent message from the inbox
@@ -150,7 +139,7 @@ impl ShinkaiDB {
         };
 
         // If this message has a parent, add this message as a child of the parent
-        if let Some(parent_key) = maybe_parent_key {
+        if let Some(parent_key) = parent_key {
             // eprintln!("Adding child: {} to parent: {}", composite_key, parent_key);
             // eprintln!("Inbox name: {}", inbox_name);
 
@@ -213,7 +202,7 @@ impl ShinkaiDB {
 
         // Call get_last_messages_from_inbox and print the results
         // eprintln!("Calling get_last_messages_from_inbox");
-        // let _ = self.get_last_messages_from_inbox(inbox_name.clone(), 10, None)?;
+        // let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 10, None)?;
         // println!("Last messages: {:?}", last_messages);
 
         Ok(())
