@@ -96,12 +96,8 @@ pub trait VectorResource: Send + Sync {
         &self,
         api_url: &str,
         api_key: Option<String>,
-    ) -> Box<dyn EmbeddingGenerator> {
-        Box::new(RemoteEmbeddingGenerator::new(
-            self.embedding_model_used(),
-            api_url,
-            api_key,
-        ))
+    ) -> RemoteEmbeddingGenerator {
+        RemoteEmbeddingGenerator::new(self.embedding_model_used(), api_url, api_key)
     }
 
     /// Generates a formatted string that represents the text to be used for

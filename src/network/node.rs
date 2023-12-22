@@ -356,7 +356,7 @@ impl Node {
 
         // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
-            embedding_generator.model_type.clone(),
+            embedding_generator.clone(),
             vec![embedding_generator.model_type.clone()],
             profile_list,
             &vector_fs_db_path,

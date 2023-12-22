@@ -1,38 +1,45 @@
+use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
+
 use super::permissions::PermissionsIndex;
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
+    embeddings::Embedding,
     map_resource::MapVectorResource,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
+    vector_resource::VectorResource,
     vector_search_traversal::{VRPath, VRSource},
 };
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorFSInternals {
-    pub file_system_core_resource: MapVectorResource,
+    pub fs_core_resource: MapVectorResource,
     pub permissions_index: PermissionsIndex,
     pub subscription_index: HashMap<VRPath, Vec<ShinkaiName>>,
-    pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
 }
 
 impl VectorFSInternals {
     pub fn new(
         node_name: ShinkaiName,
-        default_embedding_model: EmbeddingModelType,
+        default_embedding_model_used: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Self {
+        let core_resource = MapVectorResource::new(
+            "VecFS Core Resource",
+            None,
+            VRSource::None,
+            "core",
+            Embedding::new(&String::new(), vec![]),
+            HashMap::new(),
+            HashMap::new(),
+            default_embedding_model_used,
+        );
         Self {
-            file_system_core_resource: MapVectorResource::new_empty(
-                "VecFS Core Resource",
-                None,
-                VRSource::None,
-                "core",
-            ),
+            fs_core_resource: core_resource,
             permissions_index: PermissionsIndex::new(node_name),
             subscription_index: HashMap::new(),
-            default_embedding_model,
             supported_embedding_models,
         }
     }
@@ -45,6 +52,11 @@ impl VectorFSInternals {
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
         let supported_embedding_models = vec![default_embedding_model.clone()];
         Self::new(node_name, default_embedding_model, supported_embedding_models)
+    }
+
+    /// Returns the default Embedding model used by the profile's VecFS.
+    pub fn default_embedding_model(&self) -> EmbeddingModelType {
+        self.fs_core_resource.embedding_model_used()
     }
 
     /// A hard-coded DB key for the profile-wide VectorFSInternals.
