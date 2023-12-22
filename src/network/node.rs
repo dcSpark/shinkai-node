@@ -344,6 +344,7 @@ impl Node {
         let vector_fs = VectorFS::new(
             embedding_generator.model_type.clone(),
             vec![embedding_generator.model_type.clone()],
+            vec![node_profile_name.clone()],
             &vector_fs_db_path,
         )
         .unwrap_or_else(|e| {

@@ -1,44 +1,47 @@
-use super::fs_db::VectorFSDB;
 use super::fs_internals::VectorFSInternals;
+use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
 use rocksdb::Error;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     embeddings::Embedding, map_resource::MapVectorResource, model_type::EmbeddingModelType, source::VRSource,
 };
 use std::collections::HashMap;
 
+/// Struct that wraps all functionality of the VectorFS.
+/// Of note, internals_map holds a hashmap of the VectorFSInternals
+/// for all profiles on the node.
 pub struct VectorFS {
-    pub internals: VectorFSInternals,
-    pub db: VectorFSDB,
+    internals_map: HashMap<ShinkaiName, VectorFSInternals>,
+    db: VectorFSDB,
 }
 
 impl VectorFS {
-    /// Initializes the VectorFS
+    /// Initializes the VectorFS struct. If no existing VectorFS exists in the VectorFSDB, then initializes
+    /// from scratch. Otherwise reads from the FSDB.
+    /// Requires supplying list of profiles setup in the node for profile_list.
     pub fn new(
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
+        profile_list: Vec<ShinkaiName>,
         db_path: &str,
-    ) -> Result<Self, Error> {
-        let db = VectorFSDB::new(db_path)?;
+    ) -> Result<Self, VectorFSError> {
+        let fs_db = VectorFSDB::new(db_path)?;
+
+        // For each profile, initialize the internals in the DB if needed, and read them into the internals_map
+        let mut internals_map = HashMap::new();
+        for profile in profile_list {
+            fs_db.init_profile_fs_internals(
+                &profile,
+                default_embedding_model.clone(),
+                supported_embedding_models.clone(),
+            );
+            let internals = fs_db.get_profile_fs_internals(&profile)?;
+            internals_map.insert(profile, internals);
+        }
+
         Ok(Self {
-            internals: VectorFSInternals {
-                file_system_resource: MapVectorResource::new(
-                    "default_name",
-                    Some("default_description"),
-                    VRSource::None,
-                    "default_resource_id",
-                    Embedding::new("", vec![]),
-                    HashMap::new(),
-                    HashMap::new(),
-                    default_embedding_model.clone(),
-                ),
-                identity_permissions_index: HashMap::new(),
-                metadata_key_index: HashMap::new(),
-                data_tag_index: HashMap::new(),
-                subscription_index: HashMap::new(),
-                default_embedding_model,
-                supported_embedding_models,
-            },
-            db,
+            internals_map,
+            db: fs_db,
         })
     }
 
@@ -46,8 +49,15 @@ impl VectorFS {
     /// Simply creates a barebones struct to be used to satisfy required types.
     pub fn new_empty() -> Self {
         Self {
-            internals: VectorFSInternals::new_empty(), // assuming you have a similar method for VectorFSInternals
+            internals_map: HashMap::new(),
             db: VectorFSDB::new_empty(),
         }
+    }
+
+    /// Attempts to fetch the VectorFSInternals for a given profile from the internals_map.
+    pub fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<&VectorFSInternals, VectorFSError> {
+        self.internals_map
+            .get(profile)
+            .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
     }
 }
