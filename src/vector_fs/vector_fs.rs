@@ -2,7 +2,7 @@ use super::fs_internals::VectorFSInternals;
 use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
 use rocksdb::Error;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::{
     embeddings::Embedding, map_resource::MapVectorResource, model_type::EmbeddingModelType, source::VRSource,
@@ -17,7 +17,7 @@ pub struct VectorFS {
     db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
-    /// to prevent locking for long periods of time.
+    /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)
     embedding_generator: RemoteEmbeddingGenerator,
 }
 
@@ -60,6 +60,17 @@ impl VectorFS {
             db: VectorFSDB::new_empty(),
             embedding_generator: RemoteEmbeddingGenerator::new_default(),
         }
+    }
+
+    /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
+    /// This automatically uses the correct default embedding model for the given profile.
+    pub async fn generate_query_embedding(
+        &self,
+        input_query: String,
+        profile: &ShinkaiName,
+    ) -> Result<Embedding, VectorFSError> {
+        let generator = self.get_embedding_generator(profile)?;
+        Ok(generator.generate_embedding_default(&input_query).await?)
     }
 
     /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType

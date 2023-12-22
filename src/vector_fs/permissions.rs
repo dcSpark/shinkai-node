@@ -11,24 +11,24 @@ pub enum Permission {
     Whitelist,
 }
 
-/// Struct holding the VectorFS' permissions.
+/// Struct holding the VectorFS' permissions for a given profile.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PermissionsIndex {
     /// Map from VRPath to its corresponding Permission.
     fs_permissions: HashMap<VRPath, Permission>,
     /// Map from VRPath to a list of ShinkaiNames that are whitelisted for that path.
     whitelist: HashMap<VRPath, HashMap<ShinkaiName, bool>>,
-    /// ShinkaiName of the current running node. Used to allow access for owner of node.
-    node_name: ShinkaiName,
+    /// ShinkaiName of the profile this permissions index is for. Used to allow owner of profile access.
+    profile_name: ShinkaiName,
 }
 
 impl PermissionsIndex {
     /// Creates a new PermissionsIndex.
-    pub fn new(node_name: ShinkaiName) -> Self {
+    pub fn new(profile_name: ShinkaiName) -> Self {
         Self {
             fs_permissions: HashMap::new(),
             whitelist: HashMap::new(),
-            node_name,
+            profile_name,
         }
     }
 
@@ -70,8 +70,11 @@ impl PermissionsIndex {
     pub fn validate_permission(&self, requester_name: &ShinkaiName, path: &VRPath) -> bool {
         let mut path = path.clone();
 
+        // TODO: Verify later that in all cases that profile owner from any device/agent as requester_name
+        // always includes the profile name (it should in theory). This allows us to ensure VectorFSInternals is always profile-bound/permissioned.
         if let Some(Permission::Private) = self.fs_permissions.get(&path) {
-            return requester_name.get_node_name() == self.node_name.get_node_name();
+            return requester_name.get_profile_name() == self.profile_name.get_profile_name();
+            // return requester_name.get_node_name() == self.profile_name.get_node_name();
         }
 
         if let Some(Permission::Public) = self.fs_permissions.get(&path) {

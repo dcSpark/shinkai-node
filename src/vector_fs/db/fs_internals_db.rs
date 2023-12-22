@@ -74,8 +74,8 @@ impl VectorFSDB {
     ) -> Result<(), VectorFSError> {
         if let Err(_) = self.get_profile_fs_internals(profile) {
             // Extract just the node name from the profile name
-            let node_name = ShinkaiName::from_node_name(profile.get_node_name())?;
-            let fs_internals = VectorFSInternals::new(node_name, default_embedding_model, supported_embedding_models);
+            let fs_internals =
+                VectorFSInternals::new(profile.clone(), default_embedding_model, supported_embedding_models);
 
             self.save_profile_fs_internals(&fs_internals, profile)?;
         }
