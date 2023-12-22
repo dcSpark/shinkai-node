@@ -340,11 +340,25 @@ impl Node {
         let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
+        // Fetch list of profiles from the node to push into the VectorFS
+        let mut profile_list = vec![];
+        {
+            let db_lock = db_arc.lock().await;
+            profile_list = match db_lock.get_all_profiles(node_profile_name.clone()) {
+                Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
+                Err(e) => panic!("Failed to fetch profiles: {}", e),
+            };
+        }
+        // Checking to make sure at least 1 profile exists for VectorFS to be able to initialize properly
+        if profile_list.len() == 0 {
+            panic!("Unable to find any profiles in ShinkaiDB: {:?}", profile_list);
+        }
+
         // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
             embedding_generator.model_type.clone(),
             vec![embedding_generator.model_type.clone()],
-            vec![node_profile_name.clone()],
+            profile_list,
             &vector_fs_db_path,
         )
         .unwrap_or_else(|e| {

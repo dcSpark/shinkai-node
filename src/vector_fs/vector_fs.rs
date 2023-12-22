@@ -34,7 +34,7 @@ impl VectorFS {
                 &profile,
                 default_embedding_model.clone(),
                 supported_embedding_models.clone(),
-            );
+            )?;
             let internals = fs_db.get_profile_fs_internals(&profile)?;
             internals_map.insert(profile, internals);
         }
@@ -54,7 +54,7 @@ impl VectorFS {
         }
     }
 
-    /// Attempts to fetch the VectorFSInternals for a given profile from the internals_map.
+    /// Attempts to fetch the VectorFSInternals (from memory) for a given profile in the internals_map.
     pub fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<&VectorFSInternals, VectorFSError> {
         self.internals_map
             .get(profile)
