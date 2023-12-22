@@ -4,13 +4,15 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_search_traversal::VRPath;
 
 /// Enum representing the different types of permissions a VRPath can have.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Permission {
     Private,
     Public,
     Whitelist,
 }
 
-/// Struct representing the permissions index.
+/// Struct holding the VectorFS' permissions.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PermissionsIndex {
     /// Map from VRPath to its corresponding Permission.
     fs_permissions: HashMap<VRPath, Permission>,
@@ -21,6 +23,49 @@ pub struct PermissionsIndex {
 }
 
 impl PermissionsIndex {
+    /// Creates a new PermissionsIndex.
+    pub fn new(node_name: ShinkaiName) -> Self {
+        Self {
+            fs_permissions: HashMap::new(),
+            whitelist: HashMap::new(),
+            node_name,
+        }
+    }
+
+    /// Inserts a new permission into the fs_permissions map. Note, this will overwrite
+    /// the old permission. If the new overriding permission is not a whitelist, it will delete all whitelisted names
+    /// for the given VRPath.
+    pub fn insert_fs_permission(&mut self, path: VRPath, permission: Permission) {
+        if let Some(old_permission) = self.fs_permissions.insert(path.clone(), permission.clone()) {
+            if matches!(old_permission, Permission::Whitelist) && !matches!(permission, Permission::Whitelist) {
+                self.whitelist.remove(&path);
+            }
+        }
+    }
+
+    /// Removes a permission from the fs_permissions map.
+    /// If the permission was a whitelist, also removes the corresponding entry from the whitelist map.
+    pub fn remove_fs_permission(&mut self, path: VRPath) {
+        if let Some(permission) = self.fs_permissions.remove(&path) {
+            if matches!(permission, Permission::Whitelist) {
+                self.whitelist.remove(&path);
+            }
+        }
+    }
+
+    /// Inserts a user to the whitelist for a given path.
+    pub fn insert_to_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
+        let inner_whitelist = self.whitelist.entry(path).or_insert_with(HashMap::new);
+        inner_whitelist.insert(name, true);
+    }
+
+    /// Removes a user from the whitelist for a given path.
+    pub fn remove_from_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
+        if let Some(inner_whitelist) = self.whitelist.get_mut(&path) {
+            inner_whitelist.remove(&name);
+        }
+    }
+
     /// Validates the permission for a given requester ShinkaiName + Path in the node's VectorFS.
     pub fn validate_permission(&self, requester_name: &ShinkaiName, path: &VRPath) -> bool {
         let mut path = path.clone();
@@ -50,5 +95,10 @@ impl PermissionsIndex {
         }
 
         false
+    }
+
+    /// Validates the permissions for a list of requester ShinkaiNames for a single Path in the node's VectorFS.
+    pub fn validate_permission_multi_requesters(&self, requester_names: &[ShinkaiName], path: &VRPath) -> bool {
+        requester_names.iter().all(|name| self.validate_permission(name, path))
     }
 }
