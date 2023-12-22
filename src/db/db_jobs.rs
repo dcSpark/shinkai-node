@@ -422,8 +422,6 @@ impl ShinkaiDB {
                 }
             }
         }
-        eprintln!("Execution context: {:?}", execution_context);
-
         Ok(execution_context)
     }
 

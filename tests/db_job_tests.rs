@@ -4,7 +4,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Messag
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
-use shinkai_node::agent::execution::job_prompts::SubPromptType::{User, Assistant};
+use shinkai_node::agent::execution::job_prompts::SubPromptType::{Assistant, User};
 use shinkai_node::db::ShinkaiDB;
 use std::{fs, path::Path};
 
@@ -138,9 +138,9 @@ mod tests {
         setup();
         let job_id = "job3".to_string();
         let agent_id = "agent3".to_string();
-        let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
-                .unwrap();
+        // let inbox_name =
+        //     InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
+        //         .unwrap();
         let scope = JobScope::new_default();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
@@ -159,17 +159,36 @@ mod tests {
     #[test]
     fn test_update_step_history() {
         setup();
-        let job_id = "job4".to_string();
+        let job_id = "test_job".to_string();
         let agent_id = "agent4".to_string();
-        let inbox_name =
-            InboxName::new("inbox::@@node1.shinkai/subidentity::@@node2.shinkai/subidentity2::true".to_string())
-                .unwrap();
-        let scope = JobScope::new_default();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
         let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
 
+        let node1_identity_name = "@@node1.shinkai";
+        let node1_subidentity_name = "main_profile_node1";
+        let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let agent_id = "agent_test".to_string();
+        let scope = JobScope::new_default();
+
         // Create a new job
         create_new_job(&mut shinkai_db, job_id.clone(), agent_id.clone(), scope);
+
+        let message = generate_message_with_text(
+            format!("Hello World"),
+            node1_encryption_sk.clone(),
+            clone_signature_secret_key(&node1_identity_sk),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            format!("2023-07-02T20:53:34.810Z"),
+        );
+
+        // Insert the ShinkaiMessage into the database
+        shinkai_db
+            .unsafe_insert_inbox_message(&message, None)
+            .unwrap();
 
         // Update step history
         shinkai_db
