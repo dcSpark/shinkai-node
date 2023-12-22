@@ -1,14 +1,9 @@
-use super::super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
+use super::super::fs_error::VectorFSError;
 use super::fs_db::{FSTopic, VectorFSDB};
 use crate::db::db::ProfileBoundWriteBatch;
-use crate::vector_fs::vector_fs::VectorFS;
-use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
-use shinkai_vector_resources::map_resource::MapVectorResource;
-use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_search_traversal::{VRHeader, VRSource};
-use std::collections::HashMap;
+use shinkai_vector_resources::vector_search_traversal::VRHeader;
 
 impl VectorFSDB {
     /// Saves the `VectorResource` into the Resources topic as a JSON

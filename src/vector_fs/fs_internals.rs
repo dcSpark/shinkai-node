@@ -1,3 +1,4 @@
+use super::permissions::PermissionsIndex;
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VectorFSInternals {
     pub file_system_core_resource: MapVectorResource,
-    pub identity_permissions_index: HashMap<ShinkaiName, Vec<VRPath>>,
+    pub permissions_index: PermissionsIndex,
     pub subscription_index: HashMap<VRPath, Vec<ShinkaiName>>,
     pub default_embedding_model: EmbeddingModelType,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
@@ -18,16 +19,19 @@ pub struct VectorFSInternals {
 
 impl VectorFSInternals {
     pub fn new(
-        file_system_core_resource: MapVectorResource,
-        identity_permissions_index: HashMap<ShinkaiName, Vec<VRPath>>,
-        subscription_index: HashMap<VRPath, Vec<ShinkaiName>>,
+        node_name: ShinkaiName,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Self {
         Self {
-            file_system_core_resource,
-            identity_permissions_index,
-            subscription_index,
+            file_system_core_resource: MapVectorResource::new_empty(
+                "VecFS Core Resource",
+                None,
+                VRSource::None,
+                "core",
+            ),
+            permissions_index: PermissionsIndex::new(node_name),
+            subscription_index: HashMap::new(),
             default_embedding_model,
             supported_embedding_models,
         }
@@ -36,20 +40,14 @@ impl VectorFSInternals {
     /// IMPORTANT: This creates a barebones empty struct, intended to be used for tests
     /// that do not require a real filled out internals struct.
     pub fn new_empty() -> Self {
-        Self {
-            file_system_core_resource: MapVectorResource::new_empty("", None, VRSource::None, ""),
-            identity_permissions_index: HashMap::new(),
-            subscription_index: HashMap::new(),
-            default_embedding_model: EmbeddingModelType::TextEmbeddingsInference(
-                TextEmbeddingsInference::AllMiniLML6v2,
-            ),
-            supported_embedding_models: Vec::new(),
-        }
+        let node_name = ShinkaiName::from_node_name("@@node1_test.shinkai".to_string()).unwrap();
+        let default_embedding_model =
+            EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+        let supported_embedding_models = vec![default_embedding_model.clone()];
+        Self::new(node_name, default_embedding_model, supported_embedding_models)
     }
 
-    /// A hard-coded DB key for the profile-wide VectorFSInternals
-    /// Nothing else is allowed to use this shinkai db key (this is enforced
-    /// automatically because all resources have a two-part key/different topic)
+    /// A hard-coded DB key for the profile-wide VectorFSInternals.
     pub fn profile_fs_internals_shinkai_db_key() -> String {
         "profile_vec_fs_internals".to_string()
     }

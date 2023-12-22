@@ -73,13 +73,9 @@ impl VectorFSDB {
         supported_embedding_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
         if let Err(_) = self.get_profile_fs_internals(profile) {
-            let fs_internals = VectorFSInternals::new(
-                MapVectorResource::new_empty("VecFS Core Resource", None, VRSource::None, "core"),
-                HashMap::new(),
-                HashMap::new(),
-                default_embedding_model,
-                supported_embedding_models,
-            );
+            // Extract just the node name from the profile name
+            let node_name = ShinkaiName::from_node_name(profile.get_node_name())?;
+            let fs_internals = VectorFSInternals::new(node_name, default_embedding_model, supported_embedding_models);
 
             self.save_profile_fs_internals(&fs_internals, profile)?;
         }
