@@ -7,6 +7,7 @@ use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 
 enum JobInfo {
     IsFinished,
@@ -46,26 +47,26 @@ impl ShinkaiDB {
 
         // Create ColumnFamilyDescriptors for inbox and permission lists
         let cf_job_id_scope_name = format!("{}_scope", &job_id); // keyed by name and value link to bucket or document
-        let cf_job_id_step_history_name = format!("{}_step_history", &job_id); // keyed by time (do I need composite? probably)
         let cf_agent_id_name = format!("agentid_{}", &agent_id);
         let cf_job_id_name = format!("jobtopic_{}", &job_id);
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", &job_id);
         let cf_job_id_perms_name = format!("job_inbox::{}::false_perms", &job_id);
-        let cf_job_id_unread_list_name = format!("job_inbox::{}::false_unread_list", &job_id);
+        let cf_job_id_read_list_name = format!("job_inbox::{}::false_read_list", &job_id);
         let cf_job_id_unprocessed_messages_name = format!("{}_unprocessed_messages", &job_id);
-        let cf_job_id_execution_context_name = format!("{}_execution_context", &job_id);
         let cf_job_id_smart_inbox_name = format!("job_inbox::{}::false_smart_inbox_name", &job_id);
+        let cf_job_id_children_name = format!("{}_children", &cf_conversation_inbox_name);
+        let cf_job_id_parents_name = format!("{}_parents", &cf_conversation_inbox_name);
 
         // Check that the cf handles exist, and create them
         if self.db.cf_handle(&cf_job_id_scope_name).is_some()
-            || self.db.cf_handle(&cf_job_id_step_history_name).is_some()
             || self.db.cf_handle(&cf_job_id_name).is_some()
             || self.db.cf_handle(&cf_conversation_inbox_name).is_some()
             || self.db.cf_handle(&cf_job_id_perms_name).is_some()
-            || self.db.cf_handle(&cf_job_id_unread_list_name).is_some()
+            || self.db.cf_handle(&cf_job_id_read_list_name).is_some()
             || self.db.cf_handle(&cf_job_id_unprocessed_messages_name).is_some()
-            || self.db.cf_handle(&cf_job_id_execution_context_name).is_some()
             || self.db.cf_handle(&cf_job_id_smart_inbox_name).is_some()
+            || self.db.cf_handle(&cf_job_id_children_name).is_some()
+            || self.db.cf_handle(&cf_job_id_parents_name).is_some()
         {
             return Err(ShinkaiDBError::JobAlreadyExists(cf_job_id_name.to_string()));
         }
@@ -75,13 +76,13 @@ impl ShinkaiDB {
         }
         self.db.create_cf(&cf_job_id_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_scope_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_step_history_name, &cf_opts)?;
         self.db.create_cf(&cf_conversation_inbox_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_perms_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_unread_list_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_read_list_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_unprocessed_messages_name, &cf_opts)?;
-        self.db.create_cf(&cf_job_id_execution_context_name, &cf_opts)?;
         self.db.create_cf(&cf_job_id_smart_inbox_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_children_name, &cf_opts)?;
+        self.db.create_cf(&cf_job_id_parents_name, &cf_opts)?;
 
         // Start a write batch
         let mut batch = WriteBatch::default();
@@ -134,16 +135,6 @@ impl ShinkaiDB {
             cf_smart_inbox_name,
             &cf_conversation_inbox_name,
             &cf_conversation_inbox_name,
-        );
-
-        // Save an empty hashmap for the initial execution context
-        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
-        let empty_hashmap: HashMap<String, String> = HashMap::new();
-        let hashmap_bytes = bincode::serialize(&empty_hashmap).unwrap();
-        batch.put_cf(
-            cf_job_id_execution_context,
-            &cf_job_id_execution_context_name,
-            &hashmap_bytes,
         );
 
         self.db.write(batch)?;
@@ -230,7 +221,6 @@ impl ShinkaiDB {
         // Define cf names for all data we need to fetch
         let cf_job_id_name = format!("jobtopic_{}", job_id);
         let cf_job_id_scope_name = format!("{}_scope", job_id);
-        let cf_job_id_step_history_name = format!("{}_step_history", job_id);
 
         // Get the needed cf handles
         let cf_job_id_scope = self
@@ -241,10 +231,6 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_job_id_name)
             .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_name))?;
-        let cf_job_id_step_history = self
-            .db
-            .cf_handle(&cf_job_id_step_history_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_job_id_step_history_name))?;
 
         // Begin fetching the data from the DB
         let scope_value = self
@@ -271,26 +257,15 @@ impl ShinkaiDB {
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let parent_agent_id = std::str::from_utf8(&parent_agent_id_value)?.to_string();
 
-        let mut conversation_inbox: Option<InboxName> = None;
-        let mut _step_history: Option<Vec<JobStepResult>> = if fetch_step_history { Some(Vec::new()) } else { None };
         let conversation_inbox_value = self
             .db
             .get_cf(cf_job_id, JobInfo::ConversationInboxName.to_str().as_bytes())?
             .ok_or(ShinkaiDBError::DataNotFound)?;
         let inbox_name = std::str::from_utf8(&conversation_inbox_value)?.to_string();
-        conversation_inbox = Some(InboxName::new(inbox_name)?);
+        let conversation_inbox = Some(InboxName::new(inbox_name)?);
 
         // Reads all of the step history by iterating
-        let mut step_history: Option<Vec<JobStepResult>> = if fetch_step_history { Some(Vec::new()) } else { None };
-        if let Some(ref mut step_history) = step_history {
-            let iter = self.db.iterator_cf(cf_job_id_step_history, IteratorMode::Start);
-            for item in iter {
-                let (_key, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-                let step_json_string = std::str::from_utf8(&value)?.to_string();
-                let step_res = JobStepResult::from_json(&step_json_string)?;
-                step_history.push(step_res);
-            }
-        }
+        let step_history = self.get_step_history(job_id, fetch_step_history)?;
 
         // Reads all of the unprocessed messages by iterating
         let unprocessed_messages = self.get_unprocessed_messages(job_id)?;
@@ -365,40 +340,89 @@ impl ShinkaiDB {
 
     /// Sets/updates the execution context for a Job in the DB
     pub fn set_job_execution_context(
-        &self,
-        job_id: &str,
+        &mut self,
+        job_id: String,
         context: HashMap<String, String>,
+        message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_job_id_execution_context_name = format!("{}_execution_context", job_id);
-        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
+        let message_key = match message_key {
+            Some(key) => key,
+            None => {
+                // Fetch the most recent message from the job's inbox
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+                let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
+                if let Some(message) = last_messages.first() {
+                    if let Some(message) = message.first() {
+                        message.calculate_message_hash()
+                    } else {
+                        return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
+                    }
+                } else {
+                    return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
+                }
+            }
+        };
 
+        let cf_name = format!("{}_{}_execution_context", &job_id, &message_key);
+        let current_time = ShinkaiTime::generate_time_now();
+
+        // Convert the context to bytes
         let context_bytes = bincode::serialize(&context).map_err(|_| {
             ShinkaiDBError::SomeError("Failed converting execution context hashmap to bytes".to_string())
         })?;
-        self.put_cf(
-            cf_job_id_execution_context,
-            &cf_job_id_execution_context_name,
-            &context_bytes,
-        )?;
+
+        let cf_handle = match self.db.cf_handle(&cf_name) {
+            Some(cf) => cf,
+            None => {
+                // Create Options for ColumnFamily
+                let mut cf_opts = Options::default();
+                cf_opts.create_if_missing(true);
+                cf_opts.create_missing_column_families(true);
+
+                // Create column family if it doesn't exist
+                self.db.create_cf(&cf_name, &cf_opts)?;
+                self.db
+                    .cf_handle(&cf_name)
+                    .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?
+            }
+        };
+
+        self.db.put_cf(cf_handle, current_time.as_bytes(), &context_bytes)?;
 
         Ok(())
     }
 
     /// Gets the execution context for a job
     pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, ShinkaiDBError> {
-        let cf_job_id_execution_context_name = format!("{}_execution_context", job_id);
-        let cf_job_id_execution_context = self.cf_handle(&cf_job_id_execution_context_name)?;
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        let mut execution_context: HashMap<String, String> = HashMap::new();
 
-        let context_bytes = self
-            .db
-            .get_cf(cf_job_id_execution_context, &cf_job_id_execution_context_name)?
-            .ok_or(ShinkaiDBError::DataNotFound)?;
-
-        let context = bincode::deserialize(&context_bytes).map_err(|_| {
-            ShinkaiDBError::SomeError("Failed converting execution context bytes to hashmap".to_string())
-        })?;
-
-        Ok(context)
+        // Fetch the last message from the job's inbox
+        let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
+        if let Some(message_path) = last_messages.first() {
+            if let Some(message) = message_path.first() {
+                let message_key = message.calculate_message_hash();
+                let cf_name = format!("{}_{}_execution_context", job_id, message_key);
+                if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
+                    // Get the last context (should be only one)
+                    let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
+                    if let Some(Ok((_, value))) = iter.next() {
+                        let context_bytes = std::str::from_utf8(&value)?.to_string();
+                        let context_bytes = context_bytes.as_bytes();
+                        let context: Result<HashMap<String, String>, ShinkaiDBError> =
+                            bincode::deserialize(context_bytes).map_err(|_| {
+                                ShinkaiDBError::SomeError(
+                                    "Failed converting execution context bytes to hashmap".to_string(),
+                                )
+                            });
+                        if let Ok(context) = context {
+                            execution_context = context;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(execution_context)
     }
 
     /// Fetches all unprocessed messages for a specific Job from the DB
@@ -500,18 +524,32 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    /// Adds a new JobStepResult to a job's step history
     pub fn add_step_history(
-        &self,
+        &mut self,
         job_id: String,
         user_message: String,
         agent_response: String,
+        message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        let cf_name = format!("{}_step_history", &job_id);
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_name)
-            .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
+        let message_key = match message_key {
+            Some(key) => key,
+            None => {
+                // Fetch the most recent message from the job's inbox
+                let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone())?;
+                let last_messages = self.get_last_messages_from_inbox(inbox_name.to_string(), 1, None)?;
+                if let Some(message) = last_messages.first() {
+                    if let Some(message) = message.first() {
+                        message.calculate_message_hash()
+                    } else {
+                        return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
+                    }
+                } else {
+                    return Err(ShinkaiDBError::SomeError("No messages found in the inbox".to_string()));
+                }
+            }
+        };
+
+        let cf_name = format!("{}_{}_step_history", &job_id, &message_key);
         let current_time = ShinkaiTime::generate_time_now();
 
         // Create prompt & JobStepResult
@@ -525,8 +563,89 @@ impl ShinkaiDB {
         let json = job_step_result
             .to_json()
             .map_err(|e| ShinkaiDBError::DataConversionError(e.to_string()))?;
+
+        let cf_handle = match self.db.cf_handle(&cf_name) {
+            Some(cf) => cf,
+            None => {
+                // Create Options for ColumnFamily
+                let mut cf_opts = Options::default();
+                cf_opts.create_if_missing(true);
+                cf_opts.create_missing_column_families(true);
+
+                // Create column family if it doesn't exist
+                self.db.create_cf(&cf_name, &cf_opts)?;
+                self.db
+                    .cf_handle(&cf_name)
+                    .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name.clone()))?
+            }
+        };
+
         self.db.put_cf(cf_handle, current_time.as_bytes(), json.as_bytes())?;
+
+        // After adding the step to the history, fetch the updated step history
+        // let step_history = self.get_step_history(&job_id, true)?;
+
+        // You can print the step history or do something else with it here
+        // eprintln!("Updated step history: {:?}", step_history);
+        // eprintln!("\n\n");
+
         Ok(())
+    }
+
+    pub fn get_step_history(
+        &self,
+        job_id: &str,
+        fetch_step_history: bool,
+    ) -> Result<Option<Vec<JobStepResult>>, ShinkaiDBError> {
+        if !fetch_step_history {
+            return Ok(None);
+        }
+
+        let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
+        let mut step_history: Vec<JobStepResult> = Vec::new();
+        let mut until_offset_key: Option<String> = None;
+
+        loop {
+            // Note(Nico): changing n to 2 helps a lot to debug potential pagination problems
+            let mut messages =
+                self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
+
+            if messages.is_empty() {
+                break;
+            }
+
+            messages.reverse();
+
+            for message_path in &messages {
+                if let Some(message) = message_path.first() {
+                    let message_key = message.calculate_message_hash();
+                    let cf_name = format!("{}_{}_step_history", job_id, message_key);
+                    if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
+                        let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+                        for item in iter {
+                            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+                            let step_json_string = std::str::from_utf8(&value)?.to_string();
+                            let step_res = JobStepResult::from_json(&step_json_string)?;
+                            step_history.push(step_res);
+                        }
+                    }
+                }
+            }
+
+            if let Some(last_message_path) = messages.last() {
+                if let Some(last_message) = last_message_path.first() {
+                    until_offset_key = Some(last_message.calculate_message_hash());
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        // Reverse the step history before returning
+        step_history.reverse();
+        Ok(Some(step_history))
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, ShinkaiDBError> {
@@ -540,44 +659,13 @@ impl ShinkaiDB {
         Ok(iter.next().is_none())
     }
 
-    pub fn add_message_to_job_inbox(&self, job_id: &str, message: &ShinkaiMessage) -> Result<(), ShinkaiDBError> {
-        let cf_conversation_inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?.to_string();
-        let cf_handle = self
-            .db
-            .cf_handle(&cf_conversation_inbox_name)
-            .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_conversation_inbox_name.clone()))?;
-
-        // Insert the message to AllMessages column family
-        self.insert_message_to_all(message)?;
-
-        // Calculate the hash of the message for the key
-        let hash_key = message.calculate_message_hash();
-
-        // Get the scheduled time or calculate current time
-        let time_key = match message.external_metadata.scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
-            false => message.external_metadata.scheduled_time.clone(),
-        };
-
-        // Create the composite key by concatenating the time_key and the hash_key, with a separator
-        let composite_key = format!("{}:::{}", time_key, hash_key);
-
-        // Start a write batch
-        let mut batch = WriteBatch::default();
-
-        // Use the composite_key as the key and hash_key as the value in the inbox
-        batch.put_cf(cf_handle, composite_key.as_bytes(), hash_key.as_bytes());
-
-        // Add the message to the unread_list inbox
-        let cf_unread_list = self
-            .db
-            .cf_handle(&format!("{}_unread_list", cf_conversation_inbox_name))
-            .expect("Failed to get cf handle for unread_list");
-        batch.put_cf(cf_unread_list, composite_key.as_bytes(), hash_key.as_bytes());
-
-        // Write the batch
-        self.db.write(batch)?;
-
+    pub fn add_message_to_job_inbox(
+        &mut self,
+        _: &str,
+        message: &ShinkaiMessage,
+        parent_message_key: Option<String>,
+    ) -> Result<(), ShinkaiDBError> {
+        self.unsafe_insert_inbox_message(&message, parent_message_key)?;
         Ok(())
     }
 }

@@ -31,10 +31,13 @@ pub struct Job {
     /// enabling each job to have a classical chat/conversation UI
     pub conversation_inbox_name: InboxName,
     /// The job's step history (an ordered list of all prompts/outputs from LLM inferencing when processing steps)
+    /// Under the hood this is a tree, but it looks like a simple Vec because we only care about the latest valid path
+    /// based on the last message sent by the user
     pub step_history: Vec<JobStepResult>,
     /// An ordered list of the latest messages sent to the job which are yet to be processed
     pub unprocessed_messages: Vec<String>,
-    // /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
+    /// A hashmap which holds a bunch of labeled values which were generated as output from the latest Job step
+    /// Same as step_history. Under the hood this is a tree, but everything is automagically filtered and converted to a hashmap.
     pub execution_context: HashMap<String, String>,
 }
 
