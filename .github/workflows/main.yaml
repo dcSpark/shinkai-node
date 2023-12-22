@@ -27,6 +27,9 @@ jobs:
       - name: Remove image
         if: always()
         run: docker rmi testing_image:${SHORT_SHA} || true
+    env:
+      FROM_WALLET_MNEMONICS: ${{ secrets.FROM_WALLET_MNEMONICS }}
+      FROM_WALLET_PRIVATE_KEY: ${{ secrets.FROM_WALLET_PRIVATE_KEY }}
 
   test-wasm:
     runs-on: self-hosted

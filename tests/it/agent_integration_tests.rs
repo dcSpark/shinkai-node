@@ -25,11 +25,11 @@ use std::path::Path;
 use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
-use crate::utils::node_test_api::{
+use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main,
 };
 
-mod utils;
+use super::utils;
 use mockito::Server;
 
 #[test]

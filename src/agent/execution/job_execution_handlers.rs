@@ -3,7 +3,10 @@ use std::sync::Arc;
 use ed25519_dalek::SigningKey;
 use serde_json::to_string;
 use shinkai_message_primitives::{
-    schemas::{agents::serialized_agent::{SerializedAgent, AgentLLMInterface}, shinkai_name::ShinkaiName},
+    schemas::{
+        agents::serialized_agent::{AgentLLMInterface, SerializedAgent},
+        shinkai_name::ShinkaiName,
+    },
     shinkai_message::shinkai_message_schemas::JobMessage,
     shinkai_utils::{
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
@@ -12,6 +15,7 @@ use shinkai_message_primitives::{
         utils::random_string,
     },
 };
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use tokio::sync::Mutex;
 
 use crate::{
@@ -108,14 +112,14 @@ impl JobManager {
         cron_job: CronTask,
         profile: ShinkaiName,
         identity_secret_key: SigningKey,
+        unstructured_api: UnstructuredAPI,
     ) -> Result<(), AgentError> {
         let prev_execution_context = full_job.execution_context.clone();
 
         // Create a new instance of the WebScraper
         let scraper = WebScraper {
             task: cron_job.clone(),
-            // TODO: Move to ENV
-            api_url: "https://internal.shinkai.com/x-unstructured-api/general/v0/general".to_string(),
+            unstructured_api: unstructured_api,
         };
 
         // Call the download_and_parse method of the WebScraper

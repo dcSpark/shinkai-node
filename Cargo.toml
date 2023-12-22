@@ -4,6 +4,9 @@ version = "0.2.9"
 edition = "2018"
 authors = ["Nico Arqueros <nico@shinkai.com>"]
 
+[lib]
+doctest = false
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
@@ -57,6 +60,7 @@ pddl-ish-parser= "0.0.4"
 base64 = "0.13.0"
 ethers = "2.0"
 dashmap = "5.5.3"
+tiny-bip39 = "0.8.0"
 
 [dependencies.rocksdb]
 version = "0.21.0"
