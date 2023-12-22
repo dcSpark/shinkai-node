@@ -21,8 +21,8 @@ use std::time::Duration;
 use std::time::Instant;
 use utils::test_boilerplate::run_test_one_node_network;
 
-mod utils;
-use crate::utils::node_test_api::{
+use super::utils;
+use super::utils::node_test_api::{
     api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
 };
 use mockito::Server;
