@@ -1,16 +1,28 @@
-use std::collections::HashMap;
-
 use super::super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
 use super::fs_db::{FSTopic, VectorFSDB};
+use crate::db::db::ProfileBoundWriteBatch;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::vector_search_traversal::VRSource;
+use std::collections::HashMap;
 
 impl VectorFSDB {
-    /// Saves the supplied VectorFS core resource
-    fn save_profile_fs_internals(
+    /// Commits saving the supplied VectorFS Internals to the write batch
+    pub fn wb_save_profile_fs_internals(
+        &self,
+        fs_internals: &VectorFSInternals,
+        batch: &mut ProfileBoundWriteBatch,
+    ) -> Result<(), VectorFSError> {
+        let (bytes, cf) = self._prepare_profile_fs_internals(fs_internals)?;
+        batch.put_cf_pb(cf, &VectorFSInternals::profile_fs_internals_shinkai_db_key(), bytes);
+
+        Ok(())
+    }
+
+    /// Saves the supplied VectorFS Internals
+    pub fn save_profile_fs_internals(
         &self,
         fs_internals: &VectorFSInternals,
         profile: &ShinkaiName,

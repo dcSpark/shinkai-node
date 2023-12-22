@@ -54,10 +54,11 @@ impl VectorFS {
         }
     }
 
-    /// Attempts to fetch the VectorFSInternals (from memory) for a given profile in the internals_map.
-    pub fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<&VectorFSInternals, VectorFSError> {
+    /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
+    /// in the internals_map.
+    pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
         self.internals_map
-            .get(profile)
+            .get_mut(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
     }
 }
