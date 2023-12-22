@@ -16,7 +16,7 @@ use shinkai_message_primitives::{
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, VRSource};
-use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
+use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
@@ -32,6 +32,11 @@ impl JobManager {
         unstructured_api: UnstructuredAPI,
     ) -> Result<String, AgentError> {
         let job_id = job_message.job_message.job_id.clone();
+        shinkai_log(
+            ShinkaiLogOption::JobExecution,
+            ShinkaiLogLevel::Debug,
+            &format!("Processing job: {}", job_id),
+        );
         // Fetch data we need to execute job step
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
@@ -106,8 +111,8 @@ impl JobManager {
                 );
 
                 // Save response data to DB
-                let shinkai_db = db.lock().await;
-                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message)?;
+                let mut shinkai_db = db.lock().await;
+                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
             }
         }
 
@@ -130,12 +135,7 @@ impl JobManager {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Debug,
-            &format!("Processing job: {}", job_id),
-        );
-        shinkai_log(
-            ShinkaiLogOption::JobExecution,
-            ShinkaiLogLevel::Debug,
-            &format!("Processing Job: {:?}", full_job),
+            &format!("Inference chain - Processing Job: {:?}", full_job),
         );
 
         // Setup initial data to get ready to call a specific inference chain
@@ -184,14 +184,15 @@ impl JobManager {
         );
 
         // Save response data to DB
-        let shinkai_db = db.lock().await;
+        let mut shinkai_db = db.lock().await;
         shinkai_db.add_step_history(
             job_message.job_id.clone(),
             job_message.content,
             inference_response_content.to_string(),
+            None,
         )?;
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message)?;
-        shinkai_db.set_job_execution_context(&job_message.job_id.clone(), new_execution_context)?;
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)?;
+        shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
     }
@@ -434,7 +435,7 @@ impl JobManager {
             }
         } else {
             // TODO: move this somewhere else
-            let mut shinkai_db = db.lock().await;
+            let shinkai_db = db.lock().await;
             match shinkai_db.init_profile_resource_router(&profile) {
                 Ok(_) => std::mem::drop(shinkai_db), // required to avoid deadlock
                 Err(e) => {

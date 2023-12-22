@@ -189,8 +189,7 @@ fn node_agent_registration() {
             }
 
             let mut job_id = "".to_string();
-            let agent_subidentity =
-                format!("{}/agent/{}", node1_subidentity_name.clone(), node1_agent.clone()).to_string();
+            let agent_subidentity = format!("{}/agent/{}", node1_subidentity_name, node1_agent).to_string();
             {
                 // Create a Job
                 shinkai_log(
@@ -203,8 +202,8 @@ fn node_agent_registration() {
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone(),
-                    node1_subidentity_name.clone(),
+                    node1_identity_name,
+                    node1_subidentity_name,
                     &agent_subidentity.clone(),
                 )
                 .await;
@@ -216,14 +215,14 @@ fn node_agent_registration() {
                     ShinkaiLogLevel::Debug,
                     &format!("Sending a message to Job {}", job_id.clone()),
                 );
-                let message = "Tell me. Who are you?".to_string();
+                let message = "1) Tell me. Who are you?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone(),
-                    node1_subidentity_name.clone(),
+                    node1_identity_name,
+                    node1_subidentity_name,
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &message,
@@ -233,7 +232,7 @@ fn node_agent_registration() {
             }
             {
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
 
                 let mut node2_last_messages = vec![];
                 for _ in 0..30 {
@@ -246,7 +245,7 @@ fn node_agent_registration() {
                         None,
                         "".to_string(),
                         sender.clone(),
-                        node1_identity_name.clone().to_string(),
+                        node1_identity_name.to_string(),
                     )
                     .unwrap();
                     let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -299,21 +298,21 @@ fn node_agent_registration() {
                     .await
                     .unwrap();
                 let node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                println!("node1_all_profiles: {:?}", node2_last_messages);
+                // println!("node1_all_profiles: {:?}", node2_last_messages);
                 assert!(node2_last_messages.len() == 1);
             }
 
             // Now we add more messages to properly test unread and pagination
             {
                 // Send a Message to the Job for processing
-                let message = "Are you still there?".to_string();
+                let message = "3) Are you still there?".to_string();
                 api_message_job(
                     node1_commands_sender.clone(),
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     node1_encryption_pk.clone(),
                     clone_signature_secret_key(&node1_profile_identity_sk),
-                    node1_identity_name.clone(),
-                    node1_subidentity_name.clone(),
+                    node1_identity_name,
+                    node1_subidentity_name,
                     &agent_subidentity.clone(),
                     &job_id.clone().to_string(),
                     &message,
@@ -323,7 +322,7 @@ fn node_agent_registration() {
 
                 // Successfully read unread messages from job inbox
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
 
                 let mut node2_last_messages = vec![];
                 for _ in 0..30 {
@@ -336,7 +335,7 @@ fn node_agent_registration() {
                         None,
                         "".to_string(),
                         sender.clone(),
-                        node1_identity_name.clone().to_string(),
+                        node1_identity_name.to_string(),
                     )
                     .unwrap();
                     let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -345,7 +344,7 @@ fn node_agent_registration() {
                         .await
                         .unwrap();
                     node2_last_messages = res2_receiver.recv().await.unwrap().expect("Failed to receive messages");
-                    eprintln!("*** node2_last_messages: {:?}", node2_last_messages);
+                    // eprintln!("*** node2_last_messages: {:?}", node2_last_messages);
                     if node2_last_messages.len() >= 3 {
                         break;
                     }
@@ -359,11 +358,10 @@ fn node_agent_registration() {
                 assert_eq!(message_content_agent.content, message.to_string());
                 assert!(node2_last_messages.len() == 3);
 
-                let offset = format!(
-                    "{}:::{}",
-                    node2_last_messages[1].external_metadata.scheduled_time,
-                    node2_last_messages[1].calculate_message_hash()
-                );
+                let shinkai_message_content_user = node2_last_messages[0].get_message_content().unwrap();
+                let prev_message_content_user: JobMessage = serde_json::from_str(&shinkai_message_content_user).unwrap();
+
+                let offset = node2_last_messages[1].calculate_message_hash();
                 let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),
                     clone_signature_secret_key(&node1_profile_identity_sk),
@@ -373,7 +371,7 @@ fn node_agent_registration() {
                     Some(offset.clone()),
                     "".to_string(),
                     sender.clone(),
-                    node1_identity_name.clone().to_string(),
+                    node1_identity_name.to_string(),
                 )
                 .unwrap();
                 let (res2_sender, res2_receiver) = async_channel::bounded(1);
@@ -391,7 +389,7 @@ fn node_agent_registration() {
                 let message_content_agent: JobMessage = serde_json::from_str(&shinkai_message_content_agent).unwrap();
 
                 assert!(node2_last_messages.len() == 1);
-                assert_eq!(message_content_agent.content, message.to_string());
+                assert_eq!(message_content_agent.content, prev_message_content_user.content);
 
                 // we mark read until the offset
                 let read_msg = ShinkaiMessageBuilder::read_up_to_time(
@@ -417,7 +415,7 @@ fn node_agent_registration() {
             {
                 // check how many unread messages are left
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
-                let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
+                let sender = format!("{}/{}", node1_identity_name, node1_subidentity_name);
 
                 let msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
                     clone_static_secret_key(&node1_profile_encryption_sk),

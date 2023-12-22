@@ -26,5 +26,6 @@ mod it {
     mod resources_tests;
     mod toolkit_tests;
     mod web_scraper_tests;
+    mod job_tree_usage_tests;
     mod utils;
 }
