@@ -1,8 +1,8 @@
 use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
-    Options, SingleThreaded, WriteBatch, DB,
+    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBCompressionType, DBIteratorWithThreadMode,
+    Error, IteratorMode, Options, SingleThreaded, WriteBatch, DB,
 };
 use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
@@ -127,7 +127,7 @@ impl ShinkaiDB {
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
         // if we want to enable compression
-        // db_opts.set_compression_type(DBCompressionType::Lz4);
+        db_opts.set_compression_type(DBCompressionType::Lz4);
 
         let cf_names = if Path::new(db_path).exists() {
             // If the database file exists, get the list of column families from the database
