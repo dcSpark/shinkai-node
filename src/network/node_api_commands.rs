@@ -153,11 +153,11 @@ impl Node {
             }
         }
 
-        shinkai_log(
-            ShinkaiLogOption::Identity,
-            ShinkaiLogLevel::Info,
-            format!("after decrypt_message_body_if_needed: {:?}", msg).as_str(),
-        );
+        // shinkai_log(
+        //     ShinkaiLogOption::Identity,
+        //     ShinkaiLogLevel::Info,
+        //     format!("after decrypt_message_body_if_needed: {:?}", msg).as_str(),
+        // );
 
         // Check that the message has the right schema type
         if let Some(schema) = schema_type {
@@ -336,7 +336,6 @@ impl Node {
         let inbox_name = InboxName::new(last_messages_inbox_request.inbox.clone())?;
         let count = last_messages_inbox_request.count;
         let offset = last_messages_inbox_request.offset;
-        println!("offset: {:?}", offset);
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?

@@ -109,7 +109,7 @@ impl ShinkaiDB {
         until_offset_hash_key: Option<String>,
     ) -> Result<Vec<Vec<ShinkaiMessage>>, ShinkaiDBError> {
         // println!("Getting last {} messages from inbox: {}", n, inbox_name);
-        // println!("Offset key: {:?}", until_offset_key);
+        // println!("Offset key: {:?}", until_offset_hash_key);
         // println!("n: {:?}", n);
 
         // Fetch the column family for the specified inbox

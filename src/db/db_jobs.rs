@@ -394,7 +394,6 @@ impl ShinkaiDB {
 
     /// Gets the execution context for a job
     pub fn get_job_execution_context(&self, job_id: &str) -> Result<HashMap<String, String>, ShinkaiDBError> {
-        eprintln!("Getting execution context for job: {}", job_id);
         let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string())?;
         let mut execution_context: HashMap<String, String> = HashMap::new();
 
@@ -404,25 +403,21 @@ impl ShinkaiDB {
             if let Some(message) = message_path.first() {
                 let message_key = message.calculate_message_hash();
                 let cf_name = format!("{}_{}_execution_context", job_id, message_key);
-                let cf_handle = self
-                    .db
-                    .cf_handle(&cf_name)
-                    .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name))?;
-
-                // Get the last context (should be only one)
-                let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
-                if let Some(Ok((_, value))) = iter.next() {
-                    let context_bytes = std::str::from_utf8(&value)?.to_string();
-                    let context_bytes = context_bytes.as_bytes();
-                    let context: Result<HashMap<String, String>, ShinkaiDBError> = bincode::deserialize(context_bytes)
-                        .map_err(|_| {
-                            ShinkaiDBError::SomeError(
-                                "Failed converting execution context bytes to hashmap".to_string(),
-                            )
-                        });
-                    if let Ok(context) = context {
-                        eprintln!("Context in item: {:?}", context);
-                        execution_context = context;
+                if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
+                    // Get the last context (should be only one)
+                    let mut iter = self.db.iterator_cf(cf_handle, IteratorMode::End);
+                    if let Some(Ok((_, value))) = iter.next() {
+                        let context_bytes = std::str::from_utf8(&value)?.to_string();
+                        let context_bytes = context_bytes.as_bytes();
+                        let context: Result<HashMap<String, String>, ShinkaiDBError> =
+                            bincode::deserialize(context_bytes).map_err(|_| {
+                                ShinkaiDBError::SomeError(
+                                    "Failed converting execution context bytes to hashmap".to_string(),
+                                )
+                            });
+                        if let Ok(context) = context {
+                            execution_context = context;
+                        }
                     }
                 }
             }
@@ -613,6 +608,7 @@ impl ShinkaiDB {
         let mut until_offset_key: Option<String> = None;
 
         loop {
+            // Note(Nico): changing n to 2 helps a lot to debug potential pagination problems
             let mut messages =
                 self.get_last_messages_from_inbox(inbox_name.to_string(), 2, until_offset_key.clone())?;
 
@@ -626,17 +622,14 @@ impl ShinkaiDB {
                 if let Some(message) = message_path.first() {
                     let message_key = message.calculate_message_hash();
                     let cf_name = format!("{}_{}_step_history", job_id, message_key);
-                    let cf_handle = self
-                        .db
-                        .cf_handle(&cf_name)
-                        .ok_or(ShinkaiDBError::ColumnFamilyNotFound(cf_name))?;
-
-                    let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
-                    for item in iter {
-                        let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
-                        let step_json_string = std::str::from_utf8(&value)?.to_string();
-                        let step_res = JobStepResult::from_json(&step_json_string)?;
-                        step_history.push(step_res);
+                    if let Some(cf_handle) = self.db.cf_handle(&cf_name) {
+                        let iter = self.db.iterator_cf(cf_handle, IteratorMode::Start);
+                        for item in iter {
+                            let (_, value) = item.map_err(|e| ShinkaiDBError::RocksDBError(e))?;
+                            let step_json_string = std::str::from_utf8(&value)?.to_string();
+                            let step_res = JobStepResult::from_json(&step_json_string)?;
+                            step_history.push(step_res);
+                        }
                     }
                 }
             }
@@ -654,14 +647,11 @@ impl ShinkaiDB {
 
         // Reverse the step history before returning
         step_history.reverse();
-        // eprintln!("\n\n ### Step history: {:?}", step_history);
-
         Ok(Some(step_history))
     }
 
     pub fn is_job_inbox_empty(&self, job_id: &str) -> Result<bool, ShinkaiDBError> {
         let cf_conversation_inbox_name = format!("job_inbox::{}::false", job_id);
-        eprintln!("Checking if inbox is empty: {}", cf_conversation_inbox_name);
         let cf_handle = self
             .db
             .cf_handle(&cf_conversation_inbox_name)

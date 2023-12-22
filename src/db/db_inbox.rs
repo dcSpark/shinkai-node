@@ -201,7 +201,11 @@ impl ShinkaiDB {
         Ok(())
     }
 
-    pub fn mark_as_read_up_to(&mut self, inbox_name: String, up_to_message_hash_offset: String) -> Result<(), ShinkaiDBError> {
+    pub fn mark_as_read_up_to(
+        &mut self,
+        inbox_name: String,
+        up_to_message_hash_offset: String,
+    ) -> Result<(), ShinkaiDBError> {
         let cf_name_read_list = format!("{}_read_list", inbox_name);
         let read_list_cf = match self.db.cf_handle(&cf_name_read_list) {
             Some(cf) => cf,
@@ -214,7 +218,8 @@ impl ShinkaiDB {
         };
 
         // Store the up_to_offset message in the read_list
-        self.db.put_cf(read_list_cf, &up_to_message_hash_offset, &up_to_message_hash_offset)?;
+        self.db
+            .put_cf(read_list_cf, &up_to_message_hash_offset, &up_to_message_hash_offset)?;
 
         Ok(())
     }
@@ -254,13 +259,13 @@ impl ShinkaiDB {
         // Fetch the last read message
         let last_read_message = self.get_last_read_message_from_inbox(inbox_name.clone())?;
 
-        // Fetch the last n messages from the inbox starting from the offset
+        // Fetch the last n messages from the inbox
         let messages = self.get_last_messages_from_inbox(inbox_name, n, from_offset_hash_key)?;
 
         // Flatten the Vec<Vec<ShinkaiMessage>> to Vec<ShinkaiMessage>
         let messages: Vec<ShinkaiMessage> = messages.into_iter().flatten().collect();
 
-        // Iterate over the messages in reverse order until you reach the last read message
+        // Iterate over the messages in reverse order until you reach the message with the last_read_message
         let mut unread_messages = Vec::new();
         for message in messages.into_iter().rev() {
             if Some(message.calculate_message_hash()) == last_read_message {
