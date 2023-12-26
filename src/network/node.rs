@@ -240,15 +240,14 @@ pub enum NodeCommand {
     },
 }
 
-/// Hard-coded embedding model used by the node as its default.
-/// TODO: Allow model to be selected, and saved in the main DB as the source of truth.
-pub static DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
+/// Hard-coded embedding model that is set as the default when creating a new profile.
+pub static NEW_PROFILE_DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
     EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
 
 lazy_static! {
-    /// Hard-coded list of embedding models that our Embedding server orchestration service supports. This likely needs to stay hard-coded.
-    /// As of currently, all profiles will always use this global as their list of supported models.
-    pub static ref SUPPORTED_EMBEDDING_MODELS: Vec<EmbeddingModelType> = vec![DEFAULT_EMBEDDING_MODEL.clone()];
+    /// Hard-coded list of supported embedding models that is set when creating a new profile.
+    /// These need to match the list that our Embedding server orchestration service supports.
+    pub static ref NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS: Vec<EmbeddingModelType> = vec![NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone()];
 }
 
 // A type alias for a string that represents a profile name.
@@ -374,6 +373,8 @@ impl Node {
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
+
+        println!("------------------------------------node setup----------------------------------");
 
         Node {
             node_profile_name,

@@ -8,7 +8,7 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
-use network::node::DEFAULT_EMBEDDING_MODEL;
+use network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
 use network::Node;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -252,6 +252,6 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
         .expect("EMBEDDINGS_SERVER_URL not found in node_env");
     let api_key = node_env.embeddings_server_api_key.clone();
     // TODO: Replace this hard-coded model to having the default being saved/read from the DB
-    let model = DEFAULT_EMBEDDING_MODEL.clone();
+    let model = NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone();
     RemoteEmbeddingGenerator::new(model, &api_url, api_key)
 }

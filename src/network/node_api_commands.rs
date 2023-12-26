@@ -1,5 +1,5 @@
 use super::{
-    node::SUPPORTED_EMBEDDING_MODELS,
+    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
     Node,
@@ -798,10 +798,11 @@ impl Node {
         vfs.initialize_new_profiles(
             profile_list,
             self.embedding_generator.model_type.clone(),
-            SUPPORTED_EMBEDDING_MODELS.clone(),
+            NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
         )?;
 
         std::mem::drop(db);
+        std::mem::drop(vfs);
 
         match result {
             Ok(success) => {

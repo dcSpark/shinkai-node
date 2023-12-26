@@ -58,6 +58,16 @@ impl VectorFS {
         Ok(vector_fs)
     }
 
+    /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
+    /// Simply creates a barebones struct to be used to satisfy required types.
+    pub fn new_empty() -> Self {
+        Self {
+            internals_map: HashMap::new(),
+            db: VectorFSDB::new_empty(),
+            embedding_generator: RemoteEmbeddingGenerator::new_default(),
+        }
+    }
+
     /// Initializes a new profile and inserts it into the internals_map
     pub fn initialize_profile(
         &mut self,
@@ -89,16 +99,6 @@ impl VectorFS {
             }
         }
         Ok(())
-    }
-
-    /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.
-    /// Simply creates a barebones struct to be used to satisfy required types.
-    pub fn new_empty() -> Self {
-        Self {
-            internals_map: HashMap::new(),
-            db: VectorFSDB::new_empty(),
-            embedding_generator: RemoteEmbeddingGenerator::new_default(),
-        }
     }
 
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
@@ -140,5 +140,29 @@ impl VectorFS {
         self.internals_map
             .get(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
+    }
+
+    /// Sets the supported models for a profile
+    pub fn set_profile_supported_models(
+        &mut self,
+        profile: &ShinkaiName,
+        supported_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        if let Some(fs_internals) = self.internals_map.get_mut(profile) {
+            fs_internals.supported_embedding_models = supported_models;
+            self.db.save_profile_fs_internals(fs_internals, profile)?;
+        }
+        Ok(())
+    }
+
+    /// Sets the supported models for all profiles
+    pub fn set_all_profiles_supported_models(
+        &mut self,
+        supported_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        for profile in self.internals_map.keys().cloned().collect::<Vec<ShinkaiName>>() {
+            self.set_profile_supported_models(&profile, supported_models.clone())?;
+        }
+        Ok(())
     }
 }

@@ -55,7 +55,7 @@ impl VectorFSDB {
     pub fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
         println!("Profile: {:?}", profile.to_string());
         let bytes = self.get_cf_pb(
-            FSTopic::VectorResources,
+            FSTopic::FileSystem,
             &VectorFSInternals::profile_fs_internals_shinkai_db_key(),
             profile,
         )?;
