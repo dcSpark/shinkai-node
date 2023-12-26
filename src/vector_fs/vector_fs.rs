@@ -5,6 +5,7 @@ use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
+use shinkai_vector_resources::vector_resource::VectorResource;
 use shinkai_vector_resources::vector_search_traversal::VRPath;
 use std::collections::HashMap;
 
@@ -160,6 +161,17 @@ impl VectorFS {
             self.set_profile_supported_models(requester_name, &profile, supported_models.clone())?;
         }
         Ok(())
+    }
+
+    /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType
+    /// for the profile's VectorFS.
+    pub fn _get_embedding_generator(&self, profile: &ShinkaiName) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
+        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
+            &self.embedding_generator.api_url,
+            self.embedding_generator.api_key.clone(),
+        );
+        return Ok(generator);
     }
 
     /// Validates the permission for a node action for a given requester ShinkaiName. Internal method.
