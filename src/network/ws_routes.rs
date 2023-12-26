@@ -1,64 +1,72 @@
 use super::ws_manager::WebSocketManager;
 use futures::StreamExt;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use tokio::sync::Mutex;
 use std::net::SocketAddr;
-use futures::SinkExt;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use warp::cors;
-use warp::ws::Message;
 use warp::Filter;
 use warp::{filters::ws::WebSocket, ws::Ws};
 
 pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;
 
-#[derive(serde::Deserialize)]
-struct WSMessage {
-    action: String,
-    message: ShinkaiMessage,
-}
-
-async fn listen_for_smart_inbox_updates(manager: SharedWebSocketManager) {
-    loop {
-        // Wait for an update (this is just a placeholder, replace with your actual update detection logic)
-        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-
-        // When an update occurs, send a message over all WebSocket connections
-        let message = "A smart inbox update occurred!";
-        let message = Message::text(message);
-
-        let connections = {
-            let manager = manager.lock().await;
-            manager.get_all_connections()
-        };
-
-        for ws_tx in connections {
-            let mut ws_tx = ws_tx.lock().await;
-            let _ = ws_tx.send(message.clone()).await;
-        }
-    }
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct WSMessage {
+    pub action: String,
+    pub message: ShinkaiMessage,
 }
 
 pub fn ws_route(
     manager: SharedWebSocketManager,
+    topic: String,
 ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("ws")
         .and(warp::ws())
         .and(warp::any().map(move || Arc::clone(&manager)))
-        .map(|ws: Ws, manager: SharedWebSocketManager| ws.on_upgrade(move |socket| ws_handler(socket, manager)))
+        .and(warp::any().map(move || topic.clone()))
+        .map(|ws: Ws, manager: SharedWebSocketManager, topic: String| {
+            ws.on_upgrade(move |socket| ws_handler(socket, manager, topic))
+        })
 }
 
-pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
+pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic: String) {
+    eprintln!("New WebSocket connection");
     let (mut ws_tx, mut ws_rx) = ws.split();
 
-    // Add the WebSocket sender to the manager
-    manager.lock().await.add_connection("some_id".to_string(), ws_tx);
+    // Listen for the first incoming message to get the ShinkaiMessage
+    if let Some(result) = ws_rx.next().await {
+        match result {
+            Ok(msg) => {
+                if let Ok(text) = msg.to_str() {
+                    if let Ok(ws_message) = serde_json::from_str::<WSMessage>(text) {
+                        let shinkai_name = "some_id".to_string(); // Replace with actual shinkai_name
+                        let subtopic = "some_subtopic".to_string(); // Replace with actual subtopic
 
-    // Listen for incoming messages
+                        match manager.lock().await.add_connection(
+                            shinkai_name,
+                            ws_message.message,
+                            ws_tx,
+                            topic,
+                            subtopic,
+                        ) {
+                            Ok(_) => eprintln!("Connection added successfully"),
+                            Err(e) => eprintln!("Failed to add connection: {}", e),
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("websocket error: {}", e);
+                return;
+            }
+        }
+    }
+
+    // Continue listening for other incoming messages
     while let Some(result) = ws_rx.next().await {
         match result {
             Ok(msg) => {
-                // Handle incoming messages here
+                // Handle other incoming messages here
             }
             Err(e) => {
                 eprintln!("websocket error: {}", e);
@@ -71,15 +79,15 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {
     println!("Starting WebSocket server at: {}", &ws_address);
 
-    let ws_route = ws_route(Arc::clone(&manager));
+    // TODO: Maybe when a new connection is requested, we need to check permissions
+    let topic1_route = ws_route(Arc::clone(&manager), "topic1".to_string());
+    let topic2_route = ws_route(Arc::clone(&manager), "topic2".to_string());
 
-    let ws_routes = ws_route
+    let ws_routes = topic1_route
+        .or(topic2_route)
         .recover(handle_rejection)
         .with(warp::log("websocket"))
         .with(cors().allow_any_origin());
-
-    // Spawn the update listener
-    tokio::spawn(listen_for_smart_inbox_updates(Arc::clone(&manager)));
 
     // Start the WebSocket server
     warp::serve(ws_routes).run(ws_address).await;

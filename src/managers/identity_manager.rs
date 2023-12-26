@@ -45,7 +45,7 @@ impl IdentityManager {
             let db = db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
         }
-
+        
         identities.extend(agents);
 
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
