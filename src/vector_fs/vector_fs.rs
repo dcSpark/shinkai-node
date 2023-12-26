@@ -1,27 +1,24 @@
 use super::fs_internals::VectorFSInternals;
 use super::vector_fs_reader::VFSReader;
+use super::vector_fs_writer::VFSWriter;
 use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
-use rocksdb::Error;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::vector_search_traversal::VRPath;
-use shinkai_vector_resources::{
-    embeddings::Embedding, map_resource::MapVectorResource, model_type::EmbeddingModelType, source::VRSource,
-};
 use std::collections::HashMap;
 
 /// Struct that wraps all functionality of the VectorFS.
 /// Of note, internals_map holds a hashmap of the VectorFSInternals
 /// for all profiles on the node.
 pub struct VectorFS {
-    node_name: ShinkaiName,
+    pub node_name: ShinkaiName,
     internals_map: HashMap<ShinkaiName, VectorFSInternals>,
     db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
     /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)
-    embedding_generator: RemoteEmbeddingGenerator,
+    pub embedding_generator: RemoteEmbeddingGenerator,
 }
 
 impl VectorFS {
@@ -90,6 +87,17 @@ impl VectorFS {
         VFSReader::new(requester_name, path, self, profile)
     }
 
+    /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
+    /// VFSWriter can then be used to perform write actions at the specified path.
+    pub fn writer(
+        &mut self,
+        requester_name: ShinkaiName,
+        path: VRPath,
+        profile: ShinkaiName,
+    ) -> Result<VFSWriter, VectorFSError> {
+        VFSWriter::new(requester_name, path, self, profile)
+    }
+
     /// Initializes a new profile and inserts it into the internals_map
     pub fn initialize_profile(
         &mut self,
@@ -105,7 +113,7 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Checks the input profile_list and initializes profiles for any which are not already initialized.
+    /// Checks the input profile_list and initializes a new profile for any which are not already set up in the VectorFS.
     pub fn initialize_new_profiles(
         &mut self,
         requester_name: &ShinkaiName,
@@ -126,14 +134,14 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Sets the supported models for a profile
+    /// Sets the supported embedding models for a specific profile
     pub fn set_profile_supported_models(
         &mut self,
         requester_name: &ShinkaiName,
         profile: &ShinkaiName,
         supported_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
-        self.validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
+        self._validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
         if let Some(fs_internals) = self.internals_map.get_mut(profile) {
             fs_internals.supported_embedding_models = supported_models;
             self.db.save_profile_fs_internals(fs_internals, profile)?;
@@ -141,22 +149,22 @@ impl VectorFS {
         Ok(())
     }
 
-    /// Sets the supported models for all profiles
+    /// Sets the supported embedding models for all profiles
     pub fn set_all_profiles_supported_models(
         &mut self,
         requester_name: &ShinkaiName,
         supported_models: Vec<EmbeddingModelType>,
     ) -> Result<(), VectorFSError> {
-        self.validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
+        self._validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
         for profile in self.internals_map.keys().cloned().collect::<Vec<ShinkaiName>>() {
             self.set_profile_supported_models(requester_name, &profile, supported_models.clone())?;
         }
         Ok(())
     }
 
-    /// Validates the permission for a node action for a given requester ShinkaiName.
+    /// Validates the permission for a node action for a given requester ShinkaiName. Internal method.
     /// In case of error, includes requester_name automatically together with your error message
-    pub fn validate_node_action_permission(
+    pub fn _validate_node_action_permission(
         &self,
         requester_name: &ShinkaiName,
         error_message: &str,
@@ -170,15 +178,15 @@ impl VectorFS {
         ))
     }
 
-    /// Validates the permission for a profile action for a given requester ShinkaiName.
+    /// Validates the permission for a profile action for a given requester ShinkaiName. Internal method.
     /// In case of error, includes requester_name automatically together with your error message
-    pub fn validate_profile_action_permission(
+    pub fn _validate_profile_action_permission(
         &self,
         requester_name: &ShinkaiName,
         profile: &ShinkaiName,
         error_message: &str,
     ) -> Result<(), VectorFSError> {
-        if let Ok(_) = self.get_profile_fs_internals_read_only(profile) {
+        if let Ok(_) = self._get_profile_fs_internals_read_only(profile) {
             if profile.profile_name == requester_name.profile_name {
                 return Ok(());
             }
@@ -189,31 +197,12 @@ impl VectorFS {
         ))
     }
 
-    /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
-    /// This automatically uses the correct default embedding model for the given profile.
-    pub async fn generate_query_embedding(
-        &self,
-        input_query: String,
-        profile: &ShinkaiName,
-    ) -> Result<Embedding, VectorFSError> {
-        let generator = self.get_embedding_generator(profile)?;
-        Ok(generator.generate_embedding_default(&input_query).await?)
-    }
-
-    /// Get a prepared Embedding Generator that is setup with the correct default EmbeddingModelType
-    /// for the profile's VectorFS.
-    pub fn get_embedding_generator(&self, profile: &ShinkaiName) -> Result<RemoteEmbeddingGenerator, VectorFSError> {
-        let internals = self.get_profile_fs_internals_read_only(profile)?;
-        let generator = internals.fs_core_resource.initialize_compatible_embeddings_generator(
-            &self.embedding_generator.api_url,
-            self.embedding_generator.api_key.clone(),
-        );
-        return Ok(generator);
-    }
-
     /// Attempts to fetch a mutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map.
-    pub fn get_profile_fs_internals(&mut self, profile: &ShinkaiName) -> Result<&mut VectorFSInternals, VectorFSError> {
+    pub fn _get_profile_fs_internals(
+        &mut self,
+        profile: &ShinkaiName,
+    ) -> Result<&mut VectorFSInternals, VectorFSError> {
         self.internals_map
             .get_mut(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
@@ -221,7 +210,7 @@ impl VectorFS {
 
     /// Attempts to fetch an immutable reference to the profile VectorFSInternals (from memory)
     /// in the internals_map. Used for pure reads where no updates are needed.
-    pub fn get_profile_fs_internals_read_only(
+    pub fn _get_profile_fs_internals_read_only(
         &self,
         profile: &ShinkaiName,
     ) -> Result<&VectorFSInternals, VectorFSError> {

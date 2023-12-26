@@ -15,7 +15,7 @@ impl<'a> VFSReader<'a> {
         num_of_results: u64,
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
-        let internals = self.vector_fs.get_profile_fs_internals_read_only(profile)?;
+        let internals = self.vector_fs._get_profile_fs_internals_read_only(profile)?;
         // Vector search without hierarchical scoring because "folders" have no content/real embedding
         let results = internals.fs_core_resource.vector_search_customized(
             query,
