@@ -796,6 +796,7 @@ impl Node {
         };
         let mut vfs = self.vector_fs.lock().await;
         vfs.initialize_new_profiles(
+            &self.node_profile_name,
             profile_list,
             self.embedding_generator.model_type.clone(),
             NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),

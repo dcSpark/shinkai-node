@@ -367,14 +367,13 @@ impl Node {
             vec![embedding_generator.model_type.clone()],
             profile_list,
             &vector_fs_db_path,
+            node_profile_name.clone(),
         )
         .unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
             panic!("Failed to load VectorFS from database: {}", vector_fs_db_path)
         });
         let vector_fs_arc = Arc::new(Mutex::new(vector_fs));
-
-        println!("------------------------------------node setup----------------------------------");
 
         Node {
             node_profile_name,

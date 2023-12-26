@@ -1,7 +1,10 @@
 use crate::{agent::error::AgentError, tools::error::ToolError};
 use core::fmt;
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxNameError, shinkai_name::ShinkaiNameError},
+    schemas::{
+        inbox_name::InboxNameError,
+        shinkai_name::{ShinkaiName, ShinkaiNameError},
+    },
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
 use shinkai_vector_resources::resource_errors::VRError;
@@ -29,6 +32,8 @@ pub enum VectorFSError {
     ColumnFamilyNotFound(String),
     ShinkaiNameLacksProfile,
     ToolError(ToolError),
+    InvalidNodeActionPermission(ShinkaiName, String),
+    InvalidProfileActionPermission(ShinkaiName, String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -60,6 +65,16 @@ impl fmt::Display for VectorFSError {
             VectorFSError::VRError(e) => write!(f, "{}", e),
             VectorFSError::BincodeError(e) => write!(f, "Bincode error: {}", e),
             VectorFSError::ToolError(e) => write!(f, "Tool error: {}", e),
+            VectorFSError::InvalidNodeActionPermission(name, error_message) => write!(
+                f,
+                "{} has no permission to perform a VecFS Node action: {}",
+                name, error_message
+            ),
+            VectorFSError::InvalidProfileActionPermission(name, error_message) => write!(
+                f,
+                "{} has no permission to perform a VecFS Profile action: {}",
+                name, error_message
+            ),
         }
     }
 }

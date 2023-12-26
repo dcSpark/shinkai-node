@@ -13,6 +13,7 @@ use std::collections::HashMap;
 /// Of note, internals_map holds a hashmap of the VectorFSInternals
 /// for all profiles on the node.
 pub struct VectorFS {
+    node_name: ShinkaiName,
     internals_map: HashMap<ShinkaiName, VectorFSInternals>,
     db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
@@ -30,6 +31,7 @@ impl VectorFS {
         supported_embedding_models: Vec<EmbeddingModelType>,
         profile_list: Vec<ShinkaiName>,
         db_path: &str,
+        node_name: ShinkaiName,
     ) -> Result<Self, VectorFSError> {
         let fs_db = VectorFSDB::new(db_path)?;
 
@@ -50,10 +52,16 @@ impl VectorFS {
             internals_map,
             db: fs_db,
             embedding_generator,
+            node_name: node_name.clone(),
         };
 
         // Initialize any new profiles which don't already exist in the VectorFS
-        vector_fs.initialize_new_profiles(profile_list, default_embedding_model, supported_embedding_models)?;
+        vector_fs.initialize_new_profiles(
+            &node_name,
+            profile_list,
+            default_embedding_model,
+            supported_embedding_models,
+        )?;
 
         Ok(vector_fs)
     }
@@ -65,12 +73,14 @@ impl VectorFS {
             internals_map: HashMap::new(),
             db: VectorFSDB::new_empty(),
             embedding_generator: RemoteEmbeddingGenerator::new_default(),
+            node_name: ShinkaiName::from_node_name("@@node1.shinkai".to_string()).unwrap(),
         }
     }
 
     /// Initializes a new profile and inserts it into the internals_map
     pub fn initialize_profile(
         &mut self,
+        requester_name: &ShinkaiName,
         profile: ShinkaiName,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -85,6 +95,7 @@ impl VectorFS {
     /// Checks the input profile_list and initializes profiles for any which are not already initialized.
     pub fn initialize_new_profiles(
         &mut self,
+        requester_name: &ShinkaiName,
         profile_list: Vec<ShinkaiName>,
         default_embedding_model: EmbeddingModelType,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -92,6 +103,7 @@ impl VectorFS {
         for profile in profile_list {
             if !self.internals_map.contains_key(&profile) {
                 self.initialize_profile(
+                    requester_name,
                     profile,
                     default_embedding_model.clone(),
                     supported_embedding_models.clone(),
@@ -99,6 +111,69 @@ impl VectorFS {
             }
         }
         Ok(())
+    }
+
+    /// Sets the supported models for a profile
+    pub fn set_profile_supported_models(
+        &mut self,
+        requester_name: &ShinkaiName,
+        profile: &ShinkaiName,
+        supported_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        self.validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
+        if let Some(fs_internals) = self.internals_map.get_mut(profile) {
+            fs_internals.supported_embedding_models = supported_models;
+            self.db.save_profile_fs_internals(fs_internals, profile)?;
+        }
+        Ok(())
+    }
+
+    /// Sets the supported models for all profiles
+    pub fn set_all_profiles_supported_models(
+        &mut self,
+        requester_name: &ShinkaiName,
+        supported_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        self.validate_node_action_permission(requester_name, "Failed setting all profile supported models.")?;
+        for profile in self.internals_map.keys().cloned().collect::<Vec<ShinkaiName>>() {
+            self.set_profile_supported_models(requester_name, &profile, supported_models.clone())?;
+        }
+        Ok(())
+    }
+
+    /// Validates the permission for a node action for a given requester ShinkaiName.
+    /// In case of error, includes requester_name automatically together with your error message
+    pub fn validate_node_action_permission(
+        &self,
+        requester_name: &ShinkaiName,
+        error_message: &str,
+    ) -> Result<(), VectorFSError> {
+        if self.node_name.node_name == requester_name.node_name {
+            return Ok(());
+        }
+        Err(VectorFSError::InvalidNodeActionPermission(
+            requester_name.clone(),
+            error_message.to_string(),
+        ))
+    }
+
+    /// Validates the permission for a profile action for a given requester ShinkaiName.
+    /// In case of error, includes requester_name automatically together with your error message
+    pub fn validate_profile_action_permission(
+        &self,
+        requester_name: &ShinkaiName,
+        profile: &ShinkaiName,
+        error_message: &str,
+    ) -> Result<(), VectorFSError> {
+        if let Ok(_) = self.get_profile_fs_internals_read_only(profile) {
+            if profile.profile_name == requester_name.profile_name {
+                return Ok(());
+            }
+        }
+        Err(VectorFSError::InvalidProfileActionPermission(
+            requester_name.clone(),
+            error_message.to_string(),
+        ))
     }
 
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
@@ -140,29 +215,5 @@ impl VectorFS {
         self.internals_map
             .get(profile)
             .ok_or_else(|| VectorFSError::ProfileNameNonExistent(profile.to_string()))
-    }
-
-    /// Sets the supported models for a profile
-    pub fn set_profile_supported_models(
-        &mut self,
-        profile: &ShinkaiName,
-        supported_models: Vec<EmbeddingModelType>,
-    ) -> Result<(), VectorFSError> {
-        if let Some(fs_internals) = self.internals_map.get_mut(profile) {
-            fs_internals.supported_embedding_models = supported_models;
-            self.db.save_profile_fs_internals(fs_internals, profile)?;
-        }
-        Ok(())
-    }
-
-    /// Sets the supported models for all profiles
-    pub fn set_all_profiles_supported_models(
-        &mut self,
-        supported_models: Vec<EmbeddingModelType>,
-    ) -> Result<(), VectorFSError> {
-        for profile in self.internals_map.keys().cloned().collect::<Vec<ShinkaiName>>() {
-            self.set_profile_supported_models(&profile, supported_models.clone())?;
-        }
-        Ok(())
     }
 }
