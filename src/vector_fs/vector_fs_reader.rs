@@ -21,10 +21,10 @@ impl<'a> VFSReader<'a> {
         profile: ShinkaiName,
     ) -> Result<Self, VectorFSError> {
         let reader = VFSReader {
-            requester_name,
-            path,
+            requester_name: requester_name.clone(),
+            path: path.clone(),
             vector_fs,
-            profile,
+            profile: profile.clone(),
         };
 
         // Validate read permissions

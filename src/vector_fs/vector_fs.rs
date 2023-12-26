@@ -81,8 +81,13 @@ impl VectorFS {
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
     /// VFSReader can then be used to perform read actions at the specified path.
-    pub fn reader(&self, requester_name: ShinkaiName, path: VRPath) -> Result<VFSReader, VectorFSError> {
-        VFSReader::new(requester_name, path, self)
+    pub fn reader(
+        &self,
+        requester_name: ShinkaiName,
+        path: VRPath,
+        profile: ShinkaiName,
+    ) -> Result<VFSReader, VectorFSError> {
+        VFSReader::new(requester_name, path, self, profile)
     }
 
     /// Initializes a new profile and inserts it into the internals_map
