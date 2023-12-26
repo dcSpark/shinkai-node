@@ -1,9 +1,11 @@
 use super::fs_internals::VectorFSInternals;
+use super::vector_fs_reader::VFSReader;
 use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
 use rocksdb::Error;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::vector_search_traversal::VRPath;
 use shinkai_vector_resources::{
     embeddings::Embedding, map_resource::MapVectorResource, model_type::EmbeddingModelType, source::VRSource,
 };
@@ -75,6 +77,12 @@ impl VectorFS {
             embedding_generator: RemoteEmbeddingGenerator::new_default(),
             node_name: ShinkaiName::from_node_name("@@node1.shinkai".to_string()).unwrap(),
         }
+    }
+
+    /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
+    /// VFSReader can then be used to perform read actions at the specified path.
+    pub fn reader(&self, requester_name: ShinkaiName, path: VRPath) -> Result<VFSReader, VectorFSError> {
+        VFSReader::new(requester_name, path, self)
     }
 
     /// Initializes a new profile and inserts it into the internals_map

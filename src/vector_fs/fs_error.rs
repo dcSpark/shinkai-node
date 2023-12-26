@@ -7,7 +7,7 @@ use shinkai_message_primitives::{
     },
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
-use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::{resource_errors::VRError, vector_search_traversal::VRPath};
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
@@ -34,6 +34,8 @@ pub enum VectorFSError {
     ToolError(ToolError),
     InvalidNodeActionPermission(ShinkaiName, String),
     InvalidProfileActionPermission(ShinkaiName, String),
+    InvalidReaderPermission(ShinkaiName, ShinkaiName, VRPath),
+    InvalidWriterPermission(ShinkaiName, ShinkaiName, VRPath),
 }
 
 impl fmt::Display for VectorFSError {
@@ -67,13 +69,27 @@ impl fmt::Display for VectorFSError {
             VectorFSError::ToolError(e) => write!(f, "Tool error: {}", e),
             VectorFSError::InvalidNodeActionPermission(name, error_message) => write!(
                 f,
-                "{} has no permission to perform a VecFS Node action: {}",
+                "{} has no permission to perform a VectorFS Node action: {}",
                 name, error_message
             ),
             VectorFSError::InvalidProfileActionPermission(name, error_message) => write!(
                 f,
-                "{} has no permission to perform a VecFS Profile action: {}",
+                "{} has no permission to perform a VectorFS Profile action: {}",
                 name, error_message
+            ),
+            VectorFSError::InvalidReaderPermission(name, profile, path) => write!(
+                f,
+                "{} has no permission to read {}'s VectorFS at path: {}",
+                name,
+                profile,
+                path.format_to_string()
+            ),
+            VectorFSError::InvalidWriterPermission(name, profile, path) => write!(
+                f,
+                "{} has no permission to write in {}'s VectorFS at path: {}",
+                name,
+                profile,
+                path.format_to_string()
             ),
         }
     }

@@ -54,27 +54,24 @@ impl PermissionsIndex {
     }
 
     /// Inserts a user to the whitelist for a given path.
-    pub fn insert_to_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
+    fn insert_to_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
         let inner_whitelist = self.whitelist.entry(path).or_insert_with(HashMap::new);
         inner_whitelist.insert(name, true);
     }
 
     /// Removes a user from the whitelist for a given path.
-    pub fn remove_from_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
+    fn remove_from_whitelist(&mut self, path: VRPath, name: ShinkaiName) {
         if let Some(inner_whitelist) = self.whitelist.get_mut(&path) {
             inner_whitelist.remove(&name);
         }
     }
 
     /// Validates the permission for a given requester ShinkaiName + Path in the node's VectorFS.
-    pub fn validate_permission(&self, requester_name: &ShinkaiName, path: &VRPath) -> bool {
+    pub fn validate_read_permission(&self, requester_name: &ShinkaiName, path: &VRPath) -> bool {
         let mut path = path.clone();
 
-        // TODO: Verify later that in all cases that profile owner from any device/agent as requester_name
-        // always includes the profile name (it should in theory). This allows us to ensure VectorFSInternals is always profile-bound/permissioned.
         if let Some(Permission::Private) = self.fs_permissions.get(&path) {
             return requester_name.get_profile_name() == self.profile_name.get_profile_name();
-            // return requester_name.get_node_name() == self.profile_name.get_node_name();
         }
 
         if let Some(Permission::Public) = self.fs_permissions.get(&path) {
@@ -100,8 +97,14 @@ impl PermissionsIndex {
         false
     }
 
-    /// Validates the permissions for a list of requester ShinkaiNames for a single Path in the node's VectorFS.
-    pub fn validate_permission_multi_requesters(&self, requester_names: &[ShinkaiName], path: &VRPath) -> bool {
-        requester_names.iter().all(|name| self.validate_permission(name, path))
+    /// TODO: Implement write permissions proper with its own index
+    /// Validates the permission for a given requester ShinkaiName + Path in the node's VectorFS.
+    pub fn validate_write_permission(&self, requester_name: &ShinkaiName, path: &VRPath) -> bool {
+        let mut path = path.clone();
+
+        if let Some(Permission::Private) = self.fs_permissions.get(&path) {
+            return requester_name.get_profile_name() == self.profile_name.get_profile_name();
+        }
+        return false;
     }
 }
