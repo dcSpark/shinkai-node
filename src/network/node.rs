@@ -18,6 +18,7 @@ use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::Remote;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -239,6 +240,17 @@ pub enum NodeCommand {
     },
 }
 
+/// Hard-coded embedding model used by the node as its default.
+/// TODO: Allow model to be selected, and saved in the main DB as the source of truth.
+pub static DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
+    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+
+lazy_static! {
+    /// Hard-coded list of embedding models that our Embedding server orchestration service supports. This likely needs to stay hard-coded.
+    /// As of currently, all profiles will always use this global as their list of supported models.
+    pub static ref SUPPORTED_EMBEDDING_MODELS: Vec<EmbeddingModelType> = vec![DEFAULT_EMBEDDING_MODEL.clone()];
+}
+
 // A type alias for a string that represents a profile name.
 type ProfileName = String;
 
@@ -340,7 +352,7 @@ impl Node {
         let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
-        // Fetch list of profiles from the node to push into the VectorFS
+        // Fetch list of existing profiles from the node to push into the VectorFS
         let mut profile_list = vec![];
         {
             let db_lock = db_arc.lock().await;
@@ -348,10 +360,6 @@ impl Node {
                 Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
                 Err(e) => panic!("Failed to fetch profiles: {}", e),
             };
-        }
-        // Checking to make sure at least 1 profile exists for VectorFS to be able to initialize properly
-        if profile_list.len() == 0 {
-            panic!("Unable to find any profiles in ShinkaiDB: {:?}", profile_list);
         }
 
         // Initialize/setup the VectorFS.

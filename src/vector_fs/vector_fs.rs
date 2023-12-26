@@ -22,9 +22,9 @@ pub struct VectorFS {
 }
 
 impl VectorFS {
-    /// Initializes the VectorFS struct. If no existing VectorFS exists in the VectorFSDB, then initializes
-    /// from scratch. Otherwise reads from the FSDB.
-    /// Requires supplying list of profiles setup in the node for profile_list.
+    /// Initializes the VectorFS struct. If no existing VectorFS exists in the VectorFSDB, then initializes from scratch.
+    /// Otherwise reads from the FSDB. Requires supplying list of profiles setup in the node.
+    /// Auto-initializes new profiles, setting their default embedding model to be based on the supplied embedding_generator.
     pub fn new(
         embedding_generator: RemoteEmbeddingGenerator,
         supported_embedding_models: Vec<EmbeddingModelType>,
@@ -33,23 +33,62 @@ impl VectorFS {
     ) -> Result<Self, VectorFSError> {
         let fs_db = VectorFSDB::new(db_path)?;
 
-        // For each profile, initialize the internals in the DB if needed, and read them into the internals_map
+        // Read each existing profile's fs internals from fsdb
         let mut internals_map = HashMap::new();
-        for profile in profile_list {
-            fs_db.init_profile_fs_internals(
-                &profile,
-                embedding_generator.model_type.clone(),
-                supported_embedding_models.clone(),
-            )?;
-            let internals = fs_db.get_profile_fs_internals(&profile)?;
-            internals_map.insert(profile, internals);
+        for profile in &profile_list {
+            match fs_db.get_profile_fs_internals(profile) {
+                Ok(internals) => {
+                    internals_map.insert(profile.clone(), internals);
+                }
+                _ => continue,
+            }
         }
 
-        Ok(Self {
+        // Initialize the VectorFS
+        let default_embedding_model = embedding_generator.model_type().clone();
+        let mut vector_fs = Self {
             internals_map,
             db: fs_db,
             embedding_generator,
-        })
+        };
+
+        // Initialize any new profiles which don't already exist in the VectorFS
+        vector_fs.initialize_new_profiles(profile_list, default_embedding_model, supported_embedding_models)?;
+
+        Ok(vector_fs)
+    }
+
+    /// Initializes a new profile and inserts it into the internals_map
+    pub fn initialize_profile(
+        &mut self,
+        profile: ShinkaiName,
+        default_embedding_model: EmbeddingModelType,
+        supported_embedding_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        self.db
+            .init_profile_fs_internals(&profile, default_embedding_model.clone(), supported_embedding_models)?;
+        let internals = self.db.get_profile_fs_internals(&profile)?;
+        self.internals_map.insert(profile, internals);
+        Ok(())
+    }
+
+    /// Checks the input profile_list and initializes profiles for any which are not already initialized.
+    pub fn initialize_new_profiles(
+        &mut self,
+        profile_list: Vec<ShinkaiName>,
+        default_embedding_model: EmbeddingModelType,
+        supported_embedding_models: Vec<EmbeddingModelType>,
+    ) -> Result<(), VectorFSError> {
+        for profile in profile_list {
+            if !self.internals_map.contains_key(&profile) {
+                self.initialize_profile(
+                    profile,
+                    default_embedding_model.clone(),
+                    supported_embedding_models.clone(),
+                )?;
+            }
+        }
+        Ok(())
     }
 
     /// IMPORTANT: Only to be used when writing tests that do not use the VectorFS.

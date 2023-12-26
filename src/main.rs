@@ -8,6 +8,7 @@ use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
 use ed25519_dalek::VerifyingKey;
+use network::node::DEFAULT_EMBEDDING_MODEL;
 use network::Node;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
@@ -34,18 +35,13 @@ mod crypto_identities;
 mod db;
 mod managers;
 mod network;
+mod payments;
 mod planner;
 mod resources;
 mod schemas;
 mod tools;
 mod utils;
-mod payments;
 mod vector_fs;
-
-/// Hard-coded embedding model used by the node as its default.
-/// TODO: Allow model to be selected, and saved in the main DB as the source of truth.
-pub static DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
-    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
 
 fn main() {
     env_logger::init();
