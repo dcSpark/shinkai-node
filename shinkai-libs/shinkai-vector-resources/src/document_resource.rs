@@ -346,7 +346,7 @@ impl DocumentVectorResource {
         &mut self,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) {
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         self._append_node_without_tag_validation(NodeContent::Resource(resource), metadata, embedding, &tag_names)
@@ -360,7 +360,7 @@ impl DocumentVectorResource {
         metadata: Option<HashMap<String, String>>,
     ) {
         let embedding = resource.as_trait_object().resource_embedding().clone();
-        self.append_vector_resource_node(resource, metadata, &embedding)
+        self.append_vector_resource_node(resource, metadata, embedding.clone())
     }
 
     /// Appends a new text node and an associated embedding to the document.
@@ -368,7 +368,7 @@ impl DocumentVectorResource {
         &mut self,
         text: &str,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
     ) {
         let validated_data_tags = DataTag::validate_tag_list(text, parsing_tags);
@@ -387,7 +387,7 @@ impl DocumentVectorResource {
         &mut self,
         external_content: SourceReference,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) {
         // As ExternalContent doesn't have data tags, we pass an empty vector
         self._append_node_without_tag_validation(
@@ -404,7 +404,7 @@ impl DocumentVectorResource {
         &mut self,
         vr_header: VRHeader,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) {
         let data_tag_names = vr_header.data_tag_names.clone();
         self._append_node_without_tag_validation(NodeContent::VRHeader(vr_header), metadata, embedding, &data_tag_names)
@@ -416,7 +416,7 @@ impl DocumentVectorResource {
         &mut self,
         data: NodeContent,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
         tag_names: &Vec<String>,
     ) {
         let id = self.node_count + 1;
@@ -439,14 +439,14 @@ impl DocumentVectorResource {
         id: u64,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_node_without_tag_validation(
             id,
             NodeContent::Resource(new_resource),
             new_metadata,
-            &embedding,
+            embedding,
             &tag_names,
         )
     }
@@ -458,7 +458,7 @@ impl DocumentVectorResource {
         id: u64,
         new_data: &str,
         new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
         // List of datatags you want to parse the new data with. If None will preserve previous tags.
         parsing_tags: Option<Vec<DataTag>>,
     ) -> Result<(Node, Embedding), VRError> {
@@ -486,7 +486,7 @@ impl DocumentVectorResource {
         id: u64,
         new_external_content: SourceReference,
         new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
         // As ExternalContent doesn't have data tags, we pass an empty vector
         self._replace_node_without_tag_validation(
@@ -504,7 +504,7 @@ impl DocumentVectorResource {
         id: u64,
         new_vr_header: VRHeader,
         new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
         let data_tag_names = new_vr_header.data_tag_names.clone();
         self._replace_node_without_tag_validation(
@@ -523,7 +523,7 @@ impl DocumentVectorResource {
         id: u64,
         new_data: NodeContent,
         new_metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
         new_tag_names: &Vec<String>,
     ) -> Result<(Node, Embedding), VRError> {
         // Id + index

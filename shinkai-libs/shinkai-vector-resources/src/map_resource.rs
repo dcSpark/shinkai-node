@@ -233,60 +233,32 @@ impl MapVectorResource {
     }
 
     /// Inserts a new node (with a BaseVectorResource) with the provided embedding
-    /// at the specified key in the Map resource, and updates the indexes.
+    /// at the specified key in the Map resource root, and updates the indexes.
     pub fn insert_vector_resource_node(
         &mut self,
         key: &str,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
-    ) {
-        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
+        self.insert_vector_resource_node_at_path(VRPath::new(), key, resource, metadata, embedding)
     }
 
+    /// Inserts a new node (with a BaseVectorResource) with the provided embedding
+    /// at the specified path + key in the Map resource, and updates the indexes.
     pub fn insert_vector_resource_node_at_path(
         &mut self,
         path: VRPath,
         key: &str,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
     ) -> Result<(), VRError> {
-        let mut data = HashMap::new();
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
+        let node_content = NodeContent::Resource(resource.clone());
+        let new_internal_node = Node::from_node_content(key.to_string(), node_content, metadata.clone(), tag_names);
 
-        self.mutate_node_at_path(
-            path,
-            &mut |mut_node, mut_embedding, mutator_data| {
-                // If the node to insert into is actually a Vector Resource, continue
-                if let Ok(mut node_resource) = mut_node.get_vector_resource_content() {
-                    let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-                    let node_content = NodeContent::Resource(resource.clone());
-                    let new_internal_node =
-                        Node::from_node_content(key.to_string(), node_content, metadata.clone(), tag_names);
-                    node_resource.as_trait_object_mut().insert_node(
-                        key.to_string(),
-                        new_internal_node,
-                        embedding.clone(),
-                    )?;
-
-                    let new_node_content = NodeContent::Resource(node_resource.clone());
-                    let new_node = Node::from_node_content(
-                        mut_node.id.clone(),
-                        new_node_content,
-                        mut_node.metadata.clone(),
-                        mut_node.data_tag_names.clone(),
-                    );
-                    *mut_node = new_node;
-                    *mut_embedding = embedding.clone();
-                } else {
-                    return Err(VRError::InvalidVRBaseType);
-                }
-
-                Ok(())
-            },
-            data,
-        )
+        self.insert_node_at_path(path, key.to_string(), new_internal_node, embedding)
     }
 
     /// Inserts a new node (with a BaseVectorResource) with the resource's included embedding
@@ -296,72 +268,104 @@ impl MapVectorResource {
         key: &str,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
-    ) {
+    ) -> Result<(), VRError> {
         let embedding = resource.as_trait_object().resource_embedding().clone();
-        self.insert_vector_resource_node(key, resource, metadata, &embedding)
+        self.insert_vector_resource_node(key, resource, metadata, embedding)
     }
 
     /// Inserts a new text node and associated embedding
-    /// at the specified key in the Map resource.
+    /// at the specified key in the Map resource root.
     pub fn insert_text_node(
         &mut self,
-        key: &str,
-        text_value: &str,
+        key: String,
+        text_value: String,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
+        embedding: Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
-    ) {
-        let validated_data_tags = DataTag::validate_tag_list(text_value, parsing_tags);
-        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._insert_kv_without_tag_validation(
-            key,
-            NodeContent::Text(text_value.to_string()),
-            metadata,
-            embedding,
-            &data_tag_names,
-        )
+    ) -> Result<(), VRError> {
+        self.insert_text_node_at_path(VRPath::new(), key, text_value, metadata, embedding, parsing_tags)
     }
 
-    /// Inserts a new node (with ExternalContent) at the specified key in the Map resource.
+    /// Inserts a new text node and associated embedding
+    /// at the specified path + key in the Map resource.
+    pub fn insert_text_node_at_path(
+        &mut self,
+        path: VRPath,
+        key: String,
+        text_value: String,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
+    ) -> Result<(), VRError> {
+        let validated_data_tags = DataTag::validate_tag_list(&text_value, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        let node_content = NodeContent::Text(text_value);
+        let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
+
+        self.insert_node_at_path(path, key, new_node, embedding)
+    }
+
+    /// Inserts a new node (with ExternalContent) at the specified key in the Map resource root.
     /// Uses the supplied Embedding.
     pub fn insert_external_content_node(
         &mut self,
-        key: &str,
+        key: String,
         external_content: SourceReference,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
-    ) {
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
+        self.insert_external_content_node_at_path(VRPath::new(), key, external_content, metadata, embedding)
+    }
+
+    /// Inserts a new node (with ExternalContent) at the specified path + key in the Map resource.
+    /// Uses the supplied Embedding.
+    pub fn insert_external_content_node_at_path(
+        &mut self,
+        path: VRPath,
+        key: String,
+        external_content: SourceReference,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
         // As ExternalContent doesn't have data tags, we pass an empty vector
-        self._insert_kv_without_tag_validation(
-            key,
-            NodeContent::ExternalContent(external_content),
-            metadata,
-            embedding,
-            &Vec::new(),
-        )
+        let node_content = NodeContent::ExternalContent(external_content);
+        let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), Vec::new());
+
+        self.insert_node_at_path(path, key, new_node, embedding)
     }
 
     /// Inserts a new node (with VRHeader) at the specified key in the Map resource.
     /// Uses the supplied Embedding.
     pub fn insert_vr_header_node(
         &mut self,
-        key: &str,
+        key: String,
         vr_header: VRHeader,
         metadata: Option<HashMap<String, String>>,
-        embedding: &Embedding,
-    ) {
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
+        self.insert_vr_header_node_at_path(VRPath::new(), key, vr_header, metadata, embedding)
+    }
+
+    /// Inserts a new node (with VRHeader) at the specified path + key in the Map resource.
+    /// Uses the supplied Embedding.
+    pub fn insert_vr_header_node_at_path(
+        &mut self,
+        path: VRPath,
+        key: String,
+        vr_header: VRHeader,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
         let data_tag_names = vr_header.data_tag_names.clone();
-        self._insert_kv_without_tag_validation(
-            key,
-            NodeContent::VRHeader(vr_header),
-            metadata,
-            embedding,
-            &data_tag_names,
-        )
+        let node_content = NodeContent::VRHeader(vr_header);
+        let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
+
+        self.insert_node_at_path(path, key, new_node, embedding)
     }
 
     /// Insert a new node and associated embeddings to the Map resource
     /// without checking if tags are valid.
+    /// TODO: Deprecate once switch over to VectorFS fully
     pub fn _insert_kv_without_tag_validation(
         &mut self,
         key: &str,

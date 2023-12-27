@@ -142,9 +142,9 @@ fn test_multi_resource_db_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1, None, &fact1_embeddings, &vec![]);
-    doc.append_text_node(fact2, None, &fact2_embeddings, &vec![]);
-    doc.append_text_node(fact3, None, &fact3_embeddings, &vec![]);
+    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![]);
+    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![]);
+    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![]);
 
     // Read the pdf from file into a buffer
     let doc2 = get_shinkai_intro_doc(&generator, &vec![]);
@@ -176,7 +176,7 @@ fn test_multi_resource_db_vector_search() {
     let query = generator.generate_embedding_default_blocking("Camels").unwrap();
     let ret_nodes = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_node = ret_nodes.get(0).unwrap();
-    assert_eq!(fact2, &ret_node.node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), &ret_node.node.get_text_content().unwrap());
 
     // Camel Node vector search
     let query = generator
@@ -195,9 +195,9 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     let ret_node2 = ret_nodes.get(1).unwrap();
     let ret_node3 = ret_nodes.get(2).unwrap();
-    assert_eq!(fact1, &ret_node.node.get_text_content().unwrap());
-    assert_eq!(fact2, &ret_node2.node.get_text_content().unwrap());
-    assert_eq!(fact3, &ret_node3.node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
+    assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap());
 
     // Animal tolerance range vector search
     let query = generator
@@ -210,8 +210,8 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     let ret_node2 = ret_nodes.get(1).unwrap();
 
-    assert_eq!(fact1, &ret_node.node.get_text_content().unwrap());
-    assert_eq!(fact2, &ret_node2.node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
 }
 
 #[test]

@@ -198,11 +198,11 @@ impl UnstructuredParser {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
                 }
             }
         }
@@ -255,11 +255,11 @@ impl UnstructuredParser {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
                     let embedding = generator.generate_embedding_default_blocking(&grouped_text.text)?;
-                    doc.append_text_node(&grouped_text.text, metadata, &embedding, parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
                 }
             }
         }
