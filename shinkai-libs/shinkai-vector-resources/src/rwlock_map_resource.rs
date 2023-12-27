@@ -13,13 +13,14 @@ use serde_json;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::Metadata;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockWriteGuard};
 
-/// A VectorResource which uses a HashMap data model, thus providing a
-/// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
-/// constantly-updating data streams, or any unordered/mutating source data.
+/// A VectorResource which uses a HashMap data model backed by a RwLock,
+/// thereby allowing for seamless mutability of any internally held node, no matter the depth.
+/// Intended to be used for low level mutation-heavy use cases that need Vector Search support,
+/// not for normal documents/data due to complexity of the interface.
 #[derive(Debug)]
-pub struct RefCellMapVectorResource {
+pub struct RwLockMapVectorResource {
     name: String,
     description: Option<String>,
     source: VRSource,
@@ -36,7 +37,7 @@ pub struct RefCellMapVectorResource {
     metadata_index: MetadataIndex,
 }
 
-impl VectorResource for RefCellMapVectorResource {
+impl VectorResource for RwLockMapVectorResource {
     /// RFC3339 Datetime when then Vector Resource was created
     fn created_datetime(&self) -> String {
         self.created_datetime.clone()
@@ -126,7 +127,7 @@ impl VectorResource for RefCellMapVectorResource {
         }
     }
 
-    /// Returns copies of all nodes in the RefCellMapVectorResource
+    /// Returns copies of all nodes in the RwLockMapVectorResource
     fn get_nodes(&self) -> Vec<Node> {
         match self.nodes.read() {
             Ok(nodes) => nodes.values().cloned().collect(),
@@ -135,8 +136,8 @@ impl VectorResource for RefCellMapVectorResource {
     }
 }
 
-impl RefCellMapVectorResource {
-    /// Create a new RefCellMapVectorResource
+impl RwLockMapVectorResource {
+    /// Create a new RwLockMapVectorResource
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -147,7 +148,7 @@ impl RefCellMapVectorResource {
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        let mut resource = RefCellMapVectorResource {
+        let mut resource = RwLockMapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source,
@@ -168,9 +169,9 @@ impl RefCellMapVectorResource {
         resource
     }
 
-    /// Initializes an empty `RefCellMapVectorResource` with empty defaults.
+    /// Initializes an empty `RwLockMapVectorResource` with empty defaults.
     pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
-        RefCellMapVectorResource::new(
+        RwLockMapVectorResource::new(
             name,
             desc,
             source,
@@ -180,6 +181,33 @@ impl RefCellMapVectorResource {
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
         )
     }
+
+    // fn mutate_node_with_path(&self, path: VRPath, new_content: NodeContent) -> Result<(), VRError> {
+    //     if path.path_ids.is_empty() {
+    //         return Err(VRError::InvalidVRPath(path.clone()));
+    //     }
+
+    //     // Fetch the first node directly, then iterate through the rest
+    //     let mut node_guard = self.get_node_mut(path.path_ids[0].clone())?;
+    //     for id in path.path_ids.iter().skip(1) {
+    //         match &mut *node_guard.content {
+    //             NodeContent::Resource(resource) => {
+    //                 node_guard = resource.as_trait_object().get_node_mut(id.clone())?;
+    //             }
+    //             _ => {
+    //                 if let Some(last) = path.path_ids.last() {
+    //                     if id != last {
+    //                         return Err(VRError::InvalidVRPath(path.clone()));
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+
+    //     // Mutate the node
+    //     node_guard.content = new_content;
+    //     Ok(())
+    // }
 
     /// Inserts a new node (with a BaseVectorResource) with the provided embedding
     /// at the specified key in the Map resource, and updates the indexes.
@@ -461,9 +489,9 @@ impl RefCellMapVectorResource {
     }
 }
 
-/// Temporary struct used for serializing/deserializing a RefCellMapVectorResource
+/// Temporary struct used for serializing/deserializing a RwLockMapVectorResource
 #[derive(Serialize, Deserialize)]
-struct RefCellMapVectorResourceTemp {
+struct RwLockMapVectorResourceTemp {
     name: String,
     description: Option<String>,
     source: VRSource,
@@ -480,13 +508,13 @@ struct RefCellMapVectorResourceTemp {
     metadata_index: MetadataIndex,
 }
 
-impl Serialize for RefCellMapVectorResource {
+impl Serialize for RwLockMapVectorResource {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let nodes = self.nodes.read().unwrap();
-        let value = RefCellMapVectorResourceTemp {
+        let value = RwLockMapVectorResourceTemp {
             name: self.name.clone(),
             description: self.description.clone(),
             source: self.source.clone(),
@@ -506,13 +534,13 @@ impl Serialize for RefCellMapVectorResource {
     }
 }
 
-impl<'de> Deserialize<'de> for RefCellMapVectorResource {
+impl<'de> Deserialize<'de> for RwLockMapVectorResource {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let temp = RefCellMapVectorResourceTemp::deserialize(deserializer)?;
-        Ok(RefCellMapVectorResource {
+        let temp = RwLockMapVectorResourceTemp::deserialize(deserializer)?;
+        Ok(RwLockMapVectorResource {
             name: temp.name,
             description: temp.description,
             source: temp.source,
@@ -531,7 +559,7 @@ impl<'de> Deserialize<'de> for RefCellMapVectorResource {
     }
 }
 
-impl Clone for RefCellMapVectorResource {
+impl Clone for RwLockMapVectorResource {
     fn clone(&self) -> Self {
         let nodes = self.nodes.read().unwrap().clone();
         Self {
@@ -553,7 +581,7 @@ impl Clone for RefCellMapVectorResource {
     }
 }
 
-impl PartialEq for RefCellMapVectorResource {
+impl PartialEq for RwLockMapVectorResource {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && self.description == other.description

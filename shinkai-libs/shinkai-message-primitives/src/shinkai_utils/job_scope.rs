@@ -55,7 +55,7 @@ impl fmt::Debug for JobScope {
             .map(|entry| match &entry.resource {
                 BaseVectorResource::Document(doc) => doc.resource_id().to_string(),
                 BaseVectorResource::Map(map) => map.resource_id().to_string(),
-                BaseVectorResource::RefCellMapVectorResource(resource) => resource.resource_id().to_string(),
+                BaseVectorResource::RwLockMapVectorResource(resource) => resource.resource_id().to_string(),
             })
             .collect();
 

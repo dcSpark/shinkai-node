@@ -124,6 +124,16 @@ impl VectorResource for MapVectorResource {
     fn get_nodes(&self) -> Vec<Node> {
         self.nodes.values().cloned().collect()
     }
+
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth)
+    fn insert_node(&mut self, id: &str, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        let tag_names = self.as_trait_object().data_tag_index().data_tag_names();
+        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+    }
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth)
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {}
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth)
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {}
 }
 
 impl MapVectorResource {

@@ -1,8 +1,8 @@
 use super::document_resource::DocumentVectorResource;
 use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
-use crate::refcell_map_resource::RefCellMapVectorResource;
 use crate::resource_errors::VRError;
+use crate::rwlock_map_resource::RwLockMapVectorResource;
 use serde_json::Value as JsonValue;
 use std::str::FromStr;
 
@@ -12,7 +12,7 @@ use std::str::FromStr;
 pub enum BaseVectorResource {
     Document(DocumentVectorResource),
     Map(MapVectorResource),
-    RefCellMapVectorResource(RefCellMapVectorResource),
+    RwLockMapVectorResource(RwLockMapVectorResource),
 }
 
 impl BaseVectorResource {
@@ -24,7 +24,7 @@ impl BaseVectorResource {
         match self {
             BaseVectorResource::Document(resource) => Box::new(resource),
             BaseVectorResource::Map(resource) => Box::new(resource),
-            BaseVectorResource::RefCellMapVectorResource(resource) => Box::new(resource),
+            BaseVectorResource::RwLockMapVectorResource(resource) => Box::new(resource),
         }
     }
 
@@ -34,7 +34,7 @@ impl BaseVectorResource {
         match self {
             BaseVectorResource::Document(resource) => Box::new(resource),
             BaseVectorResource::Map(resource) => Box::new(resource),
-            BaseVectorResource::RefCellMapVectorResource(resource) => Box::new(resource),
+            BaseVectorResource::RwLockMapVectorResource(resource) => Box::new(resource),
         }
     }
 
