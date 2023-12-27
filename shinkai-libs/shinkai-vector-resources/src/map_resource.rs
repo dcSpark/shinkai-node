@@ -128,15 +128,20 @@ impl VectorResource for MapVectorResource {
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
-        // Update indices
-        self.data_tag_index.add_node(&node);
-        self.metadata_index.add_node(&node);
-
-        // Embedding details
+        // Update ids to match supplied id
+        let mut updated_node = node;
+        updated_node.id = id.to_string();
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
-        self._insert_node(node.clone());
-        self.embeddings.insert(node.id.clone(), embedding);
+
+        // Insert node/embeddings
+        self._insert_node(updated_node.clone());
+        self.embeddings.insert(updated_node.id.clone(), embedding);
+
+        // Update indices
+        self.data_tag_index.add_node(&updated_node);
+        self.metadata_index.add_node(&updated_node);
+
         self.update_last_modified_to_now();
         Ok(())
     }

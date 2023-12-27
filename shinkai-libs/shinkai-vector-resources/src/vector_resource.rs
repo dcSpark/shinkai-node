@@ -238,13 +238,12 @@ pub trait VectorResource: Send + Sync {
         }
     }
 
-    /// Retrieves a node, no matter its depth, given its path.
-    /// If the path is invalid at any part, then method will error.
+    /// Retrieves a node at any depth, given its path.
+    /// If the path is invalid at any part, or empty, then method will error.
     fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
-
         // Fetch the first node directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header(None);
@@ -264,13 +263,87 @@ pub trait VectorResource: Send + Sync {
                 }
             }
         }
-
         Ok(RetrievedNode::new(node, 0.0, last_resource_header, path))
     }
 
     /// Boolean check to see if a node exists at a given path
     fn check_node_exists_at_path(&self, path: VRPath) -> bool {
         self.retrieve_node_at_path(path).is_ok()
+    }
+
+    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling performing updates inside of VRs.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn mutate_node_at_path(
+        &mut self,
+        path: VRPath,
+        mutator: &mut dyn Fn(&mut Node, &mut Embedding, HashMap<String, Box<dyn Any>>) -> Result<(), VRError>,
+        mutator_data: HashMap<String, Box<dyn Any>>,
+    ) -> Result<(), VRError> {
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let last_mut = deconstructed_nodes
+            .last_mut()
+            .ok_or(VRError::InvalidVRPath(path.clone()))?;
+        let (_, last_node, last_embedding) = last_mut;
+        mutator(last_node, last_embedding, mutator_data)?;
+
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        self.replace_node(node_key, node, embedding)?;
+        Ok(())
+    }
+
+    /// Removes a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn remove_node_at_path(&mut self, path: VRPath) -> Result<(Node, Embedding), VRError> {
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
+
+        // Rebuild the nodes after removing the target node
+        if !deconstructed_nodes.is_empty() {
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            self.replace_node(node_key, node, embedding)?;
+        }
+
+        Ok((removed_node.1, removed_node.2))
+    }
+
+    /// Replaces a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn replace_node_at_path(&mut self, path: VRPath, new_node: Node, new_embedding: Embedding) -> Result<(), VRError> {
+        // Remove the node at the end of the deconstructed nodes
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
+
+        // Insert the new node at the end of the deconstructed nodes
+        deconstructed_nodes.push((path.path_ids.last().unwrap().clone(), new_node, new_embedding));
+
+        // Rebuild the nodes after replacing the node
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        self.replace_node(node_key, node, embedding)?;
+
+        Ok(())
+    }
+
+    /// Inserts a node at the provided path, using the supplied id. Supports inserting at root level as well.
+    /// If the path is invalid at any part, then method will error, and no changes will be applied to the VR.
+    fn insert_node_at_path(
+        &mut self,
+        path: VRPath,
+        node_to_insert_id: String,
+        node_to_insert: Node,
+        node_to_insert_embedding: Embedding,
+    ) -> Result<(), VRError> {
+        // If inserting at root, just do it directly
+        if path.path_ids.is_empty() {
+            self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
+            return Ok(());
+        }
+        // Insert the new node at the end of the deconstructed nodes
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        deconstructed_nodes.push((node_to_insert_id, node_to_insert, node_to_insert_embedding));
+        // Rebuild the nodes after inserting the new node
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        self.replace_node(node_key, node, embedding)?;
+        Ok(())
     }
 
     /// Internal method. Given a path, pops out each node along the path in order
@@ -323,68 +396,6 @@ pub trait VectorResource: Send + Sync {
         }
 
         Ok(current_node)
-    }
-
-    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling performing updates inside of VRs.
-    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    fn mutate_node_at_path(
-        &mut self,
-        path: VRPath,
-        mutator: &mut dyn Fn(&mut Node, &mut Embedding, HashMap<String, Box<dyn Any>>) -> Result<(), VRError>,
-        mutator_data: HashMap<String, Box<dyn Any>>,
-    ) -> Result<(), VRError> {
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path)?;
-
-        let last_mut = deconstructed_nodes
-            .last_mut()
-            .ok_or(VRError::InvalidVRPath(VRPath::new()))?;
-        let (_, last_node, last_embedding) = last_mut;
-        mutator(last_node, last_embedding, mutator_data)?;
-
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding)?;
-        Ok(())
-    }
-
-    /// Removes a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
-    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    fn remove_node_at_path(&mut self, path: VRPath) -> Result<(Node, Embedding), VRError> {
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path)?;
-        let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(VRPath::new()))?;
-
-        // Rebuild the nodes after removing the target node
-        if !deconstructed_nodes.is_empty() {
-            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            self.replace_node(node_key, node, embedding)?;
-        }
-
-        Ok((removed_node.1, removed_node.2))
-    }
-
-    /// Inserts a node into the Vector Resource at the provided path, using the supplied id. Supports inserting at root level.
-    /// If the path is invalid at any part, then method will error, and no changes will be applied to the VR.
-    fn insert_node_at_path(
-        &mut self,
-        path: VRPath,
-        id: String,
-        node_to_insert: Node,
-        embedding: Embedding,
-    ) -> Result<(), VRError> {
-        // If inserting at root, just do it directly
-        if path.path_ids.is_empty() {
-            self.insert_node(id, node_to_insert, embedding)?;
-            return Ok(());
-        }
-
-        // Insert the new node at the end of the deconstructed nodes
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
-        deconstructed_nodes.push((id, node_to_insert, embedding));
-
-        // Rebuild the nodes after inserting the new node
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding)?;
-
-        Ok(())
     }
 
     #[cfg(feature = "native-http")]

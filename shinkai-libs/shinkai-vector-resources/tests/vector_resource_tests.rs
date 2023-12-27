@@ -270,7 +270,7 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(res.len(), 6);
-    let path = VRPath::from_path_string("/3/");
+    let path = VRPath::from_string("/3/");
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -279,7 +279,7 @@ fn test_manual_resource_vector_search() {
         Some(path),
     );
     assert_eq!(res.len(), 4);
-    let path = VRPath::from_path_string("/3/doc_key/");
+    let path = VRPath::from_string("/3/doc_key/");
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -367,7 +367,7 @@ fn test_manual_resource_vector_search() {
     assert_eq!(fruit_doc.metadata_index().get_all_metadata_keys().len(), 3);
 
     // At path method tests
-    let path = VRPath::from_path_string("/doc_key/");
+    let path = VRPath::from_string("/doc_key/");
     new_map_resource
         .insert_vector_resource_node_at_path(
             path,
@@ -379,7 +379,7 @@ fn test_manual_resource_vector_search() {
         .unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     let res = new_map_resource
-        .retrieve_node_at_path(VRPath::from_path_string("/doc_key/4/doc_key/3"))
+        .retrieve_node_at_path(VRPath::from_string("/doc_key/4/doc_key/3"))
         .unwrap();
     println!("Get node at path result: {:?}", res);
     assert_eq!(res.node.id, "3");
