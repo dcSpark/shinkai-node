@@ -24,6 +24,8 @@ pub enum VRError {
     InvalidReferenceString(String),
     InvalidDateTimeString(String),
     LockAcquisitionFailed(String),
+    MissingKey(String),
+    InvalidType(String),
 }
 
 impl fmt::Display for VRError {
@@ -62,6 +64,8 @@ impl fmt::Display for VRError {
                 write!(f, "Provided datetime string does not match RFC3339: {}", s)
             }
             VRError::LockAcquisitionFailed(ref s) => write!(f, "Failed to acquire lock for: {}", s),
+            VRError::MissingKey(ref s) => write!(f, "Missing key not found in hashmap: {}", s),
+            VRError::InvalidType(ref s) => write!(f, "Invalid type for data found in hashmap at key: {}", s),
         }
     }
 }

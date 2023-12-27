@@ -19,6 +19,7 @@ pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
 use env_logger::filter::Filter;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fs::Metadata;
 
@@ -268,55 +269,54 @@ pub trait VectorResource: Send + Sync {
         self.get_node_at_path(path).is_ok()
     }
 
-    /// Applies a mutator function on a node at a given path.
+    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling performing updates inside of VRs.
     /// If the path is invalid at any part, then method will error, and no changes will be applied to the VR.
+    /// `mutator_data` is passed as an input to the `mutator` function.
     fn mutate_node_at_path(
         &mut self,
         path: VRPath,
-        mutator: &mut dyn Fn(&mut Node) -> Result<(), VRError>,
+        mutator: &mut dyn Fn(&mut Node, &mut Embedding, HashMap<String, Box<dyn Any>>) -> Result<(), VRError>,
+        mutator_data: HashMap<String, Box<dyn Any>>,
     ) -> Result<(), VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
 
-        // Fetch and the first node directly, then add it to removed_nodes list
-        // We don't explicitly remove it, because if the function errors the VR still stays coherent
         let first_node = self.get_node(path.path_ids[0].clone())?;
         let first_embedding = self.get_embedding(path.path_ids[0].clone())?;
         let mut removed_nodes = vec![(path.path_ids[0].clone(), first_node, first_embedding)];
 
-        // Iterate through the rest of the path, popping each path as needed
         for id in path.path_ids.iter().skip(1) {
-            let (node_key, ref mut node, _) = removed_nodes.last_mut().unwrap();
+            let last_mut = removed_nodes.last_mut().ok_or(VRError::InvalidVRPath(path.clone()))?;
+            let (_node_key, ref mut node, ref mut _embedding) = last_mut;
             match &mut node.content {
                 NodeContent::Resource(resource) => {
-                    let (removed_node, embedding) = resource.as_trait_object_mut().remove_node(id.to_string())?;
-                    removed_nodes.push((id.clone(), removed_node, embedding));
+                    let (removed_node, removed_embedding) =
+                        resource.as_trait_object_mut().remove_node(id.to_string())?;
+                    removed_nodes.push((id.clone(), removed_node, removed_embedding));
                 }
                 _ => {
-                    if id != path.path_ids.last().unwrap() {
+                    if id != path.path_ids.last().ok_or(VRError::InvalidVRPath(path.clone()))? {
                         return Err(VRError::InvalidVRPath(path.clone()));
                     }
                 }
             }
         }
 
-        // Apply the mutation function to the final node
-        let (_, last_node, _) = removed_nodes.last_mut().unwrap();
-        mutator(last_node);
+        let last_mut = removed_nodes.last_mut().ok_or(VRError::InvalidVRPath(path.clone()))?;
+        let (_, last_node, last_embedding) = last_mut;
+        mutator(last_node, last_embedding, mutator_data)?;
 
-        // Insert the nodes back into each other backwards through the vector using their previous keys
-        let mut current_node = removed_nodes.pop().unwrap();
+        let mut current_node = removed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
         for (id, mut node, embedding) in removed_nodes.into_iter().rev() {
             if let NodeContent::Resource(resource) = &mut node.content {
                 resource
                     .as_trait_object_mut()
-                    .insert_node(id.clone(), current_node.1, current_node.2)?;
+                    .insert_node(current_node.0, current_node.1, current_node.2)?;
                 current_node = (id, node, embedding);
             }
         }
 
-        // Now we replace the original top-level node in self with the re-collected current_node with mutations applied
         self.replace_node(current_node.0, current_node.1, current_node.2)?;
 
         Ok(())

@@ -143,6 +143,7 @@ fn test_manual_resource_vector_search() {
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
+    let mut new_map_resource = map_resource.as_map_resource_cloned().unwrap();
     fruit_doc.append_vector_resource_node_auto(map_resource, None);
 
     //
@@ -364,6 +365,24 @@ fn test_manual_resource_vector_search() {
     // Check the metadata_index
     println!("Metdata index: {:?}", fruit_doc.metadata_index());
     assert_eq!(fruit_doc.metadata_index().get_all_metadata_keys().len(), 3);
+
+    // At path method tests
+    let path = VRPath::from_path_string("/doc_key/");
+    new_map_resource
+        .insert_vector_resource_node_at_path(
+            path,
+            "4",
+            BaseVectorResource::Map(new_map_resource.clone()),
+            None,
+            &new_map_resource.resource_embedding().clone(),
+        )
+        .unwrap();
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    let res = new_map_resource
+        .get_node_at_path(VRPath::from_path_string("/doc_key/4/doc_key/3"))
+        .unwrap();
+    println!("Get node at path result: {:?}", res);
+    assert_eq!(res.id, "3");
 }
 
 #[test]

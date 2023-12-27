@@ -9,6 +9,7 @@ use crate::source::{SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
+use std::any::Any;
 use std::collections::HashMap;
 use std::fs::Metadata;
 
@@ -237,6 +238,50 @@ impl MapVectorResource {
     ) {
         let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
         self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+    }
+
+    pub fn insert_vector_resource_node_at_path(
+        &mut self,
+        path: VRPath,
+        key: &str,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<(), VRError> {
+        let mut data = HashMap::new();
+
+        self.mutate_node_at_path(
+            path,
+            &mut |mut_node, mut_embedding, mutator_data| {
+                // If the node to insert into is actually a Vector Resource, continue
+                if let Ok(mut node_resource) = mut_node.get_vector_resource_content() {
+                    let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
+                    let node_content = NodeContent::Resource(resource.clone());
+                    let new_internal_node =
+                        Node::from_node_content(key.to_string(), node_content, metadata.clone(), tag_names);
+                    node_resource.as_trait_object_mut().insert_node(
+                        key.to_string(),
+                        new_internal_node,
+                        embedding.clone(),
+                    )?;
+
+                    let new_node_content = NodeContent::Resource(node_resource.clone());
+                    let new_node = Node::from_node_content(
+                        mut_node.id.clone(),
+                        new_node_content,
+                        mut_node.metadata.clone(),
+                        mut_node.data_tag_names.clone(),
+                    );
+                    *mut_node = new_node;
+                    *mut_embedding = embedding.clone();
+                } else {
+                    return Err(VRError::InvalidVRBaseType);
+                }
+
+                Ok(())
+            },
+            data,
+        )
     }
 
     /// Inserts a new node (with a BaseVectorResource) with the resource's included embedding

@@ -141,7 +141,8 @@ impl VectorResource for DocumentVectorResource {
         let node_clone = node.clone();
         // Id + index logic
         let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
-        if integer_id > self.node_count {
+        if integer_id > self.node_count + 1 {
+            // We do +1 since we resize the vectors explicitly in this method
             return Err(VRError::InvalidNodeId);
         }
         let index = (integer_id - 1) as usize;
