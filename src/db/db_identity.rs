@@ -29,6 +29,16 @@ impl ShinkaiDB {
         }
     }
 
+    pub fn has_any_profile(&self) -> Result<bool, ShinkaiDBError> {
+        let cf_identity = self.cf_handle(Topic::ProfilesIdentityKey.as_str())?;
+        let mut iter = self.db.iterator_cf(cf_identity, rocksdb::IteratorMode::Start);
+
+        match iter.next() {
+            Some(_) => Ok(true),
+            None => Ok(false),
+        }
+    }
+
     pub fn get_all_profiles(&self, my_node_identity: ShinkaiName) -> Result<Vec<StandardIdentity>, ShinkaiDBError> {
         let my_node_identity_name = my_node_identity.get_node_name();
         println!("my_node_identity_name: {}", my_node_identity_name);

@@ -34,12 +34,12 @@ mod crypto_identities;
 mod db;
 mod managers;
 mod network;
+mod payments;
 mod planner;
 mod resources;
 mod schemas;
 mod tools;
 mod utils;
-mod payments;
 mod vector_fs;
 
 /// Hard-coded embedding model used by the node as its default.
@@ -219,7 +219,9 @@ fn parse_secrets_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
             .expect("Invalid NODE_SECRET_FILE_PATH")
             .to_string()
     } else {
-        Path::new("db")
+        let db_path = Path::new("db");
+        fs::create_dir_all(&db_path).expect("Failed to create directory");
+        db_path
             .join(".secret")
             .to_str()
             .expect("Invalid NODE_SECRET_FILE_PATH")

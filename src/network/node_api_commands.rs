@@ -1687,20 +1687,16 @@ impl Node {
                                         ),
                                     }
                                 }
-                                Ok(None) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::DetailedAPI,
-                                        ShinkaiLogLevel::Error,
-                                        format!("No file found in the inbox").as_str(),
-                                    )
-                                }
-                                Err(err) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::DetailedAPI,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Error getting file from inbox: {:?}", err).as_str(),
-                                    )
-                                }
+                                Ok(None) => shinkai_log(
+                                    ShinkaiLogOption::DetailedAPI,
+                                    ShinkaiLogLevel::Error,
+                                    format!("No file found in the inbox").as_str(),
+                                ),
+                                Err(err) => shinkai_log(
+                                    ShinkaiLogOption::DetailedAPI,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Error getting file from inbox: {:?}", err).as_str(),
+                                ),
                             }
 
                             let _ = res.send(Ok(())).await;
@@ -2136,6 +2132,13 @@ impl Node {
                 Ok(())
             }
         }
+    }
+
+    pub async fn api_is_pristine(&self, res: Sender<Result<bool, APIError>>) -> Result<(), NodeError> {
+        let db_lock = self.db.lock().await;
+        let has_any_profile = db_lock.has_any_profile().unwrap_or(false);
+        let _ = res.send(Ok(!has_any_profile)).await;
+        Ok(())
     }
 
     pub async fn api_change_nodes_name(
