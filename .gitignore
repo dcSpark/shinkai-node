@@ -36,3 +36,4 @@ typescript
 .secret
 db/.secret
 vector_fs_db
+shinkai-libs/shinkai-message-pyo3/env_x86_64
