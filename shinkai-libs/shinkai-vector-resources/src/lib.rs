@@ -10,6 +10,7 @@ pub mod resource_errors;
 pub mod shinkai_time;
 pub mod source;
 pub mod unstructured;
+pub mod utils;
 pub mod vector_resource;
 pub mod vector_resource_types;
 pub mod vector_search_traversal;

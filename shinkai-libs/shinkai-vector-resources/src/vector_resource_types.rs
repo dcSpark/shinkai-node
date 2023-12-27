@@ -1,6 +1,7 @@
 use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
+use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRLocation;
@@ -240,9 +241,9 @@ impl Node {
     }
 
     /// Create a new VRHeader-holding Node with a provided String id
-    pub fn new_vrheader(
+    pub fn new_vr_header(
         id: String,
-        vrheader: &VRHeader,
+        vr_header: &VRHeader,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
@@ -250,7 +251,7 @@ impl Node {
 
         Self {
             id,
-            content: NodeContent::VRHeader(vrheader.clone()),
+            content: NodeContent::VRHeader(vr_header.clone()),
             metadata,
             data_tag_names: data_tag_names.clone(),
             last_modified_datetime: current_time,
@@ -258,13 +259,13 @@ impl Node {
     }
 
     /// Create a new VRHeader-holding Node with a provided u64 id, which gets converted to string internally
-    pub fn new_vrheader_with_integer_id(
+    pub fn new_vr_header_with_integer_id(
         id: u64,
-        vrheader: &VRHeader,
+        vr_header: &VRHeader,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
-        Self::new_vrheader(id.to_string(), vrheader, metadata, data_tag_names)
+        Self::new_vr_header(id.to_string(), vr_header, metadata, data_tag_names)
     }
 
     /// Creates a new Node using provided content with a String id.
@@ -368,6 +369,7 @@ pub struct VRHeader {
     pub resource_embedding: Option<Embedding>,
     pub resource_created_datetime: String,
     pub resource_last_modified_datetime: String,
+    pub resource_embedding_model_used: EmbeddingModelType,
     /// The location where the VectorResource is held. Will be None for VectorResources
     /// held inside of nodes of an existing VectorResource.
     pub resource_location: Option<VRLocation>,
@@ -390,6 +392,7 @@ impl VRHeader {
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
         metadata_index_keys: Vec<String>,
+        resource_embedding_model_used: EmbeddingModelType,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -402,6 +405,7 @@ impl VRHeader {
             resource_last_modified_datetime,
             resource_location,
             metadata_index_keys,
+            resource_embedding_model_used,
         }
     }
 
@@ -416,6 +420,7 @@ impl VRHeader {
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
         metadata_index_keys: Vec<String>,
+        resource_embedding_model_used: EmbeddingModelType,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -435,6 +440,7 @@ impl VRHeader {
             resource_last_modified_datetime,
             resource_location,
             metadata_index_keys,
+            resource_embedding_model_used,
         })
     }
 

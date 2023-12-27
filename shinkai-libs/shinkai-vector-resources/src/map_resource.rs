@@ -105,6 +105,11 @@ impl VectorResource for MapVectorResource {
         self.resource_embedding = embedding;
     }
 
+    fn set_resource_id(&mut self, id: String) {
+        self.update_last_modified_to_now();
+        self.resource_id = id;
+    }
+
     /// Retrieves a node's embedding given its key (id)
     fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
         Ok(self.embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
@@ -128,18 +133,17 @@ impl MapVectorResource {
         name: &str,
         desc: Option<&str>,
         source: VRSource,
-        resource_id: &str,
         resource_embedding: Embedding,
         embeddings: HashMap<String, Embedding>,
         nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        MapVectorResource {
+        let mut resource = MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source,
-            resource_id: String::from(resource_id),
+            resource_id: String::from("default"),
             resource_embedding,
             embeddings,
             node_count: nodes.len() as u64,
@@ -150,16 +154,18 @@ impl MapVectorResource {
             created_datetime: current_time.clone(),
             last_modified_datetime: current_time,
             metadata_index: MetadataIndex::new(),
-        }
+        };
+        // Generate a unique resource_id:
+        resource.generate_and_update_resource_id();
+        resource
     }
 
     /// Initializes an empty `MapVectorResource` with empty defaults.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, resource_id: &str) -> Self {
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
         MapVectorResource::new(
             name,
             desc,
             source,
-            resource_id,
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),

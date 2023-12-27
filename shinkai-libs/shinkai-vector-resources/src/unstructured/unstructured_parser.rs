@@ -44,7 +44,6 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_with_custom_collection(
@@ -54,7 +53,6 @@ impl UnstructuredParser {
             desc,
             source,
             parsing_tags,
-            resource_id,
             max_chunk_size,
             Self::collect_texts_and_indices,
         )
@@ -97,7 +95,6 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: String,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
     ) -> Result<BaseVectorResource, VRError> {
@@ -112,17 +109,7 @@ impl UnstructuredParser {
         )
         .await?;
 
-        Self::process_new_doc_resource(
-            new_text_groups,
-            &*generator,
-            &name,
-            desc,
-            source,
-            parsing_tags,
-            &resource_id,
-            None,
-        )
-        .await
+        Self::process_new_doc_resource(new_text_groups, &*generator, &name, desc, source, parsing_tags, None).await
     }
 
     #[cfg(feature = "native-http")]
@@ -174,11 +161,10 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: &str,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
@@ -194,7 +180,7 @@ impl UnstructuredParser {
         // Add each text group as either Vector Resource Nodes,
         // or data-holding Nodes depending on if each has any sub-groups
         for grouped_text in &text_groups {
-            let (new_resource_id, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
+            let (_, metadata, has_sub_groups, new_name) = Self::process_grouped_text(grouped_text);
             if has_sub_groups {
                 let new_doc = Self::process_new_doc_resource(
                     grouped_text.sub_groups.clone(),
@@ -203,7 +189,6 @@ impl UnstructuredParser {
                     None,
                     source.clone(),
                     parsing_tags,
-                    &new_resource_id,
                     grouped_text.embedding.clone(),
                 )
                 .await?;
@@ -238,7 +223,7 @@ impl UnstructuredParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), &resource_id);
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.

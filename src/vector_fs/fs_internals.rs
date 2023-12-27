@@ -30,7 +30,6 @@ impl VectorFSInternals {
             "VecFS Core Resource",
             None,
             VRSource::None,
-            "core",
             Embedding::new(&String::new(), vec![]),
             HashMap::new(),
             HashMap::new(),

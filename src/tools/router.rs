@@ -291,10 +291,9 @@ impl ToolRouter {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
         let source = VRSource::None;
-        let resource_id = "tool_router";
 
         // Initialize the MapVectorResource and add all of the rust tools by default
-        let mut routing_resource = MapVectorResource::new_empty(name, desc, source, resource_id);
+        let mut routing_resource = MapVectorResource::new_empty(name, desc, source);
         let mut metadata = HashMap::new();
         metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 

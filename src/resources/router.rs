@@ -2,12 +2,15 @@ use serde_json;
 use shinkai_vector_resources::base_vector_resources::VRBaseType;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::map_resource::MapVectorResource;
+use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VRHeader, VectorResource};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 use std::str::FromStr;
+
+use crate::network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
 
 /// A top level struct which indexes a series of VRHeaders using a MapVectorResource.
 /// This is used in the DB to keep track of all saved Vector Resources.
@@ -22,9 +25,8 @@ impl VectorResourceRouter {
         let name = "VectorResource Router";
         let desc = Some("Enables performing vector searches to find relevant resources.");
         let source = VRSource::None;
-        let resource_id = "resource_router";
         VectorResourceRouter {
-            routing_resource: MapVectorResource::new_empty(name, desc, source, resource_id),
+            routing_resource: MapVectorResource::new_empty(name, desc, source),
         }
     }
 
@@ -111,6 +113,7 @@ impl VectorResourceRouter {
                         ret_node.node.last_modified_datetime.clone(),
                         None,
                         vec![],
+                        NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone(),
                     );
                     if let Ok(resource_header) = resource_header {
                         resource_headers.push(resource_header);

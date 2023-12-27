@@ -106,6 +106,11 @@ impl VectorResource for DocumentVectorResource {
         self.resource_embedding = embedding;
     }
 
+    fn set_resource_id(&mut self, id: String) {
+        self.update_last_modified_to_now();
+        self.resource_id = id;
+    }
+
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
@@ -139,18 +144,17 @@ impl DocumentVectorResource {
         name: &str,
         desc: Option<&str>,
         source: VRSource,
-        resource_id: &str,
         resource_embedding: Embedding,
         embeddings: Vec<Embedding>,
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        DocumentVectorResource {
+        let mut resource = DocumentVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source,
-            resource_id: String::from(resource_id),
+            resource_id: String::from("default"),
             resource_embedding,
             embeddings,
             node_count: nodes.len() as u64,
@@ -161,16 +165,19 @@ impl DocumentVectorResource {
             created_datetime: current_time.clone(),
             last_modified_datetime: current_time,
             metadata_index: MetadataIndex::new(),
-        }
+        };
+
+        // Generate a unique resource_id:
+        resource.generate_and_update_resource_id();
+        resource
     }
 
     /// Initializes an empty `DocumentVectorResource` with empty defaults.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, resource_id: &str) -> Self {
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
         DocumentVectorResource::new(
             name,
             desc,
             source,
-            resource_id,
             Embedding::new(&String::new(), vec![]),
             Vec::new(),
             Vec::new(),

@@ -82,7 +82,6 @@ impl UnstructuredAPI {
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
-        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
         let elements = self.file_request(file_buffer, &name).await?;
 
         UnstructuredParser::process_elements_into_resource(
@@ -92,7 +91,6 @@ impl UnstructuredAPI {
             desc,
             source,
             parsing_tags,
-            resource_id,
             max_chunk_size,
         )
         .await

@@ -41,7 +41,7 @@ impl JobManager {
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
-        let (resource_id, source, elements) =
+        let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
         let desc = Self::generate_description(&elements, agent).await?;
         ParsingHelper::parse_elements_into_resource(
@@ -51,7 +51,6 @@ impl JobManager {
             Some(desc),
             source,
             parsing_tags,
-            resource_id,
             max_node_size,
         )
         .await
@@ -78,20 +77,10 @@ impl ParsingHelper {
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
-        let (resource_id, source, elements) =
+        let (_, source, elements) =
             ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
 
-        Self::parse_elements_into_resource(
-            elements,
-            generator,
-            name,
-            desc,
-            source,
-            parsing_tags,
-            resource_id,
-            max_node_size,
-        )
-        .await
+        Self::parse_elements_into_resource(elements, generator, name, desc, source, parsing_tags, max_node_size).await
     }
 
     /// Helper method which keeps core logic related to parsing elements into a BaseVectorResource
@@ -102,7 +91,6 @@ impl ParsingHelper {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: String,
         max_node_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
         let resource = UnstructuredParser::process_elements_into_resource(
@@ -112,7 +100,6 @@ impl ParsingHelper {
             desc,
             source,
             parsing_tags,
-            resource_id,
             max_node_size,
         )
         .await?;

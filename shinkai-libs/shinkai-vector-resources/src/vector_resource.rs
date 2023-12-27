@@ -14,6 +14,7 @@ use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRLocation;
 use crate::source::VRSource;
+use crate::utils::{hash_string, random_string};
 pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
@@ -30,6 +31,7 @@ pub trait VectorResource: Send + Sync {
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
     fn resource_id(&self) -> &str;
+    fn set_resource_id(&mut self, id: String);
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn resource_base_type(&self) -> VRBaseType;
@@ -86,6 +88,15 @@ pub trait VectorResource: Send + Sync {
     fn update_last_modified_to_now(&mut self) {
         let current_time = ShinkaiTime::generate_time_now();
         self.set_last_modified_datetime(current_time).unwrap();
+    }
+
+    /// Generates a random new id string and sets it as the resource_id.
+    /// Used in the VectorFS to guarantee each VR stored has a unique id.
+    fn generate_and_update_resource_id(&mut self) {
+        let mut data_string = ShinkaiTime::generate_time_now();
+        data_string = data_string + self.resource_id() + self.name() + &random_string();
+        let hashed_string = hash_string(&data_string);
+        self.set_resource_id(hashed_string)
     }
 
     #[cfg(feature = "native-http")]
@@ -153,6 +164,7 @@ pub trait VectorResource: Send + Sync {
             self.last_modified_datetime(),
             resource_location,
             metadata_index_keys,
+            self.embedding_model_used(),
         )
     }
 

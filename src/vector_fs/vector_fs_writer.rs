@@ -46,4 +46,23 @@ impl<'a> VFSWriter<'a> {
     pub fn _reader(&'a self, path: VRPath, profile: ShinkaiName) -> Result<VFSReader<'a>, VectorFSError> {
         VFSReader::new(self.requester_name.clone(), path, self.vector_fs, profile)
     }
+
+    // /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.
+    // pub fn _memory_add_vr_header_to_core_resource(&mut self, vr_header: VRHeader) -> Result<(), VectorFSError> {
+    //     let mut internals = self.vector_fs._get_profile_fs_internals(&self.profile)?;
+
+    //     if let Some(embedding) = vr_header.resource_embedding {
+    //         if vr_header.resource_embedding_model_used == internals.default_embedding_model() {
+    //             // save to source resource in internals
+    //             Ok(())
+    //         } else {
+    //             return Err(VectorFSError::EmbeddingModelTypeMismatch(
+    //                 vr_header.resource_embedding_model_used,
+    //                 internals.default_embedding_model(),
+    //             ));
+    //         }
+    //     } else {
+    //         return Err(VectorFSError::EmbeddingMissingInResource);
+    //     }
+    // }
 }
