@@ -164,7 +164,7 @@ impl VectorResourceRouter {
             Ok(old_node) => {
                 // If a resource resource_header with matching shinkai_db_key is found,
                 // replace the existing resource resource_header with the new one.
-                self.replace_resource_header(&old_node.id, resource_header)?;
+                self.replace_resource_header(&old_node.id.clone(), resource_header)?;
             }
             Err(_) => {
                 // If no resource resource_header with matching shinkai_db_key is found,

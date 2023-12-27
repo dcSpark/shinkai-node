@@ -116,13 +116,23 @@ impl VectorResource for MapVectorResource {
     }
 
     /// Retrieves a node given its key (id)
-    fn get_node(&self, key: String) -> Result<Node, VRError> {
-        Ok(self.nodes.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
+    fn get_node(&self, key: String) -> Result<&Node, VRError> {
+        self.nodes.get(&key).ok_or(VRError::InvalidNodeId)
+    }
+
+    /// Retrieves a mutable reference to a node given its key (id)
+    fn get_node_mut(&mut self, key: String) -> Result<&mut Node, VRError> {
+        self.nodes.get_mut(&key).ok_or(VRError::InvalidNodeId)
     }
 
     /// Returns all nodes in the MapVectorResource
-    fn get_nodes(&self) -> Vec<Node> {
-        self.nodes.values().cloned().collect()
+    fn get_nodes(&self) -> Vec<&Node> {
+        self.nodes.values().collect()
+    }
+
+    /// Returns mutable references to all nodes in the MapVectorResource
+    fn get_nodes_mut(&mut self) -> Vec<&mut Node> {
+        self.nodes.values_mut().collect()
     }
 }
 

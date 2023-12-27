@@ -43,10 +43,14 @@ pub trait VectorResource: Send + Sync {
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
     fn get_embeddings(&self) -> Vec<Embedding>;
-    /// Retrieves a Node given its id, at the root level depth.
-    fn get_node(&self, id: String) -> Result<Node, VRError>;
-    /// Retrieves all Nodes at the root level of the Vector Resource
-    fn get_nodes(&self) -> Vec<Node>;
+    /// Retrieves a reference to a Node given its id, at the root level depth.
+    fn get_node(&self, id: String) -> Result<&Node, VRError>;
+    /// Retrieves a mutable reference to a Node given its id, at the root level depth.
+    fn get_node_mut(&mut self, key: String) -> Result<&mut Node, VRError>;
+    /// Retrieves mutable references to all Nodes at the root level of the Vector Resource
+    fn get_nodes(&self) -> Vec<&Node>;
+    /// Retrieves mutable references to all Nodes at the root level of the Vector Resource
+    fn get_nodes_mut(&mut self) -> Vec<&mut Node>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> String;
     /// ISO RFC3339 when then Vector Resource was last modified
@@ -233,7 +237,7 @@ pub trait VectorResource: Send + Sync {
 
     /// Retrieves a node, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
-    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VRError> {
+    fn get_node_with_path(&self, path: VRPath) -> Result<&Node, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
@@ -241,8 +245,8 @@ pub trait VectorResource: Send + Sync {
         // Fetch the first node directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
         for id in path.path_ids.iter().skip(1) {
-            match node.content {
-                NodeContent::Resource(ref resource) => {
+            match &node.content {
+                NodeContent::Resource(resource) => {
                     node = resource.as_trait_object().get_node(id.clone())?;
                 }
                 _ => {
@@ -255,6 +259,10 @@ pub trait VectorResource: Send + Sync {
             }
         }
         Ok(node)
+    }
+
+    fn check_node_exists(&self, path: VRPath) -> bool {
+        self.get_node_with_path(path).is_ok()
     }
 
     #[cfg(feature = "native-http")]
@@ -390,7 +398,7 @@ pub trait VectorResource: Send + Sync {
         if let Some(path) = starting_path {
             match self.get_node_with_path(path.clone()) {
                 Ok(node) => {
-                    if let NodeContent::Resource(resource) = node.content {
+                    if let NodeContent::Resource(resource) = node.content.clone() {
                         return resource.as_trait_object()._vector_search_customized_core(
                             query,
                             num_of_results,
@@ -579,7 +587,7 @@ pub trait VectorResource: Send + Sync {
                 }
 
                 let results = self._recursive_data_extraction(
-                    node,
+                    node.clone(),
                     score,
                     query.clone(),
                     num_of_results,

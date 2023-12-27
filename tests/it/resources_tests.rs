@@ -48,7 +48,7 @@ fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<D
         })
         .unwrap();
 
-    resource.as_document_resource().unwrap()
+    resource.as_document_resource_cloned().unwrap()
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn test_pdf_resource_save_to_db() {
     let fetched_doc = shinkai_db
         .get_resource(&doc.reference_string(), &profile)
         .unwrap()
-        .as_document_resource()
+        .as_document_resource_cloned()
         .unwrap();
 
     assert_eq!(doc, fetched_doc);

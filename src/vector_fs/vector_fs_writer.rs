@@ -65,4 +65,11 @@ impl<'a> VFSWriter<'a> {
     //         return Err(VectorFSError::EmbeddingMissingInResource);
     //     }
     // }
+
+    // /// Saves a Vector Resource into the VectorFS. If a VR with the same id already exists and writing to the
+    // /// same path, then overwrites the existing VR. If same id, but writing to a different path, then a new id
+    // ///  is generated/set for the input VR and it is saved separately in the fs_db.
+    // /// If an source_file is provided then it likewise follows the same update logic just like the VR.
+    // pub fn save_vector_resource(&mut self, resource: BaseVectorResource) {
+    //    }
 }

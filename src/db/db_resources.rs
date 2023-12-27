@@ -261,7 +261,7 @@ impl ShinkaiDB {
     ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
         let mut docs: Vec<DocumentVectorResource> = Vec::new();
         for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
-            if let Ok(document_resource) = doc.as_document_resource() {
+            if let Ok(document_resource) = doc.as_document_resource_cloned() {
                 docs.push(document_resource.clone());
             }
         }

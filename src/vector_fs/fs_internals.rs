@@ -1,14 +1,15 @@
+use super::{fs_error::VectorFSError, permissions::PermissionsIndex};
 use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
-
-use super::permissions::PermissionsIndex;
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
+    base_vector_resources::BaseVectorResource,
     embeddings::Embedding,
     map_resource::MapVectorResource,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
+    resource_errors::VRError,
     vector_resource::VectorResource,
-    vector_search_traversal::{VRPath, VRSource},
+    vector_search_traversal::{NodeContent, VRPath, VRSource},
 };
 use std::collections::HashMap;
 
@@ -70,4 +71,52 @@ impl VectorFSInternals {
     pub fn from_json(s: &str) -> serde_json::Result<Self> {
         serde_json::from_str(s)
     }
+
+    // /// Creates a new folder in this VectorFSInternals. Returns the full path to the folder.
+    // pub fn create_new_folder(
+    //     &mut self,
+    //     name: String,
+    //     path: VRPath,
+    // ) -> Result<VRPath, VectorFSError> {
+    //     if path.path_ids.is_empty() {
+    //         Err(VRError::InvalidVRPath(path.clone()))?;
+    //     }
+
+    //     // Create a new empty map resource to act as a new folder
+    //     let new_folder_resource = BaseVectorResource::Map(MapVectorResource::new_empty(&name, None, VRSource::None));
+    //     // TODO: Check if the default empty embedding works with vector searches across the FS, or if we need to specify a filled out
+    //     // Embedding here to have scoring/traversal work at all, even for exhaustive.
+    //     let embedding = new_folder_resource.as_trait_object().resource_embedding();
+
+    //     // Fetch the first node directly, then iterate through the rest
+    //     let mut node = self.fs_core_resource.get_node(path.path_ids[0].clone())?;
+    //     for id in path.path_ids.iter().skip(1) {
+    //         match node.content {
+    //             NodeContent::Resource(ref mut resource) => {
+    //                 if let Some(last) = path.path_ids.last() {
+    //                     if id == last {
+    //                         if let Ok(map) = resource.as_map_resource() {
+    //                             map.insert_vector_resource_node(
+    //                                // process the name into underscore/lowercase ,
+    //                                 new_folder_resource.clone(),
+    //                                 metadata.clone(),
+    //                                 embedding,
+    //                             );
+    //                             return Ok(());
+    //                         }
+    //                     } else {
+    //                         node = resource.as_trait_object().get_node(id.clone())?;
+    //                     }
+    //                 }
+    //             }
+    //             _ => {
+    //                 Err(VRError::InvalidVRPath(path.clone()))?;
+    //             }
+    //         }
+    //     }
+    //     Err(VRError::InvalidVRPath(path.clone()))?
+    // }
 }
+
+/// Struct that abstracts away the MapVectorResource interface for folders in the VectorFSInternals
+struct Folder {}

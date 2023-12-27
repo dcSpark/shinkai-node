@@ -60,7 +60,23 @@ impl BaseVectorResource {
     }
 
     /// Attempts to convert the BaseVectorResource into a DocumentVectorResource
-    pub fn as_document_resource(&self) -> Result<DocumentVectorResource, VRError> {
+    pub fn as_document_resource(&mut self) -> Result<&mut DocumentVectorResource, VRError> {
+        match self {
+            BaseVectorResource::Document(resource) => Ok(resource),
+            _ => Err(VRError::InvalidVRBaseType),
+        }
+    }
+
+    /// Attempts to convert the BaseVectorResource into a MapVectorResource
+    pub fn as_map_resource(&mut self) -> Result<&mut MapVectorResource, VRError> {
+        match self {
+            BaseVectorResource::Map(resource) => Ok(resource),
+            _ => Err(VRError::InvalidVRBaseType),
+        }
+    }
+
+    /// Attempts to convert the BaseVectorResource into a DocumentVectorResource
+    pub fn as_document_resource_cloned(&self) -> Result<DocumentVectorResource, VRError> {
         match self {
             BaseVectorResource::Document(resource) => Ok(resource.clone()),
             _ => Err(VRError::InvalidVRBaseType),
@@ -68,7 +84,7 @@ impl BaseVectorResource {
     }
 
     /// Attempts to convert the BaseVectorResource into a MapVectorResource
-    pub fn as_map_resource(&self) -> Result<MapVectorResource, VRError> {
+    pub fn as_map_resource_cloned(&self) -> Result<MapVectorResource, VRError> {
         match self {
             BaseVectorResource::Map(resource) => Ok(resource.clone()),
             _ => Err(VRError::InvalidVRBaseType),
