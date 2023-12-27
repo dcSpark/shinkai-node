@@ -47,7 +47,7 @@ pub trait VectorResource: Send + Sync {
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
-    /// Insert a Node/Embedding into the VR using the provided id (root level depth)
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError>;
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError>;
@@ -266,59 +266,6 @@ pub trait VectorResource: Send + Sync {
     /// Boolean check to see if a node exists at a given path
     fn check_node_exists_at_path(&self, path: VRPath) -> bool {
         self.get_node_at_path(path).is_ok()
-    }
-
-    /// Applies a mutator function on a node at a given path.
-    /// If the path is invalid at any part, then method will error, and no changes will be applied to the VR.
-    fn mutate_node_at_path<F>(&mut self, path: VRPath, mutator: F) -> Result<(), VRError>
-    where
-        F: FnOnce(&mut Node),
-    {
-        if path.path_ids.is_empty() {
-            return Err(VRError::InvalidVRPath(path.clone()));
-        }
-
-        // Fetch and the first node directly, then add it to removed_nodes list
-        // We don't explicitly remove it, because if the function errors the VR still stays coherent
-        let first_node = self.get_node(path.path_ids[0].clone())?;
-        let first_embedding = self.get_embedding(path.path_ids[0].clone())?;
-        let mut removed_nodes = vec![(path.path_ids[0].clone(), first_node, first_embedding)];
-
-        // Iterate through the rest of the path, popping each path as needed
-        for id in path.path_ids.iter().skip(1) {
-            let (node_key, node, _) = removed_nodes.last().unwrap();
-            match &node.content {
-                NodeContent::Resource(resource) => {
-                    let (removed_node, embedding) = resource.as_trait_object().remove_node(id.to_string())?;
-                    removed_nodes.push((id.clone(), removed_node, embedding));
-                }
-                _ => {
-                    if id != path.path_ids.last().unwrap() {
-                        return Err(VRError::InvalidVRPath(path.clone()));
-                    }
-                }
-            }
-        }
-
-        // Apply the mutation function to the final node
-        let (_, last_node, _) = removed_nodes.last_mut().unwrap();
-        mutator(last_node);
-
-        // Insert the nodes back into each other backwards through the vector using their previous keys
-        let mut current_node = removed_nodes.pop().unwrap();
-        for (id, mut node, embedding) in removed_nodes.into_iter().rev() {
-            if let NodeContent::Resource(resource) = &mut node.content {
-                resource
-                    .as_trait_object()
-                    .insert_node(id, current_node.1, current_node.2)?;
-                current_node = (id, node, embedding);
-            }
-        }
-
-        // Now we replace the original top-level node in self with the re-collected current_node with mutations applied
-        self.replace_node(current_node.0, current_node.1, current_node.2)?;
-
-        Ok(())
     }
 
     #[cfg(feature = "native-http")]

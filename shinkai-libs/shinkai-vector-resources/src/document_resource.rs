@@ -135,6 +135,97 @@ impl VectorResource for DocumentVectorResource {
     fn get_nodes(&self) -> Vec<Node> {
         self.nodes.iter().cloned().collect()
     }
+
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
+    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        let node_clone = node.clone();
+        // Id + index logic
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        if integer_id > self.node_count {
+            return Err(VRError::InvalidNodeId);
+        }
+        let index = (integer_id - 1) as usize;
+
+        // Resize the vectors to accommodate the new node and embedding
+        let node_default = self
+            .nodes
+            .last()
+            .cloned()
+            .unwrap_or_else(|| Node::new_text("".to_string(), "".to_string(), None, &vec![]));
+        let embedding_default = self
+            .embeddings
+            .last()
+            .cloned()
+            .unwrap_or_else(|| Embedding::new("", vec![]));
+        self.nodes
+            .resize_with((self.node_count + 1) as usize, || node_default.clone());
+        self.embeddings
+            .resize_with((self.node_count + 1) as usize, || embedding_default.clone());
+
+        // Shift all nodes and embeddings one index up
+        for i in (index..self.node_count as usize).rev() {
+            self.nodes[i + 1] = self.nodes[i].clone();
+            self.embeddings[i + 1] = self.embeddings[i].clone();
+            self.nodes[i + 1].id = format!("{}", i + 2);
+            self.embeddings[i + 1].set_id_with_integer((i + 2) as u64);
+        }
+
+        // Insert the new node and embedding
+        self.nodes[index] = node;
+        self.embeddings[index] = embedding;
+        self.nodes[index].id = format!("{}", id);
+        self.embeddings[index].set_id_with_integer(integer_id);
+
+        self.data_tag_index.add_node(&node_clone);
+        self.metadata_index.add_node(&node_clone);
+
+        self.node_count += 1;
+        self.update_last_modified_to_now();
+
+        Ok(())
+    }
+
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth)
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        // Id + index logic
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        if integer_id > self.node_count {
+            return Err(VRError::InvalidNodeId);
+        }
+        let index = (integer_id - 1) as usize;
+
+        // Replace the old node and fetch old embedding
+        let new_node = node;
+        let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
+        let old_embedding = self.get_embedding(id.clone())?;
+
+        // Then deletion of old node from indexes and addition of new node
+        if old_node.data_tag_names != new_node.data_tag_names {
+            self.data_tag_index.remove_node(&old_node);
+            self.data_tag_index.add_node(&new_node);
+        }
+        if old_node.metadata_keys() != new_node.metadata_keys() {
+            self.metadata_index.remove_node(&old_node);
+            self.metadata_index.add_node(&new_node);
+        }
+
+        // Finally replacing the embedding
+        let mut embedding = embedding.clone();
+        embedding.set_id_with_integer(integer_id);
+        self.embeddings[index] = embedding;
+        self.update_last_modified_to_now();
+
+        Ok((old_node, old_embedding))
+    }
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth)
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        // Id + index logic
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        if integer_id > self.node_count {
+            return Err(VRError::InvalidNodeId);
+        }
+        self.remove_node_with_integer(integer_id)
+    }
 }
 
 impl DocumentVectorResource {
@@ -342,7 +433,7 @@ impl DocumentVectorResource {
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_node_without_tag_validation(
             id,
@@ -361,11 +452,18 @@ impl DocumentVectorResource {
         new_data: &str,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
-    ) -> Result<Node, VRError> {
+        // List of datatags you want to parse the new data with. If None will preserve previous tags.
+        parsing_tags: Option<Vec<DataTag>>,
+    ) -> Result<(Node, Embedding), VRError> {
         // Validate which tags will be saved with the new data
-        let validated_data_tags = DataTag::validate_tag_list(new_data, parsing_tags);
-        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        let mut data_tag_names = vec![];
+        if let Some(tags) = parsing_tags {
+            let validated_data_tags = DataTag::validate_tag_list(new_data, &tags);
+            data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        } else {
+            data_tag_names = self.get_node(id.to_string())?.data_tag_names.clone();
+        }
+
         self._replace_node_without_tag_validation(
             id,
             NodeContent::Text(new_data.to_string()),
@@ -382,7 +480,7 @@ impl DocumentVectorResource {
         new_external_content: SourceReference,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         // As ExternalContent doesn't have data tags, we pass an empty vector
         self._replace_node_without_tag_validation(
             id,
@@ -400,7 +498,7 @@ impl DocumentVectorResource {
         new_vr_header: VRHeader,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         let data_tag_names = new_vr_header.data_tag_names.clone();
         self._replace_node_without_tag_validation(
             id,
@@ -420,7 +518,7 @@ impl DocumentVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         // Id + index
         if id > self.node_count {
             return Err(VRError::InvalidNodeId);
@@ -430,26 +528,9 @@ impl DocumentVectorResource {
         // Next create the new node, and replace the old node in the nodes list
         let new_node =
             Node::from_node_content_with_integer_id(id, new_data.clone(), new_metadata.clone(), new_tag_names.clone());
-        let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
 
-        // Then deletion of old node from indexes and addition of new node
-        if old_node.data_tag_names != new_node.data_tag_names {
-            self.data_tag_index.remove_node(&old_node);
-            self.data_tag_index.add_node(&new_node);
-        }
-        if old_node.metadata_keys() != new_node.metadata_keys() {
-            self.metadata_index.remove_node(&old_node);
-            self.metadata_index.add_node(&new_node);
-        }
-
-        // Finally replacing the embedding
-        let mut embedding = embedding.clone();
-        embedding.set_id_with_integer(id);
-        self.embeddings[index] = embedding;
-
-        self.update_last_modified_to_now();
-
-        Ok(old_node)
+        // Readding +1 to index to keep with standardized external interface of replace_node
+        self.replace_node((index + 1).to_string(), new_node, embedding.clone())
     }
 
     /// Pops and returns the last node and associated embedding.
@@ -471,11 +552,12 @@ impl DocumentVectorResource {
     }
 
     /// Deletes a node and associated embedding from the resource.
-    pub fn remove_node(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
+    pub fn remove_node_with_integer(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
         let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
         self.metadata_index.remove_node(&deleted_node);
 
+        // Remove the embedding
         let index = (id - 1) as usize;
         let deleted_embedding = self.embeddings.remove(index);
 

@@ -405,7 +405,7 @@ impl ToolRouter {
     /// Deletes the tool inside of the ToolRouter given a valid id
     pub fn delete_shinkai_tool(&mut self, tool_name: &str, toolkit_name: &str) -> Result<(), ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        self.routing_resource.remove_node(&key)?;
+        self.routing_resource.remove_node(key)?;
         Ok(())
     }
 

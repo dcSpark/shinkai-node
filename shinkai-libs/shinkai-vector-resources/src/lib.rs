@@ -7,7 +7,6 @@ pub mod map_resource;
 pub mod metadata_index;
 pub mod model_type;
 pub mod resource_errors;
-pub mod rwlock_map_resource;
 pub mod shinkai_time;
 pub mod source;
 pub mod unstructured;

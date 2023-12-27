@@ -165,7 +165,7 @@ impl Node {
     /// Create a new text-holding Node with a provided String id
     pub fn new_text(
         id: String,
-        text: &str,
+        text: String,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
@@ -183,7 +183,7 @@ impl Node {
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_text_with_integer_id(
         id: u64,
-        text: &str,
+        text: String,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {

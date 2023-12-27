@@ -125,15 +125,59 @@ impl VectorResource for MapVectorResource {
         self.nodes.values().cloned().collect()
     }
 
-    /// Insert a Node/Embedding into the VR using the provided id (root level depth)
-    fn insert_node(&mut self, id: &str, node: Node, embedding: Embedding) -> Result<(), VRError> {
-        let tag_names = self.as_trait_object().data_tag_index().data_tag_names();
-        self._insert_kv_without_tag_validation(key, NodeContent::Resource(resource), metadata, &embedding, &tag_names)
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
+    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        // Update indices
+        self.data_tag_index.add_node(&node);
+        self.metadata_index.add_node(&node);
+
+        // Embedding details
+        let mut embedding = embedding.clone();
+        embedding.set_id(id.to_string());
+        self._insert_node(node.clone());
+        self.embeddings.insert(node.id.clone(), embedding);
+        self.update_last_modified_to_now();
+        Ok(())
     }
+
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {}
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        // Replace old node, and get old embedding
+        let new_node = node;
+        let old_node = self
+            .nodes
+            .insert(id.to_string(), new_node.clone())
+            .ok_or(VRError::InvalidNodeId)?;
+        let old_embedding = self.get_embedding(id.clone())?;
+
+        // Then deletion of old node from indexes and addition of new node
+        if old_node.data_tag_names != new_node.data_tag_names {
+            self.data_tag_index.remove_node(&old_node);
+            self.data_tag_index.add_node(&new_node);
+        }
+        if old_node.metadata_keys() != new_node.metadata_keys() {
+            self.metadata_index.remove_node(&old_node);
+            self.metadata_index.add_node(&new_node);
+        }
+
+        // Finally replacing the embedding
+        let mut embedding = embedding.clone();
+        embedding.set_id(id.to_string());
+        self.embeddings.insert(id.to_string(), embedding);
+        self.update_last_modified_to_now();
+
+        Ok((old_node, old_embedding))
+    }
+
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {}
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        let deleted_node = self._remove_node(&id)?;
+        self.data_tag_index.remove_node(&deleted_node);
+        self.metadata_index.remove_node(&deleted_node);
+        let deleted_embedding = self.embeddings.remove(&id).ok_or(VRError::InvalidNodeId)?;
+
+        Ok((deleted_node, deleted_embedding))
+    }
 }
 
 impl MapVectorResource {
@@ -277,15 +321,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.data_tag_index.add_node(&node);
-        self.metadata_index.add_node(&node);
-
-        // Embedding details
-        let mut embedding = embedding.clone();
-        embedding.set_id(key.to_string());
-        self._insert_node(node.clone());
-        self.embeddings.insert(node.id.clone(), embedding);
-        self.update_last_modified_to_now();
+        self.insert_node(key.to_string(), node, embedding.clone());
     }
 
     /// Replaces an existing node & associated embedding with a new
@@ -295,7 +331,7 @@ impl MapVectorResource {
         key: &str,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         let embedding = new_resource.as_trait_object().resource_embedding().clone();
         let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
         self._replace_kv_without_tag_validation(
@@ -314,11 +350,17 @@ impl MapVectorResource {
         new_text_value: &str,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the new data with
-    ) -> Result<Node, VRError> {
+        // List of datatags you want to parse the new data with. If None will preserve previous tags.
+        parsing_tags: Option<Vec<DataTag>>,
+    ) -> Result<(Node, Embedding), VRError> {
         // Validate which tags will be saved with the new data
-        let validated_data_tags = DataTag::validate_tag_list(new_text_value, parsing_tags);
-        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        let mut data_tag_names = vec![];
+        if let Some(tags) = parsing_tags {
+            let validated_data_tags = DataTag::validate_tag_list(new_text_value, &tags);
+            data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        } else {
+            data_tag_names = self.get_node(key.to_string())?.data_tag_names.clone();
+        }
         self._replace_kv_without_tag_validation(
             key,
             NodeContent::Text(new_text_value.to_string()),
@@ -335,7 +377,7 @@ impl MapVectorResource {
         new_external_content: SourceReference,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         // As ExternalContent doesn't have data tags, we pass an empty vector
         self._replace_kv_without_tag_validation(
             key,
@@ -353,7 +395,7 @@ impl MapVectorResource {
         new_vr_header: VRHeader,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         let data_tag_names = new_vr_header.data_tag_names.clone();
         self._replace_kv_without_tag_validation(
             key,
@@ -373,7 +415,7 @@ impl MapVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
-    ) -> Result<Node, VRError> {
+    ) -> Result<(Node, Embedding), VRError> {
         // Next create the new node, and replace the old node in the nodes by inserting (updating)
         let new_node = Node::from_node_content(
             key.to_string(),
@@ -381,38 +423,7 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        let old_node = self
-            .nodes
-            .insert(key.to_string(), new_node.clone())
-            .ok_or(VRError::InvalidNodeId)?;
-
-        // Then deletion of old node from indexes and addition of new node
-        if old_node.data_tag_names != new_node.data_tag_names {
-            self.data_tag_index.remove_node(&old_node);
-            self.data_tag_index.add_node(&new_node);
-        }
-        if old_node.metadata_keys() != new_node.metadata_keys() {
-            self.metadata_index.remove_node(&old_node);
-            self.metadata_index.add_node(&new_node);
-        }
-
-        // Finally replacing the embedding
-        let mut embedding = embedding.clone();
-        embedding.set_id(key.to_string());
-        self.embeddings.insert(key.to_string(), embedding);
-        self.update_last_modified_to_now();
-
-        Ok(old_node)
-    }
-
-    /// Deletes a node and associated embedding from the resource.
-    pub fn remove_node(&mut self, key: &str) -> Result<(Node, Embedding), VRError> {
-        let deleted_node = self._remove_node(key)?;
-        self.data_tag_index.remove_node(&deleted_node);
-        self.metadata_index.remove_node(&deleted_node);
-        let deleted_embedding = self.embeddings.remove(key).ok_or(VRError::InvalidNodeId)?;
-
-        Ok((deleted_node, deleted_embedding))
+        self.replace_node(key.to_string(), new_node, embedding.clone())
     }
 
     /// Internal node deletion from the hashmap
