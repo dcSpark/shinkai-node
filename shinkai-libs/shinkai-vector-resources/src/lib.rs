@@ -6,6 +6,7 @@ pub mod embeddings;
 pub mod map_resource;
 pub mod metadata_index;
 pub mod model_type;
+pub mod refcell_map_resource;
 pub mod resource_errors;
 pub mod shinkai_time;
 pub mod source;

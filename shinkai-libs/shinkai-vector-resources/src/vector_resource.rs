@@ -43,14 +43,10 @@ pub trait VectorResource: Send + Sync {
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
     fn get_embeddings(&self) -> Vec<Embedding>;
-    /// Retrieves a reference to a Node given its id, at the root level depth.
-    fn get_node(&self, id: String) -> Result<&Node, VRError>;
-    /// Retrieves a mutable reference to a Node given its id, at the root level depth.
-    fn get_node_mut(&mut self, key: String) -> Result<&mut Node, VRError>;
-    /// Retrieves mutable references to all Nodes at the root level of the Vector Resource
-    fn get_nodes(&self) -> Vec<&Node>;
-    /// Retrieves mutable references to all Nodes at the root level of the Vector Resource
-    fn get_nodes_mut(&mut self) -> Vec<&mut Node>;
+    /// Retrieves a copy of a Node given its id, at the root level depth.
+    fn get_node(&self, id: String) -> Result<Node, VRError>;
+    /// Retrieves copies of all Nodes at the root level of the Vector Resource
+    fn get_nodes(&self) -> Vec<Node>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> String;
     /// ISO RFC3339 when then Vector Resource was last modified
@@ -237,7 +233,7 @@ pub trait VectorResource: Send + Sync {
 
     /// Retrieves a node, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
-    fn get_node_with_path(&self, path: VRPath) -> Result<&Node, VRError> {
+    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }

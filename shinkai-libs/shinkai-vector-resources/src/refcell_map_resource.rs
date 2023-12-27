@@ -8,15 +8,18 @@ use crate::shinkai_time::ShinkaiTime;
 use crate::source::{SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
 use crate::vector_search_traversal::VRHeader;
+use serde::{Deserialize, Serialize};
 use serde_json;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::Metadata;
+use std::sync::RwLock;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
 /// constantly-updating data streams, or any unordered/mutating source data.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MapVectorResource {
+#[derive(Debug)]
+pub struct RefCellMapVectorResource {
     name: String,
     description: Option<String>,
     source: VRSource,
@@ -26,14 +29,14 @@ pub struct MapVectorResource {
     embedding_model_used: EmbeddingModelType,
     embeddings: HashMap<String, Embedding>,
     node_count: u64,
-    nodes: HashMap<String, Node>,
+    nodes: RwLock<HashMap<String, Node>>,
     data_tag_index: DataTagIndex,
     created_datetime: String,
     last_modified_datetime: String,
     metadata_index: MetadataIndex,
 }
 
-impl VectorResource for MapVectorResource {
+impl VectorResource for RefCellMapVectorResource {
     /// RFC3339 Datetime when then Vector Resource was created
     fn created_datetime(&self) -> String {
         self.created_datetime.clone()
@@ -115,19 +118,25 @@ impl VectorResource for MapVectorResource {
         Ok(self.embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
     }
 
-    /// Retrieves a node given its key (id)
+    /// Retrieves a copy of a Node given its key (id)
     fn get_node(&self, key: String) -> Result<Node, VRError> {
-        self.nodes.get(&key).cloned().ok_or(VRError::InvalidNodeId)
+        match self.nodes.read() {
+            Ok(nodes) => nodes.get(&key).cloned().ok_or(VRError::InvalidNodeId),
+            Err(_) => Err(VRError::LockAcquisitionFailed("get_node".to_string())),
+        }
     }
 
-    /// Returns all nodes in the MapVectorResource
+    /// Returns copies of all nodes in the RefCellMapVectorResource
     fn get_nodes(&self) -> Vec<Node> {
-        self.nodes.values().cloned().collect()
+        match self.nodes.read() {
+            Ok(nodes) => nodes.values().cloned().collect(),
+            Err(_) => vec![],
+        }
     }
 }
 
-impl MapVectorResource {
-    /// Create a new MapVectorResource
+impl RefCellMapVectorResource {
+    /// Create a new RefCellMapVectorResource
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -138,7 +147,7 @@ impl MapVectorResource {
         embedding_model_used: EmbeddingModelType,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        let mut resource = MapVectorResource {
+        let mut resource = RefCellMapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
             source: source,
@@ -147,7 +156,7 @@ impl MapVectorResource {
             embeddings,
             node_count: nodes.len() as u64,
             resource_base_type: VRBaseType::Map,
-            nodes,
+            nodes: RwLock::new(nodes),
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),
@@ -159,9 +168,9 @@ impl MapVectorResource {
         resource
     }
 
-    /// Initializes an empty `MapVectorResource` with empty defaults.
+    /// Initializes an empty `RefCellMapVectorResource` with empty defaults.
     pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
-        MapVectorResource::new(
+        RefCellMapVectorResource::new(
             name,
             desc,
             source,
@@ -371,10 +380,19 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        let old_node = self
-            .nodes
-            .insert(key.to_string(), new_node.clone())
-            .ok_or(VRError::InvalidNodeId)?;
+        let old_node = {
+            let mut nodes = match self.nodes.write() {
+                Ok(nodes) => nodes,
+                Err(_) => {
+                    return Err(VRError::LockAcquisitionFailed(
+                        "_replace_kv_without_tag_validation".to_string(),
+                    ))
+                }
+            };
+            nodes
+                .insert(key.to_string(), new_node.clone())
+                .ok_or(VRError::InvalidNodeId)?
+        };
 
         // Then deletion of old node from indexes and addition of new node
         if old_node.data_tag_names != new_node.data_tag_names {
@@ -407,17 +425,30 @@ impl MapVectorResource {
 
     /// Internal node deletion from the hashmap
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
+        let removed_node = {
+            let mut nodes = match self.nodes.write() {
+                Ok(nodes) => nodes,
+                Err(_) => return Err(VRError::LockAcquisitionFailed("_remove_node".to_string())),
+            };
+            nodes.remove(key).ok_or(VRError::InvalidNodeId)?
+        };
         self.node_count -= 1;
-        let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
         self.update_last_modified_to_now();
         Ok(removed_node)
     }
 
     // Inserts a node into the nodes hashmap
-    fn _insert_node(&mut self, node: Node) {
+    fn _insert_node(&mut self, node: Node) -> Result<(), VRError> {
+        {
+            let mut nodes = match self.nodes.write() {
+                Ok(nodes) => nodes,
+                Err(_) => return Err(VRError::LockAcquisitionFailed("_insert_node".to_string())),
+            };
+            nodes.insert(node.id.clone(), node);
+        }
         self.node_count += 1;
-        self.nodes.insert(node.id.clone(), node);
         self.update_last_modified_to_now();
+        Ok(())
     }
 
     pub fn from_json(json: &str) -> Result<Self, VRError> {
@@ -427,5 +458,116 @@ impl MapVectorResource {
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
         self.update_last_modified_to_now();
+    }
+}
+
+/// Temporary struct used for serializing/deserializing a RefCellMapVectorResource
+#[derive(Serialize, Deserialize)]
+struct RefCellMapVectorResourceTemp {
+    name: String,
+    description: Option<String>,
+    source: VRSource,
+    resource_id: String,
+    resource_embedding: Embedding,
+    resource_base_type: VRBaseType,
+    embedding_model_used: EmbeddingModelType,
+    embeddings: HashMap<String, Embedding>,
+    node_count: u64,
+    nodes: HashMap<String, Node>,
+    data_tag_index: DataTagIndex,
+    created_datetime: String,
+    last_modified_datetime: String,
+    metadata_index: MetadataIndex,
+}
+
+impl Serialize for RefCellMapVectorResource {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let nodes = self.nodes.read().unwrap();
+        let value = RefCellMapVectorResourceTemp {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            source: self.source.clone(),
+            resource_id: self.resource_id.clone(),
+            resource_embedding: self.resource_embedding.clone(),
+            resource_base_type: self.resource_base_type.clone(),
+            embedding_model_used: self.embedding_model_used.clone(),
+            embeddings: self.embeddings.clone(),
+            node_count: self.node_count,
+            nodes: nodes.clone(),
+            data_tag_index: self.data_tag_index.clone(),
+            created_datetime: self.created_datetime.clone(),
+            last_modified_datetime: self.last_modified_datetime.clone(),
+            metadata_index: self.metadata_index.clone(),
+        };
+        value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for RefCellMapVectorResource {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let temp = RefCellMapVectorResourceTemp::deserialize(deserializer)?;
+        Ok(RefCellMapVectorResource {
+            name: temp.name,
+            description: temp.description,
+            source: temp.source,
+            resource_id: temp.resource_id,
+            resource_embedding: temp.resource_embedding,
+            resource_base_type: temp.resource_base_type,
+            embedding_model_used: temp.embedding_model_used,
+            embeddings: temp.embeddings,
+            node_count: temp.node_count,
+            nodes: RwLock::new(temp.nodes),
+            data_tag_index: temp.data_tag_index,
+            created_datetime: temp.created_datetime,
+            last_modified_datetime: temp.last_modified_datetime,
+            metadata_index: temp.metadata_index,
+        })
+    }
+}
+
+impl Clone for RefCellMapVectorResource {
+    fn clone(&self) -> Self {
+        let nodes = self.nodes.read().unwrap().clone();
+        Self {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            source: self.source.clone(),
+            resource_id: self.resource_id.clone(),
+            resource_embedding: self.resource_embedding.clone(),
+            resource_base_type: self.resource_base_type.clone(),
+            embedding_model_used: self.embedding_model_used.clone(),
+            embeddings: self.embeddings.clone(),
+            node_count: self.node_count,
+            nodes: RwLock::new(nodes),
+            data_tag_index: self.data_tag_index.clone(),
+            created_datetime: self.created_datetime.clone(),
+            last_modified_datetime: self.last_modified_datetime.clone(),
+            metadata_index: self.metadata_index.clone(),
+        }
+    }
+}
+
+impl PartialEq for RefCellMapVectorResource {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.description == other.description
+            && self.source == other.source
+            && self.resource_id == other.resource_id
+            && self.resource_embedding == other.resource_embedding
+            && self.resource_base_type == other.resource_base_type
+            && self.embedding_model_used == other.embedding_model_used
+            && self.embeddings == other.embeddings
+            && self.node_count == other.node_count
+            && *self.nodes.read().unwrap() == *other.nodes.read().unwrap()
+            && self.data_tag_index == other.data_tag_index
+            && self.created_datetime == other.created_datetime
+            && self.last_modified_datetime == other.last_modified_datetime
+            && self.metadata_index == other.metadata_index
     }
 }

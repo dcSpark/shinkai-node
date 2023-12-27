@@ -122,39 +122,23 @@ impl VectorResource for DocumentVectorResource {
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
-    fn get_node(&self, id: String) -> Result<&Node, VRError> {
+    fn get_node(&self, id: String) -> Result<Node, VRError> {
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId);
         }
         let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
-        self.nodes.get(index).ok_or(VRError::InvalidNodeId)
-    }
-
-    /// Efficiently retrieves a mutable reference to a node given its id by fetching it via index.
-    fn get_node_mut(&mut self, id: String) -> Result<&mut Node, VRError> {
-        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
-        if id == 0 || id > self.node_count {
-            return Err(VRError::InvalidNodeId);
-        }
-        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
-        self.nodes.get_mut(index).ok_or(VRError::InvalidNodeId)
+        self.nodes.get(index).cloned().ok_or(VRError::InvalidNodeId)
     }
 
     /// Returns all nodes in the DocumentVectorResource
-    fn get_nodes(&self) -> Vec<&Node> {
-        self.nodes.iter().collect()
-    }
-
-    /// Returns mutable references to all nodes in the DocumentVectorResource
-    fn get_nodes_mut(&mut self) -> Vec<&mut Node> {
-        self.nodes.iter_mut().collect()
+    fn get_nodes(&self) -> Vec<Node> {
+        self.nodes.iter().cloned().collect()
     }
 }
 
 impl DocumentVectorResource {
-    /// * `resource_id` - This can be the hash as a String from the bytes of the original data
-    /// or anything that is deterministic to ensure duplicates are not possible.
+    /// Create a new MapVectorResource
     pub fn new(
         name: &str,
         desc: Option<&str>,

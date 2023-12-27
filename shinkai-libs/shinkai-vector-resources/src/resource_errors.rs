@@ -23,6 +23,7 @@ pub enum VRError {
     CouldNotDetectFileType(String),
     InvalidReferenceString(String),
     InvalidDateTimeString(String),
+    LockAcquisitionFailed(String),
 }
 
 impl fmt::Display for VRError {
@@ -60,6 +61,7 @@ impl fmt::Display for VRError {
             VRError::InvalidDateTimeString(ref s) => {
                 write!(f, "Provided datetime string does not match RFC3339: {}", s)
             }
+            VRError::LockAcquisitionFailed(ref s) => write!(f, "Failed to acquire lock for: {}", s),
         }
     }
 }
