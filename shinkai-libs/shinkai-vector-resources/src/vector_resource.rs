@@ -240,17 +240,20 @@ pub trait VectorResource: Send + Sync {
 
     /// Retrieves a node, no matter its depth, given its path.
     /// If the path is invalid at any part, then method will error.
-    fn get_node_at_path(&self, path: VRPath) -> Result<Node, VRError> {
+    fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
 
         // Fetch the first node directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
+        let mut last_resource_header = self.generate_resource_header(None);
         for id in path.path_ids.iter().skip(1) {
             match &node.content {
                 NodeContent::Resource(resource) => {
-                    node = resource.as_trait_object().get_node(id.clone())?;
+                    let resource_obj = resource.as_trait_object();
+                    last_resource_header = resource_obj.generate_resource_header(None);
+                    node = resource_obj.get_node(id.clone())?;
                 }
                 _ => {
                     if let Some(last) = path.path_ids.last() {
@@ -261,12 +264,13 @@ pub trait VectorResource: Send + Sync {
                 }
             }
         }
-        Ok(node)
+
+        Ok(RetrievedNode::new(node, 0.0, last_resource_header, path))
     }
 
     /// Boolean check to see if a node exists at a given path
     fn check_node_exists_at_path(&self, path: VRPath) -> bool {
-        self.get_node_at_path(path).is_ok()
+        self.retrieve_node_at_path(path).is_ok()
     }
 
     /// Applies a mutator function on a node and its embedding at a given path, thereby enabling performing updates inside of VRs.
@@ -453,9 +457,9 @@ pub trait VectorResource: Send + Sync {
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
         if let Some(path) = starting_path {
-            match self.get_node_at_path(path.clone()) {
-                Ok(node) => {
-                    if let NodeContent::Resource(resource) = node.content.clone() {
+            match self.retrieve_node_at_path(path.clone()) {
+                Ok(ret_node) => {
+                    if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
                         return resource.as_trait_object()._vector_search_customized_core(
                             query,
                             num_of_results,

@@ -379,10 +379,10 @@ fn test_manual_resource_vector_search() {
         .unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
     let res = new_map_resource
-        .get_node_at_path(VRPath::from_path_string("/doc_key/4/doc_key/3"))
+        .retrieve_node_at_path(VRPath::from_path_string("/doc_key/4/doc_key/3"))
         .unwrap();
     println!("Get node at path result: {:?}", res);
-    assert_eq!(res.id, "3");
+    assert_eq!(res.node.id, "3");
 }
 
 #[test]
