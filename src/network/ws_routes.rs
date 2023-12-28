@@ -42,13 +42,12 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
                         let shinkai_name = "some_id".to_string(); // Replace with actual shinkai_name
                         let subtopic = "some_subtopic".to_string(); // Replace with actual subtopic
 
-                        match manager.lock().await.add_connection(
-                            shinkai_name,
-                            ws_message.message,
-                            ws_tx,
-                            topic,
-                            subtopic,
-                        ) {
+                        match manager
+                            .lock()
+                            .await
+                            .add_connection(shinkai_name, ws_message.message, ws_tx, topic, subtopic)
+                            .await
+                        {
                             Ok(_) => eprintln!("Connection added successfully"),
                             Err(e) => eprintln!("Failed to add connection: {}", e),
                         }

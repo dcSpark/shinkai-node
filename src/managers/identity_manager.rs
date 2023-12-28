@@ -27,6 +27,13 @@ pub struct IdentityManager {
 pub trait IdentityManagerTrait {
     fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity>;
     async fn search_identity(&self, full_identity_name: &str) -> Option<Identity>;
+    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send>;
+}
+
+impl Clone for Box<dyn IdentityManagerTrait + Send> {
+    fn clone(&self) -> Box<dyn IdentityManagerTrait + Send> {
+        self.clone_box()
+    }
 }
 
 impl IdentityManager {
@@ -271,6 +278,10 @@ impl IdentityManagerTrait for IdentityManager {
                 Err(_) => None, // return None if the identity is not found in the network manager
             }
         }
+    }
+
+    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
+        Box::new(self.clone())
     }
 }
 

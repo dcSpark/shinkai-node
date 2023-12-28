@@ -1,43 +1,38 @@
 use serde_json::Value as JsonValue;
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
+use std::{convert::TryInto, sync::Arc};
 use tokio::sync::Mutex;
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
 
 use super::{
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
-    Node, node_shareable_logic::validate_message_main_logic,
+    node_shareable_logic::validate_message_main_logic,
+    Node,
 };
+use crate::managers::identity_manager::IdentityManagerTrait;
 use crate::{
     db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, IdentityManager},
-    network::node_message_handlers::{ping_pong, PingPong},
     planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
+    tools::js_toolkit_executor::JSToolkitExecutor,
     utils::update_global_identity::update_global_identity_name,
 };
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::Sender;
-use async_std::eprint;
 use blake3::Hasher;
-use ed25519_dalek::VerifyingKey;
-use futures::task::{Context, Poll};
-use futures::Stream;
-use futures::StreamExt;
-use log::{debug, error, info, trace, warn};
+use log::error;
 use reqwest::StatusCode;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -48,15 +43,12 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key, EncryptionMethod,
+            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
-use std::pin::Pin;
-use warp::Buf;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
@@ -65,11 +57,14 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> =
+            Box::new(self.identity_manager.lock().await.clone());
         // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
+
         validate_message_main_logic(
             &self.encryption_secret_key,
-            self.identity_manager.clone(),
+            Arc::new(Mutex::new(identity_manager_trait)),
             &self.node_profile_name,
             potentially_encrypted_msg,
             schema_type,
@@ -1530,20 +1525,16 @@ impl Node {
                                         ),
                                     }
                                 }
-                                Ok(None) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::DetailedAPI,
-                                        ShinkaiLogLevel::Error,
-                                        format!("No file found in the inbox").as_str(),
-                                    )
-                                }
-                                Err(err) => {
-                                    shinkai_log(
-                                        ShinkaiLogOption::DetailedAPI,
-                                        ShinkaiLogLevel::Error,
-                                        format!("Error getting file from inbox: {:?}", err).as_str(),
-                                    )
-                                }
+                                Ok(None) => shinkai_log(
+                                    ShinkaiLogOption::DetailedAPI,
+                                    ShinkaiLogLevel::Error,
+                                    format!("No file found in the inbox").as_str(),
+                                ),
+                                Err(err) => shinkai_log(
+                                    ShinkaiLogOption::DetailedAPI,
+                                    ShinkaiLogLevel::Error,
+                                    format!("Error getting file from inbox: {:?}", err).as_str(),
+                                ),
                             }
 
                             let _ = res.send(Ok(())).await;

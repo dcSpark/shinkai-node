@@ -13,6 +13,7 @@ use warp::ws::WebSocket;
 use crate::db::ShinkaiDB;
 
 use super::node_shareable_logic::validate_message_main_logic;
+use crate::managers::identity_manager::IdentityManagerTrait;
 
 #[derive(Debug)]
 pub enum WebSocketManagerError {
@@ -35,21 +36,22 @@ pub struct WebSocketManager {
     subscriptions: HashMap<String, HashMap<String, bool>>,
     shinkai_db: Arc<Mutex<ShinkaiDB>>,
     node_name: ShinkaiName,
+    identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
 }
 
 // TODO: maybe this should run on its own thread
 impl WebSocketManager {
-    pub fn new(shinkai_db: Arc<Mutex<ShinkaiDB>>, node_name: ShinkaiName) -> Self {
+    pub fn new(shinkai_db: Arc<Mutex<ShinkaiDB>>, node_name: ShinkaiName, identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>) -> Self {
         Self {
             connections: HashMap::new(),
             subscriptions: HashMap::new(),
             shinkai_db,
             node_name,
+            identity_manager_trait,
         }
     }
 
-    // Placeholder function that always returns true
-    pub fn user_validation(shinkai_name: &String, message: &ShinkaiMessage) -> bool {
+    pub async fn user_validation(&self, shinkai_name: &String, message: &ShinkaiMessage) -> bool {
         // Message can't be encrypted at this point
         let is_body_encrypted = message.clone().is_body_currently_encrypted();
         if is_body_encrypted {
@@ -60,21 +62,14 @@ impl WebSocketManager {
         // Note: we generate a dummy encryption key because the message is not encrypted so we don't need the real key.
         let (dummy_encryption_sk, dummy_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
+        let identity_manager_clone = self.identity_manager_trait.clone();
         validate_message_main_logic(
             &dummy_encryption_sk,
-            Arc::new(Mutex::new(IdentityManager::new())),
+            identity_manager_clone,
             &ShinkaiName::new(shinkai_name.clone()).unwrap(),
             message.clone(),
             None,
-        );
-
-        // validate_message_main_logic(
-        //     encryption_secret_key: &EncryptionStaticKey,
-        //     identity_manager: Arc<Mutex<IdentityManager>>,
-        //     node_profile_name: &ShinkaiName,
-        //     potentially_encrypted_msg: ShinkaiMessage,
-        //     schema_type: Option<MessageSchemaType>,
-        // ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        ).await;
 
         true
     }
@@ -85,7 +80,7 @@ impl WebSocketManager {
         true
     }
 
-    pub fn add_connection(
+    pub async fn add_connection(
         &mut self,
         shinkai_name: String,
         message: ShinkaiMessage,
@@ -93,7 +88,7 @@ impl WebSocketManager {
         topic: String,
         subtopic: String,
     ) -> Result<(), WebSocketManagerError> {
-        if !Self::user_validation(&shinkai_name, &message) {
+        if !self.user_validation(&shinkai_name, &message).await {
             return Err(WebSocketManagerError::UserValidationFailed(format!(
                 "User validation failed for shinkai_name: {}",
                 shinkai_name
