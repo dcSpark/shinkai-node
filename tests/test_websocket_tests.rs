@@ -1,10 +1,12 @@
 use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
+use ed25519_dalek::VerifyingKey;
 use futures::SinkExt;
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
@@ -17,6 +19,8 @@ use shinkai_node::managers::identity_manager::IdentityManagerTrait;
 use shinkai_node::network::ws_routes::WSMessage;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_node::schemas::identity::Identity;
+use shinkai_node::schemas::identity::StandardIdentity;
+use shinkai_node::schemas::identity::StandardIdentityType;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -27,19 +31,51 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 // Mock struct for testing
 #[derive(Clone, Debug)]
 struct MockIdentityManager {
+    dummy_standard_identity: Identity,
     // Add any fields you need for your mock
+}
+
+impl MockIdentityManager {
+    pub fn new() -> Self {
+        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+
+        let dummy_standard_identity = Identity::Standard(StandardIdentity {
+            full_identity_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
+            addr: None,
+            node_encryption_public_key: node1_encryption_pk,
+            node_signature_public_key: node1_identity_pk,
+            profile_encryption_public_key: Some(node1_encryption_pk),
+            profile_signature_public_key: Some(node1_identity_pk),
+            identity_type: StandardIdentityType::Global,
+            permission_type: IdentityPermissions::Admin,
+        });
+
+        Self {
+            dummy_standard_identity,
+            // initialize other fields...
+        }
+    }
 }
 
 #[async_trait]
 impl IdentityManagerTrait for MockIdentityManager {
     fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
-        // Implement this method as needed for your test
-        None
+        eprintln!("find_by_identity_name: {}", _full_profile_name);
+        if _full_profile_name.to_string() == "@@node1.shinkai/main_profile_node1" {
+            Some(&self.dummy_standard_identity)
+        } else {
+            None
+        }
     }
 
     async fn search_identity(&self, _full_identity_name: &str) -> Option<Identity> {
-        // Implement this method as needed for your test
-        None
+        eprintln!("search_identity: {}", _full_identity_name);
+        if _full_identity_name == "@@node1.shinkai/main_profile_node1" {
+            Some(self.dummy_standard_identity.clone())
+        } else {
+            None
+        }
     }
 
     fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
@@ -67,8 +103,8 @@ fn generate_message_with_text(
         .body_encryption(EncryptionMethod::None)
         .message_schema_type(MessageSchemaType::TextContent)
         .internal_metadata_with_inbox(
-            "".to_string(),
             recipient_subidentity_name.clone().to_string(),
+            "".to_string(),
             inbox_name_value,
             EncryptionMethod::None,
         )
@@ -104,10 +140,16 @@ async fn test_websocket() {
     let agent_id = "agent_test".to_string();
     let scope = JobScope::new_default();
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait = Arc::new(Mutex::new(Box::new(MockIdentityManager {}) as Box<dyn IdentityManagerTrait + Send>));
+    let identity_manager_trait = Arc::new(Mutex::new(
+        Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
+    ));
 
     // Start the WebSocket server
-    let manager = Arc::new(Mutex::new(WebSocketManager::new(Arc::new(Mutex::new(shinkai_db)), node_name, identity_manager_trait)));
+    let manager = Arc::new(Mutex::new(WebSocketManager::new(
+        Arc::new(Mutex::new(shinkai_db)),
+        node_name,
+        identity_manager_trait,
+    )));
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
@@ -115,9 +157,12 @@ async fn test_websocket() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Connect to the server
-    let (mut ws_stream, _) = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws")
-        .await
-        .expect("Failed to connect");
+    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+
+    // Check if the connection was successful
+    assert!(connection_result.is_ok(), "Failed to connect");
+
+    let (mut ws_stream, _) = connection_result.expect("Failed to connect");
 
     // Generate a ShinkaiMessage
     let shinkai_message = generate_message_with_text(

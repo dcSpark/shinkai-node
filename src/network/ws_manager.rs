@@ -51,10 +51,11 @@ impl WebSocketManager {
         }
     }
 
-    pub async fn user_validation(&self, shinkai_name: &String, message: &ShinkaiMessage) -> bool {
+    pub async fn user_validation(&self, shinkai_name: ShinkaiName, message: &ShinkaiMessage) -> bool {
         // Message can't be encrypted at this point
         let is_body_encrypted = message.clone().is_body_currently_encrypted();
         if is_body_encrypted {
+            eprintln!("Message body is encrypted, can't validate user: {}", shinkai_name);
             shinkai_log(ShinkaiLogOption::DetailedAPI, ShinkaiLogLevel::Debug, format!("Message body is encrypted, can't validate user: {}", shinkai_name).as_str());
             return false;
         }
@@ -63,15 +64,19 @@ impl WebSocketManager {
         let (dummy_encryption_sk, dummy_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let identity_manager_clone = self.identity_manager_trait.clone();
-        validate_message_main_logic(
+        let result = validate_message_main_logic(
             &dummy_encryption_sk,
             identity_manager_clone,
-            &ShinkaiName::new(shinkai_name.clone()).unwrap(),
+            &shinkai_name.clone(),
             message.clone(),
             None,
         ).await;
 
-        true
+        eprintln!("user_validation result: {:?}", result);
+        match result {
+            Ok(_) => true,
+            Err(_) => false,
+        }
     }
 
     // Placeholder function that always returns true
@@ -82,33 +87,39 @@ impl WebSocketManager {
 
     pub async fn add_connection(
         &mut self,
-        shinkai_name: String,
+        shinkai_name: ShinkaiName,
         message: ShinkaiMessage,
-        connection: SplitSink<WebSocket, Message>,
+        connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
         topic: String,
         subtopic: String,
     ) -> Result<(), WebSocketManagerError> {
-        if !self.user_validation(&shinkai_name, &message).await {
+        eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
+        if !self.user_validation(shinkai_name.clone(), &message).await {
+            eprintln!("User validation failed for shinkai_name: {}", shinkai_name);
             return Err(WebSocketManagerError::UserValidationFailed(format!(
                 "User validation failed for shinkai_name: {}",
                 shinkai_name
             )));
         }
-
-        if !Self::has_access(&shinkai_name, &topic, &subtopic) {
+    
+        let shinkai_profile_name = shinkai_name.to_string();
+        if !Self::has_access(&shinkai_profile_name, &topic, &subtopic) {
+            eprintln!(
+                "Access denied for shinkai_name: {} on topic: {} and subtopic: {}",
+                shinkai_name, topic, subtopic);
             return Err(WebSocketManagerError::AccessDenied(format!(
                 "Access denied for shinkai_name: {} on topic: {} and subtopic: {}",
                 shinkai_name, topic, subtopic
             )));
         }
-
+    
         self.connections
-            .insert(shinkai_name.clone(), Arc::new(Mutex::new(connection)));
+            .insert(shinkai_profile_name.clone(), connection);
         let mut topic_map = HashMap::new();
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         topic_map.insert(topic_subtopic, true);
-        self.subscriptions.insert(shinkai_name, topic_map);
-
+        self.subscriptions.insert(shinkai_profile_name, topic_map);
+    
         Ok(())
     }
 
