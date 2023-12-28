@@ -77,7 +77,6 @@ fn test_manual_resource_vector_search() {
     doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![]);
     doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![]);
     doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![]);
-    doc.print_all_nodes_exhaustive(None, true, false);
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -146,15 +145,12 @@ fn test_manual_resource_vector_search() {
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
     fruit_doc.append_text_node(fact5.clone(), None, fact5_embeddings.clone(), &vec![]);
-    fruit_doc.print_all_nodes_exhaustive(None, true, false);
     fruit_doc.append_text_node(fact6.clone(), None, fact6_embeddings.clone(), &vec![]);
-    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
     let mut new_map_resource = map_resource.as_map_resource_cloned().unwrap();
     fruit_doc.append_vector_resource_node_auto(map_resource, None);
-    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -391,7 +387,6 @@ fn test_manual_resource_vector_search() {
             new_map_resource.resource_embedding().clone(),
         )
         .unwrap();
-    new_map_resource.print_all_nodes_exhaustive(None, true, false);
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
     assert_eq!(res.node.id, "3");
@@ -415,7 +410,6 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
-    new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value----".to_string()),
@@ -435,7 +429,6 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
-    new_map_resource.print_all_nodes_exhaustive(None, true, false);
     assert_ne!(initial_node, new_node);
     assert_eq!(
         NodeContent::Text("----My new node value 2----".to_string()),
@@ -454,11 +447,18 @@ fn test_manual_resource_vector_search() {
             &vec![],
         )
         .unwrap();
-    fruit_doc.print_all_nodes_exhaustive(None, true, false);
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
     let res = fruit_doc.retrieve_node_at_path(test_path.clone()).unwrap();
     assert_eq!(res.node.id, "4");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
+
+    // Pop the previously appended node
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
+    fruit_doc.pop_node_at_path(path).unwrap();
+    let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone());
+    assert_eq!(res.is_ok(), false);
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 }
 
 #[test]

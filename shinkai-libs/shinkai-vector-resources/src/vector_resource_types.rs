@@ -472,6 +472,11 @@ impl VRPath {
         Self { path_ids: vec![] }
     }
 
+    /// Returns if the path is empty (aka pointing at root, `/`)
+    pub fn is_empty(&self) -> bool {
+        self.path_ids.len() == 0
+    }
+
     /// Get the depth of the VRPath. Of note, this will return 0 in both cases if
     /// the path is empty, or if it is in the root path (because depth starts at 0
     /// for Vector Resources). This matches the TraversalMethod::UntilDepth interface.

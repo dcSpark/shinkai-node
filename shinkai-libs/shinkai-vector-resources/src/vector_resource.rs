@@ -271,20 +271,19 @@ pub trait VectorResource: Send + Sync {
         self.retrieve_node_at_path(path).is_ok()
     }
 
-    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling performing updates inside of VRs.
+    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling updating data within a specific node.
     /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
     fn mutate_node_at_path(
         &mut self,
         path: VRPath,
-        mutator: &mut dyn Fn(&mut Node, &mut Embedding, HashMap<String, Box<dyn Any>>) -> Result<(), VRError>,
-        mutator_data: HashMap<String, Box<dyn Any>>,
+        mutator: &mut dyn Fn(&mut Node, &mut Embedding) -> Result<(), VRError>,
     ) -> Result<(), VRError> {
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         let last_mut = deconstructed_nodes
             .last_mut()
             .ok_or(VRError::InvalidVRPath(path.clone()))?;
         let (_, last_node, last_embedding) = last_mut;
-        mutator(last_node, last_embedding, mutator_data)?;
+        mutator(last_node, last_embedding)?;
 
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
         self.replace_node(node_key, node, embedding)?;

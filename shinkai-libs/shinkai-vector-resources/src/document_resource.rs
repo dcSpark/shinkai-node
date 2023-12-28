@@ -392,6 +392,33 @@ impl DocumentVectorResource {
         }
     }
 
+    /// Pops a node from the provided parent_path, if the resource held at parent_path supports popping
+    /// (currently this means if it is a DocumentVectorResource)
+    /// If the parent_path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    pub fn pop_node_at_path(&mut self, parent_path: VRPath) -> Result<(Node, Embedding), VRError> {
+        // If the path is root, then return an error.
+        if parent_path.is_empty() {
+            return Err(VRError::InvalidVRPath(parent_path.clone()));
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            println!("post retrieval");
+            // Check if its a DocumentVectorResource
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                println!("post  if resource");
+                let doc = resource.as_document_resource()?;
+                println!("post doc coerce");
+                // Remove the last node from the DocumentVectorResource via remove_node_at_path with node_count id
+                let id_int = doc.node_count();
+                let node_path = parent_path.push_cloned(id_int.to_string());
+                println!("about to remove node at path");
+                self.remove_node_at_path(node_path.clone())
+            } else {
+                Err(VRError::InvalidVRPath(parent_path.clone()))
+            }
+        }
+    }
+
     /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
     pub fn append_vector_resource_node(
         &mut self,
@@ -619,20 +646,8 @@ impl DocumentVectorResource {
 
     /// Pops and returns the last node and associated embedding.
     pub fn pop_node(&mut self) -> Result<(Node, Embedding), VRError> {
-        let popped_node = self.nodes.pop();
-        let popped_embedding = self.embeddings.pop();
-
-        match (popped_node, popped_embedding) {
-            (Some(node), Some(embedding)) => {
-                // Remove node from indexes
-                self.metadata_index.remove_node(&node);
-                self.data_tag_index.remove_node(&node);
-                self.node_count -= 1;
-                self.update_last_modified_to_now();
-                Ok((node, embedding))
-            }
-            _ => Err(VRError::VectorResourceEmpty),
-        }
+        let path = VRPath::from_string("/")?;
+        self.pop_node_at_path(path)
     }
 
     /// Deletes a node and associated embedding from the resource.
