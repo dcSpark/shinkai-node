@@ -111,12 +111,19 @@ impl VectorResource for MapVectorResource {
 
     /// Retrieves a node's embedding given its key (id)
     fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
-        Ok(self.embeddings.get(&key).ok_or(VRError::InvalidNodeId)?.clone())
+        Ok(self
+            .embeddings
+            .get(&key)
+            .ok_or(VRError::InvalidNodeId(key.to_string()))?
+            .clone())
     }
 
     /// Retrieves a node given its key (id)
     fn get_node(&self, key: String) -> Result<Node, VRError> {
-        self.nodes.get(&key).cloned().ok_or(VRError::InvalidNodeId)
+        self.nodes
+            .get(&key)
+            .cloned()
+            .ok_or(VRError::InvalidNodeId(key.to_string()))
     }
 
     /// Returns all nodes in the MapVectorResource
@@ -147,11 +154,14 @@ impl VectorResource for MapVectorResource {
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
         // Replace old node, and get old embedding
-        let new_node = node;
+        let mut new_node = node;
+        new_node.id = id.clone();
+        println!("Replacing node id: {}", id.to_string());
         let old_node = self
             .nodes
             .insert(id.to_string(), new_node.clone())
-            .ok_or(VRError::InvalidNodeId)?;
+            .ok_or(VRError::InvalidNodeId(id.to_string()))?;
+        println!("Replaced node id: {}", id.to_string());
         let old_embedding = self.get_embedding(id.clone())?;
 
         // Then deletion of old node from indexes and addition of new node
@@ -405,13 +415,13 @@ impl MapVectorResource {
     pub fn replace_with_text_node(
         &mut self,
         key: String,
-        new_text_value: String,
+        new_text: String,
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-        parsing_tags: Option<Vec<DataTag>>, // List of datatags you want to parse the new data with. If None will preserve previous tags.
+        parsing_tags: Vec<DataTag>, // List of datatags you want to parse the new data with.
     ) -> Result<(Node, Embedding), VRError> {
         let path = VRPath::from_string(&("/".to_owned() + &key));
-        self.replace_with_text_node_at_path(path, new_text_value, new_metadata, embedding, parsing_tags)
+        self.replace_with_text_node_at_path(path, new_text, new_metadata, embedding, parsing_tags)
     }
 
     /// Replaces an existing node & associated embedding with a new text node at the specified path.
@@ -419,27 +429,20 @@ impl MapVectorResource {
     pub fn replace_with_text_node_at_path(
         &mut self,
         path: VRPath,
-        new_text_value: String,
+        new_text: String,
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-        parsing_tags: Option<Vec<DataTag>>, // List of datatags you want to parse the new data with. If None will preserve previous tags.
+        parsing_tags: Vec<DataTag>, // List of datatags you want to parse the new data with.
     ) -> Result<(Node, Embedding), VRError> {
         // Validate which tags will be saved with the new data
-        let mut data_tag_names = vec![];
-        if let Some(tags) = parsing_tags {
-            let validated_data_tags = DataTag::validate_tag_list(&new_text_value, &tags);
-            data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        } else {
-            if let Some(key) = path.path_ids.last() {
-                data_tag_names = self.get_node(key.clone())?.data_tag_names.clone();
-            } else {
-                return Err(VRError::InvalidVRPath(path.clone()));
-            }
-        }
+        let validated_data_tags = DataTag::validate_tag_list(&new_text, &parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
 
         if let Some(key) = path.path_ids.last() {
-            let node_content = NodeContent::Text(new_text_value);
+            println!("Processed path last");
+            let node_content = NodeContent::Text(new_text);
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
+            println!("starting replacing node at path");
             self.replace_node_at_path(path, new_node, embedding)
         } else {
             Err(VRError::InvalidVRPath(path.clone()))
@@ -532,7 +535,7 @@ impl MapVectorResource {
     /// Internal method. Node deletion from the hashmap
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
-        let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
+        let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId(key.to_string()))?;
         self.update_last_modified_to_now();
         Ok(removed_node)
     }

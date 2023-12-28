@@ -388,11 +388,55 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
-    let res = new_map_resource
-        .retrieve_node_at_path(VRPath::from_string("/doc_key/4/doc_key/3"))
-        .unwrap();
-    println!("Get node at path result: {:?}", res);
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3");
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
     assert_eq!(res.node.id, "3");
+    assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
+
+    // Check that no node is retrieved after removing it by path
+    new_map_resource.remove_node_at_path(test_path.clone());
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone());
+    assert!(!res.is_ok());
+
+    // Replace an existing node in a Map Resource and validate it's been changed
+    let test_path = VRPath::from_string("/doc_key/4/some_key");
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource
+        .replace_with_text_node_at_path(
+            test_path.clone(),
+            "----My new node value----".to_string(),
+            None,
+            fact6_embeddings.clone(),
+            vec![],
+        )
+        .unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_ne!(initial_node, new_node);
+    assert_eq!(
+        NodeContent::Text("----My new node value----".to_string()),
+        new_node.node.content
+    );
+
+    // Replace an existing node in a Doc Resource and validate it's been changed
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/2");
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource
+        .replace_with_text_node_at_path(
+            test_path.clone(),
+            "----My new node value 2----".to_string(),
+            None,
+            fact6_embeddings.clone(),
+            vec![],
+        )
+        .unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_ne!(initial_node, new_node);
+    assert_eq!(
+        NodeContent::Text("----My new node value 2----".to_string()),
+        new_node.node.content
+    );
 }
 
 #[test]

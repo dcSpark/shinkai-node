@@ -314,18 +314,23 @@ pub trait VectorResource: Send + Sync {
         new_node: Node,
         new_embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
+        println!(" replacing node at path");
         // Remove the node at the end of the deconstructed nodes
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
 
         // Insert the new node at the end of the deconstructed nodes
-        deconstructed_nodes.push((path.path_ids.last().unwrap().clone(), new_node, new_embedding));
+        if let Some(key) = path.path_ids.last() {
+            deconstructed_nodes.push((key.clone(), new_node, new_embedding));
 
-        // Rebuild the nodes after replacing the node
-        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        let result = self.replace_node(node_key, node, embedding)?;
+            // Rebuild the nodes after replacing the node
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            let result = self.replace_node(node_key, node, embedding)?;
 
-        Ok(result)
+            Ok(result)
+        } else {
+            Err(VRError::InvalidVRPath(path.clone())) // Replace with your actual error
+        }
     }
 
     /// Inserts a node underneath the provided parent_path, using the supplied id. Supports inserting at root level `/`.

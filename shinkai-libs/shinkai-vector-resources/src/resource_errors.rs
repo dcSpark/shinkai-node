@@ -5,7 +5,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {
-    InvalidNodeId,
+    InvalidNodeId(String),
     VectorResourceEmpty,
     FailedEmbeddingGeneration(String),
     NoNodeFound,
@@ -31,7 +31,7 @@ pub enum VRError {
 impl fmt::Display for VRError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            VRError::InvalidNodeId => write!(f, "Invalid node id"),
+            VRError::InvalidNodeId(ref s) => write!(f, "Invalid node id: {}", s),
             VRError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
             VRError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
             VRError::NoNodeFound => write!(f, "No matching node found"),

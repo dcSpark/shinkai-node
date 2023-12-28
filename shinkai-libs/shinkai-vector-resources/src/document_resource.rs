@@ -113,22 +113,32 @@ impl VectorResource for DocumentVectorResource {
 
     /// Efficiently retrieves a Node's matching embedding given its id by fetching it via index.
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError> {
-        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if id == 0 || id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
-        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
+        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId(id.to_string()))? as usize;
         Ok(self.embeddings[index].clone())
     }
 
     /// Efficiently retrieves a node given its id by fetching it via index.
     fn get_node(&self, id: String) -> Result<Node, VRError> {
-        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        println!(
+            "!!---- Integer id: {} --- node count  {}",
+            id.to_string(),
+            self.node_count
+        );
+
+        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if id == 0 || id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
-        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId)? as usize;
-        self.nodes.get(index).cloned().ok_or(VRError::InvalidNodeId)
+        println!("passed parse and count check");
+        let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId(id.to_string()))? as usize;
+        self.nodes
+            .get(index)
+            .cloned()
+            .ok_or(VRError::InvalidNodeId(id.to_string()))
     }
 
     /// Returns all nodes in the DocumentVectorResource
@@ -139,10 +149,15 @@ impl VectorResource for DocumentVectorResource {
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
         // Id + index logic
-        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        println!(
+            "---- Integer id: {} --- node count  {}",
+            id.to_string(),
+            self.node_count
+        );
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if integer_id > self.node_count + 1 {
             // We do +1 since we resize the vectors explicitly in this method
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
         let index = (integer_id - 1) as usize;
 
@@ -191,10 +206,12 @@ impl VectorResource for DocumentVectorResource {
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
         // Id + index logic
-        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        println!("Integer id: {} --- node count  {}", id.to_string(), self.node_count);
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if integer_id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
+        println!("passed int check");
         let index = (integer_id - 1) as usize;
 
         // Update ids to match supplied id
@@ -227,9 +244,9 @@ impl VectorResource for DocumentVectorResource {
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
         // Id + index logic
-        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId)?;
+        let integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if integer_id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
         self.remove_node_with_integer(integer_id)
     }
@@ -305,7 +322,7 @@ impl DocumentVectorResource {
             .node
             .id
             .parse::<u64>()
-            .map_err(|_| VRError::InvalidNodeId)?;
+            .map_err(|_| VRError::InvalidNodeId(most_similar_node.node.id.to_string()))?;
 
         // Get Start/End ids
         let start_id = if most_similar_id >= proximity_window {
@@ -456,24 +473,18 @@ impl DocumentVectorResource {
     pub fn replace_with_text_node(
         &mut self,
         id: u64,
-        new_data: &str,
+        new_text: &str,
         new_metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-        // List of datatags you want to parse the new data with. If None will preserve previous tags.
-        parsing_tags: Option<Vec<DataTag>>,
+        parsing_tags: Vec<DataTag>, // List of datatags you want to parse the new data with.
     ) -> Result<(Node, Embedding), VRError> {
         // Validate which tags will be saved with the new data
-        let mut data_tag_names = vec![];
-        if let Some(tags) = parsing_tags {
-            let validated_data_tags = DataTag::validate_tag_list(new_data, &tags);
-            data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        } else {
-            data_tag_names = self.get_node(id.to_string())?.data_tag_names.clone();
-        }
+        let validated_data_tags = DataTag::validate_tag_list(&new_text, &parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
 
         self._replace_node_without_tag_validation(
             id,
-            NodeContent::Text(new_data.to_string()),
+            NodeContent::Text(new_text.to_string()),
             new_metadata,
             embedding,
             &data_tag_names,
@@ -528,7 +539,7 @@ impl DocumentVectorResource {
     ) -> Result<(Node, Embedding), VRError> {
         // Id + index
         if id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
         let index = (id - 1) as usize;
 
@@ -579,7 +590,7 @@ impl DocumentVectorResource {
     /// Internal node deletion
     fn _remove_node(&mut self, id: u64) -> Result<Node, VRError> {
         if id > self.node_count {
-            return Err(VRError::InvalidNodeId);
+            return Err(VRError::InvalidNodeId(id.to_string()));
         }
         let index = (id - 1) as usize;
         let removed_node = self.nodes.remove(index);
