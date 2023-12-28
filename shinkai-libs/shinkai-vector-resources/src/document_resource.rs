@@ -299,6 +299,10 @@ impl DocumentVectorResource {
         )
     }
 
+    pub fn node_count(&self) -> u64 {
+        self.node_count
+    }
+
     /// Performs a vector search using a query embedding, and then
     /// fetches a specific number of Nodes below and above the most
     /// similar Node.
@@ -356,97 +360,155 @@ impl DocumentVectorResource {
         Ok(nodes)
     }
 
-    /// Appends a new node (with a BaseVectorResource) to the document
-    /// Uses the supplied Embedding rather than
-    /// automatically using the resource's embedding (useful when Embedding models differ).
+    /// Appends a node underneath the provided parent_path if the resource held at parent_path supports appending
+    /// (currently this means if it is a DocumentVectorResource)
+    /// If the parent_path is invalid at any part, then method will error, and no changes will be applied to the VR.
+    fn append_node_at_path(
+        &mut self,
+        parent_path: VRPath,
+        new_node: Node,
+        new_embedding: Embedding,
+    ) -> Result<(), VRError> {
+        // If the path is root, then immediately insert into self at root path.
+        // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
+        if parent_path.path_ids.len() == 0 {
+            return self.insert_node_at_path(
+                parent_path.clone(),
+                self.node_count().to_string(),
+                new_node,
+                new_embedding,
+            );
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+
+            // Check if its a DocumentVectorResource
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                let doc = resource.as_document_resource()?;
+                // Append the new node to the DocumentVectorResource via insert_node_at_path with node_count id
+                self.insert_node_at_path(
+                    parent_path.clone(),
+                    doc.node_count().to_string(),
+                    new_node,
+                    new_embedding,
+                )?;
+                return Ok(());
+            }
+            return Err(VRError::InvalidVRPath(parent_path.clone()));
+        }
+    }
+
+    /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
     pub fn append_vector_resource_node(
         &mut self,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-    ) {
-        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
-        self._append_node_without_tag_validation(NodeContent::Resource(resource), metadata, embedding, &tag_names)
+    ) -> Result<(), VRError> {
+        let path = VRPath::from_string("/");
+        self.append_vector_resource_node_at_path(path, resource, metadata, embedding)
     }
 
-    /// Appends a new node (with a BaseVectorResource) to the document
+    /// Appends a new node (with a BaseVectorResource) at a specific path in the document.
+    pub fn append_vector_resource_node_at_path(
+        &mut self,
+        path: VRPath,
+        resource: BaseVectorResource,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
+        let tag_names = resource.as_trait_object().data_tag_index().data_tag_names();
+        let node_content = NodeContent::Resource(resource);
+        let new_node = Node::from_node_content(path.last_path_id()?, node_content, metadata, tag_names);
+        self.append_node_at_path(path, new_node, embedding)
+    }
+
+    /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
     /// Automatically uses the existing resource embedding.
     pub fn append_vector_resource_node_auto(
         &mut self,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
-    ) {
+    ) -> Result<(), VRError> {
         let embedding = resource.as_trait_object().resource_embedding().clone();
         self.append_vector_resource_node(resource, metadata, embedding.clone())
     }
 
-    /// Appends a new text node and an associated embedding to the document.
+    /// Appends a new text node to the document at the root depth.
     pub fn append_text_node(
         &mut self,
         text: &str,
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
         parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
-    ) {
-        let validated_data_tags = DataTag::validate_tag_list(text, parsing_tags);
-        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
-        self._append_node_without_tag_validation(
-            NodeContent::Text(text.to_string()),
-            metadata,
-            embedding,
-            &data_tag_names,
-        )
+    ) -> Result<(), VRError> {
+        let path = VRPath::from_string("/");
+        self.append_text_node_at_path(path, text, metadata, embedding, parsing_tags)
     }
 
-    /// Appends a new node (with ExternalContent) to the document.
-    /// Uses the supplied Embedding.
+    /// Appends a new text node at a specific path in the document.
+    pub fn append_text_node_at_path(
+        &mut self,
+        path: VRPath,
+        text: &str,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+        parsing_tags: &Vec<DataTag>, // list of datatags you want to parse the data with
+    ) -> Result<(), VRError> {
+        let validated_data_tags = DataTag::validate_tag_list(text, parsing_tags);
+        let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
+        let node_content = NodeContent::Text(text.to_string());
+        let new_node = Node::from_node_content(path.last_path_id()?, node_content, metadata, data_tag_names);
+        self.append_node_at_path(path, new_node, embedding)
+    }
+
+    /// Appends a new node (with ExternalContent) to the document at root path.
     pub fn append_external_content_node(
         &mut self,
         external_content: SourceReference,
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-    ) {
-        // As ExternalContent doesn't have data tags, we pass an empty vector
-        self._append_node_without_tag_validation(
-            NodeContent::ExternalContent(external_content),
-            metadata,
-            embedding,
-            &Vec::new(),
-        )
+    ) -> Result<(), VRError> {
+        let path = VRPath::from_string("/");
+        self.append_external_content_node_at_path(path, external_content, metadata, embedding)
     }
 
-    /// Appends a new node (with VRHeader) to the document.
-    /// Uses the supplied Embedding.
+    /// Appends a new node (with ExternalContent) at a specific path in the document.
+    pub fn append_external_content_node_at_path(
+        &mut self,
+        path: VRPath,
+        external_content: SourceReference,
+        metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+    ) -> Result<(), VRError> {
+        let node_content = NodeContent::ExternalContent(external_content);
+        let new_node = Node::from_node_content(path.last_path_id()?, node_content, metadata, vec![]);
+        self.append_node_at_path(path, new_node, embedding)
+    }
+
+    /// Appends a new node (with VRHeader) to the document at root depth.
     pub fn append_vr_header_node(
         &mut self,
         vr_header: VRHeader,
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-    ) {
-        let data_tag_names = vr_header.data_tag_names.clone();
-        self._append_node_without_tag_validation(NodeContent::VRHeader(vr_header), metadata, embedding, &data_tag_names)
+    ) -> Result<(), VRError> {
+        let path = VRPath::from_string("/");
+        self.append_vr_header_node_at_path(path, vr_header, metadata, embedding)
     }
 
-    /// Appends a new text node and associated embedding to the document
-    /// without checking if tags are valid. Used for internal purposes.
-    pub fn _append_node_without_tag_validation(
+    /// Appends a new node (with VRHeader) at a specific path in the document.
+    pub fn append_vr_header_node_at_path(
         &mut self,
-        data: NodeContent,
+        path: VRPath,
+        vr_header: VRHeader,
         metadata: Option<HashMap<String, String>>,
         embedding: Embedding,
-        tag_names: &Vec<String>,
-    ) {
-        let id = self.node_count + 1;
-        let node = Node::from_node_content_with_integer_id(id, data.clone(), metadata.clone(), tag_names.clone());
-        // Embedding details
-        let mut embedding = embedding.clone();
-        embedding.set_id_with_integer(id);
-
-        self.data_tag_index.add_node(&node);
-        self.metadata_index.add_node(&node);
-        self._append_node(node);
-        self.embeddings.push(embedding);
-        self.update_last_modified_to_now();
+    ) -> Result<(), VRError> {
+        let data_tag_names = vr_header.data_tag_names.clone();
+        let node_content = NodeContent::VRHeader(vr_header);
+        let new_node = Node::from_node_content(path.last_path_id()?, node_content, metadata, data_tag_names);
+        self.append_node_at_path(path, new_node, embedding)
     }
 
     /// Replaces an existing node and associated embedding in the Document resource

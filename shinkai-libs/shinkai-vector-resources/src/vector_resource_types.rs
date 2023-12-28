@@ -499,6 +499,15 @@ impl VRPath {
         self.path_ids.pop()
     }
 
+    /// Returns a copy of the final id in the path, if it exists.
+    /// This is the id of the actual node that the path points to.
+    pub fn last_path_id(&self) -> Result<String, VRError> {
+        self.path_ids
+            .last()
+            .cloned()
+            .ok_or(VRError::InvalidVRPath(self.clone()))
+    }
+
     /// Creates a cloned VRPath and adds an element to the end
     pub fn push_cloned(&self, element: String) -> Self {
         let mut new_path = self.clone();
