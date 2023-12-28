@@ -233,7 +233,7 @@ impl MapVectorResource {
     }
 
     /// Inserts a new node (with a BaseVectorResource) with the provided embedding
-    /// at the specified key in the Map resource root, and updates the indexes.
+    /// at the specified key in the Map resource root.
     pub fn insert_vector_resource_node(
         &mut self,
         key: &str,
@@ -244,11 +244,10 @@ impl MapVectorResource {
         self.insert_vector_resource_node_at_path(VRPath::new(), key, resource, metadata, embedding)
     }
 
-    /// Inserts a new node (with a BaseVectorResource) with the provided embedding
-    /// at the specified path + key in the Map resource, and updates the indexes.
+    /// Inserts a new node (with a BaseVectorResource) into the specified parent_path using the provided key.
     pub fn insert_vector_resource_node_at_path(
         &mut self,
-        path: VRPath,
+        parent_path: VRPath,
         key: &str,
         resource: BaseVectorResource,
         metadata: Option<HashMap<String, String>>,
@@ -258,11 +257,11 @@ impl MapVectorResource {
         let node_content = NodeContent::Resource(resource.clone());
         let new_internal_node = Node::from_node_content(key.to_string(), node_content, metadata.clone(), tag_names);
 
-        self.insert_node_at_path(path, key.to_string(), new_internal_node, embedding)
+        self.insert_node_at_path(parent_path, key.to_string(), new_internal_node, embedding)
     }
 
-    /// Inserts a new node (with a BaseVectorResource) with the resource's included embedding
-    /// at the specified key in the Map resource, and updates the indexes.
+    /// Inserts a new node (with a BaseVectorResource) using the resource's included embedding
+    /// at the specified key in the Map resource root.
     pub fn insert_vector_resource_node_auto(
         &mut self,
         key: &str,
@@ -273,8 +272,7 @@ impl MapVectorResource {
         self.insert_vector_resource_node(key, resource, metadata, embedding)
     }
 
-    /// Inserts a new text node and associated embedding
-    /// at the specified key in the Map resource root.
+    /// Inserts a new text node and associated embedding at the specified key in the Map resource root.
     pub fn insert_text_node(
         &mut self,
         key: String,
@@ -286,11 +284,10 @@ impl MapVectorResource {
         self.insert_text_node_at_path(VRPath::new(), key, text_value, metadata, embedding, parsing_tags)
     }
 
-    /// Inserts a new text node and associated embedding
-    /// at the specified path + key in the Map resource.
+    /// Inserts a new text node and associated embedding into the specified parent_path using the provided key.
     pub fn insert_text_node_at_path(
         &mut self,
-        path: VRPath,
+        parent_path: VRPath,
         key: String,
         text_value: String,
         metadata: Option<HashMap<String, String>>,
@@ -302,7 +299,7 @@ impl MapVectorResource {
         let node_content = NodeContent::Text(text_value);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
 
-        self.insert_node_at_path(path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding)
     }
 
     /// Inserts a new node (with ExternalContent) at the specified key in the Map resource root.
@@ -317,11 +314,11 @@ impl MapVectorResource {
         self.insert_external_content_node_at_path(VRPath::new(), key, external_content, metadata, embedding)
     }
 
-    /// Inserts a new node (with ExternalContent) at the specified path + key in the Map resource.
+    /// Inserts a new node (with ExternalContent) into the specified parent_path using the provided key.
     /// Uses the supplied Embedding.
     pub fn insert_external_content_node_at_path(
         &mut self,
-        path: VRPath,
+        parent_path: VRPath,
         key: String,
         external_content: SourceReference,
         metadata: Option<HashMap<String, String>>,
@@ -331,10 +328,10 @@ impl MapVectorResource {
         let node_content = NodeContent::ExternalContent(external_content);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), Vec::new());
 
-        self.insert_node_at_path(path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding)
     }
 
-    /// Inserts a new node (with VRHeader) at the specified key in the Map resource.
+    /// Inserts a new node (with VRHeader) at the specified key in the Map resource root.
     /// Uses the supplied Embedding.
     pub fn insert_vr_header_node(
         &mut self,
@@ -346,11 +343,11 @@ impl MapVectorResource {
         self.insert_vr_header_node_at_path(VRPath::new(), key, vr_header, metadata, embedding)
     }
 
-    /// Inserts a new node (with VRHeader) at the specified path + key in the Map resource.
+    /// Inserts a new node (with VRHeader) into the specified parent_path using the provided key.
     /// Uses the supplied Embedding.
     pub fn insert_vr_header_node_at_path(
         &mut self,
-        path: VRPath,
+        parent_path: VRPath,
         key: String,
         vr_header: VRHeader,
         metadata: Option<HashMap<String, String>>,
@@ -360,7 +357,7 @@ impl MapVectorResource {
         let node_content = NodeContent::VRHeader(vr_header);
         let new_node = Node::from_node_content(key.clone(), node_content, metadata.clone(), data_tag_names);
 
-        self.insert_node_at_path(path, key, new_node, embedding)
+        self.insert_node_at_path(parent_path, key, new_node, embedding)
     }
 
     /// Insert a new node and associated embeddings to the Map resource

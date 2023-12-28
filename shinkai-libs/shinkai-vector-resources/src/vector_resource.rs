@@ -323,22 +323,22 @@ pub trait VectorResource: Send + Sync {
         Ok(())
     }
 
-    /// Inserts a node at the provided path, using the supplied id. Supports inserting at root level as well.
-    /// If the path is invalid at any part, then method will error, and no changes will be applied to the VR.
+    /// Inserts a node underneath the provided parent_path, using the supplied id. Supports inserting at root level `/`.
+    /// If the parent_path is invalid at any part, then method will error, and no changes will be applied to the VR.
     fn insert_node_at_path(
         &mut self,
-        path: VRPath,
+        parent_path: VRPath,
         node_to_insert_id: String,
         node_to_insert: Node,
         node_to_insert_embedding: Embedding,
     ) -> Result<(), VRError> {
         // If inserting at root, just do it directly
-        if path.path_ids.is_empty() {
+        if parent_path.path_ids.is_empty() {
             self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
             return Ok(());
         }
         // Insert the new node at the end of the deconstructed nodes
-        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(parent_path.clone())?;
         deconstructed_nodes.push((node_to_insert_id, node_to_insert, node_to_insert_embedding));
         // Rebuild the nodes after inserting the new node
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
