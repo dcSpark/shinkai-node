@@ -77,6 +77,7 @@ fn test_manual_resource_vector_search() {
     doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![]);
     doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![]);
     doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![]);
+    doc.print_all_nodes_exhaustive(None, true, false);
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -145,12 +146,15 @@ fn test_manual_resource_vector_search() {
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
     fruit_doc.append_text_node(fact5.clone(), None, fact5_embeddings.clone(), &vec![]);
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
     fruit_doc.append_text_node(fact6.clone(), None, fact6_embeddings.clone(), &vec![]);
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
     let mut new_map_resource = map_resource.as_map_resource_cloned().unwrap();
     fruit_doc.append_vector_resource_node_auto(map_resource, None);
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -276,7 +280,7 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(res.len(), 6);
-    let path = VRPath::from_string("/3/");
+    let path = VRPath::from_string("/3/").unwrap();
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -285,7 +289,7 @@ fn test_manual_resource_vector_search() {
         Some(path),
     );
     assert_eq!(res.len(), 4);
-    let path = VRPath::from_string("/3/doc_key/");
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -377,7 +381,7 @@ fn test_manual_resource_vector_search() {
     //
 
     // Insert/retrieve tests
-    let path = VRPath::from_string("/doc_key/");
+    let path = VRPath::from_string("/doc_key/").unwrap();
     new_map_resource
         .insert_vector_resource_node_at_path(
             path,
@@ -388,7 +392,7 @@ fn test_manual_resource_vector_search() {
         )
         .unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
-    let test_path = VRPath::from_string("/doc_key/4/doc_key/3");
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
     assert_eq!(res.node.id, "3");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
@@ -399,7 +403,7 @@ fn test_manual_resource_vector_search() {
     assert!(!res.is_ok());
 
     // Replace an existing node in a Map Resource and validate it's been changed
-    let test_path = VRPath::from_string("/doc_key/4/some_key");
+    let test_path = VRPath::from_string("/doc_key/4/some_key").unwrap();
     let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
@@ -419,7 +423,7 @@ fn test_manual_resource_vector_search() {
     );
 
     // Replace an existing node in a Doc Resource and validate it's been changed
-    let test_path = VRPath::from_string("/doc_key/4/doc_key/2");
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
     let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
     new_map_resource
         .replace_with_text_node_at_path(
@@ -437,6 +441,24 @@ fn test_manual_resource_vector_search() {
         NodeContent::Text("----My new node value 2----".to_string()),
         new_node.node.content
     );
+
+    // Append a node into a Doc Resource and validate it's been added
+    let mut fruit_doc = fruit_doc.clone();
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
+    fruit_doc
+        .append_text_node_at_path(
+            path,
+            "--- appended text node ---",
+            None,
+            new_map_resource.resource_embedding().clone(),
+            &vec![],
+        )
+        .unwrap();
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
+    let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone()).unwrap();
+    assert_eq!(res.node.id, "4");
+    assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 }
 
 #[test]

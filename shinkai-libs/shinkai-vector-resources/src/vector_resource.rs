@@ -342,8 +342,10 @@ pub trait VectorResource: Send + Sync {
         node_to_insert: Node,
         node_to_insert_embedding: Embedding,
     ) -> Result<(), VRError> {
+        println!("!!!!inserting at path!!!!");
         // If inserting at root, just do it directly
         if parent_path.path_ids.is_empty() {
+            println!("insert since empty");
             self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
             return Ok(());
         }

@@ -185,7 +185,7 @@ impl VectorResource for MapVectorResource {
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_owned() + &id));
+        let path = VRPath::from_string(&("/".to_owned() + &id))?;
         self.remove_node_at_path(path)
     }
 }
@@ -387,7 +387,7 @@ impl MapVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_owned() + &key));
+        let path = VRPath::from_string(&("/".to_owned() + &key))?;
         self.replace_with_vector_resource_node_at_path(path, new_resource, new_metadata, embedding)
     }
 
@@ -420,7 +420,7 @@ impl MapVectorResource {
         embedding: Embedding,
         parsing_tags: Vec<DataTag>, // List of datatags you want to parse the new data with.
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_owned() + &key));
+        let path = VRPath::from_string(&("/".to_owned() + &key))?;
         self.replace_with_text_node_at_path(path, new_text, new_metadata, embedding, parsing_tags)
     }
 
@@ -457,7 +457,7 @@ impl MapVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_owned() + &key));
+        let path = VRPath::from_string(&("/".to_owned() + &key))?;
         self.replace_with_external_content_node_at_path(path, new_external_content, new_metadata, embedding)
     }
 
@@ -488,7 +488,7 @@ impl MapVectorResource {
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let path = VRPath::from_string(&("/".to_owned() + &key));
+        let path = VRPath::from_string(&("/".to_owned() + &key))?;
         self.replace_with_vr_header_node_at_path(path, new_vr_header, new_metadata, embedding)
     }
 
