@@ -308,7 +308,12 @@ pub trait VectorResource: Send + Sync {
 
     /// Replaces a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
     /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    fn replace_node_at_path(&mut self, path: VRPath, new_node: Node, new_embedding: Embedding) -> Result<(), VRError> {
+    fn replace_node_at_path(
+        &mut self,
+        path: VRPath,
+        new_node: Node,
+        new_embedding: Embedding,
+    ) -> Result<(Node, Embedding), VRError> {
         // Remove the node at the end of the deconstructed nodes
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
@@ -318,9 +323,9 @@ pub trait VectorResource: Send + Sync {
 
         // Rebuild the nodes after replacing the node
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding)?;
+        let result = self.replace_node(node_key, node, embedding)?;
 
-        Ok(())
+        Ok(result)
     }
 
     /// Inserts a node underneath the provided parent_path, using the supplied id. Supports inserting at root level `/`.

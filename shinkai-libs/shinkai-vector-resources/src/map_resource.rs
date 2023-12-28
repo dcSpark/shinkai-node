@@ -6,12 +6,10 @@ use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::{SourceReference, VRSource};
-use crate::vector_resource::{Node, NodeContent, RetrievedNode, VRPath, VectorResource};
+use crate::vector_resource::{Node, NodeContent, VRPath, VectorResource};
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
-use std::any::Any;
 use std::collections::HashMap;
-use std::fs::Metadata;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
@@ -177,12 +175,8 @@ impl VectorResource for MapVectorResource {
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
-        let deleted_node = self._remove_node(&id)?;
-        self.data_tag_index.remove_node(&deleted_node);
-        self.metadata_index.remove_node(&deleted_node);
-        let deleted_embedding = self.embeddings.remove(&id).ok_or(VRError::InvalidNodeId)?;
-
-        Ok((deleted_node, deleted_embedding))
+        let path = VRPath::from_string(&("/".to_owned() + &id));
+        self.remove_node_at_path(path)
     }
 }
 
@@ -375,90 +369,149 @@ impl MapVectorResource {
         self.insert_node(key.to_string(), node, embedding.clone());
     }
 
-    /// Replaces an existing node & associated embedding with a new
-    /// BaseVectorResource.
+    /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.
     pub fn replace_with_vector_resource_node(
         &mut self,
-        key: &str,
+        key: String,
         new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        let embedding = new_resource.as_trait_object().resource_embedding().clone();
-        let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
-        self._replace_kv_without_tag_validation(
-            key,
-            NodeContent::Resource(new_resource),
-            new_metadata,
-            &embedding,
-            &tag_names,
-        )
+        let path = VRPath::from_string(&("/".to_owned() + &key));
+        self.replace_with_vector_resource_node_at_path(path, new_resource, new_metadata, embedding)
     }
 
-    /// Replaces an existing node & associated embedding with a new text node.
-    pub fn replace_with_text_node(
+    /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified path.
+    /// Of note, path must include the node's id as the final part of the path.
+    pub fn replace_with_vector_resource_node_at_path(
         &mut self,
-        key: &str,
-        new_text_value: &str,
+        path: VRPath,
+        new_resource: BaseVectorResource,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
-        // List of datatags you want to parse the new data with. If None will preserve previous tags.
-        parsing_tags: Option<Vec<DataTag>>,
+    ) -> Result<(Node, Embedding), VRError> {
+        let tag_names = new_resource.as_trait_object().data_tag_index().data_tag_names();
+        let node_content = NodeContent::Resource(new_resource);
+
+        if let Some(key) = path.path_ids.last() {
+            let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), tag_names);
+            self.replace_node_at_path(path, new_node, embedding.clone())
+        } else {
+            Err(VRError::InvalidVRPath(path.clone()))
+        }
+    }
+
+    /// Replaces an existing node & associated embedding with a new text node at the specified key at root depth.
+    pub fn replace_with_text_node(
+        &mut self,
+        key: String,
+        new_text_value: String,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+        parsing_tags: Option<Vec<DataTag>>, // List of datatags you want to parse the new data with. If None will preserve previous tags.
+    ) -> Result<(Node, Embedding), VRError> {
+        let path = VRPath::from_string(&("/".to_owned() + &key));
+        self.replace_with_text_node_at_path(path, new_text_value, new_metadata, embedding, parsing_tags)
+    }
+
+    /// Replaces an existing node & associated embedding with a new text node at the specified path.
+    /// Of note, path must include the node's id as the final part of the path.
+    pub fn replace_with_text_node_at_path(
+        &mut self,
+        path: VRPath,
+        new_text_value: String,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: Embedding,
+        parsing_tags: Option<Vec<DataTag>>, // List of datatags you want to parse the new data with. If None will preserve previous tags.
     ) -> Result<(Node, Embedding), VRError> {
         // Validate which tags will be saved with the new data
         let mut data_tag_names = vec![];
         if let Some(tags) = parsing_tags {
-            let validated_data_tags = DataTag::validate_tag_list(new_text_value, &tags);
+            let validated_data_tags = DataTag::validate_tag_list(&new_text_value, &tags);
             data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         } else {
-            data_tag_names = self.get_node(key.to_string())?.data_tag_names.clone();
+            if let Some(key) = path.path_ids.last() {
+                data_tag_names = self.get_node(key.clone())?.data_tag_names.clone();
+            } else {
+                return Err(VRError::InvalidVRPath(path.clone()));
+            }
         }
-        self._replace_kv_without_tag_validation(
-            key,
-            NodeContent::Text(new_text_value.to_string()),
-            new_metadata,
-            embedding,
-            &data_tag_names,
-        )
+
+        if let Some(key) = path.path_ids.last() {
+            let node_content = NodeContent::Text(new_text_value);
+            let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
+            self.replace_node_at_path(path, new_node, embedding)
+        } else {
+            Err(VRError::InvalidVRPath(path.clone()))
+        }
     }
 
-    /// Replaces an existing node & associated embedding with a new ExternalContent node.
+    /// Replaces an existing node & associated embedding with a new ExternalContent node at the specified key at root depth.
     pub fn replace_with_external_content_node(
         &mut self,
-        key: &str,
+        key: String,
         new_external_content: SourceReference,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        // As ExternalContent doesn't have data tags, we pass an empty vector
-        self._replace_kv_without_tag_validation(
-            key,
-            NodeContent::ExternalContent(new_external_content),
-            new_metadata,
-            embedding,
-            &Vec::new(),
-        )
+        let path = VRPath::from_string(&("/".to_owned() + &key));
+        self.replace_with_external_content_node_at_path(path, new_external_content, new_metadata, embedding)
     }
 
-    /// Replaces an existing node & associated embedding with a new VRHeader node.
+    /// Replaces an existing node & associated embedding with a new ExternalContent node at the specified path.
+    /// Of note, path must include the node's id as the final part of the path.
+    pub fn replace_with_external_content_node_at_path(
+        &mut self,
+        path: VRPath,
+        new_external_content: SourceReference,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<(Node, Embedding), VRError> {
+        let node_content = NodeContent::ExternalContent(new_external_content);
+
+        if let Some(key) = path.path_ids.last() {
+            let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), Vec::new());
+            self.replace_node_at_path(path, new_node, embedding.clone())
+        } else {
+            Err(VRError::InvalidVRPath(path.clone()))
+        }
+    }
+
+    /// Replaces an existing node & associated embedding with a new VRHeader node at the specified key at root depth.
     pub fn replace_with_vr_header_node(
         &mut self,
-        key: &str,
+        key: String,
+        new_vr_header: VRHeader,
+        new_metadata: Option<HashMap<String, String>>,
+        embedding: &Embedding,
+    ) -> Result<(Node, Embedding), VRError> {
+        let path = VRPath::from_string(&("/".to_owned() + &key));
+        self.replace_with_vr_header_node_at_path(path, new_vr_header, new_metadata, embedding)
+    }
+
+    /// Replaces an existing node & associated embedding with a new VRHeader node at the specified path.
+    /// Of note, path must include the node's id as the final part of the path.
+    pub fn replace_with_vr_header_node_at_path(
+        &mut self,
+        path: VRPath,
         new_vr_header: VRHeader,
         new_metadata: Option<HashMap<String, String>>,
         embedding: &Embedding,
     ) -> Result<(Node, Embedding), VRError> {
         let data_tag_names = new_vr_header.data_tag_names.clone();
-        self._replace_kv_without_tag_validation(
-            key,
-            NodeContent::VRHeader(new_vr_header),
-            new_metadata,
-            embedding,
-            &data_tag_names,
-        )
+        let node_content = NodeContent::VRHeader(new_vr_header);
+
+        if let Some(key) = path.path_ids.last() {
+            let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
+            self.replace_node_at_path(path, new_node, embedding.clone())
+        } else {
+            Err(VRError::InvalidVRPath(path.clone())) // Replace with your actual error
+        }
     }
 
     /// Replaces an existing node & associated embeddings in the Map resource
     /// without checking if tags are valid.
+    /// TODO: Deprecate once VectorFS is used strictly.
     pub fn _replace_kv_without_tag_validation(
         &mut self,
         key: &str,
@@ -467,7 +520,6 @@ impl MapVectorResource {
         embedding: &Embedding,
         new_tag_names: &Vec<String>,
     ) -> Result<(Node, Embedding), VRError> {
-        // Next create the new node, and replace the old node in the nodes by inserting (updating)
         let new_node = Node::from_node_content(
             key.to_string(),
             new_data.clone(),
@@ -477,7 +529,7 @@ impl MapVectorResource {
         self.replace_node(key.to_string(), new_node, embedding.clone())
     }
 
-    /// Internal node deletion from the hashmap
+    /// Internal method. Node deletion from the hashmap
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId)?;
@@ -485,7 +537,7 @@ impl MapVectorResource {
         Ok(removed_node)
     }
 
-    // Inserts a node into the nodes hashmap
+    // Internal method. Inserts a node into the nodes hashmap
     fn _insert_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
