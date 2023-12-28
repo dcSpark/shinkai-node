@@ -123,17 +123,10 @@ impl VectorResource for DocumentVectorResource {
 
     /// Efficiently retrieves a node given its id by fetching it via index.
     fn get_node(&self, id: String) -> Result<Node, VRError> {
-        println!(
-            "!!---- Integer id: {} --- node count  {}",
-            id.to_string(),
-            self.node_count
-        );
-
         let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         if id == 0 || id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
         }
-        println!("passed parse and count check");
         let index = id.checked_sub(1).ok_or(VRError::InvalidNodeId(id.to_string()))? as usize;
         self.nodes
             .get(index)
@@ -149,11 +142,6 @@ impl VectorResource for DocumentVectorResource {
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
         // Id + index logic
-        println!(
-            "---- Integer id: {} --- node count  {}",
-            id.to_string(),
-            self.node_count
-        );
         let mut integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         integer_id = if integer_id == 0 { 1 } else { integer_id };
         if integer_id > self.node_count + 1 {
@@ -207,7 +195,6 @@ impl VectorResource for DocumentVectorResource {
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
         // Id + index logic
-        println!("Integer id: {} --- node count  {}", id.to_string(), self.node_count);
         let mut integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         integer_id = if integer_id == 0 { 1 } else { integer_id };
         if integer_id > self.node_count {
@@ -402,16 +389,12 @@ impl DocumentVectorResource {
         } else {
             // Get the resource node at parent_path
             let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
-            println!("post retrieval");
             // Check if its a DocumentVectorResource
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
-                println!("post  if resource");
                 let doc = resource.as_document_resource()?;
-                println!("post doc coerce");
                 // Remove the last node from the DocumentVectorResource via remove_node_at_path with node_count id
                 let id_int = doc.node_count();
                 let node_path = parent_path.push_cloned(id_int.to_string());
-                println!("about to remove node at path");
                 self.remove_node_at_path(node_path.clone())
             } else {
                 Err(VRError::InvalidVRPath(parent_path.clone()))
@@ -480,7 +463,6 @@ impl DocumentVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
         let node_content = NodeContent::Text(text.to_string());
         let new_node = Node::from_node_content("".to_string(), node_content, metadata, data_tag_names);
-        println!("created new text node");
         self.append_node_at_path(path, new_node, embedding)
     }
 
@@ -652,6 +634,7 @@ impl DocumentVectorResource {
 
     /// Deletes a node and associated embedding from the resource.
     pub fn remove_node_with_integer(&mut self, id: u64) -> Result<(Node, Embedding), VRError> {
+        // Remove the node + adjust remaining node ids
         let deleted_node = self._remove_node(id)?;
         self.data_tag_index.remove_node(&deleted_node);
         self.metadata_index.remove_node(&deleted_node);
@@ -682,14 +665,6 @@ impl DocumentVectorResource {
         }
         self.update_last_modified_to_now();
         Ok(removed_node)
-    }
-
-    /// Internal node appending
-    fn _append_node(&mut self, mut node: Node) {
-        self.node_count += 1;
-        node.id = self.node_count.to_string();
-        self.update_last_modified_to_now();
-        self.nodes.push(node);
     }
 
     pub fn from_json(json: &str) -> Result<Self, VRError> {

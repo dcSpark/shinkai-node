@@ -250,9 +250,8 @@ impl ShinkaiTool {
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
-        // We include `tool_type` to prevent attackers trying to overwrite
-        // the internal Rust tools with JS tools that have the same name
-        format!("{}:::{}", toolkit_name, name)
+        // We replace any `/` in order to not have the names break VRPaths
+        format!("{}:::{}", toolkit_name, name).replace("/", "|")
     }
 
     /// Convert to json
@@ -405,6 +404,8 @@ impl ToolRouter {
     /// Deletes the tool inside of the ToolRouter given a valid id
     pub fn delete_shinkai_tool(&mut self, tool_name: &str, toolkit_name: &str) -> Result<(), ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
+        self.routing_resource.print_all_nodes_exhaustive(None, false, false);
+        println!("Tool key: {}", key);
         self.routing_resource.remove_node(key)?;
         Ok(())
     }

@@ -156,12 +156,10 @@ impl VectorResource for MapVectorResource {
         // Replace old node, and get old embedding
         let mut new_node = node;
         new_node.id = id.clone();
-        println!("Replacing node id: {}", id.to_string());
         let old_node = self
             .nodes
             .insert(id.to_string(), new_node.clone())
             .ok_or(VRError::InvalidNodeId(id.to_string()))?;
-        println!("Replaced node id: {}", id.to_string());
         let old_embedding = self.get_embedding(id.clone())?;
 
         // Then deletion of old node from indexes and addition of new node
@@ -439,10 +437,8 @@ impl MapVectorResource {
         let data_tag_names = validated_data_tags.iter().map(|tag| tag.name.clone()).collect();
 
         if let Some(key) = path.path_ids.last() {
-            println!("Processed path last");
             let node_content = NodeContent::Text(new_text);
             let new_node = Node::from_node_content(key.clone(), node_content, new_metadata.clone(), data_tag_names);
-            println!("starting replacing node at path");
             self.replace_node_at_path(path, new_node, embedding)
         } else {
             Err(VRError::InvalidVRPath(path.clone()))

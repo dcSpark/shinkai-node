@@ -313,7 +313,6 @@ pub trait VectorResource: Send + Sync {
         new_node: Node,
         new_embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
-        println!(" replacing node at path");
         // Remove the node at the end of the deconstructed nodes
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
@@ -341,10 +340,8 @@ pub trait VectorResource: Send + Sync {
         node_to_insert: Node,
         node_to_insert_embedding: Embedding,
     ) -> Result<(), VRError> {
-        println!("!!!!inserting at path!!!!");
         // If inserting at root, just do it directly
         if parent_path.path_ids.is_empty() {
-            println!("insert since empty");
             self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
             return Ok(());
         }
