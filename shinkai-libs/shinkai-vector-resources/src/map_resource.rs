@@ -6,9 +6,10 @@ use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::{SourceReference, VRSource};
-use crate::vector_resource::{Node, NodeContent, VRPath, VectorResource};
+use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource};
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
+use std::any::Any;
 use std::collections::HashMap;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
@@ -33,6 +34,28 @@ pub struct MapVectorResource {
 }
 
 impl VectorResource for MapVectorResource {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    /// OrderedVectorResource trait not supported. Simply returns error .
+    fn as_ordered_vector_resource(&self) -> Result<&dyn OrderedVectorResource, VRError> {
+        Err(VRError::ResourceDoesNotSupportOrderedOperations(
+            self.resource_base_type().to_str().to_string(),
+        ))
+    }
+
+    /// OrderedVectorResource trait not supported. Simply returns error .
+    fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
+        Err(VRError::ResourceDoesNotSupportOrderedOperations(
+            self.resource_base_type().to_str().to_string(),
+        ))
+    }
+
     /// RFC3339 Datetime when then Vector Resource was created
     fn created_datetime(&self) -> String {
         self.created_datetime.clone()

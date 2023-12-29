@@ -26,6 +26,7 @@ pub enum VRError {
     LockAcquisitionFailed(String),
     MissingKey(String),
     InvalidPathString(String),
+    ResourceDoesNotSupportOrderedOperations(String),
 }
 
 impl fmt::Display for VRError {
@@ -66,6 +67,7 @@ impl fmt::Display for VRError {
             VRError::LockAcquisitionFailed(ref s) => write!(f, "Failed to acquire lock for: {}", s),
             VRError::MissingKey(ref s) => write!(f, "Missing key not found in hashmap: {}", s),
             VRError::InvalidPathString(ref s) => write!(f, "String is not formatted as a proper path string: {}", s),
+            VRError::ResourceDoesNotSupportOrderedOperations( ref s) => write!(f, "Attempted to perform ordered operations on a resource that does not implement OrderedVectorResource: {}", s)
         }
     }
 }

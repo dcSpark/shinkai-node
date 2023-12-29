@@ -7,10 +7,11 @@ use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::{ShinkaiFileType, SourceReference, VRSource};
 use crate::vector_resource::{
-    Node, NodeContent, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
+    Node, NodeContent, OrderedVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
 };
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
+use std::any::Any;
 use std::collections::HashMap;
 
 /// A VectorResource which uses an internal numbered/ordered list data model,  
@@ -34,7 +35,39 @@ pub struct DocumentVectorResource {
     metadata_index: MetadataIndex,
 }
 
+impl OrderedVectorResource for DocumentVectorResource {
+    /// Id of the last node held internally
+    fn last_node_id(&self) -> String {
+        self.node_count.to_string()
+    }
+
+    /// Id to be used when pushing a new node
+    fn new_push_node_id(&self) -> String {
+        (self.node_count + 1).to_string()
+    }
+}
+
 impl VectorResource for DocumentVectorResource {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    /// Attempts to cast the VectorResource into an OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource(&self) -> Result<&dyn OrderedVectorResource, VRError> {
+        Ok(self as &dyn OrderedVectorResource)
+    }
+
+    /// Attempts to cast the VectorResource into an mut OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
+        Ok(self as &mut dyn OrderedVectorResource)
+    }
+
     /// RFC3339 Datetime when then Vector Resource was created
     fn created_datetime(&self) -> String {
         self.created_datetime.clone()
@@ -347,59 +380,6 @@ impl DocumentVectorResource {
         }
 
         Ok(nodes)
-    }
-
-    /// Appends a node underneath the provided parent_path if the resource held at parent_path supports appending
-    /// (currently this means if it is a DocumentVectorResource)
-    /// If the parent_path is invalid at any part, then method will error, and no changes will be applied to the VR.
-    fn append_node_at_path(
-        &mut self,
-        parent_path: VRPath,
-        new_node: Node,
-        new_embedding: Embedding,
-    ) -> Result<(), VRError> {
-        // If the path is root, then immediately insert into self at root path.
-        // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
-        if parent_path.path_ids.len() == 0 {
-            let id_int = self.node_count() + 1;
-            return self.insert_node_at_path(parent_path.clone(), id_int.to_string(), new_node, new_embedding);
-        } else {
-            // Get the resource node at parent_path
-            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
-
-            // Check if its a DocumentVectorResource
-            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
-                let doc = resource.as_document_resource()?;
-                // Append the new node to the DocumentVectorResource via insert_node_at_path with node_count id
-                let id_int = doc.node_count() + 1;
-                self.insert_node_at_path(parent_path.clone(), id_int.to_string(), new_node, new_embedding)?;
-                return Ok(());
-            }
-            return Err(VRError::InvalidVRPath(parent_path.clone()));
-        }
-    }
-
-    /// Pops a node from the provided parent_path, if the resource held at parent_path supports popping
-    /// (currently this means if it is a DocumentVectorResource)
-    /// If the parent_path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
-    pub fn pop_node_at_path(&mut self, parent_path: VRPath) -> Result<(Node, Embedding), VRError> {
-        // If the path is root, then return an error.
-        if parent_path.is_empty() {
-            return Err(VRError::InvalidVRPath(parent_path.clone()));
-        } else {
-            // Get the resource node at parent_path
-            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
-            // Check if its a DocumentVectorResource
-            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
-                let doc = resource.as_document_resource()?;
-                // Remove the last node from the DocumentVectorResource via remove_node_at_path with node_count id
-                let id_int = doc.node_count();
-                let node_path = parent_path.push_cloned(id_int.to_string());
-                self.remove_node_at_path(node_path.clone())
-            } else {
-                Err(VRError::InvalidVRPath(parent_path.clone()))
-            }
-        }
     }
 
     /// Appends a new node (with a BaseVectorResource) to the document at the root depth.

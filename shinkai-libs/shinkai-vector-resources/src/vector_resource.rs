@@ -2,6 +2,7 @@ use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
+use crate::document_resource::DocumentVectorResource;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
@@ -22,6 +23,14 @@ use env_logger::filter::Filter;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fs::Metadata;
+
+/// Trait extension which specific Vector Resource types which have a guaranteed internal ordering
+/// of their nodes support, such as DocumentVectorResources. This trait extension enables new
+/// capabilities to be implemented, such as append/pop node interfaces, proximity searches, and more.
+pub trait OrderedVectorResource: VectorResource {
+    fn last_node_id(&self) -> String;
+    fn new_push_node_id(&self) -> String;
+}
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
@@ -62,6 +71,16 @@ pub trait VectorResource: Send + Sync {
     fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
+    // Convert the VectorResource into a &dyn Any
+    fn as_any(&self) -> &dyn Any;
+    // Convert the VectorResource into a &dyn Any
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    //// Attempts to cast the VectorResource into an OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource(&self) -> Result<&dyn OrderedVectorResource, VRError>;
+    /// Attempts to cast the VectorResource into an mut OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source
@@ -352,6 +371,41 @@ pub trait VectorResource: Send + Sync {
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
         self.replace_node(node_key, node, embedding)?;
         Ok(())
+    }
+
+    /// Appends a node underneath the provided parent_path if the resource held at parent_path implements OrderedVectorResource trait
+    /// If the parent_path is invalid at any part then method will error, and no changes will be applied to the VR.
+    fn append_node_at_path(
+        &mut self,
+        parent_path: VRPath,
+        new_node: Node,
+        new_embedding: Embedding,
+    ) -> Result<(), VRError> {
+        println!("in append node at path");
+        // If the path is root, then immediately insert into self at root path.
+        // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
+        if parent_path.path_ids.len() == 0 {
+            let ord_resource = self.as_ordered_vr_object_mut()?;
+            return ord_resource.insert_node_at_path(
+                parent_path.clone(),
+                ord_resource.new_push_node_id(),
+                new_node,
+                new_embedding,
+            );
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                let ord_resource = resource.as_trait_object().as_ordered_vr_object()?;
+                return self.insert_node_at_path(
+                    parent_path.clone(),
+                    ord_resource.new_push_node_id(),
+                    new_node,
+                    new_embedding,
+                );
+            }
+            return Err(VRError::InvalidVRPath(parent_path.clone()));
+        }
     }
 
     /// Internal method. Given a path, pops out each node along the path in order

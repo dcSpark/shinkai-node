@@ -74,9 +74,12 @@ fn test_manual_resource_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![]);
-    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![]);
-    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![]);
+    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![])
+        .unwrap();
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
