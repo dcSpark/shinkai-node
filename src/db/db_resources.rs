@@ -247,44 +247,44 @@ impl ShinkaiDB {
         Ok(final_nodes)
     }
 
-    /// Performs a 2-tier vector search using a query embedding across all DocumentVectorResources
-    /// and fetches the most similar node + proximity_window number of nodes around it.
-    ///
-    /// Note: This only searches DocumentVectorResources in Topic::VectorResources, not all resources. This is
-    /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
-    pub fn vector_search_proximity(
-        &self,
-        query: Embedding,
-        num_of_docs: u64,
-        proximity_window: u64,
-        profile: &ShinkaiName,
-    ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
-        let mut docs: Vec<DocumentVectorResource> = Vec::new();
-        for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
-            if let Ok(document_resource) = doc.as_document_resource_cloned() {
-                docs.push(document_resource.clone());
-            }
-        }
+    // /// Performs a 2-tier vector search using a query embedding across all DocumentVectorResources
+    // /// and fetches the most similar node + proximity_window number of nodes around it.
+    // ///
+    // /// Note: This only searches DocumentVectorResources in Topic::VectorResources, not all resources. This is
+    // /// because the proximity logic is not generic (potentially later we can have a Proximity trait).
+    // pub fn vector_search_proximity(
+    //     &self,
+    //     query: Embedding,
+    //     num_of_docs: u64,
+    //     proximity_window: u64,
+    //     profile: &ShinkaiName,
+    // ) -> Result<Vec<RetrievedNode>, ShinkaiDBError> {
+    //     let mut docs: Vec<DocumentVectorResource> = Vec::new();
+    //     for doc in self.vector_search_docs(query.clone(), num_of_docs, profile)? {
+    //         if let Ok(document_resource) = doc.as_document_resource_cloned() {
+    //             docs.push(document_resource.clone());
+    //         }
+    //     }
 
-        let mut retrieved_nodes = Vec::new();
-        for doc in &docs {
-            let results = doc.vector_search(query.clone(), 1);
-            retrieved_nodes.extend(results);
-        }
+    //     let mut retrieved_nodes = Vec::new();
+    //     for doc in &docs {
+    //         let results = doc.vector_search(query.clone(), 1);
+    //         retrieved_nodes.extend(results);
+    //     }
 
-        let top_ret_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, 1);
-        let top_node = top_ret_nodes
-            .get(0)
-            .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
+    //     let top_ret_nodes = RetrievedNode::sort_by_score(&retrieved_nodes, 1);
+    //     let top_node = top_ret_nodes
+    //         .get(0)
+    //         .ok_or(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))?;
 
-        for doc in &docs {
-            if doc.reference_string() == top_node.resource_header.reference_string() {
-                return Ok(doc.vector_search_proximity(query, proximity_window)?);
-            }
-        }
+    //     for doc in &docs {
+    //         if doc.reference_string() == top_node.resource_header.reference_string() {
+    //             return Ok(doc.vector_search_proximity(query, proximity_window)?);
+    //         }
+    //     }
 
-        Err(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))
-    }
+    //     Err(ShinkaiDBError::VRError(VRError::VectorResourceEmpty))
+    // }
 
     /// Performs a syntactic vector search using a query embedding and list of data tag names.
     /// Returns num_of_resources amount of most similar VectorResources.

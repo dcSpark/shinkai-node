@@ -1,8 +1,5 @@
-use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
-use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
-use crate::document_resource::DocumentVectorResource;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
@@ -13,16 +10,14 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::VRLocation;
-use crate::source::VRSource;
+pub use crate::source::VRLocation;
+pub use crate::source::VRSource;
 use crate::utils::{hash_string, random_string};
 pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
-use env_logger::filter::Filter;
 use std::any::Any;
 use std::collections::HashMap;
-use std::fs::Metadata;
 
 /// Trait extension which specific Vector Resource types implement that have a guaranteed internal ordering
 /// of their nodes, such as DocumentVectorResources. This trait extension enables new
@@ -535,7 +530,6 @@ pub trait VectorResource: Send + Sync {
                 current_node = (id, node, embedding);
             }
         }
-
         Ok(current_node)
     }
 
@@ -722,6 +716,23 @@ pub trait VectorResource: Send + Sync {
                 .into_iter()
                 .filter(|ret_node| ret_node.score >= min_score)
                 .collect();
+        }
+
+        // Check if we need to adjust based on the ResultsMode
+        if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
+            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
+                if let Some(first_result) = results.first() {
+                    if let Ok(new_results) =
+                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
+                    {
+                        results = new_results
+                    } else {
+                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
+                        // then just return the single highest scored node as the failure case when using proximity search.
+                        results = vec![first_result.clone()]
+                    }
+                }
+            }
         }
 
         // Check if we are using traveral method unscored all nodes

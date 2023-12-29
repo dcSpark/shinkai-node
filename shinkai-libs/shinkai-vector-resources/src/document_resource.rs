@@ -358,63 +358,6 @@ impl DocumentVectorResource {
         self.node_count
     }
 
-    /// Performs a vector search using a query embedding, and then
-    /// fetches a specific number of Nodes below and above the most
-    /// similar Node.
-    /// TODO: Update to traverse past root depth and properly fetch
-    /// surrounding nodes using path
-    pub fn vector_search_proximity(
-        &self,
-        query: Embedding,
-        proximity_window: u64,
-    ) -> Result<Vec<RetrievedNode>, VRError> {
-        let search_results = self.vector_search_customized(
-            query,
-            1,
-            TraversalMethod::Exhaustive,
-            &vec![TraversalOption::UntilDepth(0)],
-            // &vec![TraversalOption::LimitTraversalToType(VRBaseType::Document)],
-            None,
-        );
-        let most_similar_node = search_results.first().ok_or(VRError::VectorResourceEmpty)?;
-        let most_similar_id = most_similar_node
-            .node
-            .id
-            .parse::<u64>()
-            .map_err(|_| VRError::InvalidNodeId(most_similar_node.node.id.to_string()))?;
-
-        // Get Start/End ids
-        let start_id = if most_similar_id >= proximity_window {
-            most_similar_id - proximity_window
-        } else {
-            1
-        };
-        let end_id = if let Some(end_boundary) = self.node_count.checked_sub(1) {
-            if let Some(potential_end_id) = most_similar_id.checked_add(proximity_window) {
-                potential_end_id.min(end_boundary)
-            } else {
-                end_boundary // Or any appropriate default
-            }
-        } else {
-            1
-        };
-
-        // Acquire surrounding nodes
-        let mut nodes = Vec::new();
-        for id in start_id..=(end_id + 1) {
-            if let Ok(node) = self.get_node(id.to_string()) {
-                nodes.push(RetrievedNode {
-                    node: node.clone(),
-                    score: 0.00,
-                    resource_header: self.generate_resource_header(None),
-                    retrieval_path: VRPath::new(),
-                });
-            }
-        }
-
-        Ok(nodes)
-    }
-
     /// Appends a new node (with a BaseVectorResource) to the document at the root depth.
     pub fn append_vector_resource_node(
         &mut self,

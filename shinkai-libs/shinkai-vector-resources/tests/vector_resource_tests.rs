@@ -5,7 +5,7 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
-    FilterMode, NodeContent, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
+    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
 };
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
@@ -94,7 +94,7 @@ fn test_manual_resource_vector_search() {
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding_default_blocking(query_string2).unwrap();
-    let res2 = doc.vector_search(query_embedding2, 3);
+    let res2 = doc.vector_search(query_embedding2.clone(), 3);
     assert_eq!(fact2.clone(), res2[0].node.get_text_content().unwrap());
 
     let query_string3 = "What animal swims in the ocean?";
@@ -370,6 +370,26 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(res.len(), 1);
+
+    // Check Proximity search results mode
+    let res = fruit_doc.vector_search_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        None,
+    );
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_eq!(res.len(), 2);
+    let res = fruit_doc.vector_search_customized(
+        query_embedding2.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        None,
+    );
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_eq!(res.len(), 3);
 
     // Check the metadata_index
     println!("Metdata index: {:?}", fruit_doc.metadata_index());
