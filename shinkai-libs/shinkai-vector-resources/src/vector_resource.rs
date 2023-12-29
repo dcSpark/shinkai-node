@@ -24,12 +24,16 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::fs::Metadata;
 
-/// Trait extension which specific Vector Resource types which have a guaranteed internal ordering
-/// of their nodes support, such as DocumentVectorResources. This trait extension enables new
+/// Trait extension which specific Vector Resource types implement that have a guaranteed internal ordering
+/// of their nodes, such as DocumentVectorResources. This trait extension enables new
 /// capabilities to be implemented, such as append/pop node interfaces, proximity searches, and more.
 pub trait OrderedVectorResource: VectorResource {
+    /// Id of the last node held internally
     fn last_node_id(&self) -> String;
+    /// Id to be used when pushing a new node
     fn new_push_node_id(&self) -> String;
+    /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth
+    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError>;
 }
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
@@ -260,21 +264,62 @@ pub trait VectorResource: Send + Sync {
     /// Retrieves a node at any depth, given its path.
     /// If the path is invalid at any part, or empty, then method will error.
     fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
+        let results = self._internal_retrieve_node_at_path(path.clone(), None)?;
+        if results.is_empty() {
+            return Err(VRError::InvalidVRPath(path));
+        }
+        Ok(results[0].clone())
+    }
+
+    /// Retrieves a node and `proximity_window` number of nodes before/after it, given a path.
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn proximity_retrieve_node_at_path(
+        &self,
+        path: VRPath,
+        proximity_window: u64,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self._internal_retrieve_node_at_path(path.clone(), Some(proximity_window))
+    }
+
+    /// Internal method shared by retrieved node at path methods
+    fn _internal_retrieve_node_at_path(
+        &self,
+        path: VRPath,
+        proximity_window: Option<u64>,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
-        // Fetch the first node directly, then iterate through the rest
+        // Fetch the node at root depth directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header(None);
+        let mut retrieved_nodes = Vec::new();
+
+        // Iterate through the path, going into each Vector Resource until end of path
+        let mut traversed_path = VRPath::from_string(&(String::from("/") + &path.path_ids[0]))?;
         for id in path.path_ids.iter().skip(1) {
+            traversed_path.push(id.to_string());
             match &node.content {
                 NodeContent::Resource(resource) => {
                     let resource_obj = resource.as_trait_object();
                     last_resource_header = resource_obj.generate_resource_header(None);
+
+                    // If we have arrived at the final node, then perform node fetching/adding to results
+                    if traversed_path == path {
+                        // If returning proximity, then try to coerce into an OrderedVectorResource and perform proximity get
+                        if let Some(prox_window) = proximity_window {
+                            if let Ok(ord_res) = resource.as_ordered_vector_resource() {
+                                retrieved_nodes = ord_res.get_node_and_proximity(id.clone(), prox_window)?;
+                            } else {
+                                return Err(VRError::InvalidVRBaseType);
+                            }
+                        }
+                    }
                     node = resource_obj.get_node(id.clone())?;
                 }
                 _ => {
                     if let Some(last) = path.path_ids.last() {
+                        // TODO: potentially delete this if, should always error probably
                         if id != last {
                             return Err(VRError::InvalidVRPath(path.clone()));
                         }
@@ -282,7 +327,20 @@ pub trait VectorResource: Send + Sync {
                 }
             }
         }
-        Ok(RetrievedNode::new(node, 0.0, last_resource_header, path))
+
+        // If there are no retrieved nodes, then simply add the final node that was at the path
+        if retrieved_nodes.is_empty() {
+            retrieved_nodes.push(node);
+        }
+
+        // Convert the results into retrieved nodes
+        let mut final_nodes = vec![];
+        for n in retrieved_nodes {
+            let mut node_path = path.pop_cloned();
+            node_path.push(n.id.clone());
+            final_nodes.push(RetrievedNode::new(n, 0.0, last_resource_header.clone(), node_path));
+        }
+        Ok(final_nodes)
     }
 
     /// Boolean check to see if a node exists at a given path

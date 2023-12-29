@@ -45,6 +45,39 @@ impl OrderedVectorResource for DocumentVectorResource {
     fn new_push_node_id(&self) -> String {
         (self.node_count + 1).to_string()
     }
+
+    /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth.
+    /// Returns the nodes in its default ordering as determined by the internal VR struct.
+    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError> {
+        let id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
+
+        // Check if id is within valid range
+        if id == 0 || id > self.node_count {
+            return Err(VRError::InvalidNodeId(id.to_string()));
+        }
+
+        // Calculate Start/End ids
+        let start_id = if id > proximity_window {
+            id - proximity_window
+        } else {
+            1
+        };
+        let end_id = if let Some(potential_end_id) = id.checked_add(proximity_window) {
+            potential_end_id.min(self.node_count)
+        } else {
+            self.node_count
+        };
+
+        // Acquire all nodes
+        let mut nodes = Vec::new();
+        for id in start_id..=end_id {
+            if let Ok(node) = self.get_node(id.to_string()) {
+                nodes.push(node);
+            }
+        }
+
+        Ok(nodes)
+    }
 }
 
 impl VectorResource for DocumentVectorResource {

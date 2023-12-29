@@ -395,7 +395,30 @@ fn test_manual_resource_vector_search() {
     assert_eq!(res.node.id, "3");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
+    // Proximity retrieval test
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 2);
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 3);
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/1").unwrap();
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 2);
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 5000)
+        .unwrap();
+    assert_eq!(res.len(), 3);
+
     // Check that no node is retrieved after removing it by path
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.remove_node_at_path(test_path.clone());
     let res = new_map_resource.retrieve_node_at_path(test_path.clone());
     assert!(!res.is_ok());
