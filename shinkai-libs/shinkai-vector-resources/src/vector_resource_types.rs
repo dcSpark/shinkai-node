@@ -1,6 +1,7 @@
 use super::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
 use crate::embeddings::Embedding;
+use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::VRLocation;
@@ -164,7 +165,7 @@ impl Node {
     /// Create a new text-holding Node with a provided String id
     pub fn new_text(
         id: String,
-        text: &str,
+        text: String,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
@@ -182,7 +183,7 @@ impl Node {
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
     pub fn new_text_with_integer_id(
         id: u64,
-        text: &str,
+        text: String,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
@@ -240,9 +241,9 @@ impl Node {
     }
 
     /// Create a new VRHeader-holding Node with a provided String id
-    pub fn new_vrheader(
+    pub fn new_vr_header(
         id: String,
-        vrheader: &VRHeader,
+        vr_header: &VRHeader,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
@@ -250,7 +251,7 @@ impl Node {
 
         Self {
             id,
-            content: NodeContent::VRHeader(vrheader.clone()),
+            content: NodeContent::VRHeader(vr_header.clone()),
             metadata,
             data_tag_names: data_tag_names.clone(),
             last_modified_datetime: current_time,
@@ -258,13 +259,13 @@ impl Node {
     }
 
     /// Create a new VRHeader-holding Node with a provided u64 id, which gets converted to string internally
-    pub fn new_vrheader_with_integer_id(
+    pub fn new_vr_header_with_integer_id(
         id: u64,
-        vrheader: &VRHeader,
+        vr_header: &VRHeader,
         metadata: Option<HashMap<String, String>>,
         data_tag_names: &Vec<String>,
     ) -> Self {
-        Self::new_vrheader(id.to_string(), vrheader, metadata, data_tag_names)
+        Self::new_vr_header(id.to_string(), vr_header, metadata, data_tag_names)
     }
 
     /// Creates a new Node using provided content with a String id.
@@ -324,12 +325,28 @@ impl Node {
         }
     }
 
-    /// Returns the keys of all kv pairs in the Node's metadata field
-    /// None if Metadata is None
+    /// Returns the keys of all kv pairs in the Node's metadata field,
+    /// and all metadata keys of internal nodes for Vector Resources and VRHeaders.
+    /// None if no keys exist.
     pub fn metadata_keys(&self) -> Option<Vec<String>> {
-        self.metadata
+        let mut keys = self
+            .metadata
             .as_ref()
-            .map(|metadata| metadata.keys().cloned().collect())
+            .map(|metadata| metadata.keys().cloned().collect::<Vec<String>>())
+            .unwrap_or_else(Vec::new);
+
+        if let NodeContent::Resource(resource) = &self.content {
+            let internal_keys = resource.as_trait_object().metadata_index().get_all_metadata_keys();
+            keys.extend(internal_keys);
+        } else if let NodeContent::VRHeader(header) = &self.content {
+            keys.extend(header.metadata_index_keys.clone());
+        }
+
+        if keys.is_empty() {
+            None
+        } else {
+            Some(keys)
+        }
     }
 }
 
@@ -352,10 +369,14 @@ pub struct VRHeader {
     pub resource_embedding: Option<Embedding>,
     pub resource_created_datetime: String,
     pub resource_last_modified_datetime: String,
+    pub resource_embedding_model_used: EmbeddingModelType,
     /// The location where the VectorResource is held. Will be None for VectorResources
     /// held inside of nodes of an existing VectorResource.
     pub resource_location: Option<VRLocation>,
+    /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
+    /// List of metadata keys held in internal nodes
+    pub metadata_index_keys: Vec<String>,
 }
 
 impl VRHeader {
@@ -370,6 +391,8 @@ impl VRHeader {
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
+        metadata_index_keys: Vec<String>,
+        resource_embedding_model_used: EmbeddingModelType,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -381,6 +404,8 @@ impl VRHeader {
             resource_created_datetime,
             resource_last_modified_datetime,
             resource_location,
+            metadata_index_keys,
+            resource_embedding_model_used,
         }
     }
 
@@ -394,6 +419,8 @@ impl VRHeader {
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
         resource_location: Option<VRLocation>,
+        metadata_index_keys: Vec<String>,
+        resource_embedding_model_used: EmbeddingModelType,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -412,6 +439,8 @@ impl VRHeader {
             resource_created_datetime,
             resource_last_modified_datetime,
             resource_location,
+            metadata_index_keys,
+            resource_embedding_model_used,
         })
     }
 
@@ -443,6 +472,11 @@ impl VRPath {
         Self { path_ids: vec![] }
     }
 
+    /// Returns if the path is empty (aka pointing at root, `/`)
+    pub fn is_empty(&self) -> bool {
+        self.path_ids.len() == 0
+    }
+
     /// Get the depth of the VRPath. Of note, this will return 0 in both cases if
     /// the path is empty, or if it is in the root path (because depth starts at 0
     /// for Vector Resources). This matches the TraversalMethod::UntilDepth interface.
@@ -470,6 +504,15 @@ impl VRPath {
         self.path_ids.pop()
     }
 
+    /// Returns a copy of the final id in the path, if it exists.
+    /// This is the id of the actual node that the path points to.
+    pub fn last_path_id(&self) -> Result<String, VRError> {
+        self.path_ids
+            .last()
+            .cloned()
+            .ok_or(VRError::InvalidVRPath(self.clone()))
+    }
+
     /// Creates a cloned VRPath and adds an element to the end
     pub fn push_cloned(&self, element: String) -> Self {
         let mut new_path = self.clone();
@@ -485,14 +528,20 @@ impl VRPath {
     }
 
     /// Create a VRPath from a path string
-    pub fn from_path_string(path_ids_string: &str) -> Self {
-        let path_ids_string = path_ids_string.trim_start_matches('/').trim_end_matches('/');
-        let elements: Vec<&str> = path_ids_string.split('/').collect();
-        let mut path = Self::new();
-        for element in elements {
-            path.push(element.to_string());
+    pub fn from_string(path_string: &str) -> Result<Self, VRError> {
+        if !path_string.starts_with('/') {
+            return Err(VRError::InvalidPathString(path_string.to_string()));
         }
-        path
+
+        let mut path = Self::new();
+        if path_string != "/" {
+            let path_ids_string = path_string.trim_start_matches('/').trim_end_matches('/');
+            let elements: Vec<&str> = path_ids_string.split('/').collect();
+            for element in elements {
+                path.push(element.to_string());
+            }
+        }
+        Ok(path)
     }
 
     /// Formats the VRPath to a string

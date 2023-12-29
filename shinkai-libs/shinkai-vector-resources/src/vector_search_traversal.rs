@@ -36,12 +36,14 @@ pub enum TraversalOption {
     /// Alternate scoring modes are available which allow weighing a node base on relative scores
     /// above/below/beside, or otherwise to get potentially higher quality results.
     SetScoringMode(ScoringMode),
-    /// Set a prefilter mode while performing a vector search. These modes use pre-processed indices in the Vector Resource
+    /// Set a prefilter mode for a vector search. These modes use pre-processed indices in the Vector Resource
     /// to efficiently filter out all unrelated nodes before performing any semantic search logic.
     SetPrefilterMode(PrefilterMode),
     /// Set a filter mode while performing a vector search. These modes allow filtering elements during a Vector Search
-    /// dynamically based on data within each found node. They do not use an indices, so are slower than prefiler modes.
+    /// dynamically based on data within each found node. They do not use an indices, so are slower than prefilter modes.
     SetFilterMode(FilterMode),
+    /// Set a results mode for a vector search. These modes allow changing which nodes are returned from a Vector Search.
+    SetResultsMode(ResultsMode),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -57,6 +59,14 @@ pub enum PrefilterMode {
     /// A syntactic vector search efficiently pre-filters all Nodes held internally to a subset that
     /// matches the provided list of data tag names (Strings).
     SyntacticVectorSearch(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResultsMode {
+    /// Perform a vector search which returns the highest scored node + an integer number
+    /// of nodes before/after. This search only works if the VectorResource where the node is held in
+    /// implements OrderedVectorResource, otherwise search returns just the single node.
+    ProximitySearch(u64),
 }
 
 pub type Key = String;
@@ -119,6 +129,7 @@ pub trait TraversalOptionVecExt {
     fn get_set_scoring_mode_option(&self) -> Option<ScoringMode>;
     fn get_set_prefilter_mode_option(&self) -> Option<PrefilterMode>;
     fn get_set_filter_mode_option(&self) -> Option<FilterMode>;
+    fn get_set_results_mode_option(&self) -> Option<ResultsMode>;
 }
 
 impl TraversalOptionVecExt for Vec<TraversalOption> {
@@ -185,6 +196,16 @@ impl TraversalOptionVecExt for Vec<TraversalOption> {
     fn get_set_filter_mode_option(&self) -> Option<FilterMode> {
         self.iter().find_map(|option| {
             if let TraversalOption::SetFilterMode(value) = option {
+                Some(value.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    fn get_set_results_mode_option(&self) -> Option<ResultsMode> {
+        self.iter().find_map(|option| {
+            if let TraversalOption::SetResultsMode(value) = option {
                 Some(value.clone())
             } else {
                 None

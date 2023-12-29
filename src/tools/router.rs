@@ -250,9 +250,8 @@ impl ShinkaiTool {
 
     /// Generate the key that this tool will be stored under in the tool router
     pub fn gen_router_key(name: String, toolkit_name: String) -> String {
-        // We include `tool_type` to prevent attackers trying to overwrite
-        // the internal Rust tools with JS tools that have the same name
-        format!("{}:::{}", toolkit_name, name)
+        // We replace any `/` in order to not have the names break VRPaths
+        format!("{}:::{}", toolkit_name, name).replace("/", "|")
     }
 
     /// Convert to json
@@ -291,20 +290,19 @@ impl ToolRouter {
         let name = "Tool Router";
         let desc = Some("Enables performing vector searches to find relevant tools.");
         let source = VRSource::None;
-        let resource_id = "tool_router";
 
         // Initialize the MapVectorResource and add all of the rust tools by default
-        let mut routing_resource = MapVectorResource::new_empty(name, desc, source, resource_id);
+        let mut routing_resource = MapVectorResource::new_empty(name, desc, source);
         let mut metadata = HashMap::new();
         metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 
         for t in RUST_TOOLKIT.rust_tool_map.values() {
             let tool = ShinkaiTool::Rust(t.clone());
             routing_resource.insert_text_node(
-                &tool.tool_router_key(),
-                &tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
+                tool.tool_router_key(),
+                tool.to_json().unwrap(), // This unwrap should be safe because Rust Tools are not dynamic
                 Some(metadata.clone()),
-                &t.tool_embedding,
+                t.tool_embedding.clone(),
                 &vec![],
             );
         }
@@ -406,7 +404,9 @@ impl ToolRouter {
     /// Deletes the tool inside of the ToolRouter given a valid id
     pub fn delete_shinkai_tool(&mut self, tool_name: &str, toolkit_name: &str) -> Result<(), ToolError> {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
-        self.routing_resource.remove_node(&key)?;
+        self.routing_resource.print_all_nodes_exhaustive(None, false, false);
+        println!("Tool key: {}", key);
+        self.routing_resource.remove_node(key)?;
         Ok(())
     }
 

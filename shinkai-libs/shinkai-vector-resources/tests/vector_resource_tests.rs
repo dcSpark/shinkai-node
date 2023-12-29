@@ -5,7 +5,7 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
 use shinkai_vector_resources::vector_resource::{
-    FilterMode, NodeContent, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
+    FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
 };
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
@@ -61,7 +61,6 @@ fn test_manual_resource_vector_search() {
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         VRSource::new_uri_ref("animalwildlife.com"),
-        "animal_resource",
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -75,9 +74,12 @@ fn test_manual_resource_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1, None, &fact1_embeddings, &vec![]);
-    doc.append_text_node(fact2, None, &fact2_embeddings, &vec![]);
-    doc.append_text_node(fact3, None, &fact3_embeddings, &vec![]);
+    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![])
+        .unwrap();
 
     // Testing JSON serialization/deserialization
     let json = doc.to_json().unwrap();
@@ -88,17 +90,17 @@ fn test_manual_resource_vector_search() {
     let query_string = "What animal barks?";
     let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding1.clone(), 1);
-    assert_eq!(fact1, res[0].node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap());
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding_default_blocking(query_string2).unwrap();
-    let res2 = doc.vector_search(query_embedding2, 3);
-    assert_eq!(fact2, res2[0].node.get_text_content().unwrap());
+    let res2 = doc.vector_search(query_embedding2.clone(), 3);
+    assert_eq!(fact2.clone(), res2[0].node.get_text_content().unwrap());
 
     let query_string3 = "What animal swims in the ocean?";
     let query_embedding3 = generator.generate_embedding_default_blocking(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
-    assert_eq!(fact3, res3[0].node.get_text_content().unwrap());
+    assert_eq!(fact3.clone(), res3[0].node.get_text_content().unwrap());
 
     //
     // Create a 2nd resource, a MapVectorResource
@@ -107,7 +109,6 @@ fn test_manual_resource_vector_search() {
         "Tech Facts",
         Some("A collection of facts about technology"),
         VRSource::new_uri_ref("veryrealtechfacts.com"),
-        "tech_resource",
     );
 
     map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -118,12 +119,18 @@ fn test_manual_resource_vector_search() {
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
     let fact4_embeddings = generator.generate_embedding_default_blocking(fact4).unwrap();
-    map_resource.insert_text_node("some_key", fact4, None, &fact4_embeddings, &vec![]);
+    map_resource.insert_text_node(
+        "some_key".to_string(),
+        fact4.to_string(),
+        None,
+        fact4_embeddings.clone(),
+        &vec![],
+    );
 
     // Insert the document resource into the map resource
     // To allow for this composability we need to convert the doc into a BaseVectorResource
     let doc_resource = BaseVectorResource::from(doc);
-    map_resource.insert_vector_resource_node("doc_key", doc_resource, None);
+    map_resource.insert_vector_resource_node_auto("doc_key", doc_resource, None);
 
     //
     // Create a third resource, a DocumentVectorResource about fruits
@@ -132,7 +139,6 @@ fn test_manual_resource_vector_search() {
         "Fruit Facts",
         Some("A collection of facts about fruits"),
         VRSource::new_uri_ref("ostensiblyrealfruitfacts.com"),
-        "fruit_resource",
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
@@ -141,12 +147,13 @@ fn test_manual_resource_vector_search() {
     let fact5_embeddings = generator.generate_embedding_default_blocking(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
     let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
-    fruit_doc.append_text_node(fact5, None, &fact5_embeddings, &vec![]);
-    fruit_doc.append_text_node(fact6, None, &fact6_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact5.clone(), None, fact5_embeddings.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embeddings.clone(), &vec![]);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
-    fruit_doc.append_vector_resource_node(map_resource, None);
+    let mut new_map_resource = map_resource.as_map_resource_cloned().unwrap();
+    fruit_doc.append_vector_resource_node_auto(map_resource, None);
 
     //
     // Perform Vector Search Tests Through All Levels/Resources
@@ -155,7 +162,7 @@ fn test_manual_resource_vector_search() {
     // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
-    assert_eq!(fact1, res[0].node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -164,7 +171,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
-    assert_eq!(fact4, res[0].node.get_text_content().unwrap());
+    assert_eq!(fact4.clone(), res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/some_key", res[0].format_path_to_string());
     assert_eq!(1, res[0].retrieval_path.depth());
@@ -174,7 +181,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding.clone(), 10);
-    assert_eq!(fact6, res[0].node.get_text_content().unwrap());
+    assert_eq!(fact6.clone(), res[0].node.get_text_content().unwrap());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/2", res[0].format_path_to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
@@ -190,7 +197,7 @@ fn test_manual_resource_vector_search() {
         &vec![TraversalOption::UntilDepth(0)],
         None,
     );
-    assert_ne!(fact1, res[0].node.get_text_content().unwrap());
+    assert_ne!(fact1.clone(), res[0].node.get_text_content().unwrap());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
     let res = fruit_doc.vector_search_customized(
@@ -272,7 +279,7 @@ fn test_manual_resource_vector_search() {
         None,
     );
     assert_eq!(res.len(), 6);
-    let path = VRPath::from_path_string("/3/");
+    let path = VRPath::from_string("/3/").unwrap();
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -281,7 +288,7 @@ fn test_manual_resource_vector_search() {
         Some(path),
     );
     assert_eq!(res.len(), 4);
-    let path = VRPath::from_path_string("/3/doc_key/");
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
     let res = fruit_doc.vector_search_customized(
         query_embedding1.clone(),
         100,
@@ -331,8 +338,8 @@ fn test_manual_resource_vector_search() {
     hm2.insert("common_key".to_string(), "common_value".to_string());
     hm2.insert("unique_key2".to_string(), "unique_value2".to_string());
 
-    fruit_doc.append_text_node(fact5, Some(hm1), &fact5_embeddings, &vec![]);
-    fruit_doc.append_text_node(fact6, Some(hm2), &fact6_embeddings, &vec![]);
+    fruit_doc.append_text_node(fact5.clone(), Some(hm1), fact5_embeddings.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), Some(hm2), fact6_embeddings.clone(), &vec![]);
 
     // Check any filtering, with the common key/value
     let res = fruit_doc.vector_search_customized(
@@ -364,9 +371,140 @@ fn test_manual_resource_vector_search() {
     );
     assert_eq!(res.len(), 1);
 
+    // Check Proximity search results mode
+    let res = fruit_doc.vector_search_customized(
+        query_embedding1.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        None,
+    );
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_eq!(res.len(), 2);
+    let res = fruit_doc.vector_search_customized(
+        query_embedding2.clone(),
+        100,
+        TraversalMethod::Exhaustive,
+        &vec![TraversalOption::SetResultsMode(ResultsMode::ProximitySearch(1))],
+        None,
+    );
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    assert_eq!(res.len(), 3);
+
     // Check the metadata_index
     println!("Metdata index: {:?}", fruit_doc.metadata_index());
     assert_eq!(fruit_doc.metadata_index().get_all_metadata_keys().len(), 3);
+
+    //
+    /// At path method tests
+    //
+
+    // Insert/retrieve tests
+    let path = VRPath::from_string("/doc_key/").unwrap();
+    new_map_resource
+        .insert_vector_resource_node_at_path(
+            path,
+            "4",
+            BaseVectorResource::Map(new_map_resource.clone()),
+            None,
+            new_map_resource.resource_embedding().clone(),
+        )
+        .unwrap();
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    assert_eq!(res.node.id, "3");
+    assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
+
+    // Proximity retrieval test
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+    new_map_resource.print_all_nodes_exhaustive(None, true, false);
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 2);
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 3);
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/1").unwrap();
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 1)
+        .unwrap();
+    assert_eq!(res.len(), 2);
+    let res = new_map_resource
+        .proximity_retrieve_node_at_path(test_path.clone(), 5000)
+        .unwrap();
+    assert_eq!(res.len(), 3);
+
+    // Check that no node is retrieved after removing it by path
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
+    new_map_resource.remove_node_at_path(test_path.clone());
+    let res = new_map_resource.retrieve_node_at_path(test_path.clone());
+    assert!(!res.is_ok());
+
+    // Replace an existing node in a Map Resource and validate it's been changed
+    let test_path = VRPath::from_string("/doc_key/4/some_key").unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource
+        .replace_with_text_node_at_path(
+            test_path.clone(),
+            "----My new node value----".to_string(),
+            None,
+            fact6_embeddings.clone(),
+            vec![],
+        )
+        .unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    assert_ne!(initial_node, new_node);
+    assert_eq!(
+        NodeContent::Text("----My new node value----".to_string()),
+        new_node.node.content
+    );
+
+    // Replace an existing node in a Doc Resource and validate it's been changed
+    let test_path = VRPath::from_string("/doc_key/4/doc_key/2").unwrap();
+    let initial_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    new_map_resource
+        .replace_with_text_node_at_path(
+            test_path.clone(),
+            "----My new node value 2----".to_string(),
+            None,
+            fact6_embeddings.clone(),
+            vec![],
+        )
+        .unwrap();
+    let new_node = new_map_resource.retrieve_node_at_path(test_path.clone()).unwrap();
+    assert_ne!(initial_node, new_node);
+    assert_eq!(
+        NodeContent::Text("----My new node value 2----".to_string()),
+        new_node.node.content
+    );
+
+    // Append a node into a Doc Resource and validate it's been added
+    let mut fruit_doc = fruit_doc.clone();
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
+    fruit_doc
+        .append_text_node_at_path(
+            path,
+            "--- appended text node ---",
+            None,
+            new_map_resource.resource_embedding().clone(),
+            &vec![],
+        )
+        .unwrap();
+    let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone()).unwrap();
+    assert_eq!(res.node.id, "4");
+    assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
+
+    // Pop the previously appended node
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
+    fruit_doc.pop_node_at_path(path).unwrap();
+    let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
+    let res = fruit_doc.retrieve_node_at_path(test_path.clone());
+    assert_eq!(res.is_ok(), false);
+    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 }
 
 #[test]
@@ -380,7 +518,6 @@ fn test_manual_syntactic_vector_search() {
         "CV Data From Resume",
         Some("A bunch of data theoretically parsed out of a CV"),
         VRSource::None,
-        "cv_data",
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
     doc.update_resource_embedding_blocking(&generator, vec!["cv".to_string(), "email".to_string()])
@@ -418,9 +555,9 @@ fn test_manual_syntactic_vector_search() {
     let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
     let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1, None, &fact1_embeddings, &data_tags);
-    doc.append_text_node(fact2, None, &fact2_embeddings, &data_tags);
-    doc.append_text_node(fact3, None, &fact3_embeddings, &data_tags);
+    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &data_tags);
+    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &data_tags);
+    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &data_tags);
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
 

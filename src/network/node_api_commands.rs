@@ -1,8 +1,5 @@
-use serde_json::Value as JsonValue;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
-
 use super::{
+    node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
     Node,
@@ -32,6 +29,7 @@ use futures::Stream;
 use futures::StreamExt;
 use log::{debug, error, info, trace, warn};
 use reqwest::StatusCode;
+use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
@@ -54,7 +52,9 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
+use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
 use std::pin::Pin;
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 use warp::Buf;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -787,7 +787,23 @@ impl Node {
             .map_err(|e| e.to_string())
             .map(|_| "true".to_string());
 
+        // If any new profile has been created using the registration code, we update the VectorFS
+        // to initialize the new profile
+        let mut profile_list = vec![];
+        profile_list = match db.get_all_profiles(self.node_profile_name.clone()) {
+            Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
+            Err(e) => panic!("Failed to fetch profiles: {}", e),
+        };
+        let mut vfs = self.vector_fs.lock().await;
+        vfs.initialize_new_profiles(
+            &self.node_profile_name,
+            profile_list,
+            self.embedding_generator.model_type.clone(),
+            NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS.clone(),
+        )?;
+
         std::mem::drop(db);
+        std::mem::drop(vfs);
 
         match result {
             Ok(success) => {

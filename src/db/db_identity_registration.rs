@@ -1,5 +1,6 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
+use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::VerifyingKey;
 use rand::RngCore;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
@@ -10,6 +11,8 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, string_to_signature_public_key,
 };
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(PartialEq, Debug)]
