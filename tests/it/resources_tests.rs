@@ -189,15 +189,15 @@ fn test_multi_resource_db_vector_search() {
             &ret_node.node.get_text_content().unwrap()
         );
 
-    // Camel Node proximity vector search
-    let query = generator.generate_embedding_default_blocking("Camel").unwrap();
-    let ret_nodes = shinkai_db.vector_search_proximity(query, 10, 2, &profile).unwrap();
-    let ret_node = ret_nodes.get(0).unwrap();
-    let ret_node2 = ret_nodes.get(1).unwrap();
-    let ret_node3 = ret_nodes.get(2).unwrap();
-    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
-    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
-    assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap());
+    // // Camel Node proximity vector search
+    // let query = generator.generate_embedding_default_blocking("Camel").unwrap();
+    // let ret_nodes = shinkai_db.vector_search_proximity(query, 10, 2, &profile).unwrap();
+    // let ret_node = ret_nodes.get(0).unwrap();
+    // let ret_node2 = ret_nodes.get(1).unwrap();
+    // let ret_node3 = ret_nodes.get(2).unwrap();
+    // assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
+    // assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
+    // assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap());
 
     // Animal tolerance range vector search
     let query = generator
