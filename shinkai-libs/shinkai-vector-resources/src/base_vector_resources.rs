@@ -2,6 +2,7 @@ use super::document_resource::DocumentVectorResource;
 use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
 use crate::resource_errors::VRError;
+use crate::vector_resource::OrderedVectorResource;
 use serde_json::Value as JsonValue;
 use std::str::FromStr;
 
@@ -32,6 +33,18 @@ impl BaseVectorResource {
             BaseVectorResource::Document(resource) => Box::new(resource),
             BaseVectorResource::Map(resource) => Box::new(resource),
         }
+    }
+
+    //// Attempts to cast into a OrderedVectorResource. Fails if
+    /// the Resource does not support the OrderedVectorResource trait.
+    pub fn as_ordered_vector_resource(&self) -> Result<&dyn OrderedVectorResource, VRError> {
+        self.as_trait_object().as_ordered_vector_resource()
+    }
+
+    //// Attempts to cast into a OrderedVectorResource. Fails if
+    /// the Resource does not support the OrderedVectorResource trait.
+    pub fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
+        self.as_trait_object_mut().as_ordered_vector_resource_mut()
     }
 
     /// Converts the BaseVectorResource into a JSON string (without the enum wrapping JSON)

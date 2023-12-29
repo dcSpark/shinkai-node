@@ -373,7 +373,7 @@ pub trait VectorResource: Send + Sync {
         Ok(())
     }
 
-    /// Appends a node underneath the provided parent_path if the resource held at parent_path implements OrderedVectorResource trait
+    /// Appends a node underneath the provided parent_path if the resource held there implements OrderedVectorResource trait.
     /// If the parent_path is invalid at any part then method will error, and no changes will be applied to the VR.
     fn append_node_at_path(
         &mut self,
@@ -381,12 +381,11 @@ pub trait VectorResource: Send + Sync {
         new_node: Node,
         new_embedding: Embedding,
     ) -> Result<(), VRError> {
-        println!("in append node at path");
         // If the path is root, then immediately insert into self at root path.
         // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
         if parent_path.path_ids.len() == 0 {
-            let ord_resource = self.as_ordered_vr_object_mut()?;
-            return ord_resource.insert_node_at_path(
+            let ord_resource = self.as_ordered_vector_resource()?;
+            return self.insert_node_at_path(
                 parent_path.clone(),
                 ord_resource.new_push_node_id(),
                 new_node,
@@ -396,7 +395,7 @@ pub trait VectorResource: Send + Sync {
             // Get the resource node at parent_path
             let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
             if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
-                let ord_resource = resource.as_trait_object().as_ordered_vr_object()?;
+                let ord_resource = resource.as_ordered_vector_resource()?;
                 return self.insert_node_at_path(
                     parent_path.clone(),
                     ord_resource.new_push_node_id(),
@@ -405,6 +404,28 @@ pub trait VectorResource: Send + Sync {
                 );
             }
             return Err(VRError::InvalidVRPath(parent_path.clone()));
+        }
+    }
+
+    /// Pops a node underneath the provided parent_path if the resource held there implements OrderedVectorResource trait.
+    /// If the parent_path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn pop_node_at_path(&mut self, parent_path: VRPath) -> Result<(Node, Embedding), VRError> {
+        // If the path is root, then immediately pop from self at root path to avoid error.
+        if parent_path.is_empty() {
+            let ord_resource = self.as_ordered_vector_resource_mut()?;
+            let node_path = parent_path.push_cloned(ord_resource.last_node_id());
+            return self.remove_node_at_path(node_path);
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            // Check if its a DocumentVectorResource
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                let ord_resource = resource.as_ordered_vector_resource_mut()?;
+                let node_path = parent_path.push_cloned(ord_resource.last_node_id());
+                self.remove_node_at_path(node_path.clone())
+            } else {
+                Err(VRError::InvalidVRPath(parent_path.clone()))
+            }
         }
     }
 
