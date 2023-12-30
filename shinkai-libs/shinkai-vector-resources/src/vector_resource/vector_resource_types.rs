@@ -1,5 +1,4 @@
-use super::base_vector_resources::BaseVectorResource;
-use crate::base_vector_resources::VRBaseType;
+use super::vector_resource::vector_resource::VectorResource;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
@@ -8,7 +7,7 @@ use crate::source::VRLocation;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
-use crate::vector_resource::VectorResource;
+use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;

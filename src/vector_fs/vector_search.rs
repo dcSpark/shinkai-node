@@ -2,7 +2,7 @@ use super::{fs_error::VectorFSError, vector_fs::VectorFS, vector_fs_reader::VFSR
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    vector_resource::VectorResource,
+    vector_resource::{VectorResource, VectorResourceCore},
     vector_search_traversal::{RetrievedNode, TraversalMethod, TraversalOption, VRPath},
 };
 

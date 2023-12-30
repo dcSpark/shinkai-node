@@ -8,7 +8,7 @@ use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEm
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{SourceReference, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::vector_resource::*;
 use std::fs;
 use std::path::Path;
 use tokio::runtime::Runtime;

@@ -8,7 +8,7 @@ use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource, VectorResourceCore};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

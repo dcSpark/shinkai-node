@@ -8,7 +8,7 @@ use shinkai_vector_resources::{
     map_resource::MapVectorResource,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
     resource_errors::VRError,
-    vector_resource::VectorResource,
+    vector_resource::{VectorResource, VectorResourceCore},
     vector_search_traversal::{NodeContent, VRPath, VRSource},
 };
 use std::collections::HashMap;

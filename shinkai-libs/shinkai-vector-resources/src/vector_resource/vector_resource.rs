@@ -1,4 +1,3 @@
-use crate::base_vector_resources::VRBaseType;
 use crate::data_tags::DataTagIndex;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
@@ -13,8 +12,9 @@ use crate::shinkai_time::ShinkaiTime;
 pub use crate::source::VRLocation;
 pub use crate::source::VRSource;
 use crate::utils::{hash_string, random_string};
-pub use crate::vector_resource_types::*;
-pub use crate::vector_search_traversal::*;
+use crate::vector_resource::base_vector_resources::VRBaseType;
+pub use crate::vector_resource::vector_resource_types::*;
+pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
 use std::any::Any;
 use std::collections::HashMap;
@@ -31,11 +31,19 @@ pub trait OrderedVectorResource: VectorResource {
     fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError>;
 }
 
+#[async_trait]
+pub trait VectorResource: Send + Sync + VectorResourceCore + VectorResourceSearch {}
+
+#[async_trait]
+pub trait VectorResourceSearch: VectorResourceCore {
+    // Move search methods here and move to another file
+}
+
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
 /// but `resource_id` is expected to be unique.
 #[async_trait]
-pub trait VectorResource: Send + Sync {
+pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;

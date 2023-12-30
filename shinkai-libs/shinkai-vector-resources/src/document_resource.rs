@@ -8,6 +8,7 @@ use crate::shinkai_time::ShinkaiTime;
 use crate::source::{ShinkaiFileType, SourceReference, VRSource};
 use crate::vector_resource::{
     Node, NodeContent, OrderedVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
+    VectorResourceCore,
 };
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
@@ -79,8 +80,9 @@ impl OrderedVectorResource for DocumentVectorResource {
         Ok(nodes)
     }
 }
+impl VectorResource for DocumentVectorResource {}
 
-impl VectorResource for DocumentVectorResource {
+impl VectorResourceCore for DocumentVectorResource {
     fn as_any(&self) -> &dyn Any {
         self
     }

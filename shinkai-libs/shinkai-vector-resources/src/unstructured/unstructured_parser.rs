@@ -6,7 +6,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::VectorResource;
+use crate::vector_resource::{VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use blake3::Hasher;

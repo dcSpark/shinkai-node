@@ -5,7 +5,9 @@ use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VRHeader, VectorResource};
+use shinkai_vector_resources::vector_resource::{
+    NodeContent, RetrievedNode, VRHeader, VectorResource, VectorResourceCore,
+};
 use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 use std::str::FromStr;

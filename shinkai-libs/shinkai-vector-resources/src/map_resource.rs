@@ -6,7 +6,7 @@ use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::{SourceReference, VRSource};
-use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource};
+use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
 use crate::vector_search_traversal::VRHeader;
 use serde_json;
 use std::any::Any;
@@ -32,8 +32,9 @@ pub struct MapVectorResource {
     last_modified_datetime: String,
     metadata_index: MetadataIndex,
 }
+impl VectorResource for MapVectorResource {}
 
-impl VectorResource for MapVectorResource {
+impl VectorResourceCore for MapVectorResource {
     fn as_any(&self) -> &dyn Any {
         self
     }
