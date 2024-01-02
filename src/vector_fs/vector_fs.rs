@@ -13,8 +13,8 @@ use std::collections::HashMap;
 /// for all profiles on the node.
 pub struct VectorFS {
     pub node_name: ShinkaiName,
-    internals_map: HashMap<ShinkaiName, VectorFSInternals>,
-    db: VectorFSDB,
+    pub internals_map: HashMap<ShinkaiName, VectorFSInternals>,
+    pub db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
     /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)

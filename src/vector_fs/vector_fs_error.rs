@@ -37,6 +37,7 @@ pub enum VectorFSError {
     InvalidReaderPermission(ShinkaiName, ShinkaiName, VRPath),
     InvalidWriterPermission(ShinkaiName, ShinkaiName, VRPath),
     NoSourceFileAvailable(String),
+    InvalidFSEntryType(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -93,6 +94,9 @@ impl fmt::Display for VectorFSError {
                 path.format_to_string()
             ),
             VectorFSError::NoSourceFileAvailable(s) => write!(f, "No SourceFile available for: {}", s),
+            VectorFSError::InvalidFSEntryType(s) => {
+                write!(f, "Parsing FSEntry into specific type failed at path: {}", s)
+            }
         }
     }
 }

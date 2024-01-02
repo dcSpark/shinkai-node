@@ -1,5 +1,6 @@
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
@@ -9,6 +10,17 @@ use shinkai_vector_resources::{
 };
 
 impl<'a> VFSReader<'a> {
+    /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
+    /// This automatically uses the correct default embedding model for the given profile.
+    pub async fn generate_query_embedding(
+        &self,
+        input_query: String,
+        profile: &ShinkaiName,
+    ) -> Result<Embedding, VectorFSError> {
+        let generator = self.vector_fs._get_embedding_generator(profile)?;
+        Ok(generator.generate_embedding_default(&input_query).await?)
+    }
+
     /// Performs a vector search into the VectorFS at a specific path,
     /// returning the retrieved VRHeader nodes.
     pub fn vector_search_headers(
