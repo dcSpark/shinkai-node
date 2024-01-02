@@ -111,6 +111,16 @@ impl SourceFile {
     pub fn format_source_string(&self) -> String {
         format!("{}.{}", self.file_name, self.file_type)
     }
+
+    /// Serializes the SourceFile to a JSON string
+    pub fn to_json(&self) -> Result<String, VRError> {
+        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+    }
+
+    /// Deserializes a SourceFile from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
+        serde_json::from_str(json).map_err(|_| VRError::FailedJSONParsing)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
