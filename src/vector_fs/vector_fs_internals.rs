@@ -1,4 +1,4 @@
-use super::{fs_error::VectorFSError, permissions::PermissionsIndex};
+use super::{permissions::PermissionsIndex, vector_fs_error::VectorFSError};
 use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -7,7 +7,8 @@ use shinkai_vector_resources::{
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
     resource_errors::VRError,
     vector_resource::{
-        BaseVectorResource, MapVectorResource, NodeContent, VRPath, VRSource, VectorResource, VectorResourceCore,
+        BaseVectorResource, MapVectorResource, NodeContent, VRHeader, VRPath, VRSource, VectorResource,
+        VectorResourceCore,
     },
 };
 use std::collections::HashMap;

@@ -116,10 +116,7 @@ impl JobManager {
 
             // Iterate through resources until we find one with a matching resource reference string
             for resource in resources {
-                if resource
-                    .as_trait_object()
-                    .generate_resource_header(None)
-                    .reference_string()
+                if resource.as_trait_object().generate_resource_header().reference_string()
                     == resource_header.reference_string()
                 {
                     if let Some(description) = resource.as_trait_object().description() {

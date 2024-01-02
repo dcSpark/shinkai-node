@@ -65,7 +65,7 @@ impl VectorResourceRouter {
     /// Returns all VRHeaders in the Resource Router
     pub fn get_all_resource_headers(&self) -> Vec<VRHeader> {
         let nodes = self.routing_resource.get_nodes();
-        let map_resource_header = self.routing_resource.generate_resource_header(None);
+        let map_resource_header = self.routing_resource.generate_resource_header();
         let mut resource_headers = vec![];
 
         for node in nodes {
@@ -113,7 +113,6 @@ impl VectorResourceRouter {
                         source,
                         ret_node.node.last_modified_datetime.clone(),
                         ret_node.node.last_modified_datetime.clone(),
-                        None,
                         vec![],
                         NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone(),
                     );

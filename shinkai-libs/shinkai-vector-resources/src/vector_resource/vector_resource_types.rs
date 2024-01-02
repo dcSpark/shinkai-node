@@ -2,7 +2,6 @@ use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::VRLocation;
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
@@ -368,9 +367,6 @@ pub struct VRHeader {
     pub resource_created_datetime: String,
     pub resource_last_modified_datetime: String,
     pub resource_embedding_model_used: EmbeddingModelType,
-    /// The location where the VectorResource is held. Will be None for VectorResources
-    /// held inside of nodes of an existing VectorResource.
-    pub resource_location: Option<VRLocation>,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes
@@ -388,7 +384,6 @@ impl VRHeader {
         resource_source: VRSource,
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
-        resource_location: Option<VRLocation>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -401,7 +396,6 @@ impl VRHeader {
             resource_source,
             resource_created_datetime,
             resource_last_modified_datetime,
-            resource_location,
             metadata_index_keys,
             resource_embedding_model_used,
         }
@@ -416,7 +410,6 @@ impl VRHeader {
         resource_source: VRSource,
         resource_created_datetime: String,
         resource_last_modified_datetime: String,
-        resource_location: Option<VRLocation>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Result<Self, VRError> {
@@ -436,7 +429,6 @@ impl VRHeader {
             resource_source,
             resource_created_datetime,
             resource_last_modified_datetime,
-            resource_location,
             metadata_index_keys,
             resource_embedding_model_used,
         })

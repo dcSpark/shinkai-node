@@ -1,4 +1,4 @@
-use super::{fs_error::VectorFSError, vector_fs::VectorFS, vector_fs_reader::VFSReader};
+use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::{VRHeader, VRPath};

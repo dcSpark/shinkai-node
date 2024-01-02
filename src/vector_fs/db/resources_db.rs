@@ -1,4 +1,4 @@
-use super::super::fs_error::VectorFSError;
+use super::super::vector_fs_error::VectorFSError;
 use super::fs_db::{FSTopic, VectorFSDB};
 use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;

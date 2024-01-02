@@ -504,7 +504,7 @@ impl JobManager {
 
             // Now create Local/DBScopeEntry depending on setting
             if save_to_db_directly {
-                let resource_header = resource.as_trait_object().generate_resource_header(None);
+                let resource_header = resource.as_trait_object().generate_resource_header();
                 let shinkai_db = db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();

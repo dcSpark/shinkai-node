@@ -1,7 +1,7 @@
-use super::fs_internals::VectorFSInternals;
+use super::vector_fs_internals::VectorFSInternals;
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
-use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
+use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;

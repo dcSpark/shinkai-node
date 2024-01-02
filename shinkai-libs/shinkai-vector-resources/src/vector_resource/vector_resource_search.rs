@@ -1,23 +1,15 @@
 use super::VectorResourceCore;
-use crate::data_tags::DataTagIndex;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
-use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
-use crate::shinkai_time::ShinkaiTime;
-pub use crate::source::VRLocation;
 pub use crate::source::VRSource;
-use crate::utils::{hash_string, random_string};
-use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
-use std::any::Any;
 use std::collections::HashMap;
 
 #[async_trait]
@@ -397,7 +389,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                                 let ret_node = RetrievedNode {
                                     node: node.clone(),
                                     score,
-                                    resource_header: self.generate_resource_header(None),
+                                    resource_header: self.generate_resource_header(),
                                     retrieval_path: traversal_path.clone(),
                                 };
                                 current_level_results.push(ret_node);
@@ -478,7 +470,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     current_level_results.push(RetrievedNode {
                         node: node.clone(),
                         score,
-                        resource_header: self.generate_resource_header(None),
+                        resource_header: self.generate_resource_header(),
                         retrieval_path: new_traversal_path,
                     });
                 }
@@ -496,7 +488,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 current_level_results.push(RetrievedNode {
                     node: node.clone(),
                     score,
-                    resource_header: self.generate_resource_header(None),
+                    resource_header: self.generate_resource_header(),
                     retrieval_path: new_traversal_path,
                 });
             }

@@ -1,4 +1,5 @@
-use super::{fs_error::VectorFSError, vector_fs::VectorFS};
+use super::vector_fs::VectorFS;
+use super::vector_fs_error::VectorFSError;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};

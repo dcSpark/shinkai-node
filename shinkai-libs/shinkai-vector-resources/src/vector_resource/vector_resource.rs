@@ -11,7 +11,6 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-pub use crate::source::VRLocation;
 pub use crate::source::VRSource;
 use crate::utils::{hash_string, random_string};
 use crate::vector_resource::base_vector_resources::VRBaseType;
@@ -164,7 +163,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Generates a VRHeader out of the VectorResource.
     /// Allows specifying a resource_location to identify where the VectorResource is
     /// being stored.
-    fn generate_resource_header(&self, resource_location: Option<VRLocation>) -> VRHeader {
+    fn generate_resource_header(&self) -> VRHeader {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
@@ -179,7 +178,6 @@ pub trait VectorResourceCore: Send + Sync {
             self.source(),
             self.created_datetime(),
             self.last_modified_datetime(),
-            resource_location,
             metadata_index_keys,
             self.embedding_model_used(),
         )
@@ -221,7 +219,7 @@ pub trait VectorResourceCore: Send + Sync {
         }
         // Fetch the node at root depth directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
-        let mut last_resource_header = self.generate_resource_header(None);
+        let mut last_resource_header = self.generate_resource_header();
         let mut retrieved_nodes = Vec::new();
 
         // Iterate through the path, going into each Vector Resource until end of path
@@ -231,7 +229,7 @@ pub trait VectorResourceCore: Send + Sync {
             match &node.content {
                 NodeContent::Resource(resource) => {
                     let resource_obj = resource.as_trait_object();
-                    last_resource_header = resource_obj.generate_resource_header(None);
+                    last_resource_header = resource_obj.generate_resource_header();
 
                     // If we have arrived at the final node, then perform node fetching/adding to results
                     if traversed_path == path {

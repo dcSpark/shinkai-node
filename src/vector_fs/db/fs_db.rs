@@ -1,4 +1,4 @@
-use super::super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
+use super::super::{vector_fs_error::VectorFSError, vector_fs_internals::VectorFSInternals};
 use crate::db::db::ProfileBoundWriteBatch;
 use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};

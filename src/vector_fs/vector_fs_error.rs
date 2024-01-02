@@ -36,6 +36,7 @@ pub enum VectorFSError {
     InvalidProfileActionPermission(ShinkaiName, String),
     InvalidReaderPermission(ShinkaiName, ShinkaiName, VRPath),
     InvalidWriterPermission(ShinkaiName, ShinkaiName, VRPath),
+    NoSourceFileAvailable(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -91,6 +92,7 @@ impl fmt::Display for VectorFSError {
                 profile,
                 path.format_to_string()
             ),
+            VectorFSError::NoSourceFileAvailable(s) => write!(f, "No SourceFile available for: {}", s),
         }
     }
 }
