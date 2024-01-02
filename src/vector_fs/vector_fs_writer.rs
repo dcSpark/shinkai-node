@@ -1,8 +1,7 @@
-use crate::db::db::ProfileBoundWriteBatch;
-
 use super::{fs_error::VectorFSError, vector_fs::VectorFS, vector_fs_reader::VFSReader};
+use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::vector_search_traversal::{VRHeader, VRPath};
+use shinkai_vector_resources::vector_resource::{VRHeader, VRPath};
 
 /// A struct that allows performing write actions on the VectorFS under a profile/at a specific path.
 /// If a VFSWriter struct is constructed, that means the `requester_name` has passed

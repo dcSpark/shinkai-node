@@ -7,7 +7,7 @@ use shinkai_message_primitives::{
     },
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
-use shinkai_vector_resources::{resource_errors::VRError, vector_search_traversal::VRPath};
+use shinkai_vector_resources::{resource_errors::VRError, vector_resource::VRPath};
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]

@@ -5,8 +5,7 @@ use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_resource::{VectorResource, VectorResourceCore};
-use shinkai_vector_resources::vector_search_traversal::VRPath;
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore};
 use std::collections::HashMap;
 
 /// Struct that wraps all functionality of the VectorFS.

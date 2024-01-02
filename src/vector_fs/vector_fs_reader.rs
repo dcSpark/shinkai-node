@@ -1,7 +1,7 @@
 use super::{fs_error::VectorFSError, vector_fs::VectorFS};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::{embeddings::Embedding, vector_search_traversal::VRPath};
+use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};
 
 /// A struct that allows performing read actions on the VectorFS under a profile/at a specific path.
 /// If a VFSReader struct is constructed, that means the `requester_name` has passed

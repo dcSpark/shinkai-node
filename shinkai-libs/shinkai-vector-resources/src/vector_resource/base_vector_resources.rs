@@ -1,6 +1,5 @@
-use super::document_resource::DocumentVectorResource;
-use super::map_resource::MapVectorResource;
 use super::vector_resource::VectorResource;
+use super::{DocumentVectorResource, MapVectorResource};
 use crate::resource_errors::VRError;
 use crate::vector_resource::OrderedVectorResource;
 use serde_json::Value as JsonValue;

@@ -1,4 +1,3 @@
-use super::vector_resource::vector_resource::VectorResource;
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;

@@ -2,12 +2,11 @@ use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VRBaseType};
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::vector_resource::{
-    RetrievedNode, ScoringMode, TraversalMethod, TraversalOption, VRHeader, VectorResource,
+    BaseVectorResource, DocumentVectorResource, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption,
+    VRBaseType, VRHeader, VectorResource,
 };
 
 use super::db::ProfileBoundWriteBatch;

@@ -6,9 +6,10 @@ use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource, VectorResourceCore};
+use shinkai_vector_resources::vector_resource::{
+    MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

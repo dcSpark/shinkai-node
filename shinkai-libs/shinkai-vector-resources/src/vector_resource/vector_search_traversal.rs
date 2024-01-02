@@ -1,5 +1,5 @@
-use crate::base_vector_resources::VRBaseType;
-pub use crate::vector_resource_types::*;
+use crate::vector_resource::base_vector_resources::VRBaseType;
+pub use crate::vector_resource::vector_resource_types::*;
 
 /// An enum that represents the different traversal approaches
 /// supported by Vector Searching. In other words these allow the developer to

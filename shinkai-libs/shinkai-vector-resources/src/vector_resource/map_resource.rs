@@ -1,4 +1,3 @@
-use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -6,11 +5,14 @@ use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
 use crate::source::{SourceReference, VRSource};
+use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
+use crate::vector_resource::vector_search_traversal::VRHeader;
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
-use crate::vector_search_traversal::VRHeader;
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
+
+use super::VectorResourceSearch;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
@@ -33,6 +35,8 @@ pub struct MapVectorResource {
     metadata_index: MetadataIndex,
 }
 impl VectorResource for MapVectorResource {}
+
+impl VectorResourceSearch for MapVectorResource {}
 
 impl VectorResourceCore for MapVectorResource {
     fn as_any(&self) -> &dyn Any {

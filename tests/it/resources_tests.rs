@@ -1,13 +1,13 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::{SourceReference, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::*;
 use std::fs;
 use std::path::Path;

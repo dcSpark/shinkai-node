@@ -1,5 +1,5 @@
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::vector_search_traversal::VRPath;
+use shinkai_vector_resources::vector_resource::VRPath;
 use std::{collections::HashMap, fmt::Write};
 
 /// Struct that holds the read/write permissions specified for a specific path in the VectorFS

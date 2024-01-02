@@ -1,13 +1,14 @@
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
+use shinkai_vector_resources::vector_resource::document_resource::DocumentVectorResource;
+use shinkai_vector_resources::vector_resource::map_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::VRPath;
 use shinkai_vector_resources::vector_resource::{
     FilterMode, NodeContent, ResultsMode, ScoringMode, TraversalMethod, TraversalOption, VectorResource,
+    VectorResourceCore, VectorResourceSearch,
 };
-use shinkai_vector_resources::vector_resource_types::VRPath;
 use std::collections::HashMap;
 
 #[test]

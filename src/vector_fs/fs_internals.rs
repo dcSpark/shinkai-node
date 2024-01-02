@@ -3,13 +3,12 @@ use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
-    base_vector_resources::BaseVectorResource,
     embeddings::Embedding,
-    map_resource::MapVectorResource,
     model_type::{EmbeddingModelType, TextEmbeddingsInference},
     resource_errors::VRError,
-    vector_resource::{VectorResource, VectorResourceCore},
-    vector_search_traversal::{NodeContent, VRPath, VRSource},
+    vector_resource::{
+        BaseVectorResource, MapVectorResource, NodeContent, VRPath, VRSource, VectorResource, VectorResourceCore,
+    },
 };
 use std::collections::HashMap;
 

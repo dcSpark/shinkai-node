@@ -1,9 +1,8 @@
 use super::{unstructured_parser::UnstructuredParser, unstructured_types::UnstructuredElement};
-use crate::base_vector_resources::BaseVectorResource;
-use crate::data_tags::DataTag;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
+use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
 #[cfg(feature = "native-http")]

@@ -1,16 +1,12 @@
-use crate::base_vector_resources::{BaseVectorResource, VRBaseType};
+use super::{BaseVectorResource, VRBaseType, VRHeader, VectorResourceSearch};
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::{ShinkaiFileType, SourceReference, VRSource};
-use crate::vector_resource::{
-    Node, NodeContent, OrderedVectorResource, RetrievedNode, TraversalMethod, TraversalOption, VRPath, VectorResource,
-    VectorResourceCore,
-};
-use crate::vector_search_traversal::VRHeader;
+use crate::source::{SourceReference, VRSource};
+use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
@@ -80,7 +76,10 @@ impl OrderedVectorResource for DocumentVectorResource {
         Ok(nodes)
     }
 }
+
 impl VectorResource for DocumentVectorResource {}
+
+impl VectorResourceSearch for DocumentVectorResource {}
 
 impl VectorResourceCore for DocumentVectorResource {
     fn as_any(&self) -> &dyn Any {

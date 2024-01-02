@@ -4,12 +4,12 @@ use super::job_manager::JobManager;
 use csv::Reader;
 use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
 use std::io::Cursor;
 

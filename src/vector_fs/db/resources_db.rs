@@ -2,8 +2,7 @@ use super::super::fs_error::VectorFSError;
 use super::fs_db::{FSTopic, VectorFSDB};
 use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
-use shinkai_vector_resources::vector_search_traversal::VRHeader;
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRHeader};
 
 impl VectorFSDB {
     /// Saves the `VectorResource` into the Resources topic as a JSON

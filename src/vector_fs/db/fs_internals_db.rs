@@ -3,9 +3,9 @@ use super::fs_db::{FSTopic, VectorFSDB};
 use crate::db::db::ProfileBoundWriteBatch;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_search_traversal::VRSource;
+use shinkai_vector_resources::vector_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::VRSource;
 use std::collections::HashMap;
 
 impl VectorFSDB {

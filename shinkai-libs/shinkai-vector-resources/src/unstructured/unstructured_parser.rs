@@ -1,12 +1,10 @@
 use super::unstructured_types::{GroupedText, UnstructuredElement};
-use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
-use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::{VectorResource, VectorResourceCore};
+use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use blake3::Hasher;
@@ -46,6 +44,8 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
+        use crate::vector_resource::BaseVectorResource;
+
         Self::process_elements_into_resource_with_custom_collection(
             elements,
             generator,
