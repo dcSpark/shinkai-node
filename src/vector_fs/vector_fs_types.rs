@@ -1,4 +1,5 @@
 use super::vector_fs_error::VectorFSError;
+use chrono::{DateTime, Utc};
 use shinkai_vector_resources::{
     resource_errors::VRError,
     vector_resource::{BaseVectorResource, Node, NodeContent, VRHeader, VRPath},
@@ -36,6 +37,16 @@ pub struct FSFolder {
     pub path: VRPath,
     pub child_folders: Vec<FSFolder>,
     pub child_items: Vec<FSItem>,
+    // pub created_datetime: String
+    // pub last_read_datetime: String
+
+    // Last modified only keeps track of when the contents of the directory change.
+    // Ie. An FSEntry is moved/deleted/new one added
+    // pub last_modified_datetime: String
+
+    // Last saved is updated any time any writes take place under the folder. In other words, even when
+    // a VR is updated, last saved timestamp is updated.
+    // pub last_saved: String
 }
 
 impl FSFolder {
@@ -93,6 +104,13 @@ pub struct FSItem {
     pub path: VRPath,
     pub vr_header: VRHeader,
     pub source_file_saved: bool,
+    // From header
+    // pub created_datetime: DateTime<Utc>
+    // From header, last time the VR contents were modified
+    // pub last_modified_datetime: DateTime<Utc>
+    // pub last_read_datetime: DateTime<Utc>
+    // Last saved is the time when the VR was last mutated/saved in the VectorFS
+    // pub last_saved: DateTime<Utc>
 }
 
 impl FSItem {

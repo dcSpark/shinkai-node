@@ -1,5 +1,6 @@
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db::ProfileBoundWriteBatch;
+use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::NodeContent;
 use shinkai_vector_resources::{
@@ -124,7 +125,7 @@ impl<'a> VFSWriter<'a> {
     }
 
     /// Saves a Vector Resource and optional SourceFile underneath the current path.
-    /// If a VR with the same name already exists underneath the current path, then overwrites the existing VR.
+    /// If a VR with the same name already exists underneath the current path, then errors.
     pub fn save_vector_resource(&mut self, resource: BaseVectorResource, source_file: Option<SourceFile>) {
         let batch = ProfileBoundWriteBatch::new(&self.profile);
         let mut resource = resource;
@@ -138,11 +139,11 @@ impl<'a> VFSWriter<'a> {
         if let Ok(_) = self.validate_path_points_to_folder(node_path) {
             return Err(VectorFSError::CannotOverwriteFolderWithResource(node_path));
         }
-        // If an existing FSItem is already saved at the node path, delete it.
+        // If an existing FSItem is already saved at the node path, return error.
         if let Ok(_) = self.validate_path_points_to_item(node_path) {
-            // TODO: Delete resource & source file in DB.
+            return Err(VectorFSError::CannotOverwriteItemWithResource(node_path));
         }
-        // Check if an existing VR is saved in the FSDB with the same reference string, then re-generate id of the current resource.
+        // Check if an existing VR is saved in the FSDB with the same reference string, then if so re-generate id of the current resource.
         if let Ok(_) = self
             .vector_fs
             .db
@@ -175,4 +176,12 @@ impl<'a> VFSWriter<'a> {
             _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
         }
     }
+
+    // /// Updates a Vector Resource (FSItem) underneath the current path.
+    // /// If no VR with the same name already exists underneath the current path, then errors.
+    // pub fn update_vector_resource(&mut self, resource: BaseVectorResource) {}
+
+    // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.
+    // /// If no VR (FSItem) with the same name already exists underneath the current path, then errors.
+    // pub fn update_source_file(&mut self, resource: BaseVectorResource) {}
 }
