@@ -22,20 +22,31 @@ pub struct WSMessage {
 
 pub fn ws_route(
     manager: SharedWebSocketManager,
-    topic: String,
 ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("ws")
-        .and(warp::ws())
-        .and(warp::any().map(move || Arc::clone(&manager)))
-        .and(warp::any().map(move || topic.clone()))
-        .map(
-            |ws: Ws, manager: SharedWebSocketManager, topic_detail_str: String| {
-                ws.on_upgrade(move |socket| ws_handler(socket, manager, topic_detail_str))
-            },
-        )
+    let smart_inboxes_route = {
+        let manager = Arc::clone(&manager);
+        warp::path!("smart_inboxes")
+            .and(warp::ws())
+            .and(warp::any().map(move || Arc::clone(&manager)))
+            .map(|ws: Ws, manager: SharedWebSocketManager| {
+                ws.on_upgrade(move |socket| ws_handler(socket, manager, "smart_inboxes".to_string(), None))
+            })
+    };
+
+    let inbox_route = {
+        let manager = Arc::clone(&manager);
+        warp::path!("inbox" / String)
+            .and(warp::ws())
+            .and(warp::any().map(move || Arc::clone(&manager)))
+            .map(|id: String, ws: Ws, manager: SharedWebSocketManager| {
+                ws.on_upgrade(move |socket| ws_handler(socket, manager, "inbox".to_string(), Some(id)))
+            })
+    };
+    
+    smart_inboxes_route.or(inbox_route)
 }
 
-pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic_detail_str: String) {
+pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic: String, subtopic: Option<String>) {
     eprintln!("New WebSocket connection");
     let (ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
@@ -47,23 +58,8 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
                 if let Ok(text) = msg.to_str() {
                     if let Ok(ws_message) = serde_json::from_str::<WSMessage>(text) {
                         eprintln!("ws_message: {:?}", ws_message);
-                        eprintln!("topic_detail_str: {:?}", topic_detail_str);
-
-                        let topic_detail = match extract_topic_subtopic(&topic_detail_str) {
-                            Ok(topic_detail) => topic_detail,
-                            Err(e) => {
-                                eprintln!("Failed to extract topic and subtopic: {}", e);
-                                let mut ws_tx = ws_tx.lock().await;
-                                let _ = ws_tx
-                                    .send(warp::ws::Message::text(format!(
-                                        "Failed to extract topic and subtopic: {}",
-                                        e
-                                    )))
-                                    .await;
-                                let _ = ws_tx.close().await; // Close the WebSocket connection
-                                return;
-                            }
-                        };
+                        eprintln!("topic: {:?}", topic);
+                        eprintln!("subtopic: {:?} \n\n", subtopic);
 
                         match ShinkaiName::from_shinkai_message_using_sender_subidentity(&ws_message.message.clone()) {
                             Ok(shinkai_name) => {
@@ -74,8 +70,8 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
                                         shinkai_name,
                                         ws_message.message,
                                         Arc::clone(&ws_tx),
-                                        topic_detail.topic,
-                                        topic_detail.subtopic,
+                                        topic,
+                                        subtopic,
                                     )
                                     .await
                                 {
@@ -110,6 +106,7 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
         match result {
             Ok(msg) => {
                 // Handle other incoming messages here
+                eprintln!("incoming message: {:?}", msg);
             }
             Err(e) => {
                 eprintln!("websocket error: {}", e);
@@ -122,12 +119,7 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {
     println!("Starting WebSocket server at: {}", &ws_address);
 
-    // TODO: Maybe when a new connection is requested, we need to check permissions
-    let topic1_route = ws_route(Arc::clone(&manager), "topic1".to_string());
-    let topic2_route = ws_route(Arc::clone(&manager), "topic2".to_string());
-
-    let ws_routes = topic1_route
-        .or(topic2_route)
+    let ws_routes = ws_route(Arc::clone(&manager))
         .recover(handle_rejection)
         .with(warp::log("websocket"))
         .with(cors().allow_any_origin());
@@ -149,11 +141,4 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
         "Internal Server Error",
         warp::http::StatusCode::INTERNAL_SERVER_ERROR,
     ))
-}
-
-fn extract_topic_subtopic(
-    topic_detail_str: &str,
-) -> Result<TopicDetail, serde_json::Error> {
-    let topic_detail: TopicDetail = serde_json::from_str(topic_detail_str)?;
-    Ok(topic_detail)
 }

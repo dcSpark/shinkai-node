@@ -158,7 +158,7 @@ async fn test_websocket() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Connect to the server
-    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/inbox/job_inbox::test_job::false").await;
 
     // Check if the connection was successful
     assert!(connection_result.is_ok(), "Failed to connect");
@@ -180,7 +180,7 @@ async fn test_websocket() {
     let ws_message = WSMessage {
         action: "subscribe".to_string(),
         topic: TopicDetail {
-            topic: "job".to_string(),
+            topic: "inbox".to_string(),
             subtopic: Some("test_job".to_string()),
         },
         message: shinkai_message,
@@ -199,8 +199,8 @@ async fn test_websocket() {
         .lock()
         .await
         .handle_update(
-            "job".to_string(),
-            "test_job".to_string(),
+            "inbox".to_string(),
+            "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
         )
         .await;

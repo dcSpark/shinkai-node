@@ -67,7 +67,7 @@ impl WebSocketManager {
         }
 
         // Note: we generate a dummy encryption key because the message is not encrypted so we don't need the real key.
-        let (dummy_encryption_sk, dummy_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (dummy_encryption_sk, _) = unsafe_deterministic_encryption_keypair(0);
 
         let identity_manager_clone = self.identity_manager_trait.clone();
         let result = validate_message_main_logic(
@@ -119,11 +119,15 @@ impl WebSocketManager {
                 shinkai_name, topic, subtopic
             )));
         }
+
+        eprintln!("topic: {:?}", topic);
+        eprintln!("subtopic: {:?}", subtopic);
     
         self.connections
             .insert(shinkai_profile_name.clone(), connection);
         let mut topic_map = HashMap::new();
         let topic_subtopic = format!("{}:::{}", topic, subtopic.unwrap_or_default());
+        eprintln!("topic_subtopic subscription: {:?}", topic_subtopic);
         topic_map.insert(topic_subtopic, true);
         self.subscriptions.insert(shinkai_profile_name, topic_map);
     
@@ -137,7 +141,7 @@ impl WebSocketManager {
     // TODO: Is topic enough? should we have topic and subtopic? e.g. type of update and inbox_name
     pub async fn handle_update(&mut self, topic: String, subtopic: String, update: String) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
-        eprintln!("Sending update to topic: {}", topic_subtopic);
+        eprintln!("\n\nSending update to topic: {}", topic_subtopic);
         // Check if the update needs to be sent
         // This is just a placeholder, replace with your actual check
         let needs_to_be_sent = true;
@@ -154,7 +158,7 @@ impl WebSocketManager {
                         Err(e) => eprintln!("Failed to send update to connection {}: {}", id, e),
                     }
                 } else {
-                    eprintln!("Connection {} is not subscribed to the topic", id);
+                    eprintln!("Connection {} is not subscribed to the topic {:?}", id, topic_subtopic);
                 }
             }
         }
