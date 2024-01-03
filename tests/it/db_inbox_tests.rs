@@ -1,6 +1,6 @@
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
+use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message::{
     MessageBody, MessageData, ShinkaiMessage, ShinkaiVersion,
 };

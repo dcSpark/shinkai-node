@@ -5,7 +5,7 @@ use rocksdb::{
     Options, SingleThreaded, WriteBatch, DB,
 };
 use shinkai_message_primitives::{
-    schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
+    schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::path::Path;
@@ -359,7 +359,7 @@ impl ShinkaiDB {
 
         // Calculate the scheduled time or current time
         let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
 
@@ -400,7 +400,7 @@ impl ShinkaiDB {
 
         // Calculate the scheduled time or current time
         let time_key = match message.external_metadata.clone().scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => message.external_metadata.clone().scheduled_time.clone(),
         };
 

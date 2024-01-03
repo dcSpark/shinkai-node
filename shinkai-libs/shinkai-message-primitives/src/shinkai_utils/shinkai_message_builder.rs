@@ -6,12 +6,12 @@ use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionS
 use crate::{
     schemas::{
         agents::serialized_agent::SerializedAgent, inbox_name::InboxName, registration_code::RegistrationCode,
-        shinkai_time::ShinkaiTime,
+        shinkai_time::ShinkaiStringTime,
     },
     shinkai_message::{
         shinkai_message::{
-            ExternalMetadata, InternalMetadata, MessageBody, MessageData,
-            ShinkaiBody, ShinkaiData, ShinkaiMessage, ShinkaiVersion,
+            ExternalMetadata, InternalMetadata, MessageBody, MessageData, ShinkaiBody, ShinkaiData, ShinkaiMessage,
+            ShinkaiVersion,
         },
         shinkai_message_schemas::{
             APIAddAgentRequest, APIGetMessagesFromInboxRequest, APIReadUpToTimeRequest, IdentityPermissions,
@@ -176,7 +176,7 @@ impl ShinkaiMessageBuilder {
         let signature = "".to_string();
         let other = "".to_string();
         let intra_sender = "".to_string();
-        let scheduled_time = ShinkaiTime::generate_time_now();
+        let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
@@ -191,7 +191,7 @@ impl ShinkaiMessageBuilder {
     pub fn external_metadata_with_other(mut self, recipient: ProfileName, sender: ProfileName, other: String) -> Self {
         let signature = "".to_string();
         let intra_sender = "".to_string();
-        let scheduled_time = ShinkaiTime::generate_time_now();
+        let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
@@ -211,7 +211,7 @@ impl ShinkaiMessageBuilder {
         intra_sender: String,
     ) -> Self {
         let signature = "".to_string();
-        let scheduled_time = ShinkaiTime::generate_time_now();
+        let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
@@ -231,7 +231,7 @@ impl ShinkaiMessageBuilder {
     ) -> Self {
         let signature = "".to_string();
         let other = "".to_string();
-        let scheduled_time = ShinkaiTime::generate_time_now();
+        let scheduled_time = ShinkaiStringTime::generate_time_now();
         self.external_metadata = Some(ExternalMetadata {
             sender,
             recipient,
@@ -975,8 +975,7 @@ impl std::fmt::Debug for ShinkaiMessageBuilder {
 #[cfg(test)]
 mod tests {
     use crate::shinkai_utils::{
-        encryption::unsafe_deterministic_encryption_keypair,
-        signatures::{unsafe_deterministic_signature_keypair},
+        encryption::unsafe_deterministic_encryption_keypair, signatures::unsafe_deterministic_signature_keypair,
     };
 
     use super::*;

@@ -4,9 +4,10 @@ use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use crate::resource_errors::VRError;
-use crate::shinkai_time::ShinkaiTime;
+use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
 use crate::source::{SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
+use chrono::{DateTime, Utc};
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
@@ -27,8 +28,8 @@ pub struct DocumentVectorResource {
     node_count: u64,
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
-    created_datetime: String,
-    last_modified_datetime: String,
+    created_datetime: DateTime<Utc>,
+    last_modified_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
 }
 impl VectorResource for DocumentVectorResource {}
@@ -101,20 +102,17 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// RFC3339 Datetime when then Vector Resource was created
-    fn created_datetime(&self) -> String {
+    fn created_datetime(&self) -> DateTime<Utc> {
         self.created_datetime.clone()
     }
     /// RFC3339 Datetime when then Vector Resource was last modified
-    fn last_modified_datetime(&self) -> String {
+    fn last_modified_datetime(&self) -> DateTime<Utc> {
         self.last_modified_datetime.clone()
     }
     /// Set a RFC Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError> {
-        if ShinkaiTime::validate_datetime_string(&datetime) {
-            self.last_modified_datetime = datetime;
-            return Ok(());
-        }
-        return Err(VRError::InvalidDateTimeString(datetime));
+    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) -> Result<(), VRError> {
+        self.last_modified_datetime = datetime;
+        Ok(())
     }
 
     fn data_tag_index(&self) -> &DataTagIndex {

@@ -124,58 +124,58 @@ impl<'a> VFSWriter<'a> {
         Ok(())
     }
 
-    /// Saves a Vector Resource and optional SourceFile underneath the current path.
-    /// If a VR with the same name already exists underneath the current path, then errors.
-    pub fn save_vector_resource(&mut self, resource: BaseVectorResource, source_file: Option<SourceFile>) {
-        let batch = ProfileBoundWriteBatch::new(&self.profile);
-        let mut resource = resource;
-        let resource_name = resource.as_trait_object().name();
-        let internals = self.vector_fs._get_profile_fs_internals(&self.profile)?;
-        let node_path = self.path.push_cloned(resource_name.to_string());
+    // /// Saves a Vector Resource and optional SourceFile underneath the current path.
+    // /// If a VR with the same name already exists underneath the current path, then errors.
+    // pub fn save_vector_resource(&mut self, resource: BaseVectorResource, source_file: Option<SourceFile>) {
+    //     let batch = ProfileBoundWriteBatch::new(&self.profile);
+    //     let mut resource = resource;
+    //     let resource_name = resource.as_trait_object().name();
+    //     let internals = self.vector_fs._get_profile_fs_internals(&self.profile)?;
+    //     let node_path = self.path.push_cloned(resource_name.to_string());
 
-        // Ensure path of self points at a folder before proceeding
-        self.validate_path_points_to_folder(self.path)?;
-        // If an existing FSFolder is already saved at the node path, return error.
-        if let Ok(_) = self.validate_path_points_to_folder(node_path) {
-            return Err(VectorFSError::CannotOverwriteFolderWithResource(node_path));
-        }
-        // If an existing FSItem is already saved at the node path, return error.
-        if let Ok(_) = self.validate_path_points_to_item(node_path) {
-            return Err(VectorFSError::CannotOverwriteItemWithResource(node_path));
-        }
-        // Check if an existing VR is saved in the FSDB with the same reference string, then if so re-generate id of the current resource.
-        if let Ok(_) = self
-            .vector_fs
-            .db
-            .get_resource(&resource.as_trait_object().reference_string(), &self.profile)
-        {
-            resource.as_trait_object().generate_and_update_resource_id();
-        }
+    //     // Ensure path of self points at a folder before proceeding
+    //     self.validate_path_points_to_folder(self.path)?;
+    //     // If an existing FSFolder is already saved at the node path, return error.
+    //     if let Ok(_) = self.validate_path_points_to_folder(node_path) {
+    //         return Err(VectorFSError::CannotOverwriteFolderWithResource(node_path));
+    //     }
+    //     // If an existing FSItem is already saved at the node path, return error.
+    //     if let Ok(_) = self.validate_path_points_to_item(node_path) {
+    //         return Err(VectorFSError::CannotOverwriteItemWithResource(node_path));
+    //     }
+    //     // Check if an existing VR is saved in the FSDB with the same reference string, then if so re-generate id of the current resource.
+    //     if let Ok(_) = self
+    //         .vector_fs
+    //         .db
+    //         .get_resource(&resource.as_trait_object().reference_string(), &self.profile)
+    //     {
+    //         resource.as_trait_object().generate_and_update_resource_id();
+    //     }
 
-        // Now all validation checks/setup have passed, move forward with saving header/resource/source file
-    }
+    //     // Now all validation checks/setup have passed, move forward with saving header/resource/source file
+    // }
 
-    /// Validates that the path points to a FSFolder
-    pub fn validate_path_points_to_folder(&self, path: VRPath) -> Result<(), VectorFSError> {
-        let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
-        let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
+    // /// Validates that the path points to a FSFolder
+    // pub fn validate_path_points_to_folder(&self, path: VRPath) -> Result<(), VectorFSError> {
+    //     let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
+    //     let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
 
-        match ret_node.node.content {
-            NodeContent::Resource(_) => Ok(()),
-            _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
-        }
-    }
+    //     match ret_node.node.content {
+    //         NodeContent::Resource(_) => Ok(()),
+    //         _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
+    //     }
+    // }
 
-    /// Validates that the path points to a FSItem
-    pub fn validate_path_points_to_item(&self, path: VRPath) -> Result<(), VectorFSError> {
-        let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
-        let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
+    // /// Validates that the path points to a FSItem
+    // pub fn validate_path_points_to_item(&self, path: VRPath) -> Result<(), VectorFSError> {
+    //     let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
+    //     let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
 
-        match ret_node.node.content {
-            NodeContent::VRHeader(_) => Ok(()),
-            _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
-        }
-    }
+    //     match ret_node.node.content {
+    //         NodeContent::VRHeader(_) => Ok(()),
+    //         _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
+    //     }
+    // }
 
     // /// Updates a Vector Resource (FSItem) underneath the current path.
     // /// If no VR with the same name already exists underneath the current path, then errors.

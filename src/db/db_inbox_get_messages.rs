@@ -1,6 +1,6 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
-use shinkai_vector_resources::shinkai_time::ShinkaiTime;
+use shinkai_vector_resources::shinkai_time::ShinkaiStringTime;
 
 impl ShinkaiDB {
     fn fetch_message_and_hash(
@@ -88,7 +88,7 @@ impl ShinkaiDB {
 
         // Get the scheduled time or calculate current time
         let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
 
@@ -154,7 +154,7 @@ impl ShinkaiDB {
                         Ok(key) => key,
                         Err(_) => return Err(ShinkaiDBError::MessageNotFound),
                     };
-        
+
                     // Compare the offset key with the keys from the iterator
                     while let Some(key) = &current_key {
                         if key == &offset_key {

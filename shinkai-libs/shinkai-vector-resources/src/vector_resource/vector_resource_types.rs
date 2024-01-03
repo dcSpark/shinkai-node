@@ -1,11 +1,12 @@
 use crate::embeddings::Embedding;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
-use crate::shinkai_time::ShinkaiTime;
+use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
 pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
+use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
 use std::collections::HashMap;
 use std::fmt;
@@ -155,7 +156,7 @@ pub struct Node {
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
-    pub last_modified_datetime: String,
+    pub last_modified_datetime: DateTime<Utc>,
 }
 
 impl Node {
@@ -364,8 +365,8 @@ pub struct VRHeader {
     pub resource_base_type: VRBaseType,
     pub resource_source: VRSource,
     pub resource_embedding: Option<Embedding>,
-    pub resource_created_datetime: String,
-    pub resource_last_modified_datetime: String,
+    pub resource_created_datetime: DateTime<Utc>,
+    pub resource_last_modified_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
@@ -382,8 +383,8 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
-        resource_created_datetime: String,
-        resource_last_modified_datetime: String,
+        resource_created_datetime: DateTime<Utc>,
+        resource_last_modified_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -408,8 +409,8 @@ impl VRHeader {
         resource_embedding: Option<Embedding>,
         data_tag_names: Vec<String>,
         resource_source: VRSource,
-        resource_created_datetime: String,
-        resource_last_modified_datetime: String,
+        resource_created_datetime: DateTime<Utc>,
+        resource_last_modified_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Result<Self, VRError> {

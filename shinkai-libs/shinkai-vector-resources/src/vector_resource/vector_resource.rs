@@ -10,6 +10,7 @@ use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
+use crate::shinkai_time::ShinkaiStringTime;
 use crate::shinkai_time::ShinkaiTime;
 pub use crate::source::VRSource;
 use crate::utils::{hash_string, random_string};
@@ -17,6 +18,7 @@ use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use std::any::Any;
 
 #[async_trait]
@@ -53,11 +55,11 @@ pub trait VectorResourceCore: Send + Sync {
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError>;
     /// ISO RFC3339 when then Vector Resource was created
-    fn created_datetime(&self) -> String;
+    fn created_datetime(&self) -> DateTime<Utc>;
     /// ISO RFC3339 when then Vector Resource was last modified
-    fn last_modified_datetime(&self) -> String;
+    fn last_modified_datetime(&self) -> DateTime<Utc>;
     /// Set a RFC3339 Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError>;
+    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) -> Result<(), VRError>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
     // Convert the VectorResource into a &dyn Any
@@ -110,7 +112,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Generates a random new id string and sets it as the resource_id.
     /// Used in the VectorFS to guarantee each VR stored has a unique id.
     fn generate_and_update_resource_id(&mut self) {
-        let mut data_string = ShinkaiTime::generate_time_now();
+        let mut data_string = ShinkaiTime::generate_time_now().to_rfc3339();
         data_string = data_string + self.resource_id() + self.name() + &random_string();
         let hashed_string = hash_string(&data_string);
         self.set_resource_id(hashed_string)
