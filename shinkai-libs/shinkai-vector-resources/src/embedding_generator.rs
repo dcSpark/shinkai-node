@@ -27,7 +27,7 @@ pub trait EmbeddingGenerator: Sync + Send {
     fn box_clone(&self) -> Box<dyn EmbeddingGenerator>;
 
     /// Generates an embedding from the given input string, and assigns the
-    /// provided id. This is a blockng method (not async).
+    /// provided id. This is a blocking method (not async).
     fn generate_embedding_blocking(&self, input_string: &str, id: &str) -> Result<Embedding, VRError>;
 
     /// Generate an Embedding for an input string, sets id to a default value
@@ -89,6 +89,31 @@ pub trait EmbeddingGenerator: Sync + Send {
     async fn generate_embeddings_default(&self, input_strings: &Vec<String>) -> Result<Vec<Embedding>, VRError> {
         let ids: Vec<String> = vec!["".to_string(); input_strings.len()];
         self.generate_embeddings(input_strings, &ids).await
+    }
+
+    /// Generates embedding for the input.
+    /// Uses the `max_input_length` to cut any input string short before sending
+    /// to have an embedding generated.
+    async fn generate_embedding_shorten_input(
+        &self,
+        input_string: &str,
+        id: &str,
+        max_input_length: u64,
+    ) -> Result<Embedding, VRError> {
+        let shortened_string: String = input_string.chars().take(max_input_length as usize).collect();
+        self.generate_embedding(&shortened_string, id).await
+    }
+
+    /// Generates embedding for the input string with a default id.
+    /// Uses the `max_input_length` to cut any input string short before sending
+    /// to have an embedding generated.
+    async fn generate_embedding_shorten_input_default(
+        &self,
+        input_string: &str,
+        max_input_length: u64,
+    ) -> Result<Embedding, VRError> {
+        self.generate_embedding_shorten_input(input_string, "", max_input_length)
+            .await
     }
 
     /// Generates embeddings from the given list of input strings and ids.

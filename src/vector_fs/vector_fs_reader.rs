@@ -2,6 +2,7 @@ use super::vector_fs::VectorFS;
 use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::SourceFile;
 use shinkai_vector_resources::vector_resource::{
