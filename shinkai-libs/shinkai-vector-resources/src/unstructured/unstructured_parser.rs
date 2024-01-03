@@ -4,6 +4,7 @@ use crate::data_tags::DataTag;
 use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
+use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
 use crate::vector_resource::VectorResource;
@@ -192,17 +193,19 @@ impl UnstructuredParser {
                     grouped_text.embedding.clone(),
                 )
                 .await?;
-                doc.append_vector_resource_node_auto(new_doc, metadata);
+                doc.append_vector_resource_node_auto(new_doc, metadata)?;
             } else {
                 if grouped_text.text.len() <= 2 {
                     continue;
                 }
                 if let Some(embedding) = &grouped_text.embedding {
-                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags);
+                    doc.append_text_node(&grouped_text.text, metadata, embedding.clone(), parsing_tags)?;
                 } else {
                     println!("Generating embedding for: {:?}", &grouped_text.text);
-                    let embedding = generator.generate_embedding_default(&grouped_text.text).await?;
-                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags);
+                    let embedding = generator
+                        .generate_embedding_shorten_input_default(&grouped_text.text, MAX_EMBEDDING_STRING_SIZE as u64)
+                        .await?;
+                    doc.append_text_node(&grouped_text.text, metadata, embedding, parsing_tags)?;
                 }
             }
         }

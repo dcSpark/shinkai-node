@@ -248,7 +248,9 @@ impl JobManager {
         }
 
         // TODO: we need the vector search for the tools
-        // let query = generator.generate_embedding_default(&query_text).await.unwrap();
+        // let query = generator
+        //     .generate_embedding_shorten_input_default(&query_text, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
+        //     .await?;
         // let ret_nodes = JobManager::job_scope_vector_search(
         //     db.clone(),
         //     full_job.scope(),
@@ -305,7 +307,11 @@ impl JobManager {
             cleaned_answer = ParsingHelper::ending_stripper(&answer_str);
             let re = Regex::new(r"(\\+n)").unwrap();
             cleaned_answer = re.replace_all(&cleaned_answer, "").to_string();
-            shinkai_log(ShinkaiLogOption::CronExecution, ShinkaiLogLevel::Debug, format!("Chain Final Answer: {:?}", cleaned_answer).as_str());
+            shinkai_log(
+                ShinkaiLogOption::CronExecution,
+                ShinkaiLogLevel::Debug,
+                format!("Chain Final Answer: {:?}", cleaned_answer).as_str(),
+            );
 
             let is_valid = match state.as_ref().map(|s| s.stage.as_str()) {
                 None | Some("cron") => CronManager::is_valid_cron_expression(&cleaned_answer),
