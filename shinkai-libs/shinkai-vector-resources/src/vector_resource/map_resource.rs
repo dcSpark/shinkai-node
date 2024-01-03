@@ -1,3 +1,4 @@
+use super::VectorResourceSearch;
 use crate::data_tags::{DataTag, DataTagIndex};
 use crate::embeddings::Embedding;
 use crate::metadata_index::MetadataIndex;
@@ -11,8 +12,6 @@ use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, V
 use serde_json;
 use std::any::Any;
 use std::collections::HashMap;
-
-use super::VectorResourceSearch;
 
 /// A VectorResource which uses a HashMap data model, thus providing a
 /// native key-value interface. Ideal for use cases such as field-based data sources, classical DBs,
@@ -35,7 +34,6 @@ pub struct MapVectorResource {
     metadata_index: MetadataIndex,
 }
 impl VectorResource for MapVectorResource {}
-
 impl VectorResourceSearch for MapVectorResource {}
 
 impl VectorResourceCore for MapVectorResource {
@@ -139,6 +137,7 @@ impl VectorResourceCore for MapVectorResource {
 
     /// Retrieves a node's embedding given its key (id)
     fn get_embedding(&self, key: String) -> Result<Embedding, VRError> {
+        let key = VRPath::clean_string(&key);
         Ok(self
             .embeddings
             .get(&key)
@@ -148,6 +147,7 @@ impl VectorResourceCore for MapVectorResource {
 
     /// Retrieves a node given its key (id)
     fn get_node(&self, key: String) -> Result<Node, VRError> {
+        let key = VRPath::clean_string(&key);
         self.nodes
             .get(&key)
             .cloned()
@@ -161,6 +161,7 @@ impl VectorResourceCore for MapVectorResource {
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+        let id = VRPath::clean_string(&id);
         // Update ids to match supplied id
         let mut updated_node = node;
         updated_node.id = id.to_string();
@@ -181,6 +182,7 @@ impl VectorResourceCore for MapVectorResource {
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
     fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+        let id = VRPath::clean_string(&id);
         // Replace old node, and get old embedding
         let mut new_node = node;
         new_node.id = id.clone();
@@ -211,6 +213,7 @@ impl VectorResourceCore for MapVectorResource {
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
     fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+        let id = VRPath::clean_string(&id);
         let path = VRPath::from_string(&("/".to_owned() + &id))?;
         self.remove_node_at_path(path)
     }

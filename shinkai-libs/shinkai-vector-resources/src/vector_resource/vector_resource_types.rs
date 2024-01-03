@@ -484,9 +484,10 @@ impl VRPath {
         self.path_ids.len() as u64
     }
 
-    /// Adds an element to the end of the path_ids
-    pub fn push(&mut self, element: String) {
-        self.path_ids.push(element);
+    /// Adds an id to the end of the VRPath's path_ids. Automatically cleans the id String
+    /// to remove unsupported characters that would break the path.
+    pub fn push(&mut self, id: String) {
+        self.path_ids.push(id);
     }
 
     /// Removes an element from the end of the path_ids
@@ -503,10 +504,11 @@ impl VRPath {
             .ok_or(VRError::InvalidVRPath(self.clone()))
     }
 
-    /// Creates a cloned VRPath and adds an element to the end
-    pub fn push_cloned(&self, element: String) -> Self {
+    /// Creates a cloned VRPath and adds an id to the end of the VRPath's path_ids.
+    /// Automatically cleans the id String to remove unsupported characters that would break the path.
+    pub fn push_cloned(&self, id: String) -> Self {
         let mut new_path = self.clone();
-        new_path.push(element);
+        new_path.push(id);
         new_path
     }
 
@@ -537,6 +539,12 @@ impl VRPath {
     /// Formats the VRPath to a string
     pub fn format_to_string(&self) -> String {
         format!("/{}", self.path_ids.join("/"))
+    }
+
+    /// Cleans an input string to ensure that it does not have any
+    /// characters which would break a VRPath.
+    pub fn clean_string(s: &str) -> String {
+        s.replace(" ", "_").replace("/", "-")
     }
 }
 

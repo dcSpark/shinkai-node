@@ -22,9 +22,8 @@ use std::any::Any;
 #[async_trait]
 pub trait VectorResource: Send + Sync + VectorResourceCore + VectorResourceSearch {}
 
-/// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
-/// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
-/// but `resource_id` is expected to be unique.
+/// Represents a VectorResource as an abstract trait where new variants can be implemented as structs.
+/// `resource_id` is expected to always be unique between different Resources.
 #[async_trait]
 pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;

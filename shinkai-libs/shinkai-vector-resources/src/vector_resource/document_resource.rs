@@ -31,6 +31,8 @@ pub struct DocumentVectorResource {
     last_modified_datetime: String,
     metadata_index: MetadataIndex,
 }
+impl VectorResource for DocumentVectorResource {}
+impl VectorResourceSearch for DocumentVectorResource {}
 
 impl OrderedVectorResource for DocumentVectorResource {
     /// Id of the last node held internally
@@ -76,10 +78,6 @@ impl OrderedVectorResource for DocumentVectorResource {
         Ok(nodes)
     }
 }
-
-impl VectorResource for DocumentVectorResource {}
-
-impl VectorResourceSearch for DocumentVectorResource {}
 
 impl VectorResourceCore for DocumentVectorResource {
     fn as_any(&self) -> &dyn Any {

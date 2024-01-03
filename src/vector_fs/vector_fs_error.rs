@@ -7,7 +7,7 @@ use shinkai_message_primitives::{
     },
     shinkai_message::shinkai_message_error::ShinkaiMessageError,
 };
-use shinkai_vector_resources::{resource_errors::VRError, vector_resource::VRPath};
+use shinkai_vector_resources::{model_type::EmbeddingModelType, resource_errors::VRError, vector_resource::VRPath};
 use std::{io, str::Utf8Error};
 
 #[derive(Debug)]
@@ -38,6 +38,8 @@ pub enum VectorFSError {
     InvalidWriterPermission(ShinkaiName, ShinkaiName, VRPath),
     NoSourceFileAvailable(String),
     InvalidFSEntryType(String),
+    EmbeddingModelTypeMismatch(EmbeddingModelType, EmbeddingModelType),
+    EmbeddingMissingInResource(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -96,6 +98,12 @@ impl fmt::Display for VectorFSError {
             VectorFSError::NoSourceFileAvailable(s) => write!(f, "No SourceFile available for: {}", s),
             VectorFSError::InvalidFSEntryType(s) => {
                 write!(f, "Parsing FSEntry into specific type failed at path: {}", s)
+            }
+            VectorFSError::EmbeddingModelTypeMismatch(a, b) => {
+                write!(f, "Embedding model mismatch: {} vs. {}", a, b)
+            }
+            VectorFSError::EmbeddingMissingInResource(s) => {
+                write!(f, "Embedding is not defined in resource: {} ", s)
             }
         }
     }
