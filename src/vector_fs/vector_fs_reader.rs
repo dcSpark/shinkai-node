@@ -1,6 +1,7 @@
 use super::{fs_error::VectorFSError, vector_fs::VectorFS};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
+use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::{embeddings::Embedding, vector_search_traversal::VRPath};
 
 /// A struct that allows performing read actions on the VectorFS under a profile/at a specific path.
@@ -48,6 +49,8 @@ impl<'a> VFSReader<'a> {
         profile: &ShinkaiName,
     ) -> Result<Embedding, VectorFSError> {
         let generator = self.vector_fs._get_embedding_generator(profile)?;
-        Ok(generator.generate_embedding_default(&input_query).await?)
+        Ok(generator
+            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
+            .await?)
     }
 }
