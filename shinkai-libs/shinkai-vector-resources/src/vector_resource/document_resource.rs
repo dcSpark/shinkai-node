@@ -110,9 +110,8 @@ impl VectorResourceCore for DocumentVectorResource {
         self.last_modified_datetime.clone()
     }
     /// Set a RFC Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) -> Result<(), VRError> {
+    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) {
         self.last_modified_datetime = datetime;
-        Ok(())
     }
 
     fn data_tag_index(&self) -> &DataTagIndex {

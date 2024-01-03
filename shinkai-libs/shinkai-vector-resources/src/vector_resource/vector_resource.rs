@@ -59,7 +59,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// ISO RFC3339 when then Vector Resource was last modified
     fn last_modified_datetime(&self) -> DateTime<Utc>;
     /// Set a RFC3339 Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) -> Result<(), VRError>;
+    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>);
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
     // Convert the VectorResource into a &dyn Any
@@ -106,7 +106,7 @@ pub trait VectorResourceCore: Send + Sync {
     /// Updates the last_modified_datetime to the current time
     fn update_last_modified_to_now(&mut self) {
         let current_time = ShinkaiTime::generate_time_now();
-        self.set_last_modified_datetime(current_time).unwrap();
+        self.set_last_modified_datetime(current_time);
     }
 
     /// Generates a random new id string and sets it as the resource_id.
