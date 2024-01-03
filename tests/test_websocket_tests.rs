@@ -16,6 +16,7 @@ use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
+use shinkai_node::network::ws_manager::TopicDetail;
 use shinkai_node::network::ws_routes::WSMessage;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_node::schemas::identity::Identity;
@@ -178,6 +179,10 @@ async fn test_websocket() {
     // Send a message to the server to establish the connection and subscribe to a topic
     let ws_message = WSMessage {
         action: "subscribe".to_string(),
+        topic: TopicDetail {
+            topic: "job".to_string(),
+            subtopic: Some("test_job".to_string()),
+        },
         message: shinkai_message,
     };
     let ws_message_json = serde_json::to_string(&ws_message).unwrap();
@@ -194,8 +199,8 @@ async fn test_websocket() {
         .lock()
         .await
         .handle_update(
-            "topic1".to_string(),
-            "some_subtopic".to_string(),
+            "job".to_string(),
+            "test_job".to_string(),
             "Hello, world!".to_string(),
         )
         .await;

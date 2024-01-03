@@ -30,6 +30,12 @@ impl fmt::Display for WebSocketManagerError {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct TopicDetail {
+    pub topic: String,
+    pub subtopic: Option<String>,
+}
+
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
@@ -80,7 +86,8 @@ impl WebSocketManager {
     }
 
     // Placeholder function that always returns true
-    pub fn has_access(shinkai_name: &String, topic: &String, subtopic: &String) -> bool {
+    pub fn has_access(shinkai_name: String, topic: String, subtopic: Option<String>) -> bool {
+        // TODO: create enum with all the different topic and subtopics
         // Check if the user has access to the topic and subtopic here...
         true
     }
@@ -91,7 +98,7 @@ impl WebSocketManager {
         message: ShinkaiMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
         topic: String,
-        subtopic: String,
+        subtopic: Option<String>,
     ) -> Result<(), WebSocketManagerError> {
         eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
         if !self.user_validation(shinkai_name.clone(), &message).await {
@@ -103,12 +110,12 @@ impl WebSocketManager {
         }
     
         let shinkai_profile_name = shinkai_name.to_string();
-        if !Self::has_access(&shinkai_profile_name, &topic, &subtopic) {
+        if !Self::has_access(shinkai_profile_name.clone(), topic.clone(), subtopic.clone()) {
             eprintln!(
-                "Access denied for shinkai_name: {} on topic: {} and subtopic: {}",
+                "Access denied for shinkai_name: {} on topic: {} and subtopic: {:?}",
                 shinkai_name, topic, subtopic);
             return Err(WebSocketManagerError::AccessDenied(format!(
-                "Access denied for shinkai_name: {} on topic: {} and subtopic: {}",
+                "Access denied for shinkai_name: {} on topic: {} and subtopic: {:?}",
                 shinkai_name, topic, subtopic
             )));
         }
@@ -116,7 +123,7 @@ impl WebSocketManager {
         self.connections
             .insert(shinkai_profile_name.clone(), connection);
         let mut topic_map = HashMap::new();
-        let topic_subtopic = format!("{}:::{}", topic, subtopic);
+        let topic_subtopic = format!("{}:::{}", topic, subtopic.unwrap_or_default());
         topic_map.insert(topic_subtopic, true);
         self.subscriptions.insert(shinkai_profile_name, topic_map);
     

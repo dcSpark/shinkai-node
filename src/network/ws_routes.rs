@@ -1,3 +1,4 @@
+use super::ws_manager::TopicDetail;
 use super::ws_manager::WebSocketManager;
 use futures::SinkExt;
 use futures::StreamExt;
@@ -15,6 +16,7 @@ pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 pub struct WSMessage {
     pub action: String,
+    pub topic: TopicDetail,
     pub message: ShinkaiMessage,
 }
 
@@ -26,12 +28,14 @@ pub fn ws_route(
         .and(warp::ws())
         .and(warp::any().map(move || Arc::clone(&manager)))
         .and(warp::any().map(move || topic.clone()))
-        .map(|ws: Ws, manager: SharedWebSocketManager, topic: String| {
-            ws.on_upgrade(move |socket| ws_handler(socket, manager, topic))
-        })
+        .map(
+            |ws: Ws, manager: SharedWebSocketManager, topic_detail_str: String| {
+                ws.on_upgrade(move |socket| ws_handler(socket, manager, topic_detail_str))
+            },
+        )
 }
 
-pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic: String) {
+pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic_detail_str: String) {
     eprintln!("New WebSocket connection");
     let (ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
@@ -43,15 +47,36 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
                 if let Ok(text) = msg.to_str() {
                     if let Ok(ws_message) = serde_json::from_str::<WSMessage>(text) {
                         eprintln!("ws_message: {:?}", ws_message);
+                        eprintln!("topic_detail_str: {:?}", topic_detail_str);
+
+                        let topic_detail = match extract_topic_subtopic(&topic_detail_str) {
+                            Ok(topic_detail) => topic_detail,
+                            Err(e) => {
+                                eprintln!("Failed to extract topic and subtopic: {}", e);
+                                let mut ws_tx = ws_tx.lock().await;
+                                let _ = ws_tx
+                                    .send(warp::ws::Message::text(format!(
+                                        "Failed to extract topic and subtopic: {}",
+                                        e
+                                    )))
+                                    .await;
+                                let _ = ws_tx.close().await; // Close the WebSocket connection
+                                return;
+                            }
+                        };
 
                         match ShinkaiName::from_shinkai_message_using_sender_subidentity(&ws_message.message.clone()) {
                             Ok(shinkai_name) => {
-                                let subtopic = "some_subtopic".to_string(); // Replace with actual subtopic
-
                                 if let Err(e) = manager
                                     .lock()
                                     .await
-                                    .add_connection(shinkai_name, ws_message.message, Arc::clone(&ws_tx), topic, subtopic)
+                                    .add_connection(
+                                        shinkai_name,
+                                        ws_message.message,
+                                        Arc::clone(&ws_tx),
+                                        topic_detail.topic,
+                                        topic_detail.subtopic,
+                                    )
                                     .await
                                 {
                                     eprintln!("Failed to add connection: {}", e);
@@ -61,7 +86,7 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
                                         .await;
                                     let _ = ws_tx.close().await; // Close the WebSocket connection
                                 }
-                            },
+                            }
                             Err(e) => {
                                 eprintln!("Failed to get ShinkaiName: {}", e);
                                 let mut ws_tx = ws_tx.lock().await;
@@ -124,4 +149,11 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
         "Internal Server Error",
         warp::http::StatusCode::INTERNAL_SERVER_ERROR,
     ))
+}
+
+fn extract_topic_subtopic(
+    topic_detail_str: &str,
+) -> Result<TopicDetail, serde_json::Error> {
+    let topic_detail: TopicDetail = serde_json::from_str(topic_detail_str)?;
+    Ok(topic_detail)
 }
