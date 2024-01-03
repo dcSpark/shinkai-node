@@ -80,7 +80,9 @@ pub trait VectorResourceCore: Send + Sync {
         keywords: Vec<String>,
     ) -> Result<(), VRError> {
         let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
+        let new_embedding = generator
+            .generate_embedding_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)
+            .await?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }

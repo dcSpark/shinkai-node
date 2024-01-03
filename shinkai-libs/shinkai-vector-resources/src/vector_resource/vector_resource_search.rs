@@ -4,6 +4,7 @@ use crate::embedding_generator::EmbeddingGenerator;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::RemoteEmbeddingGenerator;
 use crate::embeddings::Embedding;
+use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 pub use crate::source::VRSource;
@@ -112,7 +113,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
         let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
 
         // First manually embedding generate & search the self Vector Resource
-        let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+        let mut query_embedding = embedding_generator
+            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
+            .await?;
         input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
         let mut latest_returned_results = self.vector_search_customized(
             query_embedding,
@@ -140,7 +143,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             &embedding_generator.api_url,
                             embedding_generator.api_key.clone(),
                         );
-                        query_embedding = new_generator.generate_embedding_default(&input_query).await?;
+                        query_embedding = embedding_generator
+                            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
+                            .await?;
                         input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
                     }
 
