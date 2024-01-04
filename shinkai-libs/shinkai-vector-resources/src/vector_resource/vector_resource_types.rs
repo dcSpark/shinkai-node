@@ -156,7 +156,7 @@ pub struct Node {
     pub content: NodeContent,
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
-    pub last_modified_datetime: DateTime<Utc>,
+    pub last_written_datetime: DateTime<Utc>,
 }
 
 impl Node {
@@ -174,7 +174,7 @@ impl Node {
             content: NodeContent::Text(text.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
         }
     }
 
@@ -200,7 +200,7 @@ impl Node {
             content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
         }
     }
 
@@ -225,7 +225,7 @@ impl Node {
             content: NodeContent::ExternalContent(external_content.clone()),
             metadata,
             data_tag_names: vec![],
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
         }
     }
 
@@ -252,7 +252,7 @@ impl Node {
             content: NodeContent::VRHeader(vr_header.clone()),
             metadata,
             data_tag_names: data_tag_names.clone(),
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
         }
     }
 
@@ -279,7 +279,7 @@ impl Node {
             content,
             metadata,
             data_tag_names,
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
         }
     }
 
@@ -293,10 +293,16 @@ impl Node {
         Self::from_node_content(id.to_string(), content, metadata, data_tag_names)
     }
 
-    /// Updates the last_modified_datetime to the current time
-    pub fn update_last_modified_to_now(&mut self) {
+    /// Updates the last_written_datetime to the provided datetime
+    pub fn set_last_written(&mut self, datetime: DateTime<Utc>) {
+        self.update_last_written_to_now();
+        self.last_written_datetime = datetime;
+    }
+
+    /// Updates the last_written_datetime to the current time
+    pub fn update_last_written_to_now(&mut self) {
         let current_time = ShinkaiTime::generate_time_now();
-        self.last_modified_datetime = current_time;
+        self.set_last_written(current_time);
     }
 
     /// Attempts to return the text content from the Node. Errors if is different type
@@ -366,7 +372,7 @@ pub struct VRHeader {
     pub resource_source: VRSource,
     pub resource_embedding: Option<Embedding>,
     pub resource_created_datetime: DateTime<Utc>,
-    pub resource_last_modified_datetime: DateTime<Utc>,
+    pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
@@ -384,7 +390,7 @@ impl VRHeader {
         data_tag_names: Vec<String>,
         resource_source: VRSource,
         resource_created_datetime: DateTime<Utc>,
-        resource_last_modified_datetime: DateTime<Utc>,
+        resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Self {
@@ -396,7 +402,7 @@ impl VRHeader {
             data_tag_names: data_tag_names,
             resource_source,
             resource_created_datetime,
-            resource_last_modified_datetime,
+            resource_last_written_datetime,
             metadata_index_keys,
             resource_embedding_model_used,
         }
@@ -410,7 +416,7 @@ impl VRHeader {
         data_tag_names: Vec<String>,
         resource_source: VRSource,
         resource_created_datetime: DateTime<Utc>,
-        resource_last_modified_datetime: DateTime<Utc>,
+        resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
     ) -> Result<Self, VRError> {
@@ -429,7 +435,7 @@ impl VRHeader {
             data_tag_names: data_tag_names,
             resource_source,
             resource_created_datetime,
-            resource_last_modified_datetime,
+            resource_last_written_datetime,
             metadata_index_keys,
             resource_embedding_model_used,
         })

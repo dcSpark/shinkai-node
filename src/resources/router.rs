@@ -111,8 +111,8 @@ impl VectorResourceRouter {
                         embedding,
                         ret_node.node.data_tag_names.clone(),
                         source,
-                        ret_node.node.last_modified_datetime.clone(),
-                        ret_node.node.last_modified_datetime.clone(),
+                        ret_node.node.last_written_datetime.clone(),
+                        ret_node.node.last_written_datetime.clone(),
                         vec![],
                         NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone(),
                     );
