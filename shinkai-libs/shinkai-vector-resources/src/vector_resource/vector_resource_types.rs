@@ -464,7 +464,7 @@ pub struct VRPath {
 }
 
 impl VRPath {
-    /// Create a new VRPath
+    /// Create a new VRPath, defaulting to root `/`.
     pub fn new() -> Self {
         Self { path_ids: vec![] }
     }

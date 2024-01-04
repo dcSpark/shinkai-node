@@ -54,9 +54,10 @@ impl<'a> VFSReader<'a> {
 
         // Create FSFolder directly if path is root
         if self.path.is_empty() {
-            let core_resource = BaseVectorResource::Map(internals.fs_core_resource.clone());
-            let fs_folder = FSFolder::from_vector_resource(core_resource, self.path.clone())?;
-            return Ok(FSEntry::Folder(fs_folder));
+            // TODO: Change this to generate a FSRoot entry instead
+            // let core_resource = BaseVectorResource::Map(internals.fs_core_resource.clone());
+            // let fs_folder = FSFolder::from_vector_resource(core_resource, self.path.clone())?;
+            // return Ok(FSEntry::Folder(fs_folder));
         }
 
         // Otherwise retrieve the node and process it

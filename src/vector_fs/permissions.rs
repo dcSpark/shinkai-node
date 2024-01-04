@@ -55,12 +55,15 @@ pub struct PermissionsIndex {
 }
 
 impl PermissionsIndex {
-    /// Creates a new PermissionsIndex.
+    /// Creates a new PermissionsIndex struct
     pub fn new(profile_name: ShinkaiName) -> Self {
-        Self {
+        let mut index = Self {
             fs_permissions: HashMap::new(),
             profile_name,
-        }
+        };
+        // Set permissions for the FS root to be private by default (only for profile owner)
+        index.insert_path_permission(VRPath::new(), ReadPermission::Private, WritePermission::Private);
+        index
     }
 
     /// Inserts a new path permission into the fs_permissions map. Note, this will overwrite

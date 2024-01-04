@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
-    vector_resource::{BaseVectorResource, Node, NodeContent, VRHeader, VRPath},
+    vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRPath},
 };
 
 /// Enum that holds the types of external-facing entries used in the VectorFS
@@ -34,7 +34,7 @@ impl FSEntry {
     }
 
     // Attempts to parse the FSEntry into an FSItem
-    pub fn as_fs_root(self) -> Result<FSRoot, VectorFSError> {
+    pub fn as_root(self) -> Result<FSRoot, VectorFSError> {
         match self {
             FSEntry::Root(root) => Ok(root),
             FSEntry::Item(item) => Err(VectorFSError::InvalidFSEntryType(item.path.to_string())),
@@ -50,10 +50,23 @@ pub struct FSRoot {
     pub path: VRPath,
     pub child_folders: Vec<FSFolder>,
     pub child_items: Vec<FSItem>,
+    // Datetime when the profile's VectorFS was created
     pub created_datetime: DateTime<Utc>,
-    /// Last written is updated any time any writes take place under the folder. In other words, even when
-    /// a VR is updated but not moved/renamed, last written timestamp is updated.
+    /// Datetime which is updated whenever any writes take place. In other words, when
+    /// a FSItem or FSFolder is updated/moved/renamed/deleted/etc., last written timestamp is updated.
     pub last_written_datetime: DateTime<Utc>,
+}
+
+impl FSRoot {
+    /// Generates a new FSRoot from a MapVectorResource, which is expected to be the FS core resource.
+    pub fn from_core_vector_resource(resource: MapVectorResource) -> Result<Self, VectorFSError> {
+        // Generate datetime to suffice the method, this gets ignored in practice when converting back via Self::from
+        let current_datetime = ShinkaiTime::generate_time_now();
+        let resource = BaseVectorResource::Map(resource);
+        let fs_folder =
+            FSFolder::from_vector_resource(resource, VRPath::new(), current_datetime.clone(), current_datetime)?;
+        Ok(Self::from(fs_folder))
+    }
 }
 
 impl From<FSFolder> for FSRoot {
@@ -75,13 +88,15 @@ pub struct FSFolder {
     pub path: VRPath,
     pub child_folders: Vec<FSFolder>,
     pub child_items: Vec<FSItem>,
+    /// Datetime the FSFolder was first created
     pub created_datetime: DateTime<Utc>,
+    /// Datetime the FSFolder was last read by any ShinkaiName
     pub last_read_datetime: DateTime<Utc>,
-    /// Last modified only keeps track of when the contents of the directory change.
-    /// Ie. An FSEntry is moved/deleted/new one added
+    /// Datetime the FSFolder was last modified, meaning contents of the directory were changed.
+    /// Ie. An FSEntry is moved/renamed/deleted/new one added.
     pub last_modified_datetime: DateTime<Utc>,
-    /// Last written is updated any time any writes take place under the folder. In other words, even when
-    /// a VR is updated but not moved/renamed, last written timestamp is updated.
+    /// Datetime the FSFolder was last written to, meaning any write took place under the folder. In other words, even when
+    /// a VR is updated or moved/renamed, then last written is always updated.
     pub last_written_datetime: DateTime<Utc>,
 }
 
@@ -122,13 +137,13 @@ impl FSFolder {
     }
 
     /// Generates a new FSFolder using a BaseVectorResource holding Node + the path where the node was retrieved
-    /// from in the VecFS internals. Use VRPath::new() if the path is root.
+    /// from in the VecFS internals.
     pub fn from_vector_resource_node(node: Node, node_fs_path: VRPath) -> Result<Self, VectorFSError> {
+        // Process datetimes from node
+        let (last_read_datetime, last_modified_datetime) = Self::process_datetimes_from_node(&node)?;
+
         match node.content {
             NodeContent::Resource(base_vector_resource) => {
-                // Process datetimes from node
-                let (last_read_datetime, last_modified_datetime) = Self::process_datetimes_from_node(&node)?;
-
                 // Call from_vector_resource with the parsed datetimes
                 Self::from_vector_resource(
                     base_vector_resource,
@@ -142,8 +157,8 @@ impl FSFolder {
     }
 
     /// Generates a new FSFolder from a BaseVectorResource + the path where it was retrieved
-    /// from inside of the VectorFS. Use VRPath::new() if the path is root.
-    pub fn from_vector_resource(
+    /// from inside of the VectorFS.
+    fn from_vector_resource(
         resource: BaseVectorResource,
         resource_fs_path: VRPath,
         last_read_datetime: DateTime<Utc>,
@@ -152,15 +167,15 @@ impl FSFolder {
         let mut child_folders = Vec::new();
         let mut child_items = Vec::new();
 
-        for node in resource.as_trait_object().get_nodes() {
-            match node.content {
+        for node in &resource.as_trait_object().get_nodes() {
+            match &node.content {
                 // If it's a Resource, then create a FSFolder by recursing, and push it to child_folders
                 NodeContent::Resource(inner_resource) => {
                     // Process datetimes from node
                     let (lr_datetime, lm_datetime) = Self::process_datetimes_from_node(&node)?;
                     let new_path = resource_fs_path.push_cloned(inner_resource.as_trait_object().name().to_string());
                     child_folders.push(Self::from_vector_resource(
-                        inner_resource,
+                        inner_resource.clone(),
                         new_path,
                         lr_datetime,
                         lm_datetime,
@@ -169,7 +184,7 @@ impl FSFolder {
                 // If it's a VRHeader, then create a FSEntry and push it to child_items
                 NodeContent::VRHeader(_) => {
                     let new_path = resource_fs_path.push_cloned(node.id.clone());
-                    let fs_item = FSItem::from_vr_header_node(node, new_path)?;
+                    let fs_item = FSItem::from_vr_header_node(node.clone(), new_path)?;
                     child_items.push(fs_item);
                 }
                 _ => {}
@@ -234,13 +249,14 @@ pub struct FSItem {
     pub path: VRPath,
     pub vr_header: VRHeader,
     pub source_file_saved: bool,
-    /// From header
+    /// Datetime the FSItem was first created
     pub created_datetime: DateTime<Utc>,
-    /// From header, last time the VR contents were written to
+    /// Datetime the Vector Resource in the FSItem was last written to, meaning any updates to its contents.
     pub last_written_datetime: DateTime<Utc>,
-    /// Last time the FSItem was read
+    /// Datetime the FSItem was last read by any ShinkaiName
     pub last_read_datetime: DateTime<Utc>,
-    /// Last saved is the time when the VR was last saved in the VectorFS
+    /// Datetime the FSItem was last saved, meaning when either the Vector Resource or Source File was saved/updated/moved.
+    /// For example when saving a VR into the FS that someone else generated, last_written and last_saved will be different.
     pub last_saved_datetime: DateTime<Utc>,
 }
 
@@ -290,7 +306,7 @@ impl FSItem {
     /// Generates a new FSItem using a VRHeader holding Node + the path where the node was retrieved
     /// from in the VecFS internals. Use VRPath::new() if the path is root.
     pub fn from_vr_header_node(node: Node, node_fs_path: VRPath) -> Result<Self, VectorFSError> {
-        match node.content {
+        match &node.content {
             NodeContent::VRHeader(header) => {
                 // Read source_file_saved from metadata
                 let source_file_saved = node
@@ -298,10 +314,60 @@ impl FSItem {
                     .as_ref()
                     .and_then(|metadata| metadata.get(&FSItem::source_file_saved_metadata_key()))
                     .map_or(false, |value| value == "true");
-                Ok(FSItem::new(node_fs_path, header, source_file_saved))
+
+                // Process datetimes from node
+                let (last_read_datetime, last_saved_datetime) = Self::process_datetimes_from_node(&node)?;
+
+                Ok(FSItem::new(
+                    node_fs_path,
+                    header.clone(),
+                    source_file_saved,
+                    header.resource_created_datetime,
+                    header.resource_last_written_datetime,
+                    last_read_datetime,
+                    last_saved_datetime,
+                ))
             }
 
             _ => Err(VRError::InvalidNodeType(node.id))?,
         }
     }
+
+    /// Process last_read/last_saved datetimes in a Node from the VectorFS core resource.
+    /// The node must be an FSItem for this to succeed.
+    pub fn process_datetimes_from_node(node: &Node) -> Result<(DateTime<Utc>, DateTime<Utc>), VectorFSError> {
+        // Read last_read_datetime and last_saved_datetime from metadata
+        let last_read_str = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&Self::last_read_key()))
+            .ok_or(VectorFSError::InvalidMetadata(Self::last_read_key()))?;
+
+        let last_saved_str = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&Self::last_saved_key()))
+            .ok_or(VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
+
+        // Parse the datetime strings
+        let last_read_datetime = ShinkaiTime::from_rfc3339_string(last_read_str)
+            .map_err(|_| VectorFSError::InvalidMetadata(Self::last_read_key()))?;
+
+        let last_saved_datetime = ShinkaiTime::from_rfc3339_string(last_saved_str)
+            .map_err(|_| VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
+
+        Ok((last_read_datetime, last_saved_datetime))
+    }
+
+    /// Returns the metadata key for the last read datetime.
+    pub fn last_read_key() -> String {
+        String::from("last_read")
+    }
+
+    /// Returns the metadata key for the last saved datetime.
+    pub fn last_saved_key() -> String {
+        String::from("last_saved")
+    }
+
+    // ...
 }
