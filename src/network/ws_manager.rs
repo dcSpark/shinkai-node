@@ -30,12 +30,6 @@ impl fmt::Display for WebSocketManagerError {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub struct TopicDetail {
-    pub topic: String,
-    pub subtopic: Option<String>,
-}
-
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
@@ -101,6 +95,8 @@ impl WebSocketManager {
         subtopic: Option<String>,
     ) -> Result<(), WebSocketManagerError> {
         eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
+        eprintln!("add_connection> Message: {:?}", message);
+
         if !self.user_validation(shinkai_name.clone(), &message).await {
             eprintln!("User validation failed for shinkai_name: {}", shinkai_name);
             return Err(WebSocketManagerError::UserValidationFailed(format!(

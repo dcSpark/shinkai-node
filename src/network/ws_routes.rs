@@ -1,52 +1,38 @@
-use super::ws_manager::TopicDetail;
 use super::ws_manager::WebSocketManager;
 use futures::SinkExt;
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use warp::cors;
+use warp::filters::ws::WebSocket;
 use warp::Filter;
-use warp::{filters::ws::WebSocket, ws::Ws};
 
 pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-pub struct WSMessage {
-    pub action: String,
-    pub topic: TopicDetail,
-    pub message: ShinkaiMessage,
-}
 
 pub fn ws_route(
     manager: SharedWebSocketManager,
 ) -> impl warp::Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    let smart_inboxes_route = {
+    let ws_route = {
         let manager = Arc::clone(&manager);
-        warp::path!("smart_inboxes")
+        warp::path!("ws")
             .and(warp::ws())
             .and(warp::any().map(move || Arc::clone(&manager)))
-            .map(|ws: Ws, manager: SharedWebSocketManager| {
-                ws.on_upgrade(move |socket| ws_handler(socket, manager, "smart_inboxes".to_string(), None))
+            .map(move |ws, manager| {
+                let ws: warp::ws::Ws = ws;
+                let manager: SharedWebSocketManager = manager;
+                ws.on_upgrade(move |socket| ws_handler(socket, manager))
             })
     };
 
-    let inbox_route = {
-        let manager = Arc::clone(&manager);
-        warp::path!("inbox" / String)
-            .and(warp::ws())
-            .and(warp::any().map(move || Arc::clone(&manager)))
-            .map(|id: String, ws: Ws, manager: SharedWebSocketManager| {
-                ws.on_upgrade(move |socket| ws_handler(socket, manager, "inbox".to_string(), Some(id)))
-            })
-    };
-    
-    smart_inboxes_route.or(inbox_route)
+    ws_route
 }
 
-pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, topic: String, subtopic: Option<String>) {
+pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
+    // Previously: topic: String, subtopic: Option<String>
     eprintln!("New WebSocket connection");
     let (ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
@@ -56,23 +42,54 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>, to
         match result {
             Ok(msg) => {
                 if let Ok(text) = msg.to_str() {
-                    if let Ok(ws_message) = serde_json::from_str::<WSMessage>(text) {
-                        eprintln!("ws_message: {:?}", ws_message);
-                        eprintln!("topic: {:?}", topic);
-                        eprintln!("subtopic: {:?} \n\n", subtopic);
+                    if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(text) {
+                        eprintln!("ws_message: {:?}", shinkai_message);
 
-                        match ShinkaiName::from_shinkai_message_using_sender_subidentity(&ws_message.message.clone()) {
+                        let mut ws_message: Option<WSMessage> = None;
+
+                        match shinkai_message.get_message_content() {
+                            Ok(content_str) => {
+                                match serde_json::from_str::<WSMessage>(&content_str) {
+                                    Ok(message) => {
+                                        ws_message = Some(message);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to deserialize WSMessage: {}", e);
+                                        let mut ws_tx = ws_tx.lock().await;
+                                        let _ = ws_tx
+                                            .send(warp::ws::Message::text(format!(
+                                                "Failed to deserialize WSMessage: {}",
+                                                e
+                                            )))
+                                            .await;
+                                        let _ = ws_tx.close().await; // Close the WebSocket connection
+                                        return;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Failed to get message content: {}", e);
+                                let mut ws_tx = ws_tx.lock().await;
+                                let _ = ws_tx
+                                    .send(warp::ws::Message::text(format!("Failed to get message content: {}", e)))
+                                    .await;
+                                let _ = ws_tx.close().await; // Close the WebSocket connection
+                                return;
+                            }
+                        }
+
+                        let ws_message = ws_message.unwrap();
+
+                        // parse topic and subtopic from type
+                        eprintln!("topic: {:?}", ws_message.topic);
+                        eprintln!("subtopic: {:?} \n\n", ws_message.subtopic);
+
+                        match ShinkaiName::from_shinkai_message_using_sender_subidentity(&shinkai_message.clone()) {
                             Ok(shinkai_name) => {
                                 if let Err(e) = manager
                                     .lock()
                                     .await
-                                    .add_connection(
-                                        shinkai_name,
-                                        ws_message.message,
-                                        Arc::clone(&ws_tx),
-                                        topic,
-                                        subtopic,
-                                    )
+                                    .add_connection(shinkai_name, shinkai_message, Arc::clone(&ws_tx), ws_message.topic, ws_message.subtopic)
                                     .await
                                 {
                                     eprintln!("Failed to add connection: {}", e);

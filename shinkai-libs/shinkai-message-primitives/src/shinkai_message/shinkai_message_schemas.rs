@@ -17,6 +17,7 @@ pub enum MessageSchemaType {
     APIAddAgentRequest,
     APIFinishJob,
     TextContent,
+    WSMessage,
     FormattedMultiContent, // TODO
     SymmetricKeyExchange,
     EncryptedFileContent,
@@ -35,6 +36,7 @@ impl MessageSchemaType {
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
             "TextContent" => Some(Self::TextContent),
+            "WSMessage" => Some(Self::WSMessage),
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
@@ -55,6 +57,7 @@ impl MessageSchemaType {
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
             Self::TextContent => "TextContent",
+            Self::WSMessage => "WSMessage",
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
@@ -186,6 +189,13 @@ pub struct APIReadUpToTimeRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAddAgentRequest {
     pub agent: SerializedAgent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WSMessage {
+    pub topic: String,
+    pub subtopic: Option<String>,
+    pub shared_key: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
