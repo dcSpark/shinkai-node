@@ -26,6 +26,7 @@ use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api}
 use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
 use shinkai_node::schemas::identity::StandardIdentityType;
+use shinkai_node::schemas::inbox_permission::InboxPermission;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -131,6 +132,7 @@ async fn test_websocket() {
     let agent_id = "agent4".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    let mut shinkai_db = Arc::new(Mutex::new(shinkai_db));
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
@@ -145,16 +147,15 @@ async fn test_websocket() {
     ));
 
     let inbox_name = InboxName::get_job_inbox_name_from_params("test_job".to_string()).unwrap();
-
     let inbox_name_string = match inbox_name {
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
 
     // Start the WebSocket server
     let manager = Arc::new(Mutex::new(WebSocketManager::new(
-        Arc::new(Mutex::new(shinkai_db)),
+        shinkai_db.clone(),
         node_name,
-        identity_manager_trait,
+        identity_manager_trait.clone(),
     )));
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
@@ -163,8 +164,7 @@ async fn test_websocket() {
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Connect to the server
-    let connection_result =
-        tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
 
     // Check if the connection was successful
     assert!(connection_result.is_ok(), "Failed to connect");
@@ -196,6 +196,28 @@ async fn test_websocket() {
         node1_identity_name.to_string(),
         "2023-07-02T20:53:34.810Z".to_string(),
     );
+
+    {
+        // Add identity to the database
+        let sender_subidentity = {
+            let shinkai_name =
+                ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
+                    .unwrap();
+            let identity_manager_lock = identity_manager_trait.lock().await;
+            match identity_manager_lock.find_by_identity_name(shinkai_name).unwrap() {
+                Identity::Standard(std_identity) => std_identity.clone(),
+                _ => panic!("Identity is not of type StandardIdentity"),
+            }
+        };
+
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db.insert_profile(sender_subidentity.clone());
+
+        let _ = shinkai_db.unsafe_insert_inbox_message(&&shinkai_message.clone(), None);
+        shinkai_db
+            .add_permission(&inbox_name_string, &sender_subidentity, InboxPermission::Admin)
+            .unwrap();
+    }
 
     // Convert ShinkaiMessage to String
     let message_string = shinkai_message.to_string().unwrap();

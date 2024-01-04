@@ -9,7 +9,7 @@ use super::{
     node_shareable_logic::validate_message_main_logic,
     Node,
 };
-use crate::managers::identity_manager::IdentityManagerTrait;
+use crate::{managers::identity_manager::IdentityManagerTrait, db::ShinkaiDB};
 use crate::{
     db::db_errors::ShinkaiDBError,
     planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
@@ -73,29 +73,29 @@ impl Node {
     }
 
     async fn has_standard_identity_access(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
-        let db_lock = self.db.lock().await;
+        let db_lock = db.lock().await;
         let has_permission = db_lock
             .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
-
+    
     async fn has_device_identity_access(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
         let std_device = std_identity.clone().to_standard_identity().ok_or(NodeError {
             message: "Failed to convert to standard identity".to_string(),
         })?;
-        self.has_standard_identity_access(inbox_name, &std_device).await
+        Self::has_standard_identity_access(db, inbox_name, &std_device).await
     }
 
-    async fn has_inbox_access(&self, inbox_name: &InboxName, sender_subidentity: &Identity) -> Result<bool, NodeError> {
+    pub async fn has_inbox_access(db: Arc<Mutex<ShinkaiDB>>, inbox_name: &InboxName, sender_subidentity: &Identity) -> Result<bool, NodeError> {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
@@ -107,10 +107,10 @@ impl Node {
 
         match sender_subidentity {
             Identity::Standard(std_identity) => {
-                return self.has_standard_identity_access(inbox_name, std_identity).await;
+                return Self::has_standard_identity_access(db, inbox_name, std_identity).await;
             }
             Identity::Device(std_device) => {
-                return self.has_device_identity_access(inbox_name, std_device).await;
+                return Self::has_device_identity_access(db, inbox_name, std_device).await;
             }
             _ => Err(NodeError {
                 message: format!(
@@ -177,7 +177,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
@@ -259,7 +259,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
@@ -445,7 +445,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
