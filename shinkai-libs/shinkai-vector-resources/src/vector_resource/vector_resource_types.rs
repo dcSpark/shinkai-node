@@ -295,7 +295,6 @@ impl Node {
 
     /// Updates the last_written_datetime to the provided datetime
     pub fn set_last_written(&mut self, datetime: DateTime<Utc>) {
-        self.update_last_written_to_now();
         self.last_written_datetime = datetime;
     }
 
