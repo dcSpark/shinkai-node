@@ -31,7 +31,7 @@ pub struct MapVectorResource {
     nodes: HashMap<String, Node>,
     data_tag_index: DataTagIndex,
     created_datetime: DateTime<Utc>,
-    last_modified_datetime: DateTime<Utc>,
+    last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
 }
 impl VectorResource for MapVectorResource {}
@@ -64,13 +64,13 @@ impl VectorResourceCore for MapVectorResource {
     fn created_datetime(&self) -> DateTime<Utc> {
         self.created_datetime.clone()
     }
-    /// RFC3339 Datetime when then Vector Resource was last modified
-    fn last_modified_datetime(&self) -> DateTime<Utc> {
-        self.last_modified_datetime.clone()
+    /// RFC3339 Datetime when then Vector Resource was last written
+    fn last_written_datetime(&self) -> DateTime<Utc> {
+        self.last_written_datetime.clone()
     }
-    /// Set a RFC Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) {
-        self.last_modified_datetime = datetime;
+    /// Set a RFC Datetime of when then Vector Resource was last written
+    fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>) {
+        self.last_written_datetime = datetime;
     }
 
     fn data_tag_index(&self) -> &DataTagIndex {
@@ -118,17 +118,17 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.resource_embedding = embedding;
     }
 
     fn set_resource_id(&mut self, id: String) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.resource_id = id;
     }
 
@@ -157,11 +157,24 @@ impl VectorResourceCore for MapVectorResource {
     }
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+    fn insert_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(), VRError> {
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
+
         let id = VRPath::clean_string(&id);
         // Update ids to match supplied id
         let mut updated_node = node;
         updated_node.id = id.to_string();
+        updated_node.set_last_written(current_datetime);
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
 
@@ -173,16 +186,29 @@ impl VectorResourceCore for MapVectorResource {
         self.data_tag_index.add_node(&updated_node);
         self.metadata_index.add_node(&updated_node);
 
-        self.update_last_modified_to_now();
+        self.set_last_written_datetime(current_datetime);
         Ok(())
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+    fn replace_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError> {
         let id = VRPath::clean_string(&id);
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
+
         // Replace old node, and get old embedding
         let mut new_node = node;
         new_node.id = id.clone();
+        new_node.set_last_written(current_datetime);
         let old_node = self
             .nodes
             .insert(id.to_string(), new_node.clone())
@@ -203,16 +229,29 @@ impl VectorResourceCore for MapVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
         self.embeddings.insert(id.to_string(), embedding);
-        self.update_last_modified_to_now();
+        self.set_last_written_datetime(current_datetime);
 
         Ok((old_node, old_embedding))
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+    fn remove_node(
+        &mut self,
+        id: String,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError> {
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
+
         let id = VRPath::clean_string(&id);
         let path = VRPath::from_string(&("/".to_owned() + &id))?;
-        self.remove_node_at_path(path)
+
+        let results = self.remove_node_at_path(path);
+        self.set_last_written_datetime(current_datetime);
+        results
     }
 }
 
@@ -241,7 +280,7 @@ impl MapVectorResource {
             embedding_model_used,
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
         };
         // Generate a unique resource_id:
@@ -402,7 +441,7 @@ impl MapVectorResource {
         tag_names: &Vec<String>,
     ) {
         let node = Node::from_node_content(key.to_string(), data.clone(), metadata.clone(), tag_names.clone());
-        self.insert_node(key.to_string(), node, embedding.clone());
+        self.insert_node(key.to_string(), node, embedding.clone(), None);
     }
 
     /// Replaces an existing node & associated embedding with a new BaseVectorResource at the specified key at root depth.
@@ -553,14 +592,14 @@ impl MapVectorResource {
             new_metadata.clone(),
             new_tag_names.clone(),
         );
-        self.replace_node(key.to_string(), new_node, embedding.clone())
+        self.replace_node(key.to_string(), new_node, embedding.clone(), None)
     }
 
     /// Internal method. Node deletion from the hashmap
     fn _remove_node(&mut self, key: &str) -> Result<Node, VRError> {
         self.node_count -= 1;
         let removed_node = self.nodes.remove(key).ok_or(VRError::InvalidNodeId(key.to_string()))?;
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         Ok(removed_node)
     }
 
@@ -568,7 +607,7 @@ impl MapVectorResource {
     fn _insert_node(&mut self, node: Node) {
         self.node_count += 1;
         self.nodes.insert(node.id.clone(), node);
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
     }
 
     pub fn from_json(json: &str) -> Result<Self, VRError> {
@@ -577,6 +616,6 @@ impl MapVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
     }
 }

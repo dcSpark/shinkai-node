@@ -49,17 +49,33 @@ pub trait VectorResourceCore: Send + Sync {
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError>;
-    /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError>;
+    fn insert_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(), VRError>;
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth). If no new written datetime is provided, generates now.
+    fn replace_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError>;
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError>;
+    fn remove_node(
+        &mut self,
+        id: String,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> DateTime<Utc>;
-    /// ISO RFC3339 when then Vector Resource was last modified
-    fn last_modified_datetime(&self) -> DateTime<Utc>;
-    /// Set a RFC3339 Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>);
+    /// ISO RFC3339 when then Vector Resource was last written
+    fn last_written_datetime(&self) -> DateTime<Utc>;
+    /// Set a RFC3339 Datetime of when then Vector Resource was last written
+    fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>);
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
     // Convert the VectorResource into a &dyn Any
@@ -103,10 +119,10 @@ pub trait VectorResourceCore: Send + Sync {
         Ok(())
     }
 
-    /// Updates the last_modified_datetime to the current time
-    fn update_last_modified_to_now(&mut self) {
+    /// Updates the last_written_datetime to the current time
+    fn update_last_written_to_now(&mut self) {
         let current_time = ShinkaiTime::generate_time_now();
-        self.set_last_modified_datetime(current_time);
+        self.set_last_written_datetime(current_time);
     }
 
     /// Generates a random new id string and sets it as the resource_id.
@@ -180,7 +196,7 @@ pub trait VectorResourceCore: Send + Sync {
             tag_names,
             self.source(),
             self.created_datetime(),
-            self.last_modified_datetime(),
+            self.last_written_datetime(),
             metadata_index_keys,
             self.embedding_model_used(),
         )
@@ -285,28 +301,43 @@ pub trait VectorResourceCore: Send + Sync {
         path: VRPath,
         mutator: &mut dyn Fn(&mut Node, &mut Embedding) -> Result<(), VRError>,
     ) -> Result<(), VRError> {
+        let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
-        let last_mut = deconstructed_nodes
-            .last_mut()
-            .ok_or(VRError::InvalidVRPath(path.clone()))?;
-        let (_, last_node, last_embedding) = last_mut;
-        mutator(last_node, last_embedding)?;
+
+        // Update last written time for all nodes
+        for node in deconstructed_nodes.iter_mut() {
+            let (_, node, _) = node;
+            node.set_last_written(current_time);
+        }
+
+        // Apply mutator to the last node
+        if let Some(last_node) = deconstructed_nodes.last_mut() {
+            let (_, node, embedding) = last_node;
+            mutator(node, embedding)?;
+        }
 
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding)?;
+        self.replace_node(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
     /// Removes a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
     /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
     fn remove_node_at_path(&mut self, path: VRPath) -> Result<(Node, Embedding), VRError> {
+        let current_time = ShinkaiTime::generate_time_now();
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
+
+        // Update last written time for all nodes
+        for node in deconstructed_nodes.iter_mut() {
+            let (_, node, _) = node;
+            node.set_last_written(current_time);
+        }
 
         // Rebuild the nodes after removing the target node
         if !deconstructed_nodes.is_empty() {
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            self.replace_node(node_key, node, embedding)?;
+            self.replace_node(node_key, node, embedding, Some(current_time))?;
         }
 
         Ok((removed_node.1, removed_node.2))
@@ -320,6 +351,7 @@ pub trait VectorResourceCore: Send + Sync {
         new_node: Node,
         new_embedding: Embedding,
     ) -> Result<(Node, Embedding), VRError> {
+        let current_time = ShinkaiTime::generate_time_now();
         // Remove the node at the end of the deconstructed nodes
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
         deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
@@ -328,13 +360,19 @@ pub trait VectorResourceCore: Send + Sync {
         if let Some(key) = path.path_ids.last() {
             deconstructed_nodes.push((key.clone(), new_node, new_embedding));
 
+            // Update last written time for all nodes
+            for node in deconstructed_nodes.iter_mut() {
+                let (_, node, _) = node;
+                node.set_last_written(current_time);
+            }
+
             // Rebuild the nodes after replacing the node
             let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-            let result = self.replace_node(node_key, node, embedding)?;
+            let result = self.replace_node(node_key, node, embedding, Some(current_time))?;
 
             Ok(result)
         } else {
-            Err(VRError::InvalidVRPath(path.clone())) // Replace with your actual error
+            Err(VRError::InvalidVRPath(path.clone()))
         }
     }
 
@@ -347,17 +385,30 @@ pub trait VectorResourceCore: Send + Sync {
         node_to_insert: Node,
         node_to_insert_embedding: Embedding,
     ) -> Result<(), VRError> {
+        let current_time = ShinkaiTime::generate_time_now();
         // If inserting at root, just do it directly
         if parent_path.path_ids.is_empty() {
-            self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
+            self.insert_node(
+                node_to_insert_id,
+                node_to_insert,
+                node_to_insert_embedding,
+                Some(current_time),
+            )?;
             return Ok(());
         }
         // Insert the new node at the end of the deconstructed nodes
         let mut deconstructed_nodes = self._deconstruct_nodes_along_path(parent_path.clone())?;
         deconstructed_nodes.push((node_to_insert_id, node_to_insert, node_to_insert_embedding));
+
+        // Update last written time for all nodes
+        for node in deconstructed_nodes.iter_mut() {
+            let (_, node, _) = node;
+            node.set_last_written(current_time);
+        }
+
         // Rebuild the nodes after inserting the new node
         let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
-        self.replace_node(node_key, node, embedding)?;
+        self.replace_node(node_key, node, embedding, Some(current_time))?;
         Ok(())
     }
 
@@ -436,7 +487,7 @@ pub trait VectorResourceCore: Send + Sync {
             match &mut node.content {
                 NodeContent::Resource(resource) => {
                     let (removed_node, removed_embedding) =
-                        resource.as_trait_object_mut().remove_node(id.to_string())?;
+                        resource.as_trait_object_mut().remove_node(id.to_string(), None)?;
                     deconstructed_nodes.push((id.clone(), removed_node, removed_embedding));
                 }
                 _ => {
@@ -459,9 +510,14 @@ pub trait VectorResourceCore: Send + Sync {
         let mut current_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(VRPath::new()))?;
         for (id, mut node, embedding) in deconstructed_nodes.into_iter().rev() {
             if let NodeContent::Resource(resource) = &mut node.content {
-                resource
-                    .as_trait_object_mut()
-                    .insert_node(current_node.0, current_node.1, current_node.2)?;
+                // Preserve the last written datetime on the node assigned by prior functions
+                let current_node_last_written = current_node.1.last_written_datetime;
+                resource.as_trait_object_mut().insert_node(
+                    current_node.0,
+                    current_node.1,
+                    current_node.2,
+                    Some(current_node_last_written),
+                )?;
                 current_node = (id, node, embedding);
             }
         }

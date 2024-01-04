@@ -29,7 +29,7 @@ pub struct DocumentVectorResource {
     nodes: Vec<Node>,
     data_tag_index: DataTagIndex,
     created_datetime: DateTime<Utc>,
-    last_modified_datetime: DateTime<Utc>,
+    last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
 }
 impl VectorResource for DocumentVectorResource {}
@@ -105,13 +105,13 @@ impl VectorResourceCore for DocumentVectorResource {
     fn created_datetime(&self) -> DateTime<Utc> {
         self.created_datetime.clone()
     }
-    /// RFC3339 Datetime when then Vector Resource was last modified
-    fn last_modified_datetime(&self) -> DateTime<Utc> {
-        self.last_modified_datetime.clone()
+    /// RFC3339 Datetime when then Vector Resource was last written
+    fn last_written_datetime(&self) -> DateTime<Utc> {
+        self.last_written_datetime.clone()
     }
-    /// Set a RFC Datetime of when then Vector Resource was last modified
-    fn set_last_modified_datetime(&mut self, datetime: DateTime<Utc>) {
-        self.last_modified_datetime = datetime;
+    /// Set a RFC Datetime of when then Vector Resource was last written
+    fn set_last_written_datetime(&mut self, datetime: DateTime<Utc>) {
+        self.last_written_datetime = datetime;
     }
 
     fn data_tag_index(&self) -> &DataTagIndex {
@@ -159,17 +159,17 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.embedding_model_used = model_type;
     }
 
     fn set_resource_embedding(&mut self, embedding: Embedding) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.resource_embedding = embedding;
     }
 
     fn set_resource_id(&mut self, id: String) {
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         self.resource_id = id;
     }
 
@@ -202,7 +202,19 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
-    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError> {
+    fn insert_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(), VRError> {
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
+
         // Id + index logic
         let mut integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         integer_id = if integer_id == 0 { 1 } else { integer_id };
@@ -239,6 +251,7 @@ impl VectorResourceCore for DocumentVectorResource {
         // Update ids to match supplied id
         let mut updated_node = node;
         updated_node.id = id.to_string();
+        updated_node.set_last_written(current_datetime);
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
         // Insert the new node and embedding
@@ -249,13 +262,25 @@ impl VectorResourceCore for DocumentVectorResource {
         self.metadata_index.add_node(&updated_node);
 
         self.node_count += 1;
-        self.update_last_modified_to_now();
+        self.set_last_written_datetime(current_datetime);
 
         Ok(())
     }
 
     /// Replace a Node/Embedding in the VR using the provided id (root level depth)
-    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError> {
+    fn replace_node(
+        &mut self,
+        id: String,
+        node: Node,
+        embedding: Embedding,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError> {
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
+
         // Id + index logic
         let mut integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         integer_id = if integer_id == 0 { 1 } else { integer_id };
@@ -269,6 +294,7 @@ impl VectorResourceCore for DocumentVectorResource {
         new_node.id = id.to_string();
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
+        new_node.set_last_written(current_datetime);
 
         // Replace the old node and fetch old embedding
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
@@ -276,7 +302,7 @@ impl VectorResourceCore for DocumentVectorResource {
 
         // Replacing the embedding
         self.embeddings[index] = embedding;
-        self.update_last_modified_to_now();
+        self.set_last_written_datetime(current_datetime);
 
         // Then deletion of old node from indexes and addition of new node
         if old_node.data_tag_names != new_node.data_tag_names {
@@ -292,14 +318,25 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     /// Remove a Node/Embedding in the VR using the provided id (root level depth)
-    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError> {
+    fn remove_node(
+        &mut self,
+        id: String,
+        new_written_datetime: Option<DateTime<Utc>>,
+    ) -> Result<(Node, Embedding), VRError> {
+        let current_datetime = if let Some(dt) = new_written_datetime {
+            dt
+        } else {
+            ShinkaiTime::generate_time_now()
+        };
         // Id + index logic
         let mut integer_id = id.parse::<u64>().map_err(|_| VRError::InvalidNodeId(id.to_string()))?;
         integer_id = if integer_id == 0 { 1 } else { integer_id };
         if integer_id > self.node_count {
             return Err(VRError::InvalidNodeId(id.to_string()));
         }
-        self.remove_node_with_integer(integer_id)
+        let results = self.remove_node_with_integer(integer_id);
+        self.set_last_written_datetime(current_datetime);
+        results
     }
 }
 
@@ -328,7 +365,7 @@ impl DocumentVectorResource {
             resource_base_type: VRBaseType::Document,
             data_tag_index: DataTagIndex::new(),
             created_datetime: current_time.clone(),
-            last_modified_datetime: current_time,
+            last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
         };
 
@@ -615,7 +652,7 @@ impl DocumentVectorResource {
             let node_id: u64 = node.id.parse().unwrap();
             node.id = format!("{}", node_id - 1);
         }
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
         Ok(removed_node)
     }
 
@@ -625,6 +662,6 @@ impl DocumentVectorResource {
 
     pub fn set_resource_id(&mut self, resource_id: String) {
         self.resource_id = resource_id;
-        self.update_last_modified_to_now();
+        self.update_last_written_to_now();
     }
 }
