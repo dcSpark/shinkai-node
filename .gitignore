@@ -33,7 +33,9 @@ tmp_cron_downloads
 shinkai-mini-apps/shinkai-tray/src-tauri/models
 shinkai-mini-apps/shinkai-tray/src-tauri/db
 typescript
+shinkai-libs/shinkai-message-pyo3/env_x86_64
 .secret
 db/.secret
-vector_fs_db
-shinkai-libs/shinkai-message-pyo3/env_x86_64
+./main_db
+./vector_fs_db
+./storage/*

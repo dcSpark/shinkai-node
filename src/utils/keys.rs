@@ -21,9 +21,9 @@ pub struct NodeKeys {
     pub encryption_public_key: EncryptionPublicKey,
 }
 
-pub fn generate_or_load_keys() -> NodeKeys {
+pub fn generate_or_load_keys(secrets_file_path: &str) -> NodeKeys {
     // First check for .secret file
-    if let Ok(contents) = fs::read_to_string(Path::new("db").join(".secret")) {
+    if let Ok(contents) = fs::read_to_string(secrets_file_path) {
         // Parse the contents of the file
         let lines: HashMap<_, _> = contents
             .lines()
