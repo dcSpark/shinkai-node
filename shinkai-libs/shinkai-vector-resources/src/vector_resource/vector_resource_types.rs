@@ -8,6 +8,8 @@ pub use crate::source::{
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
+use serde::{Deserialize, Deserializer};
+use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -457,7 +459,7 @@ impl VRHeader {
 
 /// A path inside of a Vector Resource to a Node which exists somewhere in the hierarchy.
 /// Internally the path is made up of an ordered list of Node ids (Int-holding strings for Docs, any string for Maps).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VRPath {
     pub path_ids: Vec<String>,
 }
@@ -563,5 +565,27 @@ impl Hash for VRPath {
 impl fmt::Display for VRPath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", &self.format_to_string())
+    }
+}
+
+impl Serialize for VRPath {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Convert the VRPath into a string here
+        let s = self.format_to_string();
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for VRPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Deserialize the VRPath from a string
+        let s = String::deserialize(deserializer)?;
+        VRPath::from_string(&s).map_err(serde::de::Error::custom)
     }
 }

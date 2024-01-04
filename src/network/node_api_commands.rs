@@ -2329,7 +2329,7 @@ impl Node {
             .await
             .unwrap();
 
-        println!(
+        eprintln!(
             "handle_onionized_message > recipient_profile_name_string: {}",
             recipient_node_name_string
         );
