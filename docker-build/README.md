@@ -3,7 +3,7 @@ On main repo of shinkai-node run:
 DOCKER_BUILDKIT=1 docker build --rm --compress -f docker-build/Dockerfile-RELEASE -t dcspark/shinkai-node:latest .
 ```
 
-Then inside this folder run:
+Then inside the folder `docker-build` run:
 
 ```sh
 INITIAL_AGENT_API_KEYS=sk-abc,sk-abc docker compose up -d
