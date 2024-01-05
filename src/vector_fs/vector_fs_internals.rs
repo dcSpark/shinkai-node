@@ -1,5 +1,7 @@
 use super::{
-    vector_fs_error::VectorFSError, vector_fs_permissions::PermissionsIndex, vector_fs_types::SubscriptionsIndex,
+    vector_fs_error::VectorFSError,
+    vector_fs_permissions::PermissionsIndex,
+    vector_fs_types::{LastReadIndex, SubscriptionsIndex},
 };
 use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
 use chrono::{DateTime, Utc};
@@ -22,7 +24,7 @@ pub struct VectorFSInternals {
     pub permissions_index: PermissionsIndex,
     pub subscription_index: SubscriptionsIndex,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
-    pub last_read_index: HashMap<VRPath, (DateTime<Utc>, ShinkaiName)>,
+    pub last_read_index: LastReadIndex,
 }
 
 impl VectorFSInternals {
@@ -45,7 +47,7 @@ impl VectorFSInternals {
             permissions_index: PermissionsIndex::new(node_name),
             subscription_index: SubscriptionsIndex::new_empty(),
             supported_embedding_models,
-            last_read_index: HashMap::new(),
+            last_read_index: LastReadIndex::new_empty(),
         }
     }
 

@@ -61,12 +61,14 @@ pub struct FSRoot {
 
 impl FSRoot {
     /// Generates a new FSRoot from a MapVectorResource, which is expected to be the FS core resource.
-    pub fn from_core_vector_resource(resource: MapVectorResource) -> Result<Self, VectorFSError> {
+    pub fn from_core_vector_resource(
+        resource: MapVectorResource,
+        lr_index: &LastReadIndex,
+    ) -> Result<Self, VectorFSError> {
         // Generate datetime to suffice the method, this gets ignored in practice when converting back via Self::from
         let current_datetime = ShinkaiTime::generate_time_now();
         let resource = BaseVectorResource::Map(resource);
-        let fs_folder =
-            FSFolder::from_vector_resource(resource, VRPath::new(), current_datetime.clone(), current_datetime)?;
+        let fs_folder = FSFolder::from_vector_resource(resource, VRPath::new(), lr_index, current_datetime)?;
         Ok(Self::from(fs_folder))
     }
 }
@@ -140,19 +142,18 @@ impl FSFolder {
 
     /// Generates a new FSFolder using a BaseVectorResource holding Node + the path where the node was retrieved
     /// from in the VecFS internals.
-    pub fn from_vector_resource_node(node: Node, node_fs_path: VRPath) -> Result<Self, VectorFSError> {
+    pub fn from_vector_resource_node(
+        node: Node,
+        node_fs_path: VRPath,
+        lr_index: &LastReadIndex,
+    ) -> Result<Self, VectorFSError> {
         // Process datetimes from node
-        let (last_read_datetime, last_modified_datetime) = Self::process_datetimes_from_node(&node)?;
+        let last_modified_datetime = Self::process_datetimes_from_node(&node)?;
 
         match node.content {
             NodeContent::Resource(base_vector_resource) => {
                 // Call from_vector_resource with the parsed datetimes
-                Self::from_vector_resource(
-                    base_vector_resource,
-                    node_fs_path,
-                    last_read_datetime,
-                    last_modified_datetime,
-                )
+                Self::from_vector_resource(base_vector_resource, node_fs_path, lr_index, last_modified_datetime)
             }
             _ => Err(VRError::InvalidNodeType(node.id))?,
         }
@@ -163,23 +164,24 @@ impl FSFolder {
     fn from_vector_resource(
         resource: BaseVectorResource,
         resource_fs_path: VRPath,
-        last_read_datetime: DateTime<Utc>,
+        lr_index: &LastReadIndex,
         last_modified_datetime: DateTime<Utc>,
     ) -> Result<Self, VectorFSError> {
         let mut child_folders = Vec::new();
         let mut child_items = Vec::new();
 
+        // Parse all of the inner nodes
         for node in &resource.as_trait_object().get_nodes() {
             match &node.content {
                 // If it's a Resource, then create a FSFolder by recursing, and push it to child_folders
                 NodeContent::Resource(inner_resource) => {
                     // Process datetimes from node
-                    let (lr_datetime, lm_datetime) = Self::process_datetimes_from_node(&node)?;
+                    let (lm_datetime) = Self::process_datetimes_from_node(&node)?;
                     let new_path = resource_fs_path.push_cloned(inner_resource.as_trait_object().name().to_string());
                     child_folders.push(Self::from_vector_resource(
                         inner_resource.clone(),
                         new_path,
-                        lr_datetime,
+                        lr_index,
                         lm_datetime,
                     )?);
                 }
@@ -193,6 +195,8 @@ impl FSFolder {
             }
         }
 
+        // Fetch the datetimes, and return the created FSFolder
+        let last_read_datetime = lr_index.get_last_read_datetime_or_now(&resource_fs_path);
         let created_datetime = resource.as_trait_object().created_datetime();
         let last_written_datetime = resource.as_trait_object().last_written_datetime();
         Ok(Self::new(
@@ -206,30 +210,21 @@ impl FSFolder {
         ))
     }
 
-    /// Process last_read/last_modified datetimes in a Node from the VectorFS core resource.
+    /// Process last_modified datetime in a Node from the VectorFS core resource.
     /// The node must be an FSFolder for this to succeed.
-    pub fn process_datetimes_from_node(node: &Node) -> Result<(DateTime<Utc>, DateTime<Utc>), VectorFSError> {
-        // Read last_read_datetime and last_modified_datetime from metadata
-        let last_read_str = node
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get(&Self::last_read_key()))
-            .ok_or(VectorFSError::InvalidMetadata(Self::last_read_key()))?;
-
+    pub fn process_datetimes_from_node(node: &Node) -> Result<DateTime<Utc>, VectorFSError> {
+        // Read last_modified_datetime from metadata
         let last_modified_str = node
             .metadata
             .as_ref()
             .and_then(|metadata| metadata.get(&Self::last_modified_key()))
             .ok_or(VectorFSError::InvalidMetadata(Self::last_modified_key()))?;
 
-        // Parse the datetime strings
-        let last_read_datetime = ShinkaiTime::from_rfc3339_string(last_read_str)
-            .map_err(|_| VectorFSError::InvalidMetadata(Self::last_read_key()))?;
-
+        // Parse the datetime string
         let last_modified_datetime = ShinkaiTime::from_rfc3339_string(last_modified_str)
             .map_err(|_| VectorFSError::InvalidMetadata(Self::last_modified_key()))?;
 
-        Ok((last_read_datetime, last_modified_datetime))
+        Ok(last_modified_datetime)
     }
 
     /// Returns the metadata key for the last read datetime.
@@ -390,5 +385,51 @@ impl SubscriptionsIndex {
     // Creates a new SubscriptionsIndex with an empty index
     pub fn new_empty() -> Self {
         Self { index: HashMap::new() }
+    }
+}
+
+/// An active in-memory index which holds the last read Datetime of any
+/// accessed paths in the VectorFS
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LastReadIndex {
+    pub index: HashMap<VRPath, (DateTime<Utc>, ShinkaiName)>,
+}
+
+impl LastReadIndex {
+    // Creates a new LastReadIndex with the provided index
+    pub fn new(index: HashMap<VRPath, (DateTime<Utc>, ShinkaiName)>) -> Self {
+        Self { index }
+    }
+
+    // Creates a new LastReadIndex with an empty index
+    pub fn new_empty() -> Self {
+        Self { index: HashMap::new() }
+    }
+
+    // Updates the last read datetime and name for a given path
+    pub fn update_path_last_read(&mut self, path: VRPath, datetime: DateTime<Utc>, name: ShinkaiName) {
+        self.index.insert(path, (datetime, name));
+    }
+
+    // Retrieves the last read DateTime and ShinkaiName for a given path
+    pub fn get_last_read(&self, path: &VRPath) -> Option<&(DateTime<Utc>, ShinkaiName)> {
+        self.index.get(path)
+    }
+
+    // Retrieves the DateTime when the the FSEntry at the given path was last read
+    pub fn get_last_read_datetime(&self, path: &VRPath) -> Option<&DateTime<Utc>> {
+        self.index.get(path).map(|tuple| &tuple.0)
+    }
+
+    // Retrieves the ShinkaiName who last read the FSEntry at the given path
+    pub fn get_last_read_name(&self, path: &VRPath) -> Option<&ShinkaiName> {
+        self.index.get(path).map(|tuple| &tuple.1)
+    }
+
+    // Retrieves the DateTime when the the FSEntry at the given path was last read, or the current time if not found
+    pub fn get_last_read_datetime_or_now(&self, path: &VRPath) -> DateTime<Utc> {
+        self.get_last_read_datetime(path)
+            .cloned()
+            .unwrap_or_else(|| ShinkaiTime::generate_time_now())
     }
 }

@@ -78,7 +78,7 @@ impl VectorFS {
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
     /// VFSReader can then be used to perform read actions at the specified path.
-    pub fn reader(
+    pub fn new_reader(
         &mut self,
         requester_name: ShinkaiName,
         path: VRPath,
@@ -89,7 +89,7 @@ impl VectorFS {
 
     /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
     /// VFSWriter can then be used to perform write actions at the specified path.
-    pub fn writer(
+    pub fn new_writer(
         &mut self,
         requester_name: ShinkaiName,
         path: VRPath,

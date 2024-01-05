@@ -1,3 +1,5 @@
+use crate::vector_fs::vector_fs_error::VectorFSError;
+
 use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
@@ -80,6 +82,7 @@ pub struct ProfileBoundWriteBatch {
 }
 
 impl ProfileBoundWriteBatch {
+    /// Create a new ProfileBoundWriteBatch with ShinkaiDBError wrapping
     pub fn new(profile: &ShinkaiName) -> Result<Self, ShinkaiDBError> {
         // Also validates that the name includes a profile
         let profile_name = ShinkaiDB::get_profile_name(profile)?;
@@ -89,6 +92,22 @@ impl ProfileBoundWriteBatch {
             write_batch,
             profile_name,
         })
+    }
+
+    /// Create a new ProfileBoundWriteBatch with VectorFSError wrapping
+    pub fn new_vfs_batch(profile: &ShinkaiName) -> Result<Self, VectorFSError> {
+        // Also validates that the name includes a profile
+        match ShinkaiDB::get_profile_name(profile) {
+            Ok(profile_name) => {
+                // Create write batch
+                let write_batch = rocksdb::WriteBatch::default();
+                Ok(Self {
+                    write_batch,
+                    profile_name,
+                })
+            }
+            Err(e) => Err(VectorFSError::FailedCreatingProfileBoundWriteBatch(profile.to_string())),
+        }
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.

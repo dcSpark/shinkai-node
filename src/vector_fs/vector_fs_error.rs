@@ -41,6 +41,7 @@ pub enum VectorFSError {
     EmbeddingModelTypeMismatch(EmbeddingModelType, EmbeddingModelType),
     EmbeddingMissingInResource(String),
     InvalidMetadata(String),
+    FailedCreatingProfileBoundWriteBatch(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -107,6 +108,9 @@ impl fmt::Display for VectorFSError {
                 write!(f, "Embedding is not defined in resource: {} ", s)
             }
             VectorFSError::InvalidMetadata(e) => write!(f, "Invalid metadata at key: {}", e),
+            VectorFSError::FailedCreatingProfileBoundWriteBatch(e) => {
+                write!(f, "Failed parsing profile and creating a write batch for: {}", e)
+            }
         }
     }
 }
