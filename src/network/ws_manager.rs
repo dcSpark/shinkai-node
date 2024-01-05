@@ -64,39 +64,59 @@ pub struct WebSocketManager {
     message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
 }
 
+impl Clone for WebSocketManager {
+    fn clone(&self) -> Self {
+        Self {
+            connections: self.connections.clone(),
+            subscriptions: self.subscriptions.clone(),
+            shinkai_db: Arc::clone(&self.shinkai_db),
+            node_name: self.node_name.clone(),
+            identity_manager_trait: Arc::clone(&self.identity_manager_trait),
+            message_queue: Arc::clone(&self.message_queue),
+        }
+    }
+}
+
 // TODO: maybe this should run on its own thread
 impl WebSocketManager {
-    pub fn new(
+    pub async fn new(
         shinkai_db: Arc<Mutex<ShinkaiDB>>,
         node_name: ShinkaiName,
         identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
-    ) -> Self {
-        Self {
+    ) -> Arc<Mutex<Self>> {
+        let manager = Arc::new(Mutex::new(Self {
             connections: HashMap::new(),
             subscriptions: HashMap::new(),
             shinkai_db,
             node_name,
             identity_manager_trait,
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
-        }
+        }));
+    
+        let manager_clone = Arc::clone(&manager);
+    
+        // Spawn the message sender task
+        let message_queue_clone = Arc::clone(&manager.lock().await.message_queue);
+        tokio::spawn(Self::start_message_sender(manager_clone, message_queue_clone));
+    
+        manager
     }
-
-    /// Note: it should be used like this: tokio::spawn(websocket_manager.start_message_sender());
-    pub async fn start_message_sender(&self) {
+    
+    pub async fn start_message_sender(manager: Arc<Mutex<Self>>, message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>) {
         loop {
             eprintln!("Checking for messages in the queue...");
             // Sleep for a while
             sleep(Duration::from_millis(500)).await;
-
+    
             // Check if there are any messages in the queue
             let message = {
-                let mut queue = self.message_queue.lock().await;
+                let mut queue = message_queue.lock().await;
                 queue.pop_front()
             };
-
+    
             if let Some((topic, subtopic, update)) = message {
                 eprintln!("Sending update to topic: {}", topic);
-                self.handle_update(topic, subtopic, update).await;
+                manager.lock().await.handle_update(topic, subtopic, update).await;
             }
         }
     }

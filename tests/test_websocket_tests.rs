@@ -25,11 +25,11 @@ use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
 use shinkai_node::schemas::identity::StandardIdentityType;
 use shinkai_node::schemas::inbox_permission::InboxPermission;
-use tokio::time::sleep;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio_tungstenite::tungstenite;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -151,11 +151,7 @@ async fn test_websocket() {
     };
 
     // Start the WebSocket server
-    let manager = Arc::new(Mutex::new(WebSocketManager::new(
-        shinkai_db.clone(),
-        node_name,
-        identity_manager_trait.clone(),
-    )));
+    let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
@@ -194,8 +190,8 @@ async fn test_websocket() {
     let shinkai_message = generate_message_with_text(
         ws_message_json,
         inbox_name_string.to_string(),
-        node1_encryption_sk,
-        node1_identity_sk,
+        node1_encryption_sk.clone(),
+        node1_identity_sk.clone(),
         node1_encryption_pk,
         node1_subidentity_name.to_string(),
         node1_identity_name.to_string(),
@@ -260,16 +256,22 @@ async fn test_websocket() {
 
     // Note: We add a message and we expect to trigger an update
     {
-        let manager_clone = Arc::clone(&manager);
-        tokio::spawn(async move {
-            eprintln!("here before start_message_sender");
-            let _ = manager_clone.lock().await.start_message_sender().await;
-            eprintln!("here after start_message_sender");
-        });
+        // Generate a ShinkaiMessage
+        let shinkai_message = generate_message_with_text(
+            "Hello, world!".to_string(),
+            inbox_name_string.to_string(),
+            node1_encryption_sk,
+            node1_identity_sk,
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
 
-        sleep(tokio::time::Duration::from_secs(1)).await;
         let mut shinkai_db = shinkai_db.lock().await;
-        let result = shinkai_db.unsafe_insert_inbox_message(&&shinkai_message.clone(), None).await;
+        let result = shinkai_db
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .await;
         eprintln!("result: {:?}", result);
 
         eprintln!("here after adding a message");
@@ -280,7 +282,11 @@ async fn test_websocket() {
             .await
             .expect("Failed to read message")
             .expect("Failed to read message");
-        assert_eq!(msg.to_text().unwrap(), "Hello, world!");
+
+        let msg_text = msg.to_text().unwrap();
+        let recovered_shinkai = ShinkaiMessage::from_string(msg_text.to_string()).unwrap();
+        let recovered_content = recovered_shinkai.get_message_content().unwrap();
+        assert_eq!(recovered_content, "Hello, world!");
     }
 
     // Send a close message
