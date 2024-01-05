@@ -1,3 +1,5 @@
+use super::db::ProfileBoundWriteBatch;
+use super::db_errors::*;
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
@@ -8,9 +10,6 @@ use shinkai_vector_resources::vector_resource::{
     BaseVectorResource, DocumentVectorResource, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption,
     VRBaseType, VRHeader, VectorResource,
 };
-
-use super::db::ProfileBoundWriteBatch;
-use super::db_errors::*;
 
 impl ShinkaiDB {
     /// Saves the supplied `VectorResourceRouter` into the ShinkaiDB as the profile resource router.

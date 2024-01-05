@@ -3,8 +3,8 @@ use crate::db::db::ProfileBoundWriteBatch;
 use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
-    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBIteratorWithThreadMode, Error, IteratorMode,
-    Options, SingleThreaded, WriteBatch, DB,
+    AsColumnFamilyRef, ColumnFamily, ColumnFamilyDescriptor, DBCommon, DBCompressionType, DBIteratorWithThreadMode,
+    Error, IteratorMode, Options, SingleThreaded, WriteBatch, DB,
 };
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use std::path::Path;
@@ -13,6 +13,8 @@ pub enum FSTopic {
     VectorResources,
     FileSystem,
     SourceFiles,
+    ReadAccessLogs,
+    WriteAccessLogs,
 }
 
 impl FSTopic {
@@ -21,6 +23,8 @@ impl FSTopic {
             Self::VectorResources => "resources",
             Self::FileSystem => "filesystem",
             Self::SourceFiles => "sourcefiles",
+            Self::ReadAccessLogs => "readacesslogs",
+            Self::WriteAccessLogs => "writeaccesslogs",
         }
     }
 }
@@ -36,7 +40,7 @@ impl VectorFSDB {
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
         // if we want to enable compression
-        // db_opts.set_compression_type(DBCompressionType::Lz4);
+        db_opts.set_compression_type(DBCompressionType::Lz4);
 
         let cf_names = if Path::new(db_path).exists() {
             // If the database file exists, get the list of column families from the database
@@ -47,6 +51,8 @@ impl VectorFSDB {
                 FSTopic::VectorResources.as_str().to_string(),
                 FSTopic::FileSystem.as_str().to_string(),
                 FSTopic::SourceFiles.as_str().to_string(),
+                FSTopic::ReadAccessLogs.as_str().to_string(),
+                FSTopic::WriteAccessLogs.as_str().to_string(),
             ]
         };
 

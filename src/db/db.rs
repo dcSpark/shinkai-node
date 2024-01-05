@@ -303,7 +303,7 @@ impl ShinkaiDB {
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key_from_str(key: &str, profile_name: &str) -> String {
-        let mut prof_name = profile_name.to_string();
+        let mut prof_name = profile_name.to_string() + ":";
         prof_name.push_str(key);
         prof_name
     }
