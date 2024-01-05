@@ -156,8 +156,8 @@ mod tests {
         assert_eq!(job.is_finished, true);
     }
 
-    #[test]
-    fn test_update_step_history() {
+    #[tokio::test]
+    async fn test_update_step_history() {
         setup();
         let job_id = "test_job".to_string();
         let agent_id = "agent4".to_string();
@@ -188,6 +188,7 @@ mod tests {
         // Insert the ShinkaiMessage into the database
         shinkai_db
             .unsafe_insert_inbox_message(&message, None)
+            .await
             .unwrap();
 
         // Update step history
@@ -581,8 +582,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_insert_steps_with_simple_tree_structure() {
+    #[tokio::test]
+    async fn test_insert_steps_with_simple_tree_structure() {
         setup();
 
         let node1_identity_name = "@@node1.shinkai";
@@ -636,6 +637,7 @@ mod tests {
             // Insert the ShinkaiMessage into the database
             shinkai_db
                 .unsafe_insert_inbox_message(&message, parent_hash.clone())
+                .await
                 .unwrap();
 
             shinkai_db

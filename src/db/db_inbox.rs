@@ -2,7 +2,7 @@ use chrono::DateTime;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
-    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
@@ -62,7 +62,7 @@ impl ShinkaiDB {
     }
 
     // This fn doesn't validate access to the inbox (not really a responsibility of this db fn) so it's unsafe in that regard
-    pub fn unsafe_insert_inbox_message(
+    pub async fn unsafe_insert_inbox_message(
         &mut self,
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
@@ -189,6 +189,21 @@ impl ShinkaiDB {
 
             // Add the parent key to the parents column family with the child key
             batch.put_cf(cf_parents, &hash_key, parent_key);
+        }
+
+        {
+            eprintln!("Sending message to WS");
+            // Note: this is the code for enabling WS
+            if let Some(manager) = &self.ws_manager {
+                eprintln!("WS manager exists");
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+                eprintln!("Inbox name: {}", inbox_name_string);
+                if let Ok(msg_string) = message.to_string() {
+                    eprintln!("Sending message to WS: {}", msg_string);
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string).await;
+                }
+            }
         }
 
         self.db.write(batch)?;

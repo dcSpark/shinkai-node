@@ -1,8 +1,5 @@
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::Aes256Gcm;
 use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
-use ed25519_dalek::VerifyingKey;
 use futures::SinkExt;
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
@@ -11,10 +8,10 @@ use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::aes_encryption_key_to_string;
-use shinkai_message_primitives::shinkai_utils::file_encryption::aes_nonce_to_hex_string;
 use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
@@ -22,11 +19,13 @@ use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::managers::identity_manager::IdentityManagerTrait;
+use shinkai_node::network::ws_manager::WSUpdateHandler;
 use shinkai_node::network::{ws_manager::WebSocketManager, ws_routes::run_ws_api};
 use shinkai_node::schemas::identity::Identity;
 use shinkai_node::schemas::identity::StandardIdentity;
 use shinkai_node::schemas::identity::StandardIdentityType;
 use shinkai_node::schemas::inbox_permission::InboxPermission;
+use tokio::time::sleep;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -43,8 +42,8 @@ struct MockIdentityManager {
 
 impl MockIdentityManager {
     pub fn new() -> Self {
-        let (node1_identity_sk, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
-        let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+        let (_, node1_identity_pk) = unsafe_deterministic_signature_keypair(0);
+        let (_, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
         let dummy_standard_identity = Identity::Standard(StandardIdentity {
             full_identity_name: ShinkaiName::new("@@node1.shinkai/main_profile_node1".to_string()).unwrap(),
@@ -131,22 +130,22 @@ async fn test_websocket() {
     let job_id = "test_job".to_string();
     let agent_id = "agent4".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-    let mut shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let mut shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    let shinkai_db = Arc::new(Mutex::new(shinkai_db));
 
     let node1_identity_name = "@@node1.shinkai";
     let node1_subidentity_name = "main_profile_node1";
     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let agent_id = "agent_test".to_string();
-    let scope = JobScope::new_default();
+    // let agent_id = "agent_test".to_string();
+    // let scope = JobScope::new_default();
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
     let identity_manager_trait = Arc::new(Mutex::new(
         Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
     ));
 
-    let inbox_name = InboxName::get_job_inbox_name_from_params("test_job".to_string()).unwrap();
+    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
     let inbox_name_string = match inbox_name {
         InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
     };
@@ -159,6 +158,12 @@ async fn test_websocket() {
     )));
     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
+
+    // Update ShinkaiDB with manager so it can trigger updates
+    {
+        let mut shinkai_db = shinkai_db.lock().await;
+        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+    }
 
     // Give the server a little time to start
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -177,7 +182,7 @@ async fn test_websocket() {
 
     // Send a message to the server to establish the connection and subscribe to a topic
     let ws_message = WSMessage {
-        topic: "inbox".to_string(),
+        topic: WSTopic::Inbox,
         subtopic: Some("job_inbox::test_job::false".to_string()),
         shared_key: shared_enc_string.to_string(),
     };
@@ -212,8 +217,11 @@ async fn test_websocket() {
 
         let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
-
-        let _ = shinkai_db.unsafe_insert_inbox_message(&&shinkai_message.clone(), None);
+        let scope = JobScope::new_default();
+        match shinkai_db.create_new_job(job_id, agent_id, scope) {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to create a new job: {}", e),
+        }
         shinkai_db
             .add_permission(&inbox_name_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
@@ -230,12 +238,13 @@ async fn test_websocket() {
     // Wait for the server to process the subscription message
     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
+    // Note: Manual way to push an update for testing purposes
     // Send a message to all connections that are subscribed to the topic
     manager
         .lock()
         .await
         .handle_update(
-            "inbox".to_string(),
+            WSTopic::Inbox,
             "job_inbox::test_job::false".to_string(),
             "Hello, world!".to_string(),
         )
@@ -248,6 +257,31 @@ async fn test_websocket() {
         .expect("Failed to read message")
         .expect("Failed to read message");
     assert_eq!(msg.to_text().unwrap(), "Hello, world!");
+
+    // Note: We add a message and we expect to trigger an update
+    {
+        let manager_clone = Arc::clone(&manager);
+        tokio::spawn(async move {
+            eprintln!("here before start_message_sender");
+            let _ = manager_clone.lock().await.start_message_sender().await;
+            eprintln!("here after start_message_sender");
+        });
+
+        sleep(tokio::time::Duration::from_secs(1)).await;
+        let mut shinkai_db = shinkai_db.lock().await;
+        let result = shinkai_db.unsafe_insert_inbox_message(&&shinkai_message.clone(), None).await;
+        eprintln!("result: {:?}", result);
+
+        eprintln!("here after adding a message");
+
+        // Check the response
+        let msg = ws_stream
+            .next()
+            .await
+            .expect("Failed to read message")
+            .expect("Failed to read message");
+        assert_eq!(msg.to_text().unwrap(), "Hello, world!");
+    }
 
     // Send a close message
     ws_stream

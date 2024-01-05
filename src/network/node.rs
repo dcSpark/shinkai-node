@@ -802,7 +802,7 @@ impl Node {
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
         let mut db = db.lock().await;
-        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None);
+        let db_result = db.unsafe_insert_inbox_message(&message_to_save, None).await;
         match db_result {
             Ok(_) => (),
             Err(e) => {

@@ -49,7 +49,6 @@ use shinkai_message_primitives::{
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 impl Node {
     pub async fn validate_message(
@@ -466,7 +465,7 @@ impl Node {
                                 .await;
                             return Ok(());
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             let _ = res
                                 .send(Err(APIError {
                                     code: StatusCode::FORBIDDEN.as_u16(),
@@ -1201,7 +1200,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1636,7 +1635,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobMessageSchema))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1678,7 +1677,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::Empty))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1716,7 +1715,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -2092,7 +2091,7 @@ impl Node {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
                             // TODO(must): it shouldn't always be None
-                            db_guard.unsafe_insert_inbox_message(&msg.clone(), None).map_err(|e| {
+                            db_guard.unsafe_insert_inbox_message(&msg.clone(), None).await.map_err(|e| {
                                 eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
                                 std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
                             })?;

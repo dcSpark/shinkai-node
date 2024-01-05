@@ -1,20 +1,25 @@
+use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use std::collections::VecDeque;
 use std::fmt;
+use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use warp::ws::Message;
 use warp::ws::WebSocket;
 
 use crate::db::ShinkaiDB;
 
-use super::Node;
 use super::node_shareable_logic::validate_message_main_logic;
+use super::Node;
 use crate::managers::identity_manager::IdentityManagerTrait;
 
 #[derive(Debug)]
@@ -32,6 +37,23 @@ impl fmt::Display for WebSocketManagerError {
     }
 }
 
+impl fmt::Debug for WebSocketManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("WebSocketManager")
+            .field("connections", &self.connections.keys()) // Only print the keys
+            .field("subscriptions", &self.subscriptions)
+            .field("shinkai_db", &self.shinkai_db)
+            .field("node_name", &self.node_name)
+            .field("identity_manager_trait", &"Box<dyn IdentityManagerTrait + Send>") // Print a placeholder
+            .finish()
+    }
+}
+
+#[async_trait]
+pub trait WSUpdateHandler {
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String);
+}
+
 pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
@@ -39,6 +61,7 @@ pub struct WebSocketManager {
     shinkai_db: Arc<Mutex<ShinkaiDB>>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
+    message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
 }
 
 // TODO: maybe this should run on its own thread
@@ -54,6 +77,27 @@ impl WebSocketManager {
             shinkai_db,
             node_name,
             identity_manager_trait,
+            message_queue: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+
+    /// Note: it should be used like this: tokio::spawn(websocket_manager.start_message_sender());
+    pub async fn start_message_sender(&self) {
+        loop {
+            eprintln!("Checking for messages in the queue...");
+            // Sleep for a while
+            sleep(Duration::from_millis(500)).await;
+
+            // Check if there are any messages in the queue
+            let message = {
+                let mut queue = self.message_queue.lock().await;
+                queue.pop_front()
+            };
+
+            if let Some((topic, subtopic, update)) = message {
+                eprintln!("Sending update to topic: {}", topic);
+                self.handle_update(topic, subtopic, update).await;
+            }
         }
     }
 
@@ -90,23 +134,22 @@ impl WebSocketManager {
         }
     }
 
-    // Placeholder function that always returns true
-    pub async fn has_access(
-        &self,
-        shinkai_name: ShinkaiName,
-        topic: String,
-        subtopic: Option<String>,
-    ) -> bool {
+    pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
+        // TODO: create enum with all the different topic and subtopics
+        // Check if the user has access to the topic and subtopic here...
         eprintln!("has_access> shinkai_name: {}", shinkai_name);
         eprintln!("has_access> topic: {}", topic);
-        match topic.as_str() {
-            "inbox" => {
+        match topic {
+            WSTopic::Inbox => {
                 let subtopic = subtopic.unwrap_or_default();
                 eprintln!("subtopic: {}", subtopic);
                 let inbox_name = InboxName::new(subtopic.clone()).unwrap(); // TODO: handle error
                 let sender_subidentity = {
                     let identity_manager_lock = self.identity_manager_trait.lock().await;
-                    identity_manager_lock.find_by_identity_name(shinkai_name.clone()).unwrap().clone() // TODO: handle error
+                    identity_manager_lock
+                        .find_by_identity_name(shinkai_name.clone())
+                        .unwrap()
+                        .clone() // TODO: handle error
                 };
                 eprintln!("sender_subidentity: {:?}", sender_subidentity);
 
@@ -127,18 +170,11 @@ impl WebSocketManager {
                     }
                 }
             }
-            "smart_inboxes" => {
+            WSTopic::SmartInboxes => {
                 eprintln!("smart_inboxes");
-            }
-            _ => {
-                eprintln!("Unknown topic: {}", topic);
-                return false;
+                return true;
             }
         }
-
-        // TODO: create enum with all the different topic and subtopics
-        // Check if the user has access to the topic and subtopic here...
-        true
     }
 
     pub async fn add_connection(
@@ -146,7 +182,7 @@ impl WebSocketManager {
         shinkai_name: ShinkaiName,
         message: ShinkaiMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-        topic: String,
+        topic: WSTopic,
         subtopic: Option<String>,
     ) -> Result<(), WebSocketManagerError> {
         eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
@@ -161,7 +197,10 @@ impl WebSocketManager {
         }
 
         let shinkai_profile_name = shinkai_name.to_string();
-        if !self.has_access(shinkai_name.clone(), topic.clone(), subtopic.clone()).await {
+        if !self
+            .has_access(shinkai_name.clone(), topic.clone(), subtopic.clone())
+            .await
+        {
             eprintln!(
                 "Access denied for shinkai_name: {} on topic: {} and subtopic: {:?}",
                 shinkai_name, topic, subtopic
@@ -190,7 +229,7 @@ impl WebSocketManager {
     }
 
     // TODO: Is topic enough? should we have topic and subtopic? e.g. type of update and inbox_name
-    pub async fn handle_update(&mut self, topic: String, subtopic: String, update: String) {
+    pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         eprintln!("\n\nSending update to topic: {}", topic_subtopic);
         // Check if the update needs to be sent
@@ -213,6 +252,15 @@ impl WebSocketManager {
                 }
             }
         }
+    }
+}
+
+#[async_trait]
+impl WSUpdateHandler for WebSocketManager {
+    async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String) {
+        eprintln!("queue_message> topic: {:?}", topic);
+        let mut queue = self.message_queue.lock().await;
+        queue.push_back((topic, subtopic, update));
     }
 }
 

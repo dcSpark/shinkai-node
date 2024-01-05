@@ -1,3 +1,5 @@
+use crate::network::ws_manager::{WebSocketManager, WSUpdateHandler};
+
 use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
@@ -8,7 +10,9 @@ use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
-use std::path::Path;
+use tokio::sync::Mutex;
+use std::{path::Path, sync::Arc};
+use std::fmt;
 
 pub enum Topic {
     Inbox,
@@ -115,10 +119,21 @@ impl ProfileBoundWriteBatch {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Debug for ShinkaiDB {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ShinkaiDB")
+            .field("db", &self.db)
+            .field("path", &self.path)
+            // You can decide what you want to print for ws_manager
+            .field("ws_manager", &"WSUpdateHandler implementation")
+            .finish()
+    }
+}
+
 pub struct ShinkaiDB {
     pub db: DB,
     pub path: String,
+    pub ws_manager: Option<Arc<Mutex<dyn WSUpdateHandler + Send>>>,
 }
 
 impl ShinkaiDB {
@@ -178,7 +193,12 @@ impl ShinkaiDB {
         Ok(ShinkaiDB {
             db,
             path: db_path.to_string(),
+            ws_manager: None,
         })
+    }
+
+    pub fn set_ws_manager(&mut self, ws_manager: Arc<Mutex<dyn WSUpdateHandler + Send>>) {
+        self.ws_manager = Some(ws_manager);
     }
 
     /// Fetches the ColumnFamily handle.

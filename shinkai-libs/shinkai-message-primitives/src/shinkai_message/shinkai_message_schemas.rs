@@ -193,9 +193,25 @@ pub struct APIAddAgentRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct WSMessage {
-    pub topic: String,
+    pub topic: WSTopic,
     pub subtopic: Option<String>,
     pub shared_key: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WSTopic {
+    Inbox,
+    SmartInboxes,
+}
+
+impl fmt::Display for WSTopic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WSTopic::Inbox => write!(f, "inbox"),
+            WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

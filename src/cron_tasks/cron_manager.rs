@@ -297,7 +297,7 @@ impl CronManager {
                 node_profile_name.node_name.clone(),
             )
             .unwrap();
-            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
+            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await?;
             db.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
 
