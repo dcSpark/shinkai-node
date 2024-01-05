@@ -9,7 +9,7 @@ use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
 use shinkai_vector_resources::source::SourceFile;
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, NodeContent, VectorResource, VectorResourceCore, VectorResourceSearch,
+    BaseVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
 };
 use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};
 
@@ -128,6 +128,19 @@ impl VectorFS {
         let vr = self.retrieve_vector_resource(reader)?;
         let sf = self.retrieve_source_file(reader)?;
         Ok((vr, sf))
+    }
+
+    /// Retrieves a node at a given path from the VectorFS core resource under a profile
+    pub fn _retrieve_core_resource_node_at_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<RetrievedNode, VectorFSError> {
+        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        internals
+            .fs_core_resource
+            .retrieve_node_at_path(path.clone())
+            .map_err(|_| VectorFSError::NoEntryAtPath(path.clone()))
     }
 
     /// Validates that the path points to a FSFolder

@@ -116,7 +116,7 @@ impl RetrievedNode {
             return None;
         }
 
-        let data_string = self.node.get_text_content().ok()?;
+        let data_string = self.node.get_text_content().ok()?.to_string();
         let data_length = max_characters - base_length;
 
         let data_string = if data_string.len() > data_length {
@@ -306,26 +306,50 @@ impl Node {
         self.set_last_written(current_time);
     }
 
-    /// Attempts to return the text content from the Node. Errors if is different type
-    pub fn get_text_content(&self) -> Result<String, VRError> {
+    /// Attempts to return a reference to the text content from the Node. Errors if is different type
+    pub fn get_text_content(&self) -> Result<&String, VRError> {
         match &self.content {
-            NodeContent::Text(s) => Ok(s.clone()),
+            NodeContent::Text(s) => Ok(s),
             _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
 
-    /// Attempts to return the BaseVectorResource from the Node. Errors if is different type
-    pub fn get_vector_resource_content(&self) -> Result<BaseVectorResource, VRError> {
+    /// Attempts to return a reference to the BaseVectorResource from the Node. Errors if is different type
+    pub fn get_vector_resource_content(&self) -> Result<&BaseVectorResource, VRError> {
         match &self.content {
-            NodeContent::Resource(resource) => Ok(resource.clone()),
+            NodeContent::Resource(resource) => Ok(resource),
             _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
 
-    /// Attempts to return the ExternalContent from the Node. Errors if content is not ExternalContent
-    pub fn get_external_content(&self) -> Result<SourceReference, VRError> {
+    /// Attempts to return a reference to the ExternalContent from the Node. Errors if content is not ExternalContent
+    pub fn get_external_content(&self) -> Result<&SourceReference, VRError> {
         match &self.content {
-            NodeContent::ExternalContent(external_content) => Ok(external_content.clone()),
+            NodeContent::ExternalContent(external_content) => Ok(external_content),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return a mutable reference to the text content from the Node. Errors if is different type
+    pub fn get_text_content_mut(&mut self) -> Result<&mut String, VRError> {
+        match &mut self.content {
+            NodeContent::Text(s) => Ok(s),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return a mutable reference to the BaseVectorResource from the Node. Errors if is different type
+    pub fn get_vector_resource_content_mut(&mut self) -> Result<&mut BaseVectorResource, VRError> {
+        match &mut self.content {
+            NodeContent::Resource(resource) => Ok(resource),
+            _ => Err(VRError::ContentIsNonMatchingType),
+        }
+    }
+
+    /// Attempts to return a mutable reference to the ExternalContent from the Node. Errors if content is not ExternalContent
+    pub fn get_external_content_mut(&mut self) -> Result<&mut SourceReference, VRError> {
+        match &mut self.content {
+            NodeContent::ExternalContent(external_content) => Ok(external_content),
             _ => Err(VRError::ContentIsNonMatchingType),
         }
     }
