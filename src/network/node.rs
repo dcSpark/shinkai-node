@@ -240,7 +240,7 @@ pub enum NodeCommand {
     },
     APIIsPristine {
         res: Sender<Result<bool, APIError>>,
-    }
+    },
 }
 
 /// Hard-coded embedding model that is set as the default when creating a new profile.
@@ -308,7 +308,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
-        db_path: String,
+        main_db_path: String,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -323,9 +323,9 @@ impl Node {
         }
 
         // Get public keys, and update the local node keys in the db
-        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
+        let db = ShinkaiDB::new(&main_db_path).unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
-            panic!("Failed to open database: {}", db_path)
+            panic!("Failed to open database: {}", main_db_path)
         });
         let db_arc = Arc::new(Mutex::new(db));
         let identity_public_key = identity_secret_key.verifying_key();

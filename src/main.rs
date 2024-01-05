@@ -46,13 +46,26 @@ mod vector_fs;
 fn main() {
     env_logger::init();
 
+    let main_db: &str = "main_db";
+    let vector_fs_db: &str = "vector_fs_db";
+    let secrets_file: &str = ".secret";
+
     // Fetch Env vars/args
     let args = parse_args();
     let node_env = fetch_node_environment();
 
+    let node_storage_path = node_env.node_storage_path.clone();
+
+    let secrets_file_path = get_secrets_file_path(secrets_file, node_storage_path.clone());
+    let node_keys = generate_or_load_keys(&secrets_file_path);
+
+    // Storage db filesystem
+    let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
+    let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
+
     // Acquire the Node's keys. TODO: Should check with on
     // and then it's with onchain data for matching with the keys provided
-    let secrets = parse_secrets_file(&node_env);
+    let secrets = parse_secrets_file(&secrets_file_path);
     let global_identity_name = secrets
         .get("GLOBAL_IDENTITY_NAME")
         .cloned()
@@ -60,9 +73,6 @@ fn main() {
 
     // Initialization, creating Tokio runtime and fetching needed startup data
     let mut _rt = initialize_runtime();
-    let node_keys = generate_or_load_keys();
-    let db_path = get_db_path(&node_keys.identity_public_key, &node_env);
-    let vector_fs_db_path = get_vector_fs_db_path(&node_keys.identity_public_key, &node_env);
     let initial_agents = fetch_agent_env(global_identity_name.clone());
     let identity_secret_key_string =
         signature_secret_key_to_string(clone_signature_secret_key(&node_keys.identity_secret_key));
@@ -79,8 +89,8 @@ fn main() {
         ShinkaiLogOption::Node,
         ShinkaiLogLevel::Info,
         format!(
-            "Starting node with address: {}, db path: {}, vector fs db path: {}",
-            node_env.api_listen_address, db_path, vector_fs_db_path
+            "Starting node with address: {}, main db path: {}, vector fs db path: {}",
+            node_env.api_listen_address, main_db_path, vector_fs_db_path
         )
         .as_str(),
     );
@@ -117,7 +127,8 @@ fn main() {
         global_identity_name, identity_secret_key_string, encryption_secret_key_string
     );
     if !node_env.no_secrets_file {
-        std::fs::write(Path::new("db").join(".secret"), secret_content).expect("Unable to write to .secret file");
+        std::fs::create_dir_all(Path::new(&secrets_file_path).parent().unwrap()).expect("Failed to create .secret dir");
+        std::fs::write(secrets_file_path, secret_content).expect("Unable to write to .secret file");
     }
 
     // Now that all core init data acquired, start running the node itself
@@ -131,7 +142,7 @@ fn main() {
                 node_keys.encryption_secret_key.clone(),
                 node_env.ping_interval,
                 node_commands_receiver,
-                db_path,
+                main_db_path,
                 node_env.first_device_needs_registration_code,
                 initial_agents,
                 node_env.js_toolkit_executor_remote.clone(),
@@ -174,15 +185,17 @@ fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
-/// Machine filesystem path to the main ShinkaiDB database. Uses env var first, else pub key based.
-fn get_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
-    if let Some(path) = node_env.main_db_path.clone() {
+/// Machine filesystem path to the main ShinkaiDB database, pub key based.
+fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_storage_path: Option<String>) -> String {
+    if let Some(path) = node_storage_path {
         Path::new(&path)
+            .join(main_db)
+            .join(hash_signature_public_key(identity_public_key))
             .to_str()
-            .expect("Invalid NODE_MAIN_DB_PATH")
+            .expect("Invalid NODE_STORAGE_PATH")
             .to_string()
     } else {
-        Path::new("db")
+        Path::new(main_db)
             .join(hash_signature_public_key(identity_public_key))
             .into_os_string()
             .into_string()
@@ -190,15 +203,21 @@ fn get_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -
     }
 }
 
-/// Machine filesystem path to the main VectorFS database. Uses env var first, else pub key based.
-fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvironment) -> String {
-    if let Some(path) = node_env.vector_fs_db_path.clone() {
+/// Machine filesystem path to the main VectorFS database, pub key based.
+fn get_vector_fs_db_path(
+    vector_fs_db: &str,
+    identity_public_key: &VerifyingKey,
+    node_storage_path: Option<String>,
+) -> String {
+    if let Some(path) = node_storage_path {
         Path::new(&path)
+            .join(vector_fs_db)
+            .join(hash_signature_public_key(identity_public_key))
             .to_str()
-            .expect("Invalid NODE_VEC_FS_DB_PATH")
+            .expect("Invalid NODE_STORAGE_PATH")
             .to_string()
     } else {
-        Path::new("vector_fs_db")
+        Path::new(vector_fs_db)
             .join(hash_signature_public_key(identity_public_key))
             .into_os_string()
             .into_string()
@@ -206,25 +225,23 @@ fn get_vector_fs_db_path(identity_public_key: &VerifyingKey, node_env: &NodeEnvi
     }
 }
 
-/// Parses the secrets file ( `db.secret`) from the machine's filesystem
+/// Machine filesystem path for .secret.
+fn get_secrets_file_path(secrets_file: &str, node_storage_path: Option<String>) -> String {
+    if let Some(path) = node_storage_path {
+        Path::new(&path)
+            .join(secrets_file)
+            .to_str()
+            .expect("Invalid NODE_STORAGE_PATH")
+            .to_string()
+    } else {
+        Path::new(secrets_file).to_str().unwrap().to_string()
+    }
+}
+
+/// Parses the secrets file ( `.secret`) from the machine's filesystem
 /// This file holds the user's keys.
-fn parse_secrets_file(node_env: &NodeEnvironment) -> HashMap<String, String> {
-    let path = if let Some(path) = node_env.secrets_file_path.clone() {
-        Path::new(&path)
-            .to_str()
-            .expect("Invalid NODE_SECRET_FILE_PATH")
-            .to_string()
-    } else {
-        let db_path = Path::new("db");
-        fs::create_dir_all(&db_path).expect("Failed to create directory");
-        db_path
-            .join(".secret")
-            .to_str()
-            .expect("Invalid NODE_SECRET_FILE_PATH")
-            .to_string()
-    };
-
-    let contents = fs::read_to_string(path).unwrap_or_default();
+fn parse_secrets_file(secrets_file_path: &str) -> HashMap<String, String> {
+    let contents = fs::read_to_string(secrets_file_path).unwrap_or_default();
     contents
         .lines()
         .map(|line| {
