@@ -68,7 +68,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
         "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
-        res[0].node.get_text_content().unwrap()
+        res[0].node.get_text_content().unwrap().to_string()
     );
 
     let query_string = "What about up-front costs?";
@@ -76,7 +76,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "No longer will we need heavy up-front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user’s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].node.get_text_content().unwrap()
+            res[0].node.get_text_content().unwrap().to_string()
         );
 
     let query_string = "Does this relate to crypto?";
@@ -84,7 +84,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            res[0].node.get_text_content().unwrap()
+            res[0].node.get_text_content().unwrap().to_string()
         );
 }
 
@@ -176,7 +176,7 @@ fn test_multi_resource_db_vector_search() {
     let query = generator.generate_embedding_default_blocking("Camels").unwrap();
     let ret_nodes = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_node = ret_nodes.get(0).unwrap();
-    assert_eq!(fact2.clone(), &ret_node.node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), &ret_node.node.get_text_content().unwrap().to_string());
 
     // Camel Node vector search
     let query = generator
@@ -186,7 +186,7 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            &ret_node.node.get_text_content().unwrap()
+            &ret_node.node.get_text_content().unwrap().to_string()
         );
 
     // // Camel Node proximity vector search
@@ -195,9 +195,9 @@ fn test_multi_resource_db_vector_search() {
     // let ret_node = ret_nodes.get(0).unwrap();
     // let ret_node2 = ret_nodes.get(1).unwrap();
     // let ret_node3 = ret_nodes.get(2).unwrap();
-    // assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
-    // assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
-    // assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap());
+    // assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap().to_string());
+    // assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap().to_string());
+    // assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap().to_string());
 
     // Animal tolerance range vector search
     let query = generator
@@ -210,8 +210,8 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     let ret_node2 = ret_nodes.get(1).unwrap();
 
-    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
-    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap().to_string());
+    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap().to_string());
 }
 
 #[test]

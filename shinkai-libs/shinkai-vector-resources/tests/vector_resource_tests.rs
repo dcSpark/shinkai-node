@@ -91,17 +91,17 @@ fn test_manual_resource_vector_search() {
     let query_string = "What animal barks?";
     let query_embedding1 = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = doc.vector_search(query_embedding1.clone(), 1);
-    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
 
     let query_string2 = "What animal is slow?";
     let query_embedding2 = generator.generate_embedding_default_blocking(query_string2).unwrap();
     let res2 = doc.vector_search(query_embedding2.clone(), 3);
-    assert_eq!(fact2.clone(), res2[0].node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), res2[0].node.get_text_content().unwrap().to_string());
 
     let query_string3 = "What animal swims in the ocean?";
     let query_embedding3 = generator.generate_embedding_default_blocking(query_string3).unwrap();
     let res3 = doc.vector_search(query_embedding3, 2);
-    assert_eq!(fact3.clone(), res3[0].node.get_text_content().unwrap());
+    assert_eq!(fact3.clone(), res3[0].node.get_text_content().unwrap().to_string());
 
     //
     // Create a 2nd resource, a MapVectorResource
@@ -163,7 +163,7 @@ fn test_manual_resource_vector_search() {
     // Perform a vector search for data 2 levels lower in the fruit doc to ensure
     // that vector searches propagate inwards through all resources
     let res = fruit_doc.vector_search(query_embedding1.clone(), 5);
-    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/doc_key/1", res[0].format_path_to_string());
     assert_eq!(2, res[0].retrieval_path.depth());
@@ -172,7 +172,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What can I use to access the internet?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding, 5);
-    assert_eq!(fact4.clone(), res[0].node.get_text_content().unwrap());
+    assert_eq!(fact4.clone(), res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/3/some_key", res[0].format_path_to_string());
     assert_eq!(1, res[0].retrieval_path.depth());
@@ -182,7 +182,7 @@ fn test_manual_resource_vector_search() {
     let query_string = "What fruit has its own packaging?";
     let query_embedding = generator.generate_embedding_default_blocking(query_string).unwrap();
     let res = fruit_doc.vector_search(query_embedding.clone(), 10);
-    assert_eq!(fact6.clone(), res[0].node.get_text_content().unwrap());
+    assert_eq!(fact6.clone(), res[0].node.get_text_content().unwrap().to_string());
     // Perform a VRPath test to validate depth & path formatting
     assert_eq!("/2", res[0].format_path_to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
@@ -198,7 +198,7 @@ fn test_manual_resource_vector_search() {
         &vec![TraversalOption::UntilDepth(0)],
         None,
     );
-    assert_ne!(fact1.clone(), res[0].node.get_text_content().unwrap());
+    assert_ne!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
     assert_eq!(0, res[0].retrieval_path.depth());
     // Perform UntilDepth(1) traversal to ensure it is working properly, assert the BaseVectorResource for animals is found (not fact1)
     let res = fruit_doc.vector_search_customized(

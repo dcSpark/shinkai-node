@@ -307,7 +307,7 @@ impl Node {
     }
 
     /// Attempts to return a reference to the text content from the Node. Errors if is different type
-    pub fn get_text_content(&self) -> Result<&String, VRError> {
+    pub fn get_text_content(&self) -> Result<&str, VRError> {
         match &self.content {
             NodeContent::Text(s) => Ok(s),
             _ => Err(VRError::ContentIsNonMatchingType),

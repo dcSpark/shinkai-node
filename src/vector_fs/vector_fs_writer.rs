@@ -203,7 +203,8 @@ impl VectorFS {
         }
     }
 
-    // TODO: Convert this from insert_node to mutate_node and update the last_modified of the parent node
+    /// TODO: Convert this from insert_node to mutate_node and update the last_modified of the parent node.
+    ///             Make sure root is supported, and in that case obviously there is no parent node.
     /// Internal method used to add an existing VectorResource into the core resource of a profile's VectorFS internals in memory.
     /// Aka, add an existing folder (either during a copy, move, or cross-network folder sync).
     fn _add_existing_vr_to_core_resource(
