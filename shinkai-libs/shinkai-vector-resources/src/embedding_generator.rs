@@ -257,7 +257,7 @@ impl RemoteEmbeddingGenerator {
         if self.api_url.ends_with('/') {
             format!("{}embed", self.api_url)
         } else {
-            format!("{}embed", self.api_url)
+            format!("{}/embed", self.api_url)
         }
     }
 

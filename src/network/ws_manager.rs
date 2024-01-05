@@ -1,3 +1,7 @@
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
+use aes_gcm::aead::Aead;
+use aes_gcm::aead::generic_array::GenericArray;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
@@ -58,6 +62,7 @@ pub struct WebSocketManager {
     connections: HashMap<String, Arc<Mutex<SplitSink<WebSocket, Message>>>>,
     // TODO: maybe the first string should be a ShinkaiName? or at least a shinkai name string
     subscriptions: HashMap<String, HashMap<String, bool>>,
+    shared_keys: HashMap<String, String>,
     shinkai_db: Arc<Mutex<ShinkaiDB>>,
     node_name: ShinkaiName,
     identity_manager_trait: Arc<Mutex<Box<dyn IdentityManagerTrait + Send>>>,
@@ -69,6 +74,7 @@ impl Clone for WebSocketManager {
         Self {
             connections: self.connections.clone(),
             subscriptions: self.subscriptions.clone(),
+            shared_keys: self.shared_keys.clone(),
             shinkai_db: Arc::clone(&self.shinkai_db),
             node_name: self.node_name.clone(),
             identity_manager_trait: Arc::clone(&self.identity_manager_trait),
@@ -87,33 +93,37 @@ impl WebSocketManager {
         let manager = Arc::new(Mutex::new(Self {
             connections: HashMap::new(),
             subscriptions: HashMap::new(),
+            shared_keys: HashMap::new(),
             shinkai_db,
             node_name,
             identity_manager_trait,
             message_queue: Arc::new(Mutex::new(VecDeque::new())),
         }));
-    
+
         let manager_clone = Arc::clone(&manager);
-    
+
         // Spawn the message sender task
         let message_queue_clone = Arc::clone(&manager.lock().await.message_queue);
         tokio::spawn(Self::start_message_sender(manager_clone, message_queue_clone));
-    
+
         manager
     }
-    
-    pub async fn start_message_sender(manager: Arc<Mutex<Self>>, message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>) {
+
+    pub async fn start_message_sender(
+        manager: Arc<Mutex<Self>>,
+        message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
+    ) {
         loop {
             eprintln!("Checking for messages in the queue...");
             // Sleep for a while
             sleep(Duration::from_millis(500)).await;
-    
+
             // Check if there are any messages in the queue
             let message = {
                 let mut queue = message_queue.lock().await;
                 queue.pop_front()
             };
-    
+
             if let Some((topic, subtopic, update)) = message {
                 eprintln!("Sending update to topic: {}", topic);
                 manager.lock().await.handle_update(topic, subtopic, update).await;
@@ -204,6 +214,7 @@ impl WebSocketManager {
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
         topic: WSTopic,
         subtopic: Option<String>,
+        shared_key: String,
     ) -> Result<(), WebSocketManagerError> {
         eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
         eprintln!("add_connection> Message: {:?}", message);
@@ -235,6 +246,7 @@ impl WebSocketManager {
         eprintln!("subtopic: {:?}", subtopic);
 
         self.connections.insert(shinkai_profile_name.clone(), connection);
+        self.shared_keys.insert(shinkai_profile_name.clone(), shared_key);
         let mut topic_map = HashMap::new();
         let topic_subtopic = format!("{}:::{}", topic, subtopic.unwrap_or_default());
         eprintln!("topic_subtopic subscription: {:?}", topic_subtopic);
@@ -263,7 +275,16 @@ impl WebSocketManager {
                 if self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some() {
                     eprintln!("Connection {} is subscribed to the topic", id);
                     let mut connection = connection.lock().await;
-                    match connection.send(Message::text(update.clone())).await {
+
+                    // Encrypt the update using the shared key
+                    let shared_key = self.shared_keys.get(id).unwrap();
+                    let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
+                    let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
+                    let nonce = GenericArray::from_slice(&[0u8; 12]);
+                    let encrypted_update = cipher.encrypt(nonce, update.as_ref()).expect("encryption failure!");
+                    let encrypted_update_hex = hex::encode(&encrypted_update);
+
+                    match connection.send(Message::text(encrypted_update_hex.clone())).await {
                         Ok(_) => eprintln!("Successfully sent update to connection {}", id),
                         Err(e) => eprintln!("Failed to send update to connection {}: {}", id, e),
                     }

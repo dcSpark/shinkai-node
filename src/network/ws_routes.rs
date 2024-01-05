@@ -89,7 +89,7 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
                                 if let Err(e) = manager
                                     .lock()
                                     .await
-                                    .add_connection(shinkai_name, shinkai_message, Arc::clone(&ws_tx), ws_message.topic, ws_message.subtopic)
+                                    .add_connection(shinkai_name, shinkai_message, Arc::clone(&ws_tx), ws_message.topic, ws_message.subtopic, ws_message.shared_key)
                                     .await
                                 {
                                     eprintln!("Failed to add connection: {}", e);

@@ -120,6 +120,11 @@ impl ShinkaiMessage {
         Self::decode_message_result(bytes)
     }
 
+    pub fn from_str(s: &str) -> Result<Self, ShinkaiMessageError> {
+        let bytes = s.as_bytes();
+        Self::decode_message_result(bytes.to_vec())
+    }
+
     pub fn validate_message_schema(&self, schema: MessageSchemaType) -> Result<(), ShinkaiMessageError> {
         if let MessageBody::Unencrypted(body) = &self.body {
             if let MessageData::Unencrypted(data) = &body.message_data {

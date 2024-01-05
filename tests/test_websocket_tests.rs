@@ -1,3 +1,7 @@
+use aes_gcm::Aes256Gcm;
+use aes_gcm::KeyInit;
+use aes_gcm::aead::Aead;
+use aes_gcm::aead::generic_array::GenericArray;
 use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
 use futures::SinkExt;
@@ -86,6 +90,27 @@ impl IdentityManagerTrait for MockIdentityManager {
     fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
         Box::new(self.clone())
     }
+}
+
+fn decrypt_message(encrypted_hex: &str, shared_key: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // Decode the hex string to bytes
+    let encrypted_bytes = hex::decode(encrypted_hex)?;
+
+    // Create the cipher using the shared key
+    let shared_key_bytes = hex::decode(shared_key)?;
+    let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
+
+    // Create the nonce
+    let nonce = GenericArray::from_slice(&[0u8; 12]);
+
+    // Decrypt the message
+    let decrypted_bytes = cipher.decrypt(nonce, encrypted_bytes.as_ref())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+    // Convert the decrypted bytes to a string
+    let decrypted_message = String::from_utf8(decrypted_bytes)?;
+
+    Ok(decrypted_message)
 }
 
 fn generate_message_with_text(
@@ -252,7 +277,10 @@ async fn test_websocket() {
         .await
         .expect("Failed to read message")
         .expect("Failed to read message");
-    assert_eq!(msg.to_text().unwrap(), "Hello, world!");
+    let encrypted_message = msg.to_text().unwrap();
+    let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
+
+    assert_eq!(decrypted_message, "Hello, world!");
 
     // Note: We add a message and we expect to trigger an update
     {
@@ -269,12 +297,11 @@ async fn test_websocket() {
         );
 
         let mut shinkai_db = shinkai_db.lock().await;
-        let result = shinkai_db
+        let _ = shinkai_db
             .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
             .await;
-        eprintln!("result: {:?}", result);
-
-        eprintln!("here after adding a message");
+        // eprintln!("result: {:?}", result);
+        // eprintln!("here after adding a message");
 
         // Check the response
         let msg = ws_stream
@@ -283,8 +310,11 @@ async fn test_websocket() {
             .expect("Failed to read message")
             .expect("Failed to read message");
 
-        let msg_text = msg.to_text().unwrap();
-        let recovered_shinkai = ShinkaiMessage::from_string(msg_text.to_string()).unwrap();
+        // TODO: it should decrypt the message with the symmetrical key
+
+        let encrypted_msg_text = msg.to_text().unwrap();
+        let decrypted_message = decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
+        let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
         let recovered_content = recovered_shinkai.get_message_content().unwrap();
         assert_eq!(recovered_content, "Hello, world!");
     }
