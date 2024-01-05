@@ -3,7 +3,7 @@ use crate::db::db::ProfileBoundWriteBatch;
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::vector_resource::NodeContent;
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     source::SourceFile,
@@ -75,7 +75,7 @@ impl VectorFS {
         vr_header: VRHeader,
         metadata: HashMap<String, String>,
     ) -> Result<(), VectorFSError> {
-        let mut internals = self._get_profile_fs_internals(&writer.profile)?;
+        let internals = self._get_profile_fs_internals(&writer.profile)?;
 
         // If an embedding exists on the VR, and it is generated using the same embedding model
         if let Some(embedding) = vr_header.resource_embedding.clone() {
@@ -148,62 +148,56 @@ impl VectorFS {
         Ok(())
     }
 
-    // /// Saves a Vector Resource and optional SourceFile underneath the current path.
-    // /// If a VR with the same name already exists underneath the current path, then errors.
-    // pub fn save_vector_resource(&mut self, resource: BaseVectorResource, source_file: Option<SourceFile>) {
-    //     let batch = ProfileBoundWriteBatch::new(&self.profile);
-    //     let mut resource = resource;
-    //     let resource_name = resource.as_trait_object().name();
-    //     let internals = self.vector_fs._get_profile_fs_internals(&self.profile)?;
-    //     let node_path = self.path.push_cloned(resource_name.to_string());
+    /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
+    /// If a VR with the same name already exists underneath the current path, then overwrites it.
+    pub fn folder_save_vector_resource(
+        &mut self,
+        writer: &VFSWriter,
+        resource: BaseVectorResource,
+        source_file: Option<SourceFile>,
+    ) -> Result<(), VectorFSError> {
+        let batch = ProfileBoundWriteBatch::new(&writer.profile);
+        let mut resource = resource;
+        let resource_name = resource.as_trait_object().name();
+        let internals = self._get_profile_fs_internals(&writer.profile)?;
+        let node_path = writer.path.push_cloned(resource_name.to_string());
+        let mut resource_exists_at_path = false;
 
-    //     // Ensure path of self points at a folder before proceeding
-    //     self.validate_path_points_to_folder(self.path)?;
-    //     // If an existing FSFolder is already saved at the node path, return error.
-    //     if let Ok(_) = self.validate_path_points_to_folder(node_path) {
-    //         return Err(VectorFSError::CannotOverwriteFolderWithResource(node_path));
-    //     }
-    //     // If an existing FSItem is already saved at the node path, return error.
-    //     if let Ok(_) = self.validate_path_points_to_item(node_path) {
-    //         return Err(VectorFSError::CannotOverwriteItemWithResource(node_path));
-    //     }
-    //     // Check if an existing VR is saved in the FSDB with the same reference string, then if so re-generate id of the current resource.
-    //     if let Ok(_) = self
-    //         .vector_fs
-    //         .db
-    //         .get_resource(&resource.as_trait_object().reference_string(), &self.profile)
-    //     {
-    //         resource.as_trait_object().generate_and_update_resource_id();
-    //     }
+        // Ensure path of writer points at a folder before proceeding
+        self._validate_path_points_to_folder(writer.path.clone(), &writer.profile)?;
+        // If an existing FSFolder is already saved at the node path, return error.
+        if let Ok(_) = self._validate_path_points_to_folder(node_path.clone(), &writer.profile) {
+            return Err(VectorFSError::CannotOverwriteFolder(node_path.clone()));
+        }
+        if let Ok(_) = self._validate_path_points_to_item(node_path.clone(), &writer.profile) {
+            resource_exists_at_path = true;
+        }
+        // Check if an existing VR is saved in the FSDB with the same reference string, then if so re-generate id of the current resource.
+        if let Ok(_) = self
+            .db
+            .get_resource(&resource.as_trait_object().reference_string(), &writer.profile)
+        {
+            resource.as_trait_object_mut().generate_and_update_resource_id();
+        }
+        // Now all validation checks/setup have passed, move forward with saving header/resource/source file
 
-    //     // Now all validation checks/setup have passed, move forward with saving header/resource/source file
-    // }
+        // Don't forget to update the folder's last_modified in metadata if resource_exists_at_path == false (meaning new item added)
+        // And the VR node's last_saved needs to be updated too in its metadata.
+        Ok(())
+    }
 
-    // /// Validates that the path points to a FSFolder
-    // pub fn validate_path_points_to_folder(&self, path: VRPath) -> Result<(), VectorFSError> {
-    //     let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
-    //     let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
-
-    //     match ret_node.node.content {
-    //         NodeContent::Resource(_) => Ok(()),
-    //         _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
-    //     }
-    // }
-
-    // /// Validates that the path points to a FSItem
-    // pub fn validate_path_points_to_item(&self, path: VRPath) -> Result<(), VectorFSError> {
-    //     let internals = self.vector_fs._get_profile_fs_internals_read_only(&self.profile)?;
-    //     let ret_node = internals.fs_core_resource.retrieve_node_at_path(path)?;
-
-    //     match ret_node.node.content {
-    //         NodeContent::VRHeader(_) => Ok(()),
-    //         _ => Err(VectorFSError::InvalidNodeType(ret_node.node.id)),
-    //     }
-    // }
-
-    // /// Updates a Vector Resource (FSItem) underneath the current path.
-    // /// If no VR with the same name already exists underneath the current path, then errors.
-    // pub fn update_vector_resource(&mut self, resource: BaseVectorResource) {}
+    /// Retrieves a node at a given path from the VectorFS core resource under a profile
+    pub fn _retrieve_core_resource_node_at_path(
+        &self,
+        path: VRPath,
+        profile: &ShinkaiName,
+    ) -> Result<RetrievedNode, VectorFSError> {
+        let internals = self._get_profile_fs_internals_read_only(profile)?;
+        internals
+            .fs_core_resource
+            .retrieve_node_at_path(path.clone())
+            .map_err(|_| VectorFSError::NoEntryAtPath(path.clone()))
+    }
 
     // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.
     // /// If no VR (FSItem) with the same name already exists underneath the current path, then errors.

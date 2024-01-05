@@ -55,12 +55,12 @@ impl VRSource {
 
     /// Serializes the VRSource to a JSON string
     pub fn to_json(&self) -> Result<String, VRError> {
-        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::to_string(self)?)
     }
 
     /// Deserializes a VRSource from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VRError> {
-        serde_json::from_str(json).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::from_str(json)?)
     }
 
     /// Creates a VRSource using file_name/content to auto-detect and create an instance of Self.
@@ -114,12 +114,12 @@ impl SourceFile {
 
     /// Serializes the SourceFile to a JSON string
     pub fn to_json(&self) -> Result<String, VRError> {
-        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::to_string(self)?)
     }
 
     /// Deserializes a SourceFile from a JSON string
     pub fn from_json(json: &str) -> Result<Self, VRError> {
-        serde_json::from_str(json).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::from_str(json)?)
     }
 }
 

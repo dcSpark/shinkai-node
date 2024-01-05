@@ -43,6 +43,16 @@ impl FSEntry {
             FSEntry::Folder(f) => Err(VectorFSError::InvalidFSEntryType(f.path.to_string())),
         }
     }
+
+    /// Converts the FSEntry to a JSON string
+    pub fn to_json(&self) -> Result<String, VectorFSError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    /// Creates a FSEntry from a JSON string
+    pub fn from_json(s: &str) -> Result<Self, VectorFSError> {
+        Ok(serde_json::from_str(s)?)
+    }
 }
 
 /// An external facing abstraction representing the VecFS root for a given profile.

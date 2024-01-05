@@ -155,7 +155,7 @@ impl VectorResourceCore for DocumentVectorResource {
     }
 
     fn to_json(&self) -> Result<String, VRError> {
-        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::to_string(self)?)
     }
 
     fn set_embedding_model_used(&mut self, model_type: EmbeddingModelType) {

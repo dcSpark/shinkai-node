@@ -228,6 +228,6 @@ impl VectorResourceRouter {
     }
     /// Convert to json
     pub fn to_json(&self) -> Result<String, VRError> {
-        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::to_string(self)?)
     }
 }

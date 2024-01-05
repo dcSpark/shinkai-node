@@ -1,6 +1,6 @@
 use super::vector_fs::{self, VectorFS};
 use super::vector_fs_error::VectorFSError;
-use super::vector_fs_types::{FSEntry, FSFolder, FSItem};
+use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -79,12 +79,11 @@ impl VectorFS {
     pub fn retrieve_fs_entry(&mut self, reader: &VFSReader) -> Result<FSEntry, VectorFSError> {
         let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
 
-        // Create FSFolder directly if path is root
+        // Create FSRoot directly if path is root
         if reader.path.is_empty() {
-            // TODO: Change this to generate a FSRoot entry instead
-            // let core_resource = BaseVectorResource::Map(internals.fs_core_resource.clone());
-            // let fs_folder = FSFolder::from_vector_resource(core_resource, self.path.clone())?;
-            // return Ok(FSEntry::Folder(fs_folder));
+            let fs_root =
+                FSRoot::from_core_vector_resource(internals.fs_core_resource.clone(), &internals.last_read_index)?;
+            return Ok(FSEntry::Root(fs_root));
         }
 
         // Otherwise retrieve the node and process it
@@ -129,5 +128,30 @@ impl VectorFS {
         let vr = self.retrieve_vector_resource(reader)?;
         let sf = self.retrieve_source_file(reader)?;
         Ok((vr, sf))
+    }
+
+    /// Validates that the path points to a FSFolder
+    pub fn _validate_path_points_to_folder(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+        let ret_node = self._retrieve_core_resource_node_at_path(path.clone(), profile)?;
+
+        match ret_node.node.content {
+            NodeContent::Resource(_) => Ok(()),
+            _ => Err(VectorFSError::PathDoesNotPointAtFolder(path)),
+        }
+    }
+
+    /// Validates that the path points to a FSItem
+    pub fn _validate_path_points_to_item(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+        let ret_node = self._retrieve_core_resource_node_at_path(path.clone(), profile)?;
+
+        match ret_node.node.content {
+            NodeContent::VRHeader(_) => Ok(()),
+            _ => Err(VectorFSError::PathDoesNotPointAtItem(path.clone())),
+        }
+    }
+
+    /// Validates that the path points to any FSEntry, meaning that something exists at that path
+    pub fn _validate_path_points_to_entry(&self, path: VRPath, profile: &ShinkaiName) -> Result<(), VectorFSError> {
+        self._retrieve_core_resource_node_at_path(path, profile).map(|_| ())
     }
 }
