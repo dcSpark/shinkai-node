@@ -79,7 +79,7 @@ impl VectorFS {
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
     /// VFSReader can then be used to perform read actions at the specified path.
     pub fn reader(
-        &self,
+        &mut self,
         requester_name: ShinkaiName,
         path: VRPath,
         profile: ShinkaiName,

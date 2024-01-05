@@ -1,5 +1,8 @@
-use super::{vector_fs_error::VectorFSError, vector_fs_permissions::PermissionsIndex};
+use super::{
+    vector_fs_error::VectorFSError, vector_fs_permissions::PermissionsIndex, vector_fs_types::SubscriptionsIndex,
+};
 use crate::tools::js_toolkit_executor::DEFAULT_LOCAL_TOOLKIT_EXECUTOR_PORT;
+use chrono::{DateTime, Utc};
 use serde_json;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
@@ -17,8 +20,9 @@ use std::collections::HashMap;
 pub struct VectorFSInternals {
     pub fs_core_resource: MapVectorResource,
     pub permissions_index: PermissionsIndex,
-    pub subscription_index: HashMap<VRPath, Vec<ShinkaiName>>,
+    pub subscription_index: SubscriptionsIndex,
     pub supported_embedding_models: Vec<EmbeddingModelType>,
+    pub last_read_index: HashMap<VRPath, (DateTime<Utc>, ShinkaiName)>,
 }
 
 impl VectorFSInternals {
@@ -39,8 +43,9 @@ impl VectorFSInternals {
         Self {
             fs_core_resource: core_resource,
             permissions_index: PermissionsIndex::new(node_name),
-            subscription_index: HashMap::new(),
+            subscription_index: SubscriptionsIndex::new_empty(),
             supported_embedding_models,
+            last_read_index: HashMap::new(),
         }
     }
 

@@ -1,10 +1,12 @@
 use super::vector_fs_error::VectorFSError;
 use chrono::{DateTime, Utc};
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::{
     resource_errors::VRError,
     shinkai_time::ShinkaiTime,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRPath},
 };
+use std::collections::HashMap;
 
 /// Enum that holds the types of external-facing entries used in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -370,4 +372,23 @@ impl FSItem {
     }
 
     // ...
+}
+
+/// TODO: Implement SubscriptionsIndex later on when it's relevant. For now struct exists
+/// to have types roughly in place.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SubscriptionsIndex {
+    pub index: HashMap<VRPath, Vec<ShinkaiName>>,
+}
+
+impl SubscriptionsIndex {
+    // Creates a new SubscriptionsIndex with the provided index
+    pub fn new(index: HashMap<VRPath, Vec<ShinkaiName>>) -> Self {
+        Self { index }
+    }
+
+    // Creates a new SubscriptionsIndex with an empty index
+    pub fn new_empty() -> Self {
+        Self { index: HashMap::new() }
+    }
 }
