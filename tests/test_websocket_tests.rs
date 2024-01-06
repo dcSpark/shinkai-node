@@ -11,6 +11,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::IdentityPermissions;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::MessageSchemaType;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::TopicSubscription;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
@@ -203,8 +204,13 @@ async fn test_websocket() {
 
     // Send a message to the server to establish the connection and subscribe to a topic
     let ws_message = WSMessage {
-        topic: WSTopic::Inbox,
-        subtopic: Some("job_inbox::test_job::false".to_string()),
+        subscriptions: vec![
+            TopicSubscription {
+                topic: WSTopic::Inbox,
+                subtopic: Some("job_inbox::test_job::false".to_string()),
+            },
+        ],
+        unsubscriptions: vec![],
         shared_key: shared_enc_string.to_string(),
     };
 

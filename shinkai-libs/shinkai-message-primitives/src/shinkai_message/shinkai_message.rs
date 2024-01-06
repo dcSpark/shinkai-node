@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use crate::shinkai_utils::encryption::EncryptionMethod;
 use super::shinkai_message_schemas::MessageSchemaType;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShinkaiMessage {
     pub body: MessageBody,
     pub external_metadata: ExternalMetadata,
@@ -10,13 +10,13 @@ pub struct ShinkaiMessage {
     pub version: ShinkaiVersion
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShinkaiBody {
     pub message_data: MessageData,
     pub internal_metadata: InternalMetadata,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InternalMetadata {
     pub sender_subidentity: String,
     pub recipient_subidentity: String,
@@ -25,7 +25,7 @@ pub struct InternalMetadata {
     pub encryption: EncryptionMethod,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExternalMetadata {
     pub sender: String,
     pub recipient: String,
@@ -35,7 +35,7 @@ pub struct ExternalMetadata {
     pub other: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct EncryptedShinkaiBody {
     pub content: String,
 }
@@ -51,7 +51,7 @@ pub struct ShinkaiData {
     pub message_content_schema: MessageSchemaType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MessageBody {
     #[serde(rename = "encrypted")]
     Encrypted(EncryptedShinkaiBody),

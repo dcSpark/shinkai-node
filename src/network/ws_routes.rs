@@ -1,4 +1,6 @@
 use super::ws_manager::WebSocketManager;
+use super::ws_manager::WebSocketManagerError;
+use futures::stream::SplitSink;
 use futures::SinkExt;
 use futures::StreamExt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -8,6 +10,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use warp::cors;
+use warp::filters::ws::Message;
 use warp::filters::ws::WebSocket;
 use warp::Filter;
 
@@ -32,105 +35,80 @@ pub fn ws_route(
 }
 
 pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
-    // Previously: topic: String, subtopic: Option<String>
     eprintln!("New WebSocket connection");
-    let (ws_tx, mut ws_rx) = ws.split();
+    let (mut ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
-    // Listen for the first incoming message to get the ShinkaiMessage
-    if let Some(result) = ws_rx.next().await {
+    // Continuously listen for incoming messages
+    while let Some(result) = ws_rx.next().await {
         match result {
             Ok(msg) => {
                 if let Ok(text) = msg.to_str() {
+                    // Attempt to deserialize the text message into a ShinkaiMessage
                     if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(text) {
-                        eprintln!("ws_message: {:?}", shinkai_message);
+                        eprintln!("Received ShinkaiMessage: {:?}", shinkai_message);
 
-                        let mut ws_message: Option<WSMessage> = None;
-
-                        match shinkai_message.get_message_content() {
-                            Ok(content_str) => {
-                                match serde_json::from_str::<WSMessage>(&content_str) {
-                                    Ok(message) => {
-                                        ws_message = Some(message);
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Failed to deserialize WSMessage: {}", e);
-                                        let mut ws_tx = ws_tx.lock().await;
-                                        let _ = ws_tx
-                                            .send(warp::ws::Message::text(format!(
-                                                "Failed to deserialize WSMessage: {}",
-                                                e
-                                            )))
-                                            .await;
-                                        let _ = ws_tx.close().await; // Close the WebSocket connection
-                                        return;
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to get message content: {}", e);
-                                let mut ws_tx = ws_tx.lock().await;
-                                let _ = ws_tx
-                                    .send(warp::ws::Message::text(format!("Failed to get message content: {}", e)))
-                                    .await;
-                                let _ = ws_tx.close().await; // Close the WebSocket connection
-                                return;
-                            }
+                        // Process the ShinkaiMessage
+                        if let Err(e) = process_shinkai_message(&shinkai_message, &manager, &ws_tx).await {
+                            eprintln!("Error processing ShinkaiMessage: {}", e);
+                            // Send an error message back to the client
+                            let mut lock = ws_tx.lock().await;
+                            let _ = lock.send(Message::text(e.to_string())).await;
+                            // Depending on the error, you may choose to close the connection
+                            // let _ = lock.close().await;
                         }
-
-                        let ws_message = ws_message.unwrap();
-
-                        // parse topic and subtopic from type
-                        eprintln!("topic: {:?}", ws_message.topic);
-                        eprintln!("subtopic: {:?} \n\n", ws_message.subtopic);
-
-                        match ShinkaiName::from_shinkai_message_using_sender_subidentity(&shinkai_message.clone()) {
-                            Ok(shinkai_name) => {
-                                if let Err(e) = manager
-                                    .lock()
-                                    .await
-                                    .add_connection(shinkai_name, shinkai_message, Arc::clone(&ws_tx), ws_message.topic, ws_message.subtopic, ws_message.shared_key)
-                                    .await
-                                {
-                                    eprintln!("Failed to add connection: {}", e);
-                                    let mut ws_tx = ws_tx.lock().await;
-                                    let _ = ws_tx
-                                        .send(warp::ws::Message::text(format!("Failed to add connection: {}", e)))
-                                        .await;
-                                    let _ = ws_tx.close().await; // Close the WebSocket connection
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to get ShinkaiName: {}", e);
-                                let mut ws_tx = ws_tx.lock().await;
-                                let _ = ws_tx
-                                    .send(warp::ws::Message::text(format!("Failed to get ShinkaiName: {}", e)))
-                                    .await;
-                                let _ = ws_tx.close().await; // Close the WebSocket connection
-                            }
-                        }
+                    } else {
+                        eprintln!("Failed to parse ShinkaiMessage");
+                        // Handle the parsing error
+                        let mut lock = ws_tx.lock().await;
+                        let _ = lock.send(Message::text("Failed to parse ShinkaiMessage")).await;
                     }
+                } else {
+                    eprintln!("Received non-text message");
+                    // Handle the case where the message is not text
+                    let mut lock = ws_tx.lock().await;
+                    let _ = lock.send(Message::text("Received non-text message")).await;
                 }
             }
             Err(e) => {
                 eprintln!("websocket error: {}", e);
+                break; // Exit the loop and end the connection on error
             }
         }
     }
 
-    // Continue listening for other incoming messages
-    while let Some(result) = ws_rx.next().await {
-        match result {
-            Ok(msg) => {
-                // Handle other incoming messages here
-                eprintln!("incoming message: {:?}", msg);
+    // Optionally, you can perform any cleanup here if necessary
+    eprintln!("WebSocket connection closed");
+}
+
+async fn process_shinkai_message(
+    shinkai_message: &ShinkaiMessage,
+    manager: &Arc<Mutex<WebSocketManager>>,
+    ws_tx: &Arc<Mutex<SplitSink<WebSocket, warp::ws::Message>>>,
+) -> Result<(), WebSocketManagerError> {
+    eprintln!("ws_message: {:?}", shinkai_message);
+
+    let content_str = shinkai_message
+        .get_message_content()
+        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get message content: {}", e)))?;
+
+    let ws_message = serde_json::from_str::<WSMessage>(&content_str)
+        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to deserialize WSMessage: {}", e)))?;
+
+    let shinkai_name = ShinkaiName::from_shinkai_message_using_sender_subidentity(&shinkai_message)
+        .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get ShinkaiName: {}", e)))?;
+
+    let mut manager_guard = manager.lock().await;
+    manager_guard
+        .add_connection(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx), ws_message)
+        .await
+        .map_err(|e| {
+            match e {
+                WebSocketManagerError::UserValidationFailed(_) => e,
+                WebSocketManagerError::AccessDenied(_) => e,
+                // Add additional error handling as needed
             }
-            Err(e) => {
-                eprintln!("websocket error: {}", e);
-                break;
-            }
-        }
-    }
+        })
 }
 
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {

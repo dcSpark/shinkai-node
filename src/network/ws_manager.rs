@@ -1,13 +1,14 @@
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use aes_gcm::aead::Aead;
-use aes_gcm::aead::generic_array::GenericArray;
 use async_trait::async_trait;
 use futures::stream::SplitSink;
 use futures::SinkExt;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
+use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSTopic;
 use shinkai_message_primitives::shinkai_utils::encryption::unsafe_deterministic_encryption_keypair;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
@@ -191,7 +192,7 @@ impl WebSocketManager {
                         );
                         return true;
                     }
-                    Err(e) => {
+                    Err(_) => {
                         eprintln!(
                             "Access denied for inbox: {} and sender_subidentity: {}",
                             inbox_name, shinkai_name.full_name
@@ -212,9 +213,7 @@ impl WebSocketManager {
         shinkai_name: ShinkaiName,
         message: ShinkaiMessage,
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
-        topic: WSTopic,
-        subtopic: Option<String>,
-        shared_key: String,
+        ws_message: WSMessage,
     ) -> Result<(), WebSocketManagerError> {
         eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
         eprintln!("add_connection> Message: {:?}", message);
@@ -228,32 +227,68 @@ impl WebSocketManager {
         }
 
         let shinkai_profile_name = shinkai_name.to_string();
-        if !self
-            .has_access(shinkai_name.clone(), topic.clone(), subtopic.clone())
-            .await
-        {
-            eprintln!(
-                "Access denied for shinkai_name: {} on topic: {} and subtopic: {:?}",
-                shinkai_name, topic, subtopic
-            );
-            return Err(WebSocketManagerError::AccessDenied(format!(
-                "Access denied for shinkai_name: {} on topic: {} and subtopic: {:?}",
-                shinkai_name, topic, subtopic
-            )));
+        let shared_key = ws_message.shared_key.clone();
+
+        // Initialize the topic map for the new connection
+        let mut topic_map = HashMap::new();
+
+        // Iterate over the subscriptions to check access and add them to the topic map
+        for subscription in ws_message.subscriptions.iter() {
+            if !self
+                .has_access(
+                    shinkai_name.clone(),
+                    subscription.topic.clone(),
+                    subscription.subtopic.clone(),
+                )
+                .await
+            {
+                eprintln!(
+                    "Access denied for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
+                    shinkai_name, subscription.topic, subscription.subtopic
+                );
+                // TODO: should we send a ShinkaiMessage with an error inside back?
+                return Err(WebSocketManagerError::AccessDenied(format!(
+                    "Access denied for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
+                    shinkai_name, subscription.topic, subscription.subtopic
+                )));
+            }
+
+            let topic_subtopic = format!("{}:::{}", subscription.topic, subscription.subtopic.clone().unwrap_or_default());
+            eprintln!("Subscribing to topic_subtopic: {:?}", topic_subtopic);
+            topic_map.insert(topic_subtopic, true);
         }
 
-        eprintln!("topic: {:?}", topic);
-        eprintln!("subtopic: {:?}", subtopic);
-
+        // Add the connection and shared key to the manager
         self.connections.insert(shinkai_profile_name.clone(), connection);
         self.shared_keys.insert(shinkai_profile_name.clone(), shared_key);
-        let mut topic_map = HashMap::new();
-        let topic_subtopic = format!("{}:::{}", topic, subtopic.unwrap_or_default());
-        eprintln!("topic_subtopic subscription: {:?}", topic_subtopic);
-        topic_map.insert(topic_subtopic, true);
+        // Add the topic map to the subscriptions
         self.subscriptions.insert(shinkai_profile_name, topic_map);
 
         Ok(())
+    }
+
+    // Method to update subscriptions
+    // TODO: Review
+    pub async fn update_subscriptions(
+        &mut self,
+        shinkai_name: &str,
+        subscriptions_to_add: Vec<(WSTopic, Option<String>)>,
+        subscriptions_to_remove: Vec<(WSTopic, Option<String>)>,
+    ) {
+        // TODO: check that it's allowed to have those subscriptions
+        let profile_subscriptions = self.subscriptions.entry(shinkai_name.to_string()).or_default();
+
+        // Add new subscriptions
+        for (topic, subtopic) in subscriptions_to_add {
+            let key = format!("{}:::{}", topic, subtopic.unwrap_or_default());
+            profile_subscriptions.insert(key, true);
+        }
+
+        // Remove specified subscriptions
+        for (topic, subtopic) in subscriptions_to_remove {
+            let key = format!("{}:::{}", topic, subtopic.unwrap_or_default());
+            profile_subscriptions.remove(&key);
+        }
     }
 
     pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {

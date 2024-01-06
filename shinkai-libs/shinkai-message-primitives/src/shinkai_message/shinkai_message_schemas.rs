@@ -5,6 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
 use std::fmt;
 
+use super::shinkai_message::ShinkaiMessage;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
@@ -192,10 +194,22 @@ pub struct APIAddAgentRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub struct WSMessage {
+pub struct TopicSubscription {
     pub topic: WSTopic,
     pub subtopic: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WSMessage {
+    pub subscriptions: Vec<TopicSubscription>,
+    pub unsubscriptions: Vec<TopicSubscription>,
     pub shared_key: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WSMessageResponse {
+    pub subscriptions: Vec<TopicSubscription>,
+    pub shinkai_message: ShinkaiMessage,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
