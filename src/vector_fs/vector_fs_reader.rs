@@ -1,6 +1,6 @@
 use super::vector_fs::{self, VectorFS};
 use super::vector_fs_error::VectorFSError;
-use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot};
+use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot, LastReadIndex};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db::ProfileBoundWriteBatch;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -98,7 +98,8 @@ impl VectorFS {
                 Ok(FSEntry::Folder(fs_folder))
             }
             NodeContent::VRHeader(_) => {
-                let fs_item = FSItem::from_vr_header_node(ret_node.node, reader.path.clone())?;
+                let fs_item =
+                    FSItem::from_vr_header_node(ret_node.node, reader.path.clone(), &internals.last_read_index)?;
                 Ok(FSEntry::Item(fs_item))
             }
             _ => Ok(Err(VRError::InvalidNodeType(ret_node.node.id))?),

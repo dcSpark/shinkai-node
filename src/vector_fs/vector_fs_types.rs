@@ -198,7 +198,7 @@ impl FSFolder {
                 // If it's a VRHeader, then create a FSEntry and push it to child_items
                 NodeContent::VRHeader(_) => {
                     let new_path = resource_fs_path.push_cloned(node.id.clone());
-                    let fs_item = FSItem::from_vr_header_node(node.clone(), new_path)?;
+                    let fs_item = FSItem::from_vr_header_node(node.clone(), new_path, lr_index)?;
                     child_items.push(fs_item);
                 }
                 _ => {}
@@ -235,11 +235,6 @@ impl FSFolder {
             .map_err(|_| VectorFSError::InvalidMetadata(Self::last_modified_key()))?;
 
         Ok(last_modified_datetime)
-    }
-
-    /// Returns the metadata key for the last read datetime.
-    pub fn last_read_key() -> String {
-        String::from("last_read")
     }
 
     /// Returns the metadata key for the last modified datetime.
@@ -312,7 +307,11 @@ impl FSItem {
 
     /// Generates a new FSItem using a VRHeader holding Node + the path where the node was retrieved
     /// from in the VecFS internals. Use VRPath::new() if the path is root.
-    pub fn from_vr_header_node(node: Node, node_fs_path: VRPath) -> Result<Self, VectorFSError> {
+    pub fn from_vr_header_node(
+        node: Node,
+        node_fs_path: VRPath,
+        lr_index: &LastReadIndex,
+    ) -> Result<Self, VectorFSError> {
         match &node.content {
             NodeContent::VRHeader(header) => {
                 // Read source_file_saved from metadata
@@ -323,7 +322,8 @@ impl FSItem {
                     .map_or(false, |value| value == "true");
 
                 // Process datetimes from node
-                let (last_read_datetime, last_saved_datetime) = Self::process_datetimes_from_node(&node)?;
+                let last_saved_datetime = Self::process_datetimes_from_node(&node)?;
+                let last_read_datetime = lr_index.get_last_read_datetime_or_now(&node_fs_path);
 
                 Ok(FSItem::new(
                     node_fs_path,
@@ -342,14 +342,8 @@ impl FSItem {
 
     /// Process last_read/last_saved datetimes in a Node from the VectorFS core resource.
     /// The node must be an FSItem for this to succeed.
-    pub fn process_datetimes_from_node(node: &Node) -> Result<(DateTime<Utc>, DateTime<Utc>), VectorFSError> {
-        // Read last_read_datetime and last_saved_datetime from metadata
-        let last_read_str = node
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get(&Self::last_read_key()))
-            .ok_or(VectorFSError::InvalidMetadata(Self::last_read_key()))?;
-
+    pub fn process_datetimes_from_node(node: &Node) -> Result<DateTime<Utc>, VectorFSError> {
+        // Read last_saved_datetime from metadata
         let last_saved_str = node
             .metadata
             .as_ref()
@@ -357,18 +351,10 @@ impl FSItem {
             .ok_or(VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
 
         // Parse the datetime strings
-        let last_read_datetime = ShinkaiTime::from_rfc3339_string(last_read_str)
-            .map_err(|_| VectorFSError::InvalidMetadata(Self::last_read_key()))?;
-
         let last_saved_datetime = ShinkaiTime::from_rfc3339_string(last_saved_str)
             .map_err(|_| VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
 
-        Ok((last_read_datetime, last_saved_datetime))
-    }
-
-    /// Returns the metadata key for the last read datetime.
-    pub fn last_read_key() -> String {
-        String::from("last_read")
+        Ok(last_saved_datetime)
     }
 
     /// Returns the metadata key for the last saved datetime.
