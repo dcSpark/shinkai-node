@@ -15,7 +15,7 @@ use crate::schemas::{
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
-    pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
+    pub async fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -58,6 +58,16 @@ impl ShinkaiDB {
         // Commit the write batch
         self.db.write(batch)?;
 
+        {
+            // Note: this is the code for enabling WS
+            if let Some(manager) = &self.ws_manager {
+                let m = manager.lock().await;
+                let _ = m
+                    .queue_message(WSTopic::SmartInboxes, "".to_string(), inbox_name.clone())
+                    .await;
+            }
+        }
+
         Ok(())
     }
 
@@ -84,7 +94,7 @@ impl ShinkaiDB {
 
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
-            self.create_empty_inbox(inbox_name.clone())?;
+            self.create_empty_inbox(inbox_name.clone()).await?;
         }
 
         // Calculate the hash of the message for the key
@@ -192,27 +202,17 @@ impl ShinkaiDB {
         }
 
         {
-            eprintln!("Sending message to WS");
             // Note: this is the code for enabling WS
             if let Some(manager) = &self.ws_manager {
-                eprintln!("WS manager exists");
                 let m = manager.lock().await;
                 let inbox_name_string = inbox_name.to_string();
-                eprintln!("Inbox name: {}", inbox_name_string);
                 if let Ok(msg_string) = message.to_string() {
-                    eprintln!("Sending message to WS: {}", msg_string);
                     let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string).await;
                 }
             }
         }
 
         self.db.write(batch)?;
-
-        // Call get_last_messages_from_inbox and print the results
-        // eprintln!("Calling get_last_messages_from_inbox");
-        // let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 10, None)?;
-        // println!("Last messages: {:?}", last_messages);
-
         Ok(())
     }
 
