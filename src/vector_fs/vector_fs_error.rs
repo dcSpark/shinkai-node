@@ -46,6 +46,7 @@ pub enum VectorFSError {
     PathDoesNotPointAtItem(VRPath),
     PathDoesNotPointAtFolder(VRPath),
     NoEntryAtPath(VRPath),
+    EntryAlreadyExistsAtPath(VRPath),
 }
 
 impl fmt::Display for VectorFSError {
@@ -128,6 +129,9 @@ impl fmt::Display for VectorFSError {
                     "Supplied path does not exist/hold any FSEntry in the VectorFS: {}",
                     e
                 )
+            }
+            VectorFSError::EntryAlreadyExistsAtPath(p) => {
+                write!(f, "FSEntry already exists at path, and cannot overwrite: {}", p)
             }
         }
     }

@@ -137,7 +137,7 @@ impl FSFolder {
     }
 
     /// Initializes a new FSFolder struct with all datetimes set to the current moment.
-    pub fn new_current_time(path: VRPath, child_folders: Vec<FSFolder>, child_items: Vec<FSItem>) -> Self {
+    pub fn _new_current_time(path: VRPath, child_folders: Vec<FSFolder>, child_items: Vec<FSItem>) -> Self {
         let now = ShinkaiTime::generate_time_now();
         Self::new(
             path,

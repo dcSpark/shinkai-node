@@ -79,6 +79,22 @@ impl VectorFS {
     /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
     /// If a VR with the same name already exists underneath the current path, then overwrites it.
     /// Currently does not support saving into VecFS root.
+    pub fn create_new_folder(&mut self, writer: &VFSWriter, folder_name: &str) -> Result<(), VectorFSError> {
+        // Create a new MapVectorResource which represents a folder
+        let current_datetime = ShinkaiTime::generate_time_now();
+        let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None));
+        let embedding = Embedding::new("", vec![]); // Empty embedding as folders do not score in VecFS search
+
+        // Setup default metadata for new folder node
+        let mut metadata = HashMap::new();
+        metadata.insert(FSFolder::last_modified_key(), current_datetime.to_rfc3339());
+
+        self._add_existing_vr_to_core_resource(writer, new_vr, embedding, Some(metadata), current_datetime)
+    }
+
+    /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
+    /// If a VR with the same name already exists underneath the current path, then overwrites it.
+    /// Currently does not support saving into VecFS root.
     pub fn save_vector_resource_in_folder(
         &mut self,
         writer: &VFSWriter,
@@ -203,45 +219,55 @@ impl VectorFS {
         }
     }
 
-    /// TODO: Convert this from insert_node to mutate_node and update the last_modified of the parent node.
-    ///             Make sure root is supported, and in that case obviously there is no parent node.
     /// Internal method used to add an existing VectorResource into the core resource of a profile's VectorFS internals in memory.
-    /// Aka, add an existing folder (either during a copy, move, or cross-network folder sync).
+    /// Aka, add a folder into the VectorFS under the given path.
     fn _add_existing_vr_to_core_resource(
         &mut self,
         writer: &VFSWriter,
         resource: BaseVectorResource,
         embedding: Embedding,
         metadata: Option<HashMap<String, String>>,
+        current_datetime: DateTime<Utc>,
     ) -> Result<(), VectorFSError> {
-        let internals = self._get_profile_fs_internals(&writer.profile)?;
         let resource_name = resource.as_trait_object().name().to_string();
-        let node = Node::new_vector_resource(resource_name.clone(), &resource, metadata);
+        let new_node_path = writer.path.push_cloned(resource_name.clone());
+        // Check if anything exists at the new node's path and error if so (cannot overwrite an existing FSEntry)
+        if let Ok(_) = self._validate_path_points_to_entry(new_node_path.clone(), &writer.profile) {
+            return Err(VectorFSError::EntryAlreadyExistsAtPath(new_node_path));
+        }
 
-        // Insert the new MapVectorResource into the current path with the name as the id
-        internals.fs_core_resource.insert_node_at_path(
-            writer.path.clone(),
-            resource_name.to_string(),
-            node,
-            embedding,
-        )?;
+        // Fetch FSInternals
+        let internals = self._get_profile_fs_internals(&writer.profile)?;
+
+        // Check if parent is root, if so then direct insert into root and return, else proceed
+        if writer.path.is_empty() {
+            let new_node = Node::new_vector_resource(resource_name.clone(), &resource, metadata.clone());
+            internals
+                .fs_core_resource
+                .insert_node(resource_name.clone(), new_node, embedding.clone(), None)?;
+            return Ok(());
+        }
+
+        // Mutator method for inserting the VR and updating the last_modified metadata of parent folder
+        let mut mutator = |node: &mut Node, _: &mut Embedding| -> Result<(), VRError> {
+            // Update last_modified key of the parent folder
+            node.metadata
+                .as_mut()
+                .map(|m| m.insert(FSFolder::last_modified_key(), current_datetime.to_rfc3339()));
+            // Create the new folder child node and insert it
+            let new_node = Node::new_vector_resource(resource_name.clone(), &resource, metadata.clone());
+            let resource = node.get_vector_resource_content_mut()?;
+            resource
+                .as_trait_object_mut()
+                .insert_node(resource_name.clone(), new_node, embedding.clone(), None)?;
+            Ok(())
+        };
+
+        internals
+            .fs_core_resource
+            .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
 
         Ok(())
-    }
-
-    /// Internal method used to add a new empty MapVectorResource into the core resource of a profile's VectorFS internals in memory.
-    /// Aka, create an empty new folder.
-    fn _add_new_vr_to_core_resource(
-        &mut self,
-        writer: &VFSWriter,
-        new_vr_name: &str,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Result<(), VectorFSError> {
-        // Create a new MapVectorResource which represents a folder
-        let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(new_vr_name, None, VRSource::None));
-        let embedding = Embedding::new("", vec![]); // Empty embedding as folders do not score in VecFS search
-
-        self._add_existing_vr_to_core_resource(writer, new_vr, embedding, metadata)
     }
 
     /// Internal method used to remove a child node of the current path, given its id. Applies only in memory.

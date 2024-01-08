@@ -494,9 +494,14 @@ impl VRPath {
         Self { path_ids: vec![] }
     }
 
-    /// Returns if the path is empty (aka pointing at root, `/`)
+    /// Returns if the path is empty (aka pointing at root, `/`). Equivalent to `.is_root()`
     pub fn is_empty(&self) -> bool {
         self.path_ids.len() == 0
+    }
+
+    /// Returns if the path is  pointing at root, `/`. Equivalent to `.is_empty()`
+    pub fn is_root(&self) -> bool {
+        self.is_empty()
     }
 
     /// Get the depth of the VRPath. Of note, this will return 0 in both cases if
