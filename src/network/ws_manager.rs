@@ -31,6 +31,7 @@ use crate::managers::identity_manager::IdentityManagerTrait;
 pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
+    MissingSharedKey(String)
 }
 
 impl fmt::Display for WebSocketManagerError {
@@ -38,6 +39,7 @@ impl fmt::Display for WebSocketManagerError {
         match self {
             WebSocketManagerError::UserValidationFailed(msg) => write!(f, "User validation failed: {}", msg),
             WebSocketManagerError::AccessDenied(msg) => write!(f, "Access denied: {}", msg),
+            WebSocketManagerError::MissingSharedKey(msg) => write!(f, "Missing shared key: {}", msg),
         }
     }
 }
@@ -208,7 +210,7 @@ impl WebSocketManager {
         }
     }
 
-    pub async fn add_connection(
+    pub async fn manage_connections(
         &mut self,
         shinkai_name: ShinkaiName,
         message: ShinkaiMessage,
@@ -253,29 +255,52 @@ impl WebSocketManager {
                 )));
             }
 
-            let topic_subtopic = format!("{}:::{}", subscription.topic, subscription.subtopic.clone().unwrap_or_default());
+            let topic_subtopic = format!(
+                "{}:::{}",
+                subscription.topic,
+                subscription.subtopic.clone().unwrap_or_default()
+            );
             eprintln!("Subscribing to topic_subtopic: {:?}", topic_subtopic);
             topic_map.insert(topic_subtopic, true);
         }
 
         // Add the connection and shared key to the manager
         self.connections.insert(shinkai_profile_name.clone(), connection);
-        self.shared_keys.insert(shinkai_profile_name.clone(), shared_key);
-        // Add the topic map to the subscriptions
-        self.subscriptions.insert(shinkai_profile_name, topic_map);
+
+        if let Some(key) = shared_key {
+            self.shared_keys.insert(shinkai_profile_name.clone(), key);
+        } else if !self.shared_keys.contains_key(&shinkai_profile_name) {
+            return Err(WebSocketManagerError::MissingSharedKey(format!(
+                "Missing shared key for shinkai_name: {}",
+                shinkai_profile_name
+            )));
+        }
+
+        // Handle adding and removing subscriptions
+        let subscriptions_to_add: Vec<(WSTopic, Option<String>)> = ws_message
+            .subscriptions
+            .iter()
+            .map(|s| (s.topic.clone(), s.subtopic.clone()))
+            .collect();
+        let subscriptions_to_remove: Vec<(WSTopic, Option<String>)> = ws_message
+            .unsubscriptions
+            .iter()
+            .map(|s| (s.topic.clone(), s.subtopic.clone()))
+            .collect();
+        self.update_subscriptions(&shinkai_profile_name, subscriptions_to_add, subscriptions_to_remove)
+            .await;
 
         Ok(())
     }
 
     // Method to update subscriptions
-    // TODO: Review
     pub async fn update_subscriptions(
         &mut self,
         shinkai_name: &str,
         subscriptions_to_add: Vec<(WSTopic, Option<String>)>,
         subscriptions_to_remove: Vec<(WSTopic, Option<String>)>,
     ) {
-        // TODO: check that it's allowed to have those subscriptions
+        // We already checked that the user is allowed to have those subscriptions
         let profile_subscriptions = self.subscriptions.entry(shinkai_name.to_string()).or_default();
 
         // Add new subscriptions
@@ -289,13 +314,16 @@ impl WebSocketManager {
             let key = format!("{}:::{}", topic, subtopic.unwrap_or_default());
             profile_subscriptions.remove(&key);
         }
+
+        // current subscriptions
+        let current_subscriptions: Vec<String> = profile_subscriptions.keys().cloned().collect();
+        eprintln!("current_subscriptions: {:?}", current_subscriptions);
     }
 
     pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {
         self.connections.values().cloned().collect()
     }
 
-    // TODO: Is topic enough? should we have topic and subtopic? e.g. type of update and inbox_name
     pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
         eprintln!("\n\nSending update to topic: {}", topic_subtopic);

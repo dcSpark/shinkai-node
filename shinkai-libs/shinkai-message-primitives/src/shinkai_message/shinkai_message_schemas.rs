@@ -203,7 +203,7 @@ pub struct TopicSubscription {
 pub struct WSMessage {
     pub subscriptions: Vec<TopicSubscription>,
     pub unsubscriptions: Vec<TopicSubscription>,
-    pub shared_key: String,
+    pub shared_key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]

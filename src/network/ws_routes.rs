@@ -6,6 +6,8 @@ use futures::StreamExt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -58,7 +60,7 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
                             // let _ = lock.close().await;
                         }
                     } else {
-                        eprintln!("Failed to parse ShinkaiMessage");
+                        eprintln!("Failed to parse ShinkaiMessage. Payload: {:?}", text);
                         // Handle the parsing error
                         let mut lock = ws_tx.lock().await;
                         let _ = lock.send(Message::text("Failed to parse ShinkaiMessage")).await;
@@ -100,12 +102,14 @@ async fn process_shinkai_message(
 
     let mut manager_guard = manager.lock().await;
     manager_guard
-        .add_connection(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx), ws_message)
+        .manage_connections(shinkai_name, shinkai_message.clone(), Arc::clone(ws_tx), ws_message)
         .await
         .map_err(|e| {
             match e {
                 WebSocketManagerError::UserValidationFailed(_) => e,
                 WebSocketManagerError::AccessDenied(_) => e,
+                WebSocketManagerError::MissingSharedKey(_) => e,
+                _ => WebSocketManagerError::UserValidationFailed(format!("Failed to manage connections: {}", e)),
                 // Add additional error handling as needed
             }
         })
@@ -113,6 +117,7 @@ async fn process_shinkai_message(
 
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {
     println!("Starting WebSocket server at: {}", &ws_address);
+    // shinkai_log(ShinkaiLogOption::, level, message)
 
     let ws_routes = ws_route(Arc::clone(&manager))
         .recover(handle_rejection)

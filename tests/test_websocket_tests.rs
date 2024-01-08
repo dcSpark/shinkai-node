@@ -1,7 +1,7 @@
+use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::aead::Aead;
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
-use aes_gcm::aead::Aead;
-use aes_gcm::aead::generic_array::GenericArray;
 use async_trait::async_trait;
 use ed25519_dalek::SigningKey;
 use futures::SinkExt;
@@ -105,7 +105,8 @@ fn decrypt_message(encrypted_hex: &str, shared_key: &str) -> Result<String, Box<
     let nonce = GenericArray::from_slice(&[0u8; 12]);
 
     // Decrypt the message
-    let decrypted_bytes = cipher.decrypt(nonce, encrypted_bytes.as_ref())
+    let decrypted_bytes = cipher
+        .decrypt(nonce, encrypted_bytes.as_ref())
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
     // Convert the decrypted bytes to a string
@@ -153,7 +154,8 @@ fn setup() {
 async fn test_websocket() {
     // Setup
     setup();
-    let job_id = "test_job".to_string();
+    let job_id1 = "test_job".to_string();
+    let job_id2 = "test_job2".to_string();
     let agent_id = "agent4".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
@@ -164,16 +166,19 @@ async fn test_websocket() {
     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    // let agent_id = "agent_test".to_string();
-    // let scope = JobScope::new_default();
     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
     let identity_manager_trait = Arc::new(Mutex::new(
         Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
     ));
 
-    let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.to_string()).unwrap();
-    let inbox_name_string = match inbox_name {
-        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value,
+    let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
+    let inbox_name2 = InboxName::get_job_inbox_name_from_params(job_id2.to_string()).unwrap();
+
+    let inbox_name1_string = match inbox_name1 {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value.clone(),
+    };
+    let inbox_name2_string = match &inbox_name2 {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value.clone(),
     };
 
     // Start the WebSocket server
@@ -209,9 +214,13 @@ async fn test_websocket() {
                 topic: WSTopic::Inbox,
                 subtopic: Some("job_inbox::test_job::false".to_string()),
             },
+            TopicSubscription {
+                topic: WSTopic::Inbox,
+                subtopic: Some("job_inbox::test_job2::false".to_string()),
+            },
         ],
         unsubscriptions: vec![],
-        shared_key: shared_enc_string.to_string(),
+        shared_key: Some(shared_enc_string.to_string()),
     };
 
     // Serialize WSMessage to a JSON string
@@ -220,7 +229,7 @@ async fn test_websocket() {
     // Generate a ShinkaiMessage
     let shinkai_message = generate_message_with_text(
         ws_message_json,
-        inbox_name_string.to_string(),
+        inbox_name1_string.to_string(),
         node1_encryption_sk.clone(),
         node1_identity_sk.clone(),
         node1_encryption_pk,
@@ -245,12 +254,19 @@ async fn test_websocket() {
         let mut shinkai_db = shinkai_db.lock().await;
         let _ = shinkai_db.insert_profile(sender_subidentity.clone());
         let scope = JobScope::new_default();
-        match shinkai_db.create_new_job(job_id, agent_id, scope) {
+        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone()) {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to create a new job: {}", e),
+        }
+        match shinkai_db.create_new_job(job_id2, agent_id, scope) {
             Ok(_) => (),
             Err(e) => panic!("Failed to create a new job: {}", e),
         }
         shinkai_db
-            .add_permission(&inbox_name_string, &sender_subidentity, InboxPermission::Admin)
+            .add_permission(&inbox_name1_string, &sender_subidentity, InboxPermission::Admin)
+            .unwrap();
+        shinkai_db
+            .add_permission(&inbox_name2_string, &sender_subidentity, InboxPermission::Admin)
             .unwrap();
     }
 
@@ -293,9 +309,9 @@ async fn test_websocket() {
         // Generate a ShinkaiMessage
         let shinkai_message = generate_message_with_text(
             "Hello, world!".to_string(),
-            inbox_name_string.to_string(),
-            node1_encryption_sk,
-            node1_identity_sk,
+            inbox_name1_string.to_string(),
+            node1_encryption_sk.clone(),
+            node1_identity_sk.clone(),
             node1_encryption_pk,
             node1_subidentity_name.to_string(),
             node1_identity_name.to_string(),
@@ -319,10 +335,112 @@ async fn test_websocket() {
         // TODO: it should decrypt the message with the symmetrical key
 
         let encrypted_msg_text = msg.to_text().unwrap();
-        let decrypted_message = decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
+        let decrypted_message =
+            decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
         let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
         let recovered_content = recovered_shinkai.get_message_content().unwrap();
         assert_eq!(recovered_content, "Hello, world!");
+    }
+    // Send a message to inbox_name2_string (Job2)
+    {
+        let shinkai_message = generate_message_with_text(
+            "Hello, world 2!".to_string(),
+            inbox_name2_string.to_string(),
+            node1_encryption_sk.clone(),
+            node1_identity_sk.clone(),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
+
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .await;
+
+        // Wait for the server to process the message
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        // Check the response
+        let msg = ws_stream
+            .next()
+            .await
+            .expect("Failed to read message")
+            .expect("Failed to read message");
+
+        let encrypted_msg_text = msg.to_text().unwrap();
+        // eprintln!("encrypted_msg_text: {}", encrypted_msg_text);
+        let decrypted_message =
+            decrypt_message(encrypted_msg_text, &shared_enc_string).expect("Failed to decrypt message");
+        let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
+        let recovered_content = recovered_shinkai.get_message_content().unwrap();
+        assert_eq!(recovered_content, "Hello, world 2!");
+    }
+
+    // Unsubscribe from inbox_name1_string
+    {
+        let ws_message = WSMessage {
+            subscriptions: vec![],
+            unsubscriptions: vec![TopicSubscription {
+                topic: WSTopic::Inbox,
+                subtopic: Some("job_inbox::test_job::false".to_string()),
+            }],
+            shared_key: Some(shared_enc_string.to_string()),
+        };
+
+        // Serialize WSMessage to a JSON string
+        let ws_message_json = serde_json::to_string(&ws_message).unwrap();
+
+        // Generate a ShinkaiMessage
+        let shinkai_message = generate_message_with_text(
+            ws_message_json,
+            inbox_name1_string.to_string(),
+            node1_encryption_sk.clone(),
+            node1_identity_sk.clone(),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
+
+        // Convert ShinkaiMessage to String
+        let message_string = shinkai_message.to_string().unwrap();
+
+        ws_stream
+            .send(tungstenite::Message::Text(message_string))
+            .await
+            .expect("Failed to send message");
+
+        // Wait for the server to process the unsubscription message
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    }
+
+    // Send a new message to inbox_name1_string
+    {
+        let shinkai_message = generate_message_with_text(
+            "Hello, world 3!".to_string(),
+            inbox_name1_string.to_string(),
+            node1_encryption_sk,
+            node1_identity_sk,
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
+
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .await;
+
+        // Wait for the server to process the message
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Check that no message is received
+        let result = tokio::time::timeout(tokio::time::Duration::from_secs(1), ws_stream.next()).await;
+
+        assert!(result.is_err());
     }
 
     // Send a close message
