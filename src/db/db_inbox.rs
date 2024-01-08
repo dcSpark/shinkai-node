@@ -202,6 +202,7 @@ impl ShinkaiDB {
         }
 
         {
+            eprintln!("Sending message to WS");
             // Note: this is the code for enabling WS
             if let Some(manager) = &self.ws_manager {
                 let m = manager.lock().await;

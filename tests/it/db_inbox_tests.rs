@@ -611,7 +611,7 @@ async fn db_inbox() {
     );
 
     let mut shinkai_db = ShinkaiDB::new(&node1_db_path).unwrap();
-    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None);
+    let _ = shinkai_db.unsafe_insert_inbox_message(&message.clone(), None).await;
     println!("Inserted message {:?}", message.encode_message());
     let result = ShinkaiMessage::decode_message_result(message.encode_message().unwrap());
     println!("Decoded message {:?}", result);
