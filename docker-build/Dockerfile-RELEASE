@@ -1,0 +1,16 @@
+FROM rust:1.75.0-slim-bookworm AS base-builder
+RUN apt-get update && apt-get install pkg-config clang cmake libssl-dev --no-install-recommends -y
+#
+FROM base-builder AS shinkai_node-builder
+WORKDIR shinkai
+COPY . .
+RUN cargo build --release --bin shinkai_node
+#
+FROM debian:bookworm-slim AS base-release
+RUN apt-get update && apt-get -y upgrade && apt-get -y --no-install-recommends install ca-certificates libssl3 && apt-get -y clean
+#
+FROM base-release AS shinkai_node
+ARG APP=/app
+WORKDIR ${APP}
+COPY --from=shinkai_node-builder /shinkai/target/release/shinkai_node ${APP}
+CMD ["./shinkai_node"]
