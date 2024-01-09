@@ -164,11 +164,13 @@ impl CronManager {
                     let mut db_lock = db.lock().await;
                     db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
                 };
-                shinkai_log(
-                    ShinkaiLogOption::CronExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
-                );
+                if !jobs_to_process.is_empty() {
+                    shinkai_log(
+                        ShinkaiLogOption::CronExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
+                    );
+                }
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs

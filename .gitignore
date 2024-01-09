@@ -40,3 +40,4 @@ db/.secret
 ./vector_fs_db
 ./storage/*
 vector_fs_db
+storage
