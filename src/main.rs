@@ -302,11 +302,11 @@ async fn init_ws_server(
     identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
     shinkai_db: Arc<Mutex<ShinkaiDB>>,
 ) {
-    let identity_manager_clone = identity_manager.clone();
-    let identity_manager_inner = identity_manager_clone.lock().await;
-    let boxed_identity_manager = identity_manager_inner.clone_box();
-    let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = Arc::new(Mutex::new(boxed_identity_manager));
-
+    let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
+        let identity_manager_inner = identity_manager.lock().await;
+        let boxed_identity_manager = identity_manager_inner.clone_box();
+        Arc::new(Mutex::new(boxed_identity_manager))
+    };
 
     let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
     // Start the WebSocket server
@@ -317,5 +317,5 @@ async fn init_ws_server(
         let mut shinkai_db = shinkai_db.lock().await;
         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
-    run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await
+    run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;
 }

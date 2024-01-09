@@ -87,7 +87,6 @@ impl Clone for WebSocketManager {
     }
 }
 
-// TODO: maybe this should run on its own thread
 impl WebSocketManager {
     pub async fn new(
         shinkai_db: Arc<Mutex<ShinkaiDB>>,
