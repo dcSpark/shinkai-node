@@ -6,8 +6,9 @@ use futures::StreamExt;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::WSMessage;
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -37,7 +38,6 @@ pub fn ws_route(
 }
 
 pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
-    eprintln!("New WebSocket connection");
     let (mut ws_tx, mut ws_rx) = ws.split();
     let ws_tx = Arc::new(Mutex::new(ws_tx));
 
@@ -48,11 +48,19 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
                 if let Ok(text) = msg.to_str() {
                     // Attempt to deserialize the text message into a ShinkaiMessage
                     if let Ok(shinkai_message) = serde_json::from_str::<ShinkaiMessage>(text) {
-                        eprintln!("Received ShinkaiMessage: {:?}", shinkai_message);
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Info,
+                            &format!("Received ShinkaiMessage: {:?}", shinkai_message),
+                        );
 
                         // Process the ShinkaiMessage
                         if let Err(e) = process_shinkai_message(&shinkai_message, &manager, &ws_tx).await {
-                            eprintln!("Error processing ShinkaiMessage: {}", e);
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Error,
+                                &format!("Error processing ShinkaiMessage: {}", e),
+                            );
                             // Send an error message back to the client
                             let mut lock = ws_tx.lock().await;
                             let _ = lock.send(Message::text(e.to_string())).await;
@@ -60,27 +68,39 @@ pub async fn ws_handler(ws: WebSocket, manager: Arc<Mutex<WebSocketManager>>) {
                             // let _ = lock.close().await;
                         }
                     } else {
-                        eprintln!("Failed to parse ShinkaiMessage. Payload: {:?}", text);
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Error,
+                            &format!("Failed to parse ShinkaiMessage. Payload: {:?}", text),
+                        );
                         // Handle the parsing error
                         let mut lock = ws_tx.lock().await;
                         let _ = lock.send(Message::text("Failed to parse ShinkaiMessage")).await;
                     }
                 } else {
-                    eprintln!("Received non-text message");
+                    shinkai_log(
+                        ShinkaiLogOption::WsAPI,
+                        ShinkaiLogLevel::Error,
+                        &format!("Received non-text message: {:?}", msg),
+                    );
                     // Handle the case where the message is not text
                     let mut lock = ws_tx.lock().await;
                     let _ = lock.send(Message::text("Received non-text message")).await;
                 }
             }
             Err(e) => {
-                eprintln!("websocket error: {}", e);
+                shinkai_log(
+                    ShinkaiLogOption::WsAPI,
+                    ShinkaiLogLevel::Error,
+                    &format!("Websocket error: {}", e),
+                );
                 break; // Exit the loop and end the connection on error
             }
         }
     }
 
     // Optionally, you can perform any cleanup here if necessary
-    eprintln!("WebSocket connection closed");
+    shinkai_log(ShinkaiLogOption::WsAPI, ShinkaiLogLevel::Info, "WebSocket connection closed");
 }
 
 async fn process_shinkai_message(
@@ -88,8 +108,6 @@ async fn process_shinkai_message(
     manager: &Arc<Mutex<WebSocketManager>>,
     ws_tx: &Arc<Mutex<SplitSink<WebSocket, warp::ws::Message>>>,
 ) -> Result<(), WebSocketManagerError> {
-    eprintln!("ws_message: {:?}", shinkai_message);
-
     let content_str = shinkai_message
         .get_message_content()
         .map_err(|e| WebSocketManagerError::UserValidationFailed(format!("Failed to get message content: {}", e)))?;
@@ -116,8 +134,11 @@ async fn process_shinkai_message(
 }
 
 pub async fn run_ws_api(ws_address: SocketAddr, manager: SharedWebSocketManager) {
-    println!("Starting WebSocket server at: {}", &ws_address);
-    // shinkai_log(ShinkaiLogOption::, level, message)
+    shinkai_log(
+        ShinkaiLogOption::WsAPI,
+        ShinkaiLogLevel::Info,
+        &format!("Starting WebSocket server at: {}", &ws_address),
+    );
 
     let ws_routes = ws_route(Arc::clone(&manager))
         .recover(handle_rejection)
@@ -134,7 +155,11 @@ async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp
     }
 
     // Log the error
-    eprintln!("unhandled rejection: {:?}", err);
+    shinkai_log(
+        ShinkaiLogOption::WsAPI,
+        ShinkaiLogLevel::Error,
+        &format!("unhandled rejection: {:?}", err),
+    );
 
     // Return a generic error message
     Ok(warp::reply::with_status(

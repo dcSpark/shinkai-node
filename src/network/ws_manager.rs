@@ -22,6 +22,7 @@ use warp::ws::Message;
 use warp::ws::WebSocket;
 
 use crate::db::ShinkaiDB;
+use crate::schemas::identity::Identity;
 
 use super::node_shareable_logic::validate_message_main_logic;
 use super::Node;
@@ -31,7 +32,7 @@ use crate::managers::identity_manager::IdentityManagerTrait;
 pub enum WebSocketManagerError {
     UserValidationFailed(String),
     AccessDenied(String),
-    MissingSharedKey(String)
+    MissingSharedKey(String),
 }
 
 impl fmt::Display for WebSocketManagerError {
@@ -117,7 +118,6 @@ impl WebSocketManager {
         message_queue: Arc<Mutex<VecDeque<(WSTopic, String, String)>>>,
     ) {
         loop {
-            eprintln!("Checking for messages in the queue...");
             // Sleep for a while
             sleep(Duration::from_millis(500)).await;
 
@@ -128,7 +128,11 @@ impl WebSocketManager {
             };
 
             if let Some((topic, subtopic, update)) = message {
-                eprintln!("Sending update to topic: {}", topic);
+                shinkai_log(
+                    ShinkaiLogOption::WsAPI,
+                    ShinkaiLogLevel::Debug,
+                    format!("Sending update to topic: {}", topic).as_str(),
+                );
                 manager.lock().await.handle_update(topic, subtopic, update).await;
             }
         }
@@ -160,7 +164,6 @@ impl WebSocketManager {
         )
         .await;
 
-        eprintln!("user_validation result: {:?}", result);
         match result {
             Ok(_) => true,
             Err(_) => false,
@@ -168,43 +171,45 @@ impl WebSocketManager {
     }
 
     pub async fn has_access(&self, shinkai_name: ShinkaiName, topic: WSTopic, subtopic: Option<String>) -> bool {
-        // TODO: create enum with all the different topic and subtopics
-        // Check if the user has access to the topic and subtopic here...
-        eprintln!("has_access> shinkai_name: {}", shinkai_name);
-        eprintln!("has_access> topic: {}", topic);
         match topic {
             WSTopic::Inbox => {
                 let subtopic = subtopic.unwrap_or_default();
-                eprintln!("subtopic: {}", subtopic);
                 let inbox_name = InboxName::new(subtopic.clone()).unwrap(); // TODO: handle error
-                let sender_subidentity = {
-                    let identity_manager_lock = self.identity_manager_trait.lock().await;
-                    identity_manager_lock
-                        .find_by_identity_name(shinkai_name.clone())
-                        .unwrap()
-                        .clone() // TODO: handle error
+                let sender_identity = match self.get_sender_identity(shinkai_name.clone()).await {
+                    Ok(identity) => identity,
+                    Err(_) => return false,
                 };
-                eprintln!("sender_subidentity: {:?}", sender_subidentity);
 
-                match Node::has_inbox_access(self.shinkai_db.clone(), &inbox_name, &sender_subidentity).await {
+                match Node::has_inbox_access(self.shinkai_db.clone(), &inbox_name, &sender_identity).await {
                     Ok(_) => {
-                        eprintln!(
-                            "Access granted for inbox: {} and sender_subidentity: {}",
-                            inbox_name, shinkai_name.full_name
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Error,
+                            format!(
+                                "Access granted for inbox: {} and sender_subidentity: {}",
+                                inbox_name, shinkai_name.full_name
+                            )
+                            .as_str(),
                         );
                         return true;
                     }
                     Err(_) => {
-                        eprintln!(
-                            "Access denied for inbox: {} and sender_subidentity: {}",
-                            inbox_name, shinkai_name.full_name
+                        shinkai_log(
+                            ShinkaiLogOption::WsAPI,
+                            ShinkaiLogLevel::Error,
+                            format!(
+                                "Access denied for inbox: {} and sender_subidentity: {}",
+                                inbox_name, shinkai_name.full_name
+                            )
+                            .as_str(),
                         );
                         return false;
                     }
                 }
             }
             WSTopic::SmartInboxes => {
-                eprintln!("smart_inboxes");
+                // Note: everyone has access to their inboxes.
+                // But we need to be careful about *just* sharing their inboxes.
                 return true;
             }
         }
@@ -217,11 +222,18 @@ impl WebSocketManager {
         connection: Arc<Mutex<SplitSink<WebSocket, Message>>>,
         ws_message: WSMessage,
     ) -> Result<(), WebSocketManagerError> {
-        eprintln!("Adding connection for shinkai_name: {}", shinkai_name);
-        eprintln!("add_connection> Message: {:?}", message);
+        shinkai_log(
+            ShinkaiLogOption::WsAPI,
+            ShinkaiLogLevel::Info,
+            format!("Adding connection for shinkai_name: {}", shinkai_name).as_str(),
+        );
 
         if !self.user_validation(shinkai_name.clone(), &message).await {
-            eprintln!("User validation failed for shinkai_name: {}", shinkai_name);
+            shinkai_log(
+                ShinkaiLogOption::WsAPI,
+                ShinkaiLogLevel::Error,
+                format!("User validation failed for shinkai_name: {}", shinkai_name).as_str(),
+            );
             return Err(WebSocketManagerError::UserValidationFailed(format!(
                 "User validation failed for shinkai_name: {}",
                 shinkai_name
@@ -260,7 +272,6 @@ impl WebSocketManager {
                 subscription.topic,
                 subscription.subtopic.clone().unwrap_or_default()
             );
-            eprintln!("Subscribing to topic_subtopic: {:?}", topic_subtopic);
             topic_map.insert(topic_subtopic, true);
         }
 
@@ -290,6 +301,12 @@ impl WebSocketManager {
         self.update_subscriptions(&shinkai_profile_name, subscriptions_to_add, subscriptions_to_remove)
             .await;
 
+        shinkai_log(
+            ShinkaiLogOption::WsAPI,
+            ShinkaiLogLevel::Info,
+            format!("Successfully added connection for shinkai_name: {}", shinkai_name).as_str(),
+        );
+
         Ok(())
     }
 
@@ -315,9 +332,12 @@ impl WebSocketManager {
             profile_subscriptions.remove(&key);
         }
 
-        // current subscriptions
         let current_subscriptions: Vec<String> = profile_subscriptions.keys().cloned().collect();
-        eprintln!("current_subscriptions: {:?}", current_subscriptions);
+        shinkai_log(
+            ShinkaiLogOption::WsAPI,
+            ShinkaiLogLevel::Info,
+            format!("current_subscriptions: {:?}", current_subscriptions).as_str(),
+        );
     }
 
     pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {
@@ -326,34 +346,63 @@ impl WebSocketManager {
 
     pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
-        eprintln!("\n\nSending update to topic: {}", topic_subtopic);
-        // Check if the update needs to be sent
-        // This is just a placeholder, replace with your actual check
-        let needs_to_be_sent = true;
+        shinkai_log(
+            ShinkaiLogOption::WsAPI,
+            ShinkaiLogLevel::Debug,
+            format!("Sending update to topic: {}", topic_subtopic).as_str(),
+        );
 
-        if needs_to_be_sent {
-            // Send the update to all active connections that are subscribed to the topic
-            for (id, connection) in self.connections.iter() {
-                eprintln!("Checking connection: {}", id);
-                if self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some() {
-                    eprintln!("Connection {} is subscribed to the topic", id);
-                    let mut connection = connection.lock().await;
+        // Check if topic is WS::SmartInboxes and ignore it if it is
+        if topic == WSTopic::SmartInboxes {
+            shinkai_log(
+                ShinkaiLogOption::WsAPI,
+                ShinkaiLogLevel::Debug,
+                format!("Ignoring update to topic: {}", topic_subtopic).as_str(),
+            );
+            return;
+        }
 
-                    // Encrypt the update using the shared key
-                    let shared_key = self.shared_keys.get(id).unwrap();
-                    let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
-                    let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
-                    let nonce = GenericArray::from_slice(&[0u8; 12]);
-                    let encrypted_update = cipher.encrypt(nonce, update.as_ref()).expect("encryption failure!");
-                    let encrypted_update_hex = hex::encode(&encrypted_update);
+        // Send the update to all active connections that are subscribed to the topic
+        for (id, connection) in self.connections.iter() {
+            if self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some() {
+                let mut connection = connection.lock().await;
 
-                    match connection.send(Message::text(encrypted_update_hex.clone())).await {
-                        Ok(_) => eprintln!("Successfully sent update to connection {}", id),
-                        Err(e) => eprintln!("Failed to send update to connection {}: {}", id, e),
-                    }
-                } else {
-                    eprintln!("Connection {} is not subscribed to the topic {:?}", id, topic_subtopic);
+                // Encrypt the update using the shared key
+                let shared_key = self.shared_keys.get(id).unwrap();
+                let shared_key_bytes = hex::decode(shared_key).expect("Failed to decode shared key");
+                let cipher = Aes256Gcm::new(GenericArray::from_slice(&shared_key_bytes));
+                let nonce = GenericArray::from_slice(&[0u8; 12]);
+                let encrypted_update = cipher.encrypt(nonce, update.as_ref()).expect("encryption failure!");
+                let encrypted_update_hex = hex::encode(&encrypted_update);
+
+                match connection.send(Message::text(encrypted_update_hex.clone())).await {
+                    Ok(_) => eprintln!("Successfully sent update to connection {}", id),
+                    Err(e) => eprintln!("Failed to send update to connection {}: {}", id, e),
                 }
+            } else {
+                shinkai_log(
+                    ShinkaiLogOption::WsAPI,
+                    ShinkaiLogLevel::Debug,
+                    format!("Connection {} is not subscribed to the topic {:?}", id, topic_subtopic).as_str(),
+                );
+            }
+        }
+    }
+
+    pub async fn get_sender_identity(&self, shinkai_name: ShinkaiName) -> Result<Identity, WebSocketManagerError> {
+        let identity_manager_lock = self.identity_manager_trait.lock().await;
+        match identity_manager_lock.find_by_identity_name(shinkai_name.clone()) {
+            Some(identity) => Ok(identity.clone()),
+            None => {
+                shinkai_log(
+                    ShinkaiLogOption::WsAPI,
+                    ShinkaiLogLevel::Error,
+                    format!("No identity found for shinkai_name: {}", shinkai_name).as_str(),
+                );
+                Err(WebSocketManagerError::UserValidationFailed(format!(
+                    "No identity found for shinkai_name: {}",
+                    shinkai_name
+                )))
             }
         }
     }
@@ -362,11 +411,7 @@ impl WebSocketManager {
 #[async_trait]
 impl WSUpdateHandler for WebSocketManager {
     async fn queue_message(&self, topic: WSTopic, subtopic: String, update: String) {
-        eprintln!("queue_message> topic: {:?}", topic);
         let mut queue = self.message_queue.lock().await;
         queue.push_back((topic, subtopic, update));
     }
 }
-
-// Shared reference to WebSocketManager
-pub type SharedWebSocketManager = Arc<Mutex<WebSocketManager>>;

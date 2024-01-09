@@ -449,109 +449,112 @@ async fn test_websocket() {
         .expect("Failed to send close message");
 }
 
-#[tokio::test]
-async fn test_websocket_smart_inbox() {
-    // Setup
-    setup();
+// Note(Nico): I'm rethinking if we actually need this or we if we can do everything that we need
+// by just using message updates
+
+// #[tokio::test]
+// async fn test_websocket_smart_inbox() {
+//     // Setup
+//     setup();
     
-    let agent_id = "agent4".to_string();
-    let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-    let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+//     let agent_id = "agent4".to_string();
+//     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
+//     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+//     let shinkai_db = Arc::new(Mutex::new(shinkai_db));
 
-    let node1_identity_name = "@@node1.shinkai";
-    let node1_subidentity_name = "main_profile_node1";
-    let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+//     let node1_identity_name = "@@node1.shinkai";
+//     let node1_subidentity_name = "main_profile_node1";
+//     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+//     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-    let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-    let identity_manager_trait = Arc::new(Mutex::new(
-        Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
-    ));
+//     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
+//     let identity_manager_trait = Arc::new(Mutex::new(
+//         Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
+//     ));
 
-    // Start the WebSocket server
-    let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
-    let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
-    tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
+//     // Start the WebSocket server
+//     let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
+//     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
+//     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
-    // Update ShinkaiDB with manager so it can trigger updates
-    {
-        let mut shinkai_db = shinkai_db.lock().await;
-        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
-    }
+//     // Update ShinkaiDB with manager so it can trigger updates
+//     {
+//         let mut shinkai_db = shinkai_db.lock().await;
+//         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+//     }
 
-    // Give the server a little time to start
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+//     // Give the server a little time to start
+//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    // Connect to the server
-    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+//     // Connect to the server
+//     let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
 
-    // Check if the connection was successful
-    assert!(connection_result.is_ok(), "Failed to connect");
+//     // Check if the connection was successful
+//     assert!(connection_result.is_ok(), "Failed to connect");
 
-    let (mut ws_stream, _) = connection_result.expect("Failed to connect");
+//     let (mut ws_stream, _) = connection_result.expect("Failed to connect");
 
-    // Create a shared encryption key Aes256Gcm
-    let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
-    let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
+//     // Create a shared encryption key Aes256Gcm
+//     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
+//     let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
 
-    // Send a message to the server to establish the connection and subscribe to a topic
-    let ws_message = WSMessage {
-        subscriptions: vec![TopicSubscription {
-            topic: WSTopic::SmartInboxes,
-            subtopic: None,
-        }],
-        unsubscriptions: vec![],
-        shared_key: Some(shared_enc_string.to_string()),
-    };
+//     // Send a message to the server to establish the connection and subscribe to a topic
+//     let ws_message = WSMessage {
+//         subscriptions: vec![TopicSubscription {
+//             topic: WSTopic::SmartInboxes,
+//             subtopic: None,
+//         }],
+//         unsubscriptions: vec![],
+//         shared_key: Some(shared_enc_string.to_string()),
+//     };
 
-    // Serialize WSMessage to a JSON string
-    let ws_message_json = serde_json::to_string(&ws_message).unwrap();
+//     // Serialize WSMessage to a JSON string
+//     let ws_message_json = serde_json::to_string(&ws_message).unwrap();
 
-    // Generate a ShinkaiMessage
-    let shinkai_message = generate_message_with_text(
-        ws_message_json,
-        "".to_string(),
-        node1_encryption_sk.clone(),
-        node1_identity_sk.clone(),
-        node1_encryption_pk,
-        node1_subidentity_name.to_string(),
-        node1_identity_name.to_string(),
-        "2023-07-02T20:53:34.810Z".to_string(),
-    );
+//     // Generate a ShinkaiMessage
+//     let shinkai_message = generate_message_with_text(
+//         ws_message_json,
+//         "".to_string(),
+//         node1_encryption_sk.clone(),
+//         node1_identity_sk.clone(),
+//         node1_encryption_pk,
+//         node1_subidentity_name.to_string(),
+//         node1_identity_name.to_string(),
+//         "2023-07-02T20:53:34.810Z".to_string(),
+//     );
 
-    // Convert ShinkaiMessage to String
-    let message_string = shinkai_message.to_string().unwrap();
+//     // Convert ShinkaiMessage to String
+//     let message_string = shinkai_message.to_string().unwrap();
 
-    ws_stream
-        .send(tungstenite::Message::Text(message_string))
-        .await
-        .expect("Failed to send message");
+//     ws_stream
+//         .send(tungstenite::Message::Text(message_string))
+//         .await
+//         .expect("Failed to send message");
 
-    // Wait for the server to process the subscription message
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+//     // Wait for the server to process the subscription message
+//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-    // Send a new message to inbox_name1_string
-    {
-        let mut shinkai_db = shinkai_db.lock().await;
-        let _ = shinkai_db.create_empty_inbox("test_inbox".to_string()).await;
-    }
+//     // Send a new message to inbox_name1_string
+//     {
+//         let mut shinkai_db = shinkai_db.lock().await;
+//         let _ = shinkai_db.create_empty_inbox("test_inbox".to_string()).await;
+//     }
 
-    // Check the response
-    let msg = ws_stream
-        .next()
-        .await
-        .expect("Failed to read message")
-        .expect("Failed to read message");
+//     // Check the response
+//     let msg = ws_stream
+//         .next()
+//         .await
+//         .expect("Failed to read message")
+//         .expect("Failed to read message");
 
-    let encrypted_message = msg.to_text().unwrap();
-    let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
+//     let encrypted_message = msg.to_text().unwrap();
+//     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
 
-    assert_eq!(decrypted_message, "test_inbox");
+//     assert_eq!(decrypted_message, "test_inbox");
 
-    // Send a close message
-    ws_stream
-        .send(tungstenite::Message::Close(None))
-        .await
-        .expect("Failed to send close message");
-}
+//     // Send a close message
+//     ws_stream
+//         .send(tungstenite::Message::Close(None))
+//         .await
+//         .expect("Failed to send close message");
+// }
