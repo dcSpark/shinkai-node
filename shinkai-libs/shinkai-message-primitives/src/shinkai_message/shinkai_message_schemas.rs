@@ -5,6 +5,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Result;
 use std::fmt;
 
+use super::shinkai_message::ShinkaiMessage;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum MessageSchemaType {
     JobCreationSchema,
@@ -17,6 +19,7 @@ pub enum MessageSchemaType {
     APIAddAgentRequest,
     APIFinishJob,
     TextContent,
+    WSMessage,
     FormattedMultiContent, // TODO
     SymmetricKeyExchange,
     EncryptedFileContent,
@@ -35,6 +38,7 @@ impl MessageSchemaType {
             "APIReadUpToTimeRequest" => Some(Self::APIReadUpToTimeRequest),
             "APIAddAgentRequest" => Some(Self::APIAddAgentRequest),
             "TextContent" => Some(Self::TextContent),
+            "WSMessage" => Some(Self::WSMessage),
             "FormattedMultiContent" => Some(Self::FormattedMultiContent),
             "SymmetricKeyExchange" => Some(Self::SymmetricKeyExchange),
             "EncryptedFileContent" => Some(Self::EncryptedFileContent),
@@ -55,6 +59,7 @@ impl MessageSchemaType {
             Self::APIReadUpToTimeRequest => "APIReadUpToTimeRequest",
             Self::APIAddAgentRequest => "APIAddAgentRequest",
             Self::TextContent => "TextContent",
+            Self::WSMessage => "WSMessage",
             Self::FormattedMultiContent => "FormattedMultiContent",
             Self::SymmetricKeyExchange => "SymmetricKeyExchange",
             Self::EncryptedFileContent => "FileContent",
@@ -186,6 +191,41 @@ pub struct APIReadUpToTimeRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct APIAddAgentRequest {
     pub agent: SerializedAgent,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TopicSubscription {
+    pub topic: WSTopic,
+    pub subtopic: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WSMessage {
+    pub subscriptions: Vec<TopicSubscription>,
+    pub unsubscriptions: Vec<TopicSubscription>,
+    pub shared_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WSMessageResponse {
+    pub subscriptions: Vec<TopicSubscription>,
+    pub shinkai_message: ShinkaiMessage,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum WSTopic {
+    Inbox,
+    SmartInboxes,
+}
+
+impl fmt::Display for WSTopic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WSTopic::Inbox => write!(f, "inbox"),
+            WSTopic::SmartInboxes => write!(f, "smart_inboxes"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]

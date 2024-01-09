@@ -110,6 +110,21 @@ impl ShinkaiMessage {
         Err(ShinkaiMessageError::DecryptionError("Failed to decode message".to_string()))
     }
 
+    pub fn to_string(&self) -> Result<String, ShinkaiMessageError> {
+        let encoded = self.encode_message()?;
+        String::from_utf8(encoded).map_err(|err| ShinkaiMessageError::SerializationError(err.to_string()))
+    }
+
+    pub fn from_string(s: String) -> Result<Self, ShinkaiMessageError> {
+        let bytes = s.into_bytes();
+        Self::decode_message_result(bytes)
+    }
+
+    pub fn from_str(s: &str) -> Result<Self, ShinkaiMessageError> {
+        let bytes = s.as_bytes();
+        Self::decode_message_result(bytes.to_vec())
+    }
+
     pub fn validate_message_schema(&self, schema: MessageSchemaType) -> Result<(), ShinkaiMessageError> {
         if let MessageBody::Unencrypted(body) = &self.body {
             if let MessageData::Unencrypted(data) = &body.message_data {

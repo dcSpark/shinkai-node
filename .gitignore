@@ -39,3 +39,4 @@ db/.secret
 ./main_db
 ./vector_fs_db
 ./storage/*
+vector_fs_db

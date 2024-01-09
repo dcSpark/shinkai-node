@@ -145,6 +145,11 @@ pub fn fetch_node_environment() -> NodeEnvironment {
     let embeddings_server_url: Option<String> = env::var("EMBEDDINGS_SERVER_URL").ok();
     let embeddings_server_api_key: Option<String> = env::var("EMBEDDINGS_SERVER_API_KEY").ok();
 
+    // Check if NODE_API_IP:NODE_API_PORT is the same as NODE_IP:NODE_PORT
+    if ip == api_ip && port == api_port {
+        panic!("NODE_API_IP:NODE_API_PORT cannot be the same as NODE_IP:NODE_PORT");
+    }
+
     NodeEnvironment {
         global_identity_name,
         listen_address,

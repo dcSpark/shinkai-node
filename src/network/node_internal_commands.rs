@@ -28,6 +28,7 @@ use std::{
 };
 use std::{str::FromStr, sync::Arc};
 use x25519_dalek::{PublicKey as EncryptionPublicKey};
+use crate::managers::identity_manager::IdentityManagerTrait;
 
 impl Node {
     pub async fn send_peer_addresses(&self, sender: Sender<Vec<SocketAddr>>) -> Result<(), Error> {

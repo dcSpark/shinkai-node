@@ -114,7 +114,7 @@ impl JobManager {
 
                 // Save response data to DB
                 let mut shinkai_db = db.lock().await;
-                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
+                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await?;
             }
         }
 
@@ -193,7 +193,7 @@ impl JobManager {
             inference_response_content.to_string(),
             None,
         )?;
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)?;
+        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None).await?;
         shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())

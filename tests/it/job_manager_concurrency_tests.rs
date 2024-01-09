@@ -109,7 +109,7 @@ async fn test_process_job_queue_concurrency() {
 
             // Write the message to an inbox with the job name
             let mut db = db.lock().await;
-            let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
+            let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })
@@ -212,7 +212,7 @@ async fn test_sequnetial_process_for_same_job_id() {
 
             // Write the message to an inbox with the job name
             let mut db = db.lock().await;
-            let _ = db.unsafe_insert_inbox_message(&message.clone(), None);
+            let _ = db.unsafe_insert_inbox_message(&message.clone(), None).await;
 
             Ok("Success".to_string())
         })

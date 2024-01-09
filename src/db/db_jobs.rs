@@ -659,13 +659,13 @@ impl ShinkaiDB {
         Ok(iter.next().is_none())
     }
 
-    pub fn add_message_to_job_inbox(
+    pub async fn add_message_to_job_inbox(
         &mut self,
         _: &str,
         message: &ShinkaiMessage,
         parent_message_key: Option<String>,
     ) -> Result<(), ShinkaiDBError> {
-        self.unsafe_insert_inbox_message(&message, parent_message_key)?;
+        self.unsafe_insert_inbox_message(&message, parent_message_key).await?;
         Ok(())
     }
 }
