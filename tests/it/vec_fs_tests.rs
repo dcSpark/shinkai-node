@@ -107,5 +107,8 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
+    /// Retrieve the Vector Resource & Source File from the db
+    ///
+    // let reader = vector_fs.db
     assert!(1 == 2);
 }

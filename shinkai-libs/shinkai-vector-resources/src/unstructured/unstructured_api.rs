@@ -41,7 +41,7 @@ impl UnstructuredAPI {
 
     /// Makes a blocking request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires name to include the extension ie. `*.pdf`
+    /// Note: Requires file_name to include the extension ie. `*.pdf`
     pub fn process_file_blocking(
         &self,
         file_buffer: Vec<u8>,
@@ -52,9 +52,7 @@ impl UnstructuredAPI {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of lines + a resource_id from the hash of the data
-        // TODO: delete the manual resource id generation in the blocking methods
-        let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        // Parse pdf into groups of elements
         let elements = self.file_request_blocking(file_buffer, &file_name)?;
 
         // Cleans out the file extension from the file_name
@@ -67,14 +65,13 @@ impl UnstructuredAPI {
             desc,
             source,
             parsing_tags,
-            resource_id,
             max_chunk_size,
         )
     }
 
     /// Makes an async request to process a file in a buffer to Unstructured server,
     /// and then processing the returned results into a BaseVectorResource
-    /// Note: Requires name to include the extension ie. `*.pdf`
+    /// Note: Requires file_name to include the extension ie. `*.pdf`
     pub async fn process_file(
         &self,
         file_buffer: Vec<u8>,
@@ -85,7 +82,7 @@ impl UnstructuredAPI {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
-        // Parse pdf into groups of lines + a resource_id from the hash of the data
+        // Parse pdf into groups of elements
         let elements = self.file_request(file_buffer, &file_name).await?;
 
         // Cleans out the file extension from the file_name
