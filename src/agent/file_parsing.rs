@@ -9,7 +9,7 @@ use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
-use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, SourceFileType};
 use shinkai_vector_resources::{data_tags::DataTag, source::VRSource};
 use std::io::Cursor;
 
@@ -71,16 +71,28 @@ impl ParsingHelper {
     pub async fn parse_file_into_resource(
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: String,
+        file_name: String,
         desc: Option<String>,
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
         unstructured_api: UnstructuredAPI,
     ) -> Result<BaseVectorResource, AgentError> {
         let (_, source, elements) =
-            ParsingHelper::parse_file_helper(file_buffer.clone(), name.clone(), unstructured_api).await?;
+            ParsingHelper::parse_file_helper(file_buffer.clone(), file_name.clone(), unstructured_api).await?;
 
-        Self::parse_elements_into_resource(elements, generator, name, desc, source, parsing_tags, max_node_size).await
+        // Cleans out the file extension from the file_name
+        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
+
+        Self::parse_elements_into_resource(
+            elements,
+            generator,
+            cleaned_name,
+            desc,
+            source,
+            parsing_tags,
+            max_node_size,
+        )
+        .await
     }
 
     /// Helper method which keeps core logic related to parsing elements into a BaseVectorResource
@@ -93,6 +105,7 @@ impl ParsingHelper {
         parsing_tags: &Vec<DataTag>,
         max_node_size: u64,
     ) -> Result<BaseVectorResource, AgentError> {
+        let name = SourceFileType::clean_string_of_extension(&name);
         let resource = UnstructuredParser::process_elements_into_resource(
             elements,
             generator,
@@ -104,20 +117,19 @@ impl ParsingHelper {
         )
         .await?;
 
-        resource.as_trait_object().print_all_nodes_exhaustive(None, true, false);
-
         Ok(resource)
     }
 
     /// Basic helper method which parses file into needed data for generating a BaseVectorResource
     async fn parse_file_helper(
         file_buffer: Vec<u8>,
-        name: String,
+        file_name: String,
         unstructured_api: UnstructuredAPI,
     ) -> Result<(String, VRSource, Vec<UnstructuredElement>), AgentError> {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let name = SourceFileType::clean_string_of_extension(&file_name);
         let source = VRSource::from_file(&name, &file_buffer)?;
-        let elements = unstructured_api.file_request(file_buffer, &name).await?;
+        let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
         Ok((resource_id, source, elements))
     }
 

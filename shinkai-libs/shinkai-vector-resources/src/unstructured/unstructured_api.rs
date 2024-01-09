@@ -2,6 +2,7 @@ use super::{unstructured_parser::UnstructuredParser, unstructured_types::Unstruc
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
+use crate::vector_resource::SourceFileType;
 use crate::{data_tags::DataTag, vector_resource::BaseVectorResource};
 #[cfg(feature = "native-http")]
 use reqwest::{blocking::multipart as blocking_multipart, multipart};
@@ -45,20 +46,24 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: String,
+        file_name: String,
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
+        // TODO: delete the manual resource id generation in the blocking methods
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let elements = self.file_request_blocking(file_buffer, &name)?;
+        let elements = self.file_request_blocking(file_buffer, &file_name)?;
+
+        // Cleans out the file extension from the file_name
+        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
 
         UnstructuredParser::process_elements_into_resource_blocking(
             elements,
             generator,
-            name,
+            cleaned_name,
             desc,
             source,
             parsing_tags,
@@ -74,19 +79,22 @@ impl UnstructuredAPI {
         &self,
         file_buffer: Vec<u8>,
         generator: &dyn EmbeddingGenerator,
-        name: String,
+        file_name: String,
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
         // Parse pdf into groups of lines + a resource_id from the hash of the data
-        let elements = self.file_request(file_buffer, &name).await?;
+        let elements = self.file_request(file_buffer, &file_name).await?;
+
+        // Cleans out the file extension from the file_name
+        let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
 
         UnstructuredParser::process_elements_into_resource(
             elements,
             generator,
-            name,
+            cleaned_name,
             desc,
             source,
             parsing_tags,

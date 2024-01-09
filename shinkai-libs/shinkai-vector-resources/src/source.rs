@@ -353,6 +353,13 @@ impl SourceFileType {
 
         return Err(VRError::CouldNotDetectFileType(file_name.to_string()));
     }
+
+    /// Clones and cleans the input string of its file extension at the end, if it exists.
+    pub fn clean_string_of_extension(file_name: &str) -> String {
+        let re = Regex::new(r"\.[^.]+$").unwrap();
+        let file_name_without_extension = re.replace(file_name, "");
+        file_name_without_extension.to_string()
+    }
 }
 
 impl fmt::Display for SourceFileType {

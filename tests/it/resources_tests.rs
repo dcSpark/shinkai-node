@@ -4,7 +4,7 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceReference, VRSource};
+use shinkai_vector_resources::source::{SourceFile, SourceFileType, SourceReference, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::DocumentVectorResource;
@@ -19,36 +19,44 @@ fn setup() {
 }
 
 fn default_test_profile() -> ShinkaiName {
-    ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap()
+    ShinkaiName::new("@@localhost.shinkai/profileName".to_string()).unwrap()
 }
 
-fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
+pub async fn get_shinkai_intro_doc_async(
+    generator: &RemoteEmbeddingGenerator,
+    data_tags: &Vec<DataTag>,
+) -> Result<(DocumentVectorResource, SourceFile), VRError> {
     // Read the pdf from file into a buffer
-    let buffer = std::fs::read("files/shinkai_intro.pdf")
-        .map_err(|_| VRError::FailedPDFParsing)
-        .unwrap();
+    let source_file_name = "shinkai_intro.pdf";
+    let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
 
+    let desc = "An initial introduction to the Shinkai Network.";
+    let resource = ParsingHelper::parse_file_into_resource(
+        buffer.clone(),
+        generator,
+        "shinkai_intro.pdf".to_string(),
+        Some(desc.to_string()),
+        data_tags,
+        500,
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
+    let source_file = SourceFile::new(source_file_name.to_string(), file_type, buffer);
+
+    Ok((resource.as_document_resource_cloned().unwrap(), source_file))
+}
+
+pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
     // Create a new Tokio runtime
     let rt = Runtime::new().unwrap();
 
-    // Use block_on to run the async-based batched embedding generation logic
-    let resource = rt
-        .block_on(async {
-            let desc = "An initial introduction to the Shinkai Network.";
-            return ParsingHelper::parse_file_into_resource(
-                buffer,
-                generator,
-                "shinkai_intro.pdf".to_string(),
-                Some(desc.to_string()),
-                data_tags,
-                500,
-                UnstructuredAPI::new_default(),
-            )
-            .await;
-        })
-        .unwrap();
+    // Use block_on to run the async-based get_shinkai_intro_doc_async function
+    let (resource, _) = rt.block_on(get_shinkai_intro_doc_async(generator, data_tags)).unwrap();
 
-    resource.as_document_resource_cloned().unwrap()
+    resource
 }
 
 #[test]

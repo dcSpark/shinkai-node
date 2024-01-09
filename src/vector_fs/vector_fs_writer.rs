@@ -93,14 +93,14 @@ impl VectorFS {
     }
 
     /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
-    /// If a VR with the same name already exists underneath the current path, then overwrites it.
-    /// Currently does not support saving into VecFS root.
+    /// If a VR with the same name already exists underneath the current path, then updates(overwrites) it.
+    /// Does not support saving into VecFS root.
     pub fn save_vector_resource_in_folder(
         &mut self,
         writer: &VFSWriter,
         resource: BaseVectorResource,
         source_file: Option<SourceFile>,
-    ) -> Result<(), VectorFSError> {
+    ) -> Result<VRPath, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
         let vr_header = resource.as_trait_object().generate_resource_header();
@@ -162,7 +162,7 @@ impl VectorFS {
         self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
         self.db.write_pb(write_batch)?;
 
-        Ok(())
+        Ok(node_path)
     }
 
     // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.

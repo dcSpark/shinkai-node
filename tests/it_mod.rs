@@ -14,6 +14,7 @@ mod it {
     mod job_manager_concurrency_tests;
     mod job_multi_page_cron_tests;
     mod job_one_page_cron_tests;
+    mod job_tree_usage_tests;
     mod model_capabilities_manager_tests;
     mod node_integration_tests;
     mod node_retrying_tests;
@@ -25,7 +26,7 @@ mod it {
     mod prompt_tests;
     mod resources_tests;
     mod toolkit_tests;
-    mod web_scraper_tests;
-    mod job_tree_usage_tests;
     mod utils;
+    mod vec_fs_tests;
+    mod web_scraper_tests;
 }
