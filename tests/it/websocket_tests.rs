@@ -34,7 +34,6 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::time::sleep;
 use tokio_tungstenite::tungstenite;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
@@ -156,7 +155,7 @@ async fn test_websocket() {
     setup();
     let job_id1 = "test_job".to_string();
     let job_id2 = "test_job2".to_string();
-    let agent_id = "agent4".to_string();
+    let agent_id = "agent3".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
     let shinkai_db = Arc::new(Mutex::new(shinkai_db));
@@ -454,6 +453,7 @@ async fn test_websocket() {
 async fn test_websocket_smart_inbox() {
     // Setup
     setup();
+    
     let agent_id = "agent4".to_string();
     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
