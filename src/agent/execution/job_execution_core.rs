@@ -41,7 +41,7 @@ impl JobManager {
         let (mut full_job, agent_found, profile_name, user_profile) =
             JobManager::fetch_relevant_job_data(&job_message.job_message.job_id, db.clone()).await?;
 
-        // Added a new special file that if found it takes over
+        // If a .jobkai file is found, processing job message is taken over by this alternate logic
         let kai_found = JobManager::should_process_job_files_for_tasks_take_over(
             db.clone(),
             &job_message.job_message,
@@ -52,11 +52,11 @@ impl JobManager {
             unstructured_api.clone(),
         )
         .await?;
-
         if kai_found {
             return Ok(job_id.clone());
         }
 
+        // Otherwise proceed forward with rest of logic.
         // Processes any files which were sent with the job message
         JobManager::process_job_message_files_for_vector_resources(
             db.clone(),
@@ -70,6 +70,8 @@ impl JobManager {
         )
         .await?;
 
+        // Ensure the user profile exists before proceeding with inference chain
+        let user_profile = &user_profile.clone().ok_or(AgentError::NoUserProfileFound)?;
         match JobManager::process_inference_chain(
             db.clone(),
             clone_signature_secret_key(&identity_secret_key),
@@ -77,7 +79,7 @@ impl JobManager {
             full_job,
             agent_found.clone(),
             profile_name.clone(),
-            user_profile,
+            user_profile.clone(),
             generator,
         )
         .await
@@ -128,7 +130,7 @@ impl JobManager {
         full_job: Job,
         agent_found: Option<SerializedAgent>,
         profile_name: String,
-        user_profile: Option<ShinkaiName>,
+        user_profile: ShinkaiName,
         generator: RemoteEmbeddingGenerator,
     ) -> Result<(), AgentError> {
         let job_id = full_job.job_id().to_string();

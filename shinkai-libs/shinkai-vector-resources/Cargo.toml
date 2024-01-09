@@ -23,6 +23,8 @@ async-recursion = "1.0.5"
 scraper = "0.17.1"
 chrono = "0.4"
 chrono-tz = "0.5"
+rand = "0.8.4"
+hex = "=0.4.3"
 # llm = { git = "https://github.com/rustformers/llm", branch="main"} 
 
 [build-dependencies]

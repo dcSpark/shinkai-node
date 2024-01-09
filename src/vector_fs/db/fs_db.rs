@@ -1,4 +1,4 @@
-use super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
+use super::super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
 use crate::db::db::ProfileBoundWriteBatch;
 use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};
@@ -12,6 +12,7 @@ use std::path::Path;
 pub enum FSTopic {
     VectorResources,
     FileSystem,
+    SourceFiles,
 }
 
 impl FSTopic {
@@ -19,6 +20,7 @@ impl FSTopic {
         match self {
             Self::VectorResources => "resources",
             Self::FileSystem => "filesystem",
+            Self::SourceFiles => "sourcefiles",
         }
     }
 }
@@ -44,6 +46,7 @@ impl VectorFSDB {
             vec![
                 FSTopic::VectorResources.as_str().to_string(),
                 FSTopic::FileSystem.as_str().to_string(),
+                FSTopic::SourceFiles.as_str().to_string(),
             ]
         };
 

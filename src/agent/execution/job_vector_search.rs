@@ -125,7 +125,7 @@ impl JobManager {
                 {
                     if let Some(description) = resource.as_trait_object().description() {
                         let description_node = RetrievedNode::new(
-                            Node::new_text(String::new(), &description, None, &vec![]),
+                            Node::new_text(String::new(), description.to_string(), None, &vec![]),
                             1.0 as f32,
                             resource_header,
                             sorted_retrieved_nodes[0].retrieval_path.clone(),

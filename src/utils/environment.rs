@@ -17,9 +17,7 @@ pub struct NodeEnvironment {
     pub first_device_needs_registration_code: bool,
     pub js_toolkit_executor_remote: Option<String>,
     pub no_secrets_file: bool,
-    pub secrets_file_path: Option<String>,
-    pub main_db_path: Option<String>,
-    pub vector_fs_db_path: Option<String>,
+    pub node_storage_path: Option<String>,
     pub unstructured_server_url: Option<String>,
     pub unstructured_server_api_key: Option<String>,
     pub embeddings_server_url: Option<String>,
@@ -77,7 +75,7 @@ pub fn fetch_agent_env(global_identity: String) -> Vec<SerializedAgent> {
 }
 
 pub fn fetch_node_environment() -> NodeEnvironment {
-    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@node1.shinkai".to_string());
+    let global_identity_name = env::var("GLOBAL_IDENTITY_NAME").unwrap_or("@@localhost.shinkai".to_string());
 
     // Fetch the environment variables for the IP and port, or use default values
     let ip: IpAddr = env::var("NODE_IP")
@@ -126,20 +124,20 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
 
-    // secrets file env vars
     let no_secrets_file: bool = env::var("NO_secretsS_FILE")
         .unwrap_or_else(|_| "false".to_string())
         .parse()
         .expect("Failed to parse NO_secretsS_FILE");
-    let secrets_file_path: Option<String> = env::var("NODE_secretsS_FILE_PATH").ok();
-
-    // DB Path Env Vars
-    let main_db_path: Option<String> = env::var("NODE_MAIN_DB_PATH").ok();
-    let vector_fs_db_path: Option<String> = env::var("NODE_VEC_FS_DB_PATH").ok();
 
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);
     let api_listen_address = SocketAddr::new(api_ip, api_port);
+
+    // DB Path Env Vars
+    let node_storage_path: Option<String> = match env::var("NODE_STORAGE_PATH").ok() {
+        Some(val) => Some(val),
+        None => Some("storage".to_string()),
+    };
 
     // External server env vars
     let unstructured_server_url: Option<String> = env::var("UNSTRUCTURED_SERVER_URL").ok();
@@ -163,9 +161,7 @@ pub fn fetch_node_environment() -> NodeEnvironment {
         first_device_needs_registration_code,
         js_toolkit_executor_remote,
         no_secrets_file,
-        main_db_path,
-        vector_fs_db_path,
-        secrets_file_path,
+        node_storage_path,
         unstructured_server_url,
         unstructured_server_api_key,
         embeddings_server_url,

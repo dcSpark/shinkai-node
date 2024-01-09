@@ -7,10 +7,6 @@ use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredPar
 use shinkai_vector_resources::unstructured::unstructured_types::ElementType;
 use std::fs;
 
-lazy_static! {
-    pub static ref UNSTRUCTURED_API_URL: &'static str = "https://internal.shinkai.com/";
-}
-
 #[test]
 fn test_unstructured_parse_response_json() {
     let json_str = r#"
@@ -57,7 +53,7 @@ fn test_unstructured_parse_pdf_vector_resource() {
     let file_buffer = fs::read(file_path).unwrap();
 
     // Create an UnstructuredAPI and process the file
-    let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+    let api = UnstructuredAPI::new_default();
 
     let resource = api
         .process_file_blocking(
@@ -101,7 +97,7 @@ fn test_unstructured_parse_txt_vector_resource() {
     let file_buffer = fs::read(file_path).unwrap();
 
     // Create an UnstructuredAPI and process the file
-    let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+    let api = UnstructuredAPI::new_default();
 
     let resource = api
         .process_file_blocking(
@@ -144,7 +140,7 @@ fn test_unstructured_parse_epub_vector_resource() {
     let file_buffer = fs::read(file_path).unwrap();
 
     // Create an UnstructuredAPI and process the file
-    let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+    let api = UnstructuredAPI::new_default();
 
     let resource = api
         .process_file_blocking(
@@ -187,7 +183,7 @@ fn test_unstructured_parse_html_vector_resource() {
     let file_buffer = fs::read(file_path).unwrap();
 
     // Create an UnstructuredAPI and process the file
-    let api = UnstructuredAPI::new(UNSTRUCTURED_API_URL.to_string(), None);
+    let api = UnstructuredAPI::new_default();
 
     let resource = api
         .process_file_blocking(

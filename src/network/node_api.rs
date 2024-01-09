@@ -146,9 +146,10 @@ pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketA
     // GET v1/shinkai_health
     let shinkai_health = {
         let node_name = node_name.clone();
+        let node_commands_sender = node_commands_sender.clone();
         warp::path!("v1" / "shinkai_health")
             .and(warp::get())
-            .and_then(move || shinkai_health_handler(node_name.clone()))
+            .and_then(move || shinkai_health_handler(node_commands_sender.clone(), node_name.clone()))
     };
 
     // TODO: Implement. Admin Only
@@ -875,10 +876,32 @@ async fn use_registration_code_handler(
     }
 }
 
-async fn shinkai_health_handler(node_name: String) -> Result<impl warp::Reply, warp::Rejection> {
+async fn shinkai_health_handler(
+    node_commands_sender: Sender<NodeCommand>,
+    node_name: String,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let version = env!("CARGO_PKG_VERSION");
+
+    // Create a channel to receive the result
+    let (res_sender, res_receiver) = async_channel::bounded(1);
+
+    // Send the command to the node
+    node_commands_sender
+        .send(NodeCommand::APIIsPristine { res: res_sender })
+        .await
+        .map_err(|_| warp::reject::reject())?;
+
+    // Receive the result
+    let pristine_state = res_receiver.recv().await.map_err(|_| warp::reject::reject())?;
+
+    // Check if there was an error
+    if let Err(error) = pristine_state {
+        return Ok(warp::reply::json(&json!({ "status": "error", "error": error })));
+    }
+
+    // If there was no error, proceed as usual
     Ok(warp::reply::json(
-        &json!({ "status": "ok", "version": version, "node_name": node_name }),
+        &json!({ "status": "ok", "version": version, "node_name": node_name, "is_pristine": pristine_state.unwrap() }),
     ))
 }
 

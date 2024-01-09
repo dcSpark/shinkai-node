@@ -1,6 +1,4 @@
-use crate::base_vector_resources::BaseVectorResource;
 use crate::base_vector_resources::VRBaseType;
-use crate::data_tags::DataTag;
 use crate::data_tags::DataTagIndex;
 #[cfg(feature = "native-http")]
 use crate::embedding_generator::EmbeddingGenerator;
@@ -12,14 +10,26 @@ use crate::metadata_index::MetadataIndex;
 use crate::model_type::EmbeddingModelType;
 use crate::resource_errors::VRError;
 use crate::shinkai_time::ShinkaiTime;
-use crate::source::VRLocation;
-use crate::source::VRSource;
+pub use crate::source::VRLocation;
+pub use crate::source::VRSource;
+use crate::utils::{hash_string, random_string};
 pub use crate::vector_resource_types::*;
 pub use crate::vector_search_traversal::*;
 use async_trait::async_trait;
-use env_logger::filter::Filter;
+use std::any::Any;
 use std::collections::HashMap;
-use std::fs::Metadata;
+
+/// Trait extension which specific Vector Resource types implement that have a guaranteed internal ordering
+/// of their nodes, such as DocumentVectorResources. This trait extension enables new
+/// capabilities to be implemented, such as append/pop node interfaces, proximity searches, and more.
+pub trait OrderedVectorResource: VectorResource {
+    /// Id of the last node held internally
+    fn last_node_id(&self) -> String;
+    /// Id to be used when pushing a new node
+    fn new_push_node_id(&self) -> String;
+    /// Attempts to fetch a node (using the provided id) and proximity_window before/after, at root depth
+    fn get_node_and_proximity(&self, id: String, proximity_window: u64) -> Result<Vec<Node>, VRError>;
+}
 
 /// Represents a VectorResource as an abstract trait that anyone can implement new variants of.
 /// Of note, when working with multiple VectorResources, the `name` field can have duplicates,
@@ -30,6 +40,7 @@ pub trait VectorResource: Send + Sync {
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
     fn resource_id(&self) -> &str;
+    fn set_resource_id(&mut self, id: String);
     fn resource_embedding(&self) -> &Embedding;
     fn set_resource_embedding(&mut self, embedding: Embedding);
     fn resource_base_type(&self) -> VRBaseType;
@@ -41,10 +52,16 @@ pub trait VectorResource: Send + Sync {
     fn get_embedding(&self, id: String) -> Result<Embedding, VRError>;
     /// Retrieves all Embeddings at the root level depth of the Vector Resource.
     fn get_embeddings(&self) -> Vec<Embedding>;
-    /// Retrieves a Node given its id, at the root level depth.
+    /// Retrieves a copy of a Node given its id, at the root level depth.
     fn get_node(&self, id: String) -> Result<Node, VRError>;
-    /// Retrieves all Nodes at the root level of the Vector Resource
+    /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
+    /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
+    fn insert_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(), VRError>;
+    /// Replace a Node/Embedding in the VR using the provided id (root level depth)
+    fn replace_node(&mut self, id: String, node: Node, embedding: Embedding) -> Result<(Node, Embedding), VRError>;
+    /// Remove a Node/Embedding in the VR using the provided id (root level depth)
+    fn remove_node(&mut self, id: String) -> Result<(Node, Embedding), VRError>;
     /// ISO RFC3339 when then Vector Resource was created
     fn created_datetime(&self) -> String;
     /// ISO RFC3339 when then Vector Resource was last modified
@@ -53,6 +70,16 @@ pub trait VectorResource: Send + Sync {
     fn set_last_modified_datetime(&mut self, datetime: String) -> Result<(), VRError>;
     // Note we cannot add from_json in the trait due to trait object limitations
     fn to_json(&self) -> Result<String, VRError>;
+    // Convert the VectorResource into a &dyn Any
+    fn as_any(&self) -> &dyn Any;
+    // Convert the VectorResource into a &dyn Any
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+    //// Attempts to cast the VectorResource into an OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource(&self) -> Result<&dyn OrderedVectorResource, VRError>;
+    /// Attempts to cast the VectorResource into an mut OrderedVectorResource. Fails if
+    /// the struct does not support the OrderedVectorResource trait.
+    fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source
@@ -63,7 +90,9 @@ pub trait VectorResource: Send + Sync {
         keywords: Vec<String>,
     ) -> Result<(), VRError> {
         let formatted = self.format_embedding_string(keywords);
-        let new_embedding = generator.generate_embedding(&formatted, "RE").await?;
+        let new_embedding = generator
+            .generate_embedding_shorten_input(&formatted, "RE", MAX_EMBEDDING_STRING_SIZE as u64)
+            .await?;
         self.set_resource_embedding(new_embedding);
         Ok(())
     }
@@ -88,6 +117,15 @@ pub trait VectorResource: Send + Sync {
         self.set_last_modified_datetime(current_time).unwrap();
     }
 
+    /// Generates a random new id string and sets it as the resource_id.
+    /// Used in the VectorFS to guarantee each VR stored has a unique id.
+    fn generate_and_update_resource_id(&mut self) {
+        let mut data_string = ShinkaiTime::generate_time_now();
+        data_string = data_string + self.resource_id() + self.name() + &random_string();
+        let hashed_string = hash_string(&data_string);
+        self.set_resource_id(hashed_string)
+    }
+
     #[cfg(feature = "native-http")]
     /// Initializes a `RemoteEmbeddingGenerator` that is compatible with this VectorResource
     /// (targets the same model and interface for embedding generation). Of note, you need
@@ -96,12 +134,8 @@ pub trait VectorResource: Send + Sync {
         &self,
         api_url: &str,
         api_key: Option<String>,
-    ) -> Box<dyn EmbeddingGenerator> {
-        Box::new(RemoteEmbeddingGenerator::new(
-            self.embedding_model_used(),
-            api_url,
-            api_key,
-        ))
+    ) -> RemoteEmbeddingGenerator {
+        RemoteEmbeddingGenerator::new(self.embedding_model_used(), api_url, api_key)
     }
 
     /// Generates a formatted string that represents the text to be used for
@@ -144,6 +178,7 @@ pub trait VectorResource: Send + Sync {
         // Fetch list of data tag names from the index
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
+        let metadata_index_keys = self.metadata_index().get_all_metadata_keys();
 
         VRHeader::new(
             self.name(),
@@ -155,6 +190,8 @@ pub trait VectorResource: Send + Sync {
             self.created_datetime(),
             self.last_modified_datetime(),
             resource_location,
+            metadata_index_keys,
+            self.embedding_model_used(),
         )
     }
 
@@ -221,22 +258,65 @@ pub trait VectorResource: Send + Sync {
         }
     }
 
-    /// Retrieves a node, no matter its depth, given its path.
-    /// If the path is invalid at any part, then method will error.
-    fn get_node_with_path(&self, path: VRPath) -> Result<Node, VRError> {
+    /// Retrieves a node at any depth, given its path.
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
+        let results = self._internal_retrieve_node_at_path(path.clone(), None)?;
+        if results.is_empty() {
+            return Err(VRError::InvalidVRPath(path));
+        }
+        Ok(results[0].clone())
+    }
+
+    /// Retrieves a node and `proximity_window` number of nodes before/after it, given a path.
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn proximity_retrieve_node_at_path(
+        &self,
+        path: VRPath,
+        proximity_window: u64,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self._internal_retrieve_node_at_path(path.clone(), Some(proximity_window))
+    }
+
+    /// Internal method shared by retrieved node at path methods
+    fn _internal_retrieve_node_at_path(
+        &self,
+        path: VRPath,
+        proximity_window: Option<u64>,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
-
-        // Fetch the first node directly, then iterate through the rest
+        // Fetch the node at root depth directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
+        let mut last_resource_header = self.generate_resource_header(None);
+        let mut retrieved_nodes = Vec::new();
+
+        // Iterate through the path, going into each Vector Resource until end of path
+        let mut traversed_path = VRPath::from_string(&(String::from("/") + &path.path_ids[0]))?;
         for id in path.path_ids.iter().skip(1) {
-            match node.content {
-                NodeContent::Resource(ref resource) => {
-                    node = resource.as_trait_object().get_node(id.clone())?;
+            traversed_path.push(id.to_string());
+            match &node.content {
+                NodeContent::Resource(resource) => {
+                    let resource_obj = resource.as_trait_object();
+                    last_resource_header = resource_obj.generate_resource_header(None);
+
+                    // If we have arrived at the final node, then perform node fetching/adding to results
+                    if traversed_path == path {
+                        // If returning proximity, then try to coerce into an OrderedVectorResource and perform proximity get
+                        if let Some(prox_window) = proximity_window {
+                            if let Ok(ord_res) = resource.as_ordered_vector_resource() {
+                                retrieved_nodes = ord_res.get_node_and_proximity(id.clone(), prox_window)?;
+                            } else {
+                                return Err(VRError::InvalidVRBaseType);
+                            }
+                        }
+                    }
+                    node = resource_obj.get_node(id.clone())?;
                 }
                 _ => {
                     if let Some(last) = path.path_ids.last() {
+                        // TODO: potentially delete this if, should always error probably
                         if id != last {
                             return Err(VRError::InvalidVRPath(path.clone()));
                         }
@@ -244,13 +324,221 @@ pub trait VectorResource: Send + Sync {
                 }
             }
         }
-        Ok(node)
+
+        // If there are no retrieved nodes, then simply add the final node that was at the path
+        if retrieved_nodes.is_empty() {
+            retrieved_nodes.push(node);
+        }
+
+        // Convert the results into retrieved nodes
+        let mut final_nodes = vec![];
+        for n in retrieved_nodes {
+            let mut node_path = path.pop_cloned();
+            node_path.push(n.id.clone());
+            final_nodes.push(RetrievedNode::new(n, 0.0, last_resource_header.clone(), node_path));
+        }
+        Ok(final_nodes)
+    }
+
+    /// Boolean check to see if a node exists at a given path
+    fn check_node_exists_at_path(&self, path: VRPath) -> bool {
+        self.retrieve_node_at_path(path).is_ok()
+    }
+
+    /// Applies a mutator function on a node and its embedding at a given path, thereby enabling updating data within a specific node.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn mutate_node_at_path(
+        &mut self,
+        path: VRPath,
+        mutator: &mut dyn Fn(&mut Node, &mut Embedding) -> Result<(), VRError>,
+    ) -> Result<(), VRError> {
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let last_mut = deconstructed_nodes
+            .last_mut()
+            .ok_or(VRError::InvalidVRPath(path.clone()))?;
+        let (_, last_node, last_embedding) = last_mut;
+        mutator(last_node, last_embedding)?;
+
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        self.replace_node(node_key, node, embedding)?;
+        Ok(())
+    }
+
+    /// Removes a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn remove_node_at_path(&mut self, path: VRPath) -> Result<(Node, Embedding), VRError> {
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        let removed_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path))?;
+
+        // Rebuild the nodes after removing the target node
+        if !deconstructed_nodes.is_empty() {
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            self.replace_node(node_key, node, embedding)?;
+        }
+
+        Ok((removed_node.1, removed_node.2))
+    }
+
+    /// Replaces a specific node from the Vector Resource, based on the provided path. Returns removed Node/Embedding.
+    /// If the path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn replace_node_at_path(
+        &mut self,
+        path: VRPath,
+        new_node: Node,
+        new_embedding: Embedding,
+    ) -> Result<(Node, Embedding), VRError> {
+        // Remove the node at the end of the deconstructed nodes
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(path.clone())?;
+        deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(path.clone()))?;
+
+        // Insert the new node at the end of the deconstructed nodes
+        if let Some(key) = path.path_ids.last() {
+            deconstructed_nodes.push((key.clone(), new_node, new_embedding));
+
+            // Rebuild the nodes after replacing the node
+            let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+            let result = self.replace_node(node_key, node, embedding)?;
+
+            Ok(result)
+        } else {
+            Err(VRError::InvalidVRPath(path.clone())) // Replace with your actual error
+        }
+    }
+
+    /// Inserts a node underneath the provided parent_path, using the supplied id. Supports inserting at root level `/`.
+    /// If the parent_path is invalid at any part, then method will error, and no changes will be applied to the VR.
+    fn insert_node_at_path(
+        &mut self,
+        parent_path: VRPath,
+        node_to_insert_id: String,
+        node_to_insert: Node,
+        node_to_insert_embedding: Embedding,
+    ) -> Result<(), VRError> {
+        // If inserting at root, just do it directly
+        if parent_path.path_ids.is_empty() {
+            self.insert_node(node_to_insert_id, node_to_insert, node_to_insert_embedding)?;
+            return Ok(());
+        }
+        // Insert the new node at the end of the deconstructed nodes
+        let mut deconstructed_nodes = self._deconstruct_nodes_along_path(parent_path.clone())?;
+        deconstructed_nodes.push((node_to_insert_id, node_to_insert, node_to_insert_embedding));
+        // Rebuild the nodes after inserting the new node
+        let (node_key, node, embedding) = self._rebuild_deconstructed_nodes(deconstructed_nodes)?;
+        self.replace_node(node_key, node, embedding)?;
+        Ok(())
+    }
+
+    /// Appends a node underneath the provided parent_path if the resource held there implements OrderedVectorResource trait.
+    /// If the parent_path is invalid at any part then method will error, and no changes will be applied to the VR.
+    fn append_node_at_path(
+        &mut self,
+        parent_path: VRPath,
+        new_node: Node,
+        new_embedding: Embedding,
+    ) -> Result<(), VRError> {
+        // If the path is root, then immediately insert into self at root path.
+        // This is required since retrieve_node_at_path() cannot retrieved self as a node and will error.
+        if parent_path.path_ids.len() == 0 {
+            let ord_resource = self.as_ordered_vector_resource()?;
+            return self.insert_node_at_path(
+                parent_path.clone(),
+                ord_resource.new_push_node_id(),
+                new_node,
+                new_embedding,
+            );
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                let ord_resource = resource.as_ordered_vector_resource()?;
+                return self.insert_node_at_path(
+                    parent_path.clone(),
+                    ord_resource.new_push_node_id(),
+                    new_node,
+                    new_embedding,
+                );
+            }
+            return Err(VRError::InvalidVRPath(parent_path.clone()));
+        }
+    }
+
+    /// Pops a node underneath the provided parent_path if the resource held there implements OrderedVectorResource trait.
+    /// If the parent_path is invalid at any part, or is 0 length, then method will error, and no changes will be applied to the VR.
+    fn pop_node_at_path(&mut self, parent_path: VRPath) -> Result<(Node, Embedding), VRError> {
+        // If the path is root, then immediately pop from self at root path to avoid error.
+        if parent_path.is_empty() {
+            let ord_resource = self.as_ordered_vector_resource_mut()?;
+            let node_path = parent_path.push_cloned(ord_resource.last_node_id());
+            return self.remove_node_at_path(node_path);
+        } else {
+            // Get the resource node at parent_path
+            let mut retrieved_node = self.retrieve_node_at_path(parent_path.clone())?;
+            // Check if its a DocumentVectorResource
+            if let NodeContent::Resource(resource) = &mut retrieved_node.node.content {
+                let ord_resource = resource.as_ordered_vector_resource_mut()?;
+                let node_path = parent_path.push_cloned(ord_resource.last_node_id());
+                self.remove_node_at_path(node_path.clone())
+            } else {
+                Err(VRError::InvalidVRPath(parent_path.clone()))
+            }
+        }
+    }
+
+    /// Internal method. Given a path, pops out each node along the path in order
+    /// and returned as a list, including its original key and embedding.
+    fn _deconstruct_nodes_along_path(&mut self, path: VRPath) -> Result<Vec<(String, Node, Embedding)>, VRError> {
+        if path.path_ids.is_empty() {
+            return Err(VRError::InvalidVRPath(path.clone()));
+        }
+
+        let first_node = self.get_node(path.path_ids[0].clone())?;
+        let first_embedding = self.get_embedding(path.path_ids[0].clone())?;
+        let mut deconstructed_nodes = vec![(path.path_ids[0].clone(), first_node, first_embedding)];
+
+        for id in path.path_ids.iter().skip(1) {
+            let last_mut = deconstructed_nodes
+                .last_mut()
+                .ok_or(VRError::InvalidVRPath(path.clone()))?;
+            let (_node_key, ref mut node, ref mut _embedding) = last_mut;
+            match &mut node.content {
+                NodeContent::Resource(resource) => {
+                    let (removed_node, removed_embedding) =
+                        resource.as_trait_object_mut().remove_node(id.to_string())?;
+                    deconstructed_nodes.push((id.clone(), removed_node, removed_embedding));
+                }
+                _ => {
+                    if id != path.path_ids.last().ok_or(VRError::InvalidVRPath(path.clone()))? {
+                        return Err(VRError::InvalidVRPath(path.clone()));
+                    }
+                }
+            }
+        }
+
+        Ok(deconstructed_nodes)
+    }
+
+    /// Internal method. Given a list of deconstructed_nodes, iterate backwards and rebuild them
+    /// into a single top-level node.
+    fn _rebuild_deconstructed_nodes(
+        &mut self,
+        mut deconstructed_nodes: Vec<(String, Node, Embedding)>,
+    ) -> Result<(String, Node, Embedding), VRError> {
+        let mut current_node = deconstructed_nodes.pop().ok_or(VRError::InvalidVRPath(VRPath::new()))?;
+        for (id, mut node, embedding) in deconstructed_nodes.into_iter().rev() {
+            if let NodeContent::Resource(resource) = &mut node.content {
+                resource
+                    .as_trait_object_mut()
+                    .insert_node(current_node.0, current_node.1, current_node.2)?;
+                current_node = (id, node, embedding);
+            }
+        }
+        Ok(current_node)
     }
 
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
-    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
     async fn dynamic_vector_search(
         &self,
         input_query: String,
@@ -270,7 +558,7 @@ pub trait VectorResource: Send + Sync {
     #[cfg(feature = "native-http")]
     /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
     /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
-    /// the query Emedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
     /// NOTE: Not all traversal_options (ex. UntilDepth) will work with Dynamic Vector Searches.
     async fn dynamic_vector_search_customized(
         &self,
@@ -288,6 +576,7 @@ pub trait VectorResource: Send + Sync {
 
         // First manually embedding generate & search the self Vector Resource
         let mut query_embedding = embedding_generator.generate_embedding_default(&input_query).await?;
+
         input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
         let mut latest_returned_results = self.vector_search_customized(
             query_embedding,
@@ -315,7 +604,9 @@ pub trait VectorResource: Send + Sync {
                             &embedding_generator.api_url,
                             embedding_generator.api_key.clone(),
                         );
-                        query_embedding = new_generator.generate_embedding_default(&input_query).await?;
+                        query_embedding = new_generator
+                            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
+                            .await?;
                         input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
                     }
 
@@ -378,9 +669,9 @@ pub trait VectorResource: Send + Sync {
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
         if let Some(path) = starting_path {
-            match self.get_node_with_path(path.clone()) {
-                Ok(node) => {
-                    if let NodeContent::Resource(resource) = node.content {
+            match self.retrieve_node_at_path(path.clone()) {
+                Ok(ret_node) => {
+                    if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
                         return resource.as_trait_object()._vector_search_customized_core(
                             query,
                             num_of_results,
@@ -430,6 +721,23 @@ pub trait VectorResource: Send + Sync {
                 .into_iter()
                 .filter(|ret_node| ret_node.score >= min_score)
                 .collect();
+        }
+
+        // Check if we need to adjust based on the ResultsMode
+        if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
+            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
+                if let Some(first_result) = results.first() {
+                    if let Ok(new_results) =
+                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
+                    {
+                        results = new_results
+                    } else {
+                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
+                        // then just return the single highest scored node as the failure case when using proximity search.
+                        results = vec![first_result.clone()]
+                    }
+                }
+            }
         }
 
         // Check if we are using traveral method unscored all nodes
@@ -569,7 +877,7 @@ pub trait VectorResource: Send + Sync {
                 }
 
                 let results = self._recursive_data_extraction(
-                    node,
+                    node.clone(),
                     score,
                     query.clone(),
                     num_of_results,

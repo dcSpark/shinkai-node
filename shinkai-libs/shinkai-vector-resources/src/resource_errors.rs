@@ -5,7 +5,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq)]
 pub enum VRError {
-    InvalidNodeId,
+    InvalidNodeId(String),
     VectorResourceEmpty,
     FailedEmbeddingGeneration(String),
     NoNodeFound,
@@ -23,12 +23,16 @@ pub enum VRError {
     CouldNotDetectFileType(String),
     InvalidReferenceString(String),
     InvalidDateTimeString(String),
+    LockAcquisitionFailed(String),
+    MissingKey(String),
+    InvalidPathString(String),
+    ResourceDoesNotSupportOrderedOperations(String),
 }
 
 impl fmt::Display for VRError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            VRError::InvalidNodeId => write!(f, "Invalid node id"),
+            VRError::InvalidNodeId(ref s) => write!(f, "Invalid node id: {}", s),
             VRError::VectorResourceEmpty => write!(f, "VectorResource is empty"),
             VRError::FailedEmbeddingGeneration(ref s) => write!(f, "Failed to generate embeddings: {}", s),
             VRError::NoNodeFound => write!(f, "No matching node found"),
@@ -60,6 +64,10 @@ impl fmt::Display for VRError {
             VRError::InvalidDateTimeString(ref s) => {
                 write!(f, "Provided datetime string does not match RFC3339: {}", s)
             }
+            VRError::LockAcquisitionFailed(ref s) => write!(f, "Failed to acquire lock for: {}", s),
+            VRError::MissingKey(ref s) => write!(f, "Missing key not found in hashmap: {}", s),
+            VRError::InvalidPathString(ref s) => write!(f, "String is not formatted as a proper path string: {}", s),
+            VRError::ResourceDoesNotSupportOrderedOperations( ref s) => write!(f, "Attempted to perform ordered operations on a resource that does not implement OrderedVectorResource: {}", s)
         }
     }
 }

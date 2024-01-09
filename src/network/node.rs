@@ -18,6 +18,7 @@ use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::Remote;
 use futures::{future::FutureExt, pin_mut, prelude::*, select};
+use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
@@ -237,6 +238,19 @@ pub enum NodeCommand {
         msg: ShinkaiMessage,
         res: Sender<Result<(), APIError>>,
     },
+    APIIsPristine {
+        res: Sender<Result<bool, APIError>>,
+    },
+}
+
+/// Hard-coded embedding model that is set as the default when creating a new profile.
+pub static NEW_PROFILE_DEFAULT_EMBEDDING_MODEL: EmbeddingModelType =
+    EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2);
+
+lazy_static! {
+    /// Hard-coded list of supported embedding models that is set when creating a new profile.
+    /// These need to match the list that our Embedding server orchestration service supports.
+    pub static ref NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS: Vec<EmbeddingModelType> = vec![NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone()];
 }
 
 // A type alias for a string that represents a profile name.
@@ -294,7 +308,7 @@ impl Node {
         encryption_secret_key: EncryptionStaticKey,
         ping_interval_secs: u64,
         commands: Receiver<NodeCommand>,
-        db_path: String,
+        main_db_path: String,
         first_device_needs_registration_code: bool,
         initial_agents: Vec<SerializedAgent>,
         js_toolkit_executor_remote: Option<String>,
@@ -309,9 +323,9 @@ impl Node {
         }
 
         // Get public keys, and update the local node keys in the db
-        let db = ShinkaiDB::new(&db_path).unwrap_or_else(|e| {
+        let db = ShinkaiDB::new(&main_db_path).unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
-            panic!("Failed to open database: {}", db_path)
+            panic!("Failed to open database: {}", main_db_path)
         });
         let db_arc = Arc::new(Mutex::new(db));
         let identity_public_key = identity_secret_key.verifying_key();
@@ -340,11 +354,23 @@ impl Node {
         let unstructured_api = unstructured_api.unwrap_or_else(UnstructuredAPI::new_default);
         let embedding_generator = embedding_generator.unwrap_or_else(RemoteEmbeddingGenerator::new_default);
 
+        // Fetch list of existing profiles from the node to push into the VectorFS
+        let mut profile_list = vec![];
+        {
+            let db_lock = db_arc.lock().await;
+            profile_list = match db_lock.get_all_profiles(node_profile_name.clone()) {
+                Ok(profiles) => profiles.iter().map(|p| p.full_identity_name.clone()).collect(),
+                Err(e) => panic!("Failed to fetch profiles: {}", e),
+            };
+        }
+
         // Initialize/setup the VectorFS.
         let vector_fs = VectorFS::new(
-            embedding_generator.model_type.clone(),
+            embedding_generator.clone(),
             vec![embedding_generator.model_type.clone()],
+            profile_list,
             &vector_fs_db_path,
+            node_profile_name.clone(),
         )
         .unwrap_or_else(|e| {
             eprintln!("Error: {:?}", e);
@@ -495,6 +521,7 @@ impl Node {
                             Some(NodeCommand::APIAddToolkit { msg, res }) => self.api_add_toolkit(msg, res).await?,
                             Some(NodeCommand::APIListToolkits { msg, res }) => self.api_list_toolkits(msg, res).await?,
                             Some(NodeCommand::APIChangeNodesName { msg, res }) => self.api_change_nodes_name(msg, res).await?,
+                            Some(NodeCommand::APIIsPristine { res }) => self.api_is_pristine(res).await?,
                             _ => break,
                         }
                     }

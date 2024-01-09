@@ -35,7 +35,7 @@ impl JobManager {
         job_message: JobMessage,
         prev_execution_context: HashMap<String, String>,
         generator: &dyn EmbeddingGenerator,
-        user_profile: Option<ShinkaiName>,
+        user_profile: ShinkaiName,
     ) -> Result<(String, HashMap<String, String>), AgentError> {
         // TODO: Later implement inference chain decision making here before choosing which chain to use.
         // For now we just use qa inference chain by default.
