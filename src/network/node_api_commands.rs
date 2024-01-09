@@ -1,6 +1,3 @@
-use serde_json::Value as JsonValue;
-use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use tokio::sync::Mutex;
 use super::{
     node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
@@ -8,7 +5,6 @@ use super::{
     node_shareable_logic::validate_message_main_logic,
     Node,
 };
-use crate::{managers::identity_manager::IdentityManagerTrait, db::ShinkaiDB};
 use crate::{
     db::db_errors::ShinkaiDBError,
     planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
@@ -20,6 +16,7 @@ use crate::{
     tools::js_toolkit_executor::JSToolkitExecutor,
     utils::update_global_identity::update_global_identity_name,
 };
+use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
@@ -50,10 +47,8 @@ use shinkai_message_primitives::{
     },
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use std::pin::Pin;
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
-use warp::Buf;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::{convert::TryInto, sync::Arc};
+use tokio::sync::Mutex;
 
 impl Node {
     pub async fn validate_message(
@@ -87,7 +82,7 @@ impl Node {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
         Ok(has_permission)
     }
-    
+
     async fn has_device_identity_access(
         db: Arc<Mutex<ShinkaiDB>>,
         inbox_name: &InboxName,
@@ -99,7 +94,11 @@ impl Node {
         Self::has_standard_identity_access(db, inbox_name, &std_device).await
     }
 
-    pub async fn has_inbox_access(db: Arc<Mutex<ShinkaiDB>>, inbox_name: &InboxName, sender_subidentity: &Identity) -> Result<bool, NodeError> {
+    pub async fn has_inbox_access(
+        db: Arc<Mutex<ShinkaiDB>>,
+        inbox_name: &InboxName,
+        sender_subidentity: &Identity,
+    ) -> Result<bool, NodeError> {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
@@ -2119,10 +2118,13 @@ impl Node {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
                             // TODO(must): it shouldn't always be None
-                            db_guard.unsafe_insert_inbox_message(&msg.clone(), None).await.map_err(|e| {
-                                eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
-                                std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
-                            })?;
+                            db_guard
+                                .unsafe_insert_inbox_message(&msg.clone(), None)
+                                .await
+                                .map_err(|e| {
+                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                    std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
+                                })?;
                         }
                         Err(e) => {
                             eprintln!(
