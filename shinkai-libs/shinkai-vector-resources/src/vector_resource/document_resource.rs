@@ -138,6 +138,18 @@ impl VectorResourceCore for DocumentVectorResource {
         self.source.clone()
     }
 
+    fn set_name(&mut self, new_name: String) {
+        self.name = new_name;
+    }
+
+    fn set_description(&mut self, new_description: Option<String>) {
+        self.description = new_description;
+    }
+
+    fn set_source(&mut self, new_source: VRSource) {
+        self.source = new_source;
+    }
+
     fn resource_id(&self) -> &str {
         &self.resource_id
     }

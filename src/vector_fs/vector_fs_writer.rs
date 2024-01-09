@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode};
+use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     source::SourceFile,
@@ -115,10 +115,8 @@ impl VectorFS {
         let mut resource = resource;
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
-        // TODO: Clean the resource name of file extension before saving it:
-        // let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
-        // resource.set_name()...
-        let resource_name = resource.as_trait_object().name();
+        let resource_name = SourceFileType::clean_string_of_extension(resource.as_trait_object().name());
+        resource.as_trait_object_mut().set_name(resource_name.clone());
         let node_path = writer.path.push_cloned(resource_name.to_string());
         let mut node_metadata = None;
         let mut node_at_path_already_exists = false;

@@ -31,6 +31,9 @@ pub trait VectorResourceCore: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> Option<&str>;
     fn source(&self) -> VRSource;
+    fn set_name(&mut self, new_name: String);
+    fn set_description(&mut self, new_description: Option<String>);
+    fn set_source(&mut self, new_source: VRSource);
     fn resource_id(&self) -> &str;
     fn set_resource_id(&mut self, id: String);
     fn resource_embedding(&self) -> &Embedding;
