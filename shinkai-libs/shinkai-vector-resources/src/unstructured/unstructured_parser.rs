@@ -45,8 +45,6 @@ impl UnstructuredParser {
         parsing_tags: &Vec<DataTag>,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
-        use crate::vector_resource::BaseVectorResource;
-
         Self::process_elements_into_resource_with_custom_collection(
             elements,
             generator,

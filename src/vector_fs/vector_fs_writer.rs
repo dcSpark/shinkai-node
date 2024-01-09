@@ -79,7 +79,7 @@ impl VectorFS {
     /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
     /// If a VR with the same name already exists underneath the current path, then overwrites it.
     /// Currently does not support saving into VecFS root.
-    pub fn create_new_folder(&mut self, writer: &VFSWriter, folder_name: &str) -> Result<(), VectorFSError> {
+    pub fn create_new_folder(&mut self, writer: &VFSWriter, folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
         let current_datetime = ShinkaiTime::generate_time_now();
         let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None));
@@ -89,7 +89,17 @@ impl VectorFS {
         let mut metadata = HashMap::new();
         metadata.insert(FSFolder::last_modified_key(), current_datetime.to_rfc3339());
 
-        self._add_existing_vr_to_core_resource(writer, new_vr, embedding, Some(metadata), current_datetime)
+        // Add the folder into the internals
+        let new_folder =
+            self._add_existing_vr_to_core_resource(writer, new_vr, embedding, Some(metadata), current_datetime)?;
+
+        // Save the FSInternals into the FSDB
+        let mut write_batch = writer.new_write_batch()?;
+        let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
+        self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
+        self.db.write_pb(write_batch)?;
+
+        return Ok(new_folder);
     }
 
     /// Saves a Vector Resource and optional SourceFile underneath the FSFolder at the specified path.
@@ -100,15 +110,19 @@ impl VectorFS {
         writer: &VFSWriter,
         resource: BaseVectorResource,
         source_file: Option<SourceFile>,
-    ) -> Result<VRPath, VectorFSError> {
+    ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
         let vr_header = resource.as_trait_object().generate_resource_header();
         let source_db_key = vr_header.reference_string();
+        // TODO: Clean the resource name of file extension before saving it:
+        // let cleaned_name = SourceFileType::clean_string_of_extension(&file_name);
+        // resource.set_name()...
         let resource_name = resource.as_trait_object().name();
         let node_path = writer.path.push_cloned(resource_name.to_string());
         let mut node_metadata = None;
         let mut node_at_path_already_exists = false;
+        let mut new_item = None;
 
         {
             let internals = self._get_profile_fs_internals(&writer.profile)?;
@@ -142,13 +156,13 @@ impl VectorFS {
 
             // Saving the VRHeader into the core vector resource
             {
-                self._add_vr_header_to_core_resource(
+                new_item = Some(self._add_vr_header_to_core_resource(
                     writer,
                     vr_header,
                     Some(node_metadata),
                     current_datetime,
                     node_at_path_already_exists,
-                )?;
+                )?);
             }
         }
 
@@ -162,7 +176,11 @@ impl VectorFS {
         self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
         self.db.write_pb(write_batch)?;
 
-        Ok(node_path)
+        if let Some(item) = new_item {
+            Ok(item)
+        } else {
+            Err(VectorFSError::NoEntryAtPath(node_path))
+        }
     }
 
     // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.
@@ -177,8 +195,9 @@ impl VectorFS {
         metadata: Option<HashMap<String, String>>,
         current_datetime: DateTime<Utc>,
         node_at_path_already_exists: bool,
-    ) -> Result<(), VectorFSError> {
+    ) -> Result<FSItem, VectorFSError> {
         let internals = self._get_profile_fs_internals(&writer.profile)?;
+        let new_node_path = writer.path.push_cloned(vr_header.resource_name.clone());
 
         // Mutator method for inserting the VR header and updating the last_modified metadata of parent folder
         let mut mutator = |node: &mut Node, embedding: &mut Embedding| -> Result<(), VRError> {
@@ -207,7 +226,22 @@ impl VectorFS {
                 internals
                     .fs_core_resource
                     .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
-                Ok(())
+                // Update last read of the new FSItem
+                internals.last_read_index.update_path_last_read(
+                    new_node_path.clone(),
+                    current_datetime,
+                    writer.requester_name.clone(),
+                );
+
+                let retrieved_node = internals
+                    .fs_core_resource
+                    .retrieve_node_at_path(new_node_path.clone())?;
+                let new_item = FSItem::from_vr_header_node(
+                    retrieved_node.node,
+                    new_node_path.clone(),
+                    &internals.last_read_index,
+                )?;
+                Ok(new_item)
             } else {
                 return Err(VectorFSError::EmbeddingModelTypeMismatch(
                     vr_header.resource_embedding_model_used,
@@ -228,7 +262,7 @@ impl VectorFS {
         embedding: Embedding,
         metadata: Option<HashMap<String, String>>,
         current_datetime: DateTime<Utc>,
-    ) -> Result<(), VectorFSError> {
+    ) -> Result<FSFolder, VectorFSError> {
         let resource_name = resource.as_trait_object().name().to_string();
         let new_node_path = writer.path.push_cloned(resource_name.clone());
         // Check if anything exists at the new node's path and error if so (cannot overwrite an existing FSEntry)
@@ -244,8 +278,16 @@ impl VectorFS {
             let new_node = Node::new_vector_resource(resource_name.clone(), &resource, metadata.clone());
             internals
                 .fs_core_resource
-                .insert_node(resource_name.clone(), new_node, embedding.clone(), None)?;
-            return Ok(());
+                .insert_node(resource_name.clone(), new_node.clone(), embedding.clone(), None)?;
+            // Update last read of the new FSFolder
+            internals.last_read_index.update_path_last_read(
+                new_node_path.clone(),
+                current_datetime,
+                writer.requester_name.clone(),
+            );
+
+            let folder = FSFolder::from_vector_resource_node(new_node, new_node_path, &internals.last_read_index)?;
+            return Ok(folder);
         }
 
         // Mutator method for inserting the VR and updating the last_modified metadata of parent folder
@@ -266,8 +308,20 @@ impl VectorFS {
         internals
             .fs_core_resource
             .mutate_node_at_path(writer.path.clone(), &mut mutator)?;
+        // Update last read of the new FSFolder
+        internals.last_read_index.update_path_last_read(
+            new_node_path.clone(),
+            current_datetime,
+            writer.requester_name.clone(),
+        );
 
-        Ok(())
+        let retrieved_node = internals
+            .fs_core_resource
+            .retrieve_node_at_path(new_node_path.clone())?;
+        let folder =
+            FSFolder::from_vector_resource_node(retrieved_node.node, new_node_path, &internals.last_read_index)?;
+
+        Ok(folder)
     }
 
     /// Internal method used to remove a child node of the current path, given its id. Applies only in memory.

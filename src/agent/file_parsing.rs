@@ -127,8 +127,8 @@ impl ParsingHelper {
         unstructured_api: UnstructuredAPI,
     ) -> Result<(String, VRSource, Vec<UnstructuredElement>), AgentError> {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
+        let source = VRSource::from_file(&file_name, &file_buffer)?;
         let name = SourceFileType::clean_string_of_extension(&file_name);
-        let source = VRSource::from_file(&name, &file_buffer)?;
         let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
         Ok((resource_id, source, elements))
     }
