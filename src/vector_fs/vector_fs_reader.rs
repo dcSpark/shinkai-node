@@ -106,21 +106,21 @@ impl VectorFS {
         }
     }
 
-    /// Attempts to retrieve a VectorResource at the path. If a VectorResource is not saved
+    /// Attempts to retrieve a VectorResource at the path specified in Reader. If a VectorResource is not saved
     /// at this path, an error will be returned.
     pub fn retrieve_vector_resource(&mut self, reader: &VFSReader) -> Result<BaseVectorResource, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader)?.as_item()?;
         self.db.get_resource_by_fs_item(&fs_item, &reader.profile)
     }
 
-    /// Attempts to retrieve a SourceFile at the path. If this path does not currently exist, or
+    /// Attempts to retrieve a SourceFile at the path specified in Reader. If this path does not currently exist, or
     /// a source_file is not saved at this path, then an error is returned.
     pub fn retrieve_source_file(&mut self, reader: &VFSReader) -> Result<SourceFile, VectorFSError> {
         let fs_item = self.retrieve_fs_entry(reader)?.as_item()?;
         self.db.get_source_file_by_fs_item(&fs_item, &reader.profile)
     }
 
-    /// Attempts to retrieve a VectorResource and its SourceFile at the path. If either is not available
+    /// Attempts to retrieve a VectorResource and its SourceFile at the path specified in Reader. If either is not available
     /// an error will be returned.
     pub fn retrieve_vr_and_source_file(
         &mut self,
@@ -129,6 +129,40 @@ impl VectorFS {
         let vr = self.retrieve_vector_resource(reader)?;
         let sf = self.retrieve_source_file(reader)?;
         Ok((vr, sf))
+    }
+
+    /// Attempts to retrieve a VectorResource within the folder specified at Reader path.
+    /// If a VectorResource is not saved at this path, an error will be returned.
+    pub fn retrieve_vector_resource_in_folder(
+        &mut self,
+        reader: &VFSReader,
+        item_name: String,
+    ) -> Result<BaseVectorResource, VectorFSError> {
+        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        self.retrieve_vector_resource(&new_reader)
+    }
+
+    /// Attempts to retrieve a SourceFile within the folder specified at Reader path.
+    /// If this path does not currently exist, or a source_file is not saved at this path,
+    /// then an error is returned.
+    pub fn retrieve_source_file_in_folder(
+        &mut self,
+        reader: &VFSReader,
+        item_name: String,
+    ) -> Result<SourceFile, VectorFSError> {
+        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        self.retrieve_source_file(&new_reader)
+    }
+
+    /// Attempts to retrieve a VectorResource and its SourceFile within the folder specified at Reader path.
+    /// If either is not available, an error will be returned.
+    pub fn retrieve_vr_and_source_file_in_folder(
+        &mut self,
+        reader: &VFSReader,
+        item_name: String,
+    ) -> Result<(BaseVectorResource, SourceFile), VectorFSError> {
+        let new_reader = reader._new_reader_copied_data(reader.path.push_cloned(item_name), self)?;
+        self.retrieve_vr_and_source_file(&new_reader)
     }
 
     /// Retrieves a node at a given path from the VectorFS core resource under a profile

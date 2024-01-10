@@ -87,7 +87,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
     vector_fs
-        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file))
+        .save_vector_resource_in_folder(&writer, resource.clone(), Some(source_file.clone()))
         .unwrap();
 
     // Validate new item path points to an entry at all (not empty), then specifically an item, and finally not to a folder.
@@ -108,7 +108,20 @@ async fn test_vector_fs_saving_reading() {
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
     /// Retrieve the Vector Resource & Source File from the db
-    ///
-    // let reader = vector_fs.db
-    assert!(1 == 2);
+    // Test both retrieve interfaces
+    let reader = vector_fs
+        .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
+        .unwrap();
+    let (ret_resource, ret_source_file) = vector_fs.retrieve_vr_and_source_file(&reader).unwrap();
+    assert_eq!(ret_resource, resource);
+    assert_eq!(ret_source_file, source_file);
+
+    let reader = vector_fs
+        .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
+        .unwrap();
+    let (ret_resource, ret_source_file) = vector_fs
+        .retrieve_vr_and_source_file_in_folder(&reader, resource.as_trait_object().name().to_string())
+        .unwrap();
+    assert_eq!(ret_resource, resource);
+    assert_eq!(ret_source_file, source_file);
 }
