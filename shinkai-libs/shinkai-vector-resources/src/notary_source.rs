@@ -25,7 +25,7 @@ pub struct TLSNotarizedSourceFile {
     pub file_type: SourceFileType,
     pub file_content: Vec<u8>,
     // Creation/publication time of the original content which is inside this struct
-    pub original_creation_datetime: DateTime<Utc>,
+    pub original_creation_datetime: Option<DateTime<Utc>>,
     pub proof: TLSNotaryProof,
 }
 
@@ -40,7 +40,7 @@ impl TLSNotarizedSourceFile {
         file_name: String,
         file_type: SourceFileType,
         file_content: Vec<u8>,
-        original_creation_datetime: DateTime<Utc>,
+        original_creation_datetime: Option<DateTime<Utc>>,
         proof: TLSNotaryProof,
     ) -> Self {
         Self {
