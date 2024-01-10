@@ -27,9 +27,7 @@ mod it {
     mod resources_tests;
     mod toolkit_tests;
     mod web_scraper_tests;
-    mod job_tree_usage_tests;
     mod websocket_tests;
     mod utils;
     mod vec_fs_tests;
-    mod web_scraper_tests;
 }
