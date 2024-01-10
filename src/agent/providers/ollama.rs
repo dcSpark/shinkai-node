@@ -1,9 +1,11 @@
+use crate::agent::providers::shared::ollama::OllamaAPIStreamingResponse;
 use crate::managers::model_capabilities_manager::{ModelCapabilitiesManager, PromptResultEnum};
 
 use super::super::{error::AgentError, execution::job_prompts::Prompt};
 use super::shared::ollama::OllamaAPIResponse;
 use super::LLMProvider;
 use async_trait::async_trait;
+use futures::StreamExt;
 use reqwest::Client;
 use serde_json;
 use serde_json::json;
@@ -61,7 +63,7 @@ impl LLMProvider for Ollama {
                     "model": self.model_type,
                     "prompt": messages_string,
                     "format": "json",
-                    "stream": false,
+                    "stream": true, // Yeah let's go wild and stream the response
                     // Include any other optional parameters as needed
                     // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-json-mode
                 });
@@ -80,11 +82,7 @@ impl LLMProvider for Ollama {
                     format!("Call API Body: {:?}", payload_log).as_str(),
                 );
 
-                let res = client
-                    .post(url)
-                    .json(&payload)
-                    .send()
-                    .await?;
+                let res = client.post(url).json(&payload).send().await?;
 
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
@@ -92,38 +90,53 @@ impl LLMProvider for Ollama {
                     format!("Call API Status: {:?}", res.status()).as_str(),
                 );
 
-                let response_text = res.text().await?;
+                let mut stream = res.bytes_stream();
+                let mut response_text = String::new();
+
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(chunk) => {
+                            let chunk_str = String::from_utf8_lossy(&chunk);
+                            let data_resp: Result<OllamaAPIStreamingResponse, _> = serde_json::from_str(&chunk_str);
+                            match data_resp {
+                                Ok(data) => {
+                                    if let Some(response) = data.response.as_str() {
+                                        response_text.push_str(response);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to parse line: {:?}", e);
+                                    // Handle JSON parsing error here...
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::JobExecution,
+                                ShinkaiLogLevel::Error,
+                                format!("Error while receiving chunk: {:?}", e).as_str(),
+                            );
+                            return Err(AgentError::NetworkError(e.to_string()));
+                        }
+                    }
+                }
+
                 shinkai_log(
                     ShinkaiLogOption::JobExecution,
                     ShinkaiLogLevel::Info,
                     format!("Call API Response Text: {:?}", response_text).as_str(),
                 );
 
-                let data_resp: Result<OllamaAPIResponse, _> = serde_json::from_str(&response_text);
-
-                match data_resp {
-                    Ok(data) => {
-                        let response_string = data.response.as_str().unwrap_or("");
-                        match serde_json::from_str::<JsonValue>(&response_string) {
-                            Ok(deserialized_json) => {
-                                let response_string = deserialized_json.to_string();
-                                Self::extract_first_json_object(&response_string)
-                            }
-                            Err(e) => {
-                                shinkai_log(
-                                    ShinkaiLogOption::JobExecution,
-                                    ShinkaiLogLevel::Error,
-                                    format!("Failed to deserialize response: {:?}", e).as_str(),
-                                );
-                                Err(AgentError::SerdeError(e))
-                            }
-                        }
+                match serde_json::from_str::<JsonValue>(&response_text) {
+                    Ok(deserialized_json) => {
+                        let response_string = deserialized_json.to_string();
+                        Self::extract_first_json_object(&response_string)
                     }
                     Err(e) => {
                         shinkai_log(
                             ShinkaiLogOption::JobExecution,
                             ShinkaiLogLevel::Error,
-                            format!("Failed to parse response: {:?}", e).as_str(),
+                            format!("Failed to deserialize response: {:?}", e).as_str(),
                         );
                         Err(AgentError::SerdeError(e))
                     }
@@ -143,6 +156,8 @@ impl LLMProvider for Ollama {
     fn get_max_tokens(s: &str) -> usize {
         if s.to_string().starts_with("Open-Orca/Mistral-7B-OpenOrca") {
             8000
+        } else if s.to_string().starts_with("ollama:mixtral") {
+            32000
         } else {
             4096
         }
