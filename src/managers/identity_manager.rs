@@ -11,6 +11,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::Identi
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogOption, ShinkaiLogLevel};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use async_trait::async_trait;
 
 #[derive(Clone)]
 pub struct IdentityManager {
@@ -19,6 +20,20 @@ pub struct IdentityManager {
     pub db: Arc<Mutex<ShinkaiDB>>,
     pub external_identity_manager: Arc<Mutex<IdentityNetworkManager>>,
     pub is_ready: bool,
+}
+
+// Note this makes testing much easier
+#[async_trait]
+pub trait IdentityManagerTrait {
+    fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity>;
+    async fn search_identity(&self, full_identity_name: &str) -> Option<Identity>;
+    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send>;
+}
+
+impl Clone for Box<dyn IdentityManagerTrait + Send> {
+    fn clone(&self) -> Box<dyn IdentityManagerTrait + Send> {
+        self.clone_box()
+    }
 }
 
 impl IdentityManager {
@@ -45,7 +60,7 @@ impl IdentityManager {
             let db = db.lock().await;
             db.debug_print_all_keys_for_profiles_identity_key();
         }
-
+        
         identities.extend(agents);
 
         let external_identity_manager = Arc::new(Mutex::new(IdentityNetworkManager::new()));
@@ -167,35 +182,6 @@ impl IdentityManager {
         self.local_identities.clone()
     }
 
-    pub async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
-        let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
-        let node_name = identity_name.extract_node();
-
-        // If the node name matches local node, search in self.identities
-        if self.local_node_name == node_name {
-            self.search_local_identity(full_identity_name).await
-        } else {
-            // If not, query the identity network manager
-            let external_im = self.external_identity_manager.lock().await;
-            match external_im
-                .external_identity_to_profile_data(full_identity_name.to_string())
-                .await
-            {
-                Ok(identity_network_manager) => Some(Identity::Standard(StandardIdentity::new(
-                    node_name,
-                    Some(identity_network_manager.addr),
-                    identity_network_manager.encryption_public_key,
-                    identity_network_manager.signature_public_key,
-                    None,
-                    None,
-                    StandardIdentityType::Global,
-                    IdentityPermissions::None,
-                ))),
-                Err(_) => None, // return None if the identity is not found in the network manager
-            }
-        }
-    }
-
     pub fn get_all_subidentities(&self) -> Vec<Identity> {
         // println!("identities_manager identities: {:?}", self.local_identities);
         self.local_identities.clone()
@@ -204,17 +190,6 @@ impl IdentityManager {
     pub async fn get_all_agents(&self) -> Result<Vec<SerializedAgent>, ShinkaiDBError> {
         let db = self.db.lock().await;
         db.get_all_agents()
-    }
-
-    pub fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
-        // println!("identities_manager identities: {:?}", self.local_identities);
-        self.local_identities.iter().find(|identity| {
-            match identity {
-                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
-                Identity::Device(device) => device.full_identity_name == full_profile_name,
-                Identity::Agent(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
-            }
-        })
     }
 
     pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
@@ -259,6 +234,54 @@ impl IdentityManager {
             )),
             Err(_) => None, // return None if the identity is not found in the network manager
         }
+    }
+}
+
+#[async_trait]
+impl IdentityManagerTrait for IdentityManager {
+    fn find_by_identity_name(&self, full_profile_name: ShinkaiName) -> Option<&Identity> {
+        // println!("identities_manager identities: {:?}", self.local_identities);
+        self.local_identities.iter().find(|identity| {
+            match identity {
+                Identity::Standard(identity) => identity.full_identity_name == full_profile_name,
+                Identity::Device(device) => device.full_identity_name == full_profile_name,
+                Identity::Agent(agent) => agent.full_identity_name == full_profile_name, // Assuming the 'name' field of Agent struct can be considered as the profile name
+            }
+        })
+    }
+
+
+    async fn search_identity(&self, full_identity_name: &str) -> Option<Identity> {
+        let identity_name = ShinkaiName::new(full_identity_name.to_string()).ok()?;
+        let node_name = identity_name.extract_node();
+
+        // If the node name matches local node, search in self.identities
+        if self.local_node_name == node_name {
+            self.search_local_identity(full_identity_name).await
+        } else {
+            // If not, query the identity network manager
+            let external_im = self.external_identity_manager.lock().await;
+            match external_im
+                .external_identity_to_profile_data(full_identity_name.to_string())
+                .await
+            {
+                Ok(identity_network_manager) => Some(Identity::Standard(StandardIdentity::new(
+                    node_name,
+                    Some(identity_network_manager.addr),
+                    identity_network_manager.encryption_public_key,
+                    identity_network_manager.signature_public_key,
+                    None,
+                    None,
+                    StandardIdentityType::Global,
+                    IdentityPermissions::None,
+                ))),
+                Err(_) => None, // return None if the identity is not found in the network manager
+            }
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn IdentityManagerTrait + Send> {
+        Box::new(self.clone())
     }
 }
 

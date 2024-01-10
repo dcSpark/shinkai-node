@@ -10,6 +10,7 @@ pub enum ShinkaiLogOption {
     JobExecution,
     CronExecution,
     API,
+    WsAPI,
     DetailedAPI,
     Node,
     InternalAPI,
@@ -44,6 +45,7 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
             ShinkaiLogOption::JobExecution,
             ShinkaiLogOption::CronExecution,
             ShinkaiLogOption::API,
+            ShinkaiLogOption::WsAPI,
             ShinkaiLogOption::DetailedAPI,
             ShinkaiLogOption::Node,
             ShinkaiLogOption::InternalAPI,
@@ -67,6 +69,9 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
     }
     if std::env::var("LOG_API").is_ok() {
         active_options.push(ShinkaiLogOption::API);
+    }
+    if std::env::var("LOG_WS_API").is_ok() {
+        active_options.push(ShinkaiLogOption::WsAPI);
     }
     if std::env::var("LOG_DETAILED_API").is_ok() {
         active_options.push(ShinkaiLogOption::DetailedAPI);

@@ -164,11 +164,13 @@ impl CronManager {
                     let mut db_lock = db.lock().await;
                     db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
                 };
-                shinkai_log(
-                    ShinkaiLogOption::CronExecution,
-                    ShinkaiLogLevel::Debug,
-                    format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
-                );
+                if !jobs_to_process.is_empty() {
+                    shinkai_log(
+                        ShinkaiLogOption::CronExecution,
+                        ShinkaiLogLevel::Debug,
+                        format!("Cron Jobs retrieved from DB: {:?}", jobs_to_process.len()).as_str(),
+                    );
+                }
                 let mut handles = Vec::new();
 
                 // Spawn tasks based on filtered job IDs
@@ -297,7 +299,7 @@ impl CronManager {
                 node_profile_name.node_name.clone(),
             )
             .unwrap();
-            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)?;
+            db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await?;
             db.update_smart_inbox_name(inbox_name.to_string().as_str(), cron_job.prompt.as_str())?;
         }
 

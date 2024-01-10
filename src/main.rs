@@ -7,9 +7,14 @@ use crate::utils::environment::{fetch_agent_env, fetch_node_environment};
 use crate::utils::keys::generate_or_load_keys;
 use crate::utils::qr_code_setup::generate_qr_codes;
 use async_channel::{bounded, Receiver, Sender};
+use db::ShinkaiDB;
 use ed25519_dalek::VerifyingKey;
+use managers::identity_manager::IdentityManagerTrait;
 use network::node::NEW_PROFILE_DEFAULT_EMBEDDING_MODEL;
+use network::ws_manager::{WSUpdateHandler, WebSocketManager};
+use network::ws_routes::run_ws_api;
 use network::Node;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
@@ -19,14 +24,13 @@ use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_secret_key_to_string,
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::model_type::TextEmbeddingsInference;
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::{env, fs};
 use tokio::runtime::Runtime;
+use tokio::sync::Mutex;
 use utils::environment::NodeEnvironment;
 
 mod agent;
@@ -153,30 +157,48 @@ fn main() {
             .await
         }),
     ));
+
     // Put the Node in an Arc<Mutex<Node>> for use in a task
     let start_node = Arc::clone(&node);
     let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        .worker_threads(3)
         .enable_all()
         .build()
         .unwrap();
 
     // Run the API server and node in separate tasks
     rt.block_on(async {
+        // Get identity_manager before starting the node
+        let identity_manager = {
+            let node = start_node.lock().await;
+            node.identity_manager.clone()
+        };
+
+        let shinkai_db = {
+            let node = start_node.lock().await;
+            node.db.clone()
+        };
+
         // Node task
         let node_task = tokio::spawn(async move { start_node.lock().await.start().await.unwrap() });
 
         // Check if the node is ready
         if !node.lock().await.is_node_ready().await {
             println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
-            let _ = generate_qr_codes(&node_commands_sender, &node_env, &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
+            let _ = generate_qr_codes(&node_commands_sender, &node_env.clone(), &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
         }
 
         // Setup API Server task
+        let api_listen_address = node_env.clone().api_listen_address;
         let api_server = tokio::spawn(async move {
-            node_api::run_api(node_commands_sender, node_env.api_listen_address, global_identity_name.clone().to_string()).await;
+            node_api::run_api(node_commands_sender, api_listen_address, global_identity_name.clone().to_string()).await;
         });
-        let _ = tokio::try_join!(api_server, node_task);
+
+        let ws_server = tokio::spawn(async move {
+            init_ws_server(&node_env, identity_manager, shinkai_db).await;
+        });
+
+        let _ = tokio::try_join!(api_server, node_task, ws_server);
     });
 }
 
@@ -273,4 +295,27 @@ fn init_embedding_generator(node_env: &NodeEnvironment) -> RemoteEmbeddingGenera
     // TODO: Replace this hard-coded model to having the default being saved/read from the DB
     let model = NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone();
     RemoteEmbeddingGenerator::new(model, &api_url, api_key)
+}
+
+async fn init_ws_server(
+    node_env: &NodeEnvironment,
+    identity_manager: Arc<Mutex<dyn IdentityManagerTrait + Send + 'static>>,
+    shinkai_db: Arc<Mutex<ShinkaiDB>>,
+) {
+    let new_identity_manager: Arc<Mutex<Box<dyn IdentityManagerTrait + Send + 'static>>> = {
+        let identity_manager_inner = identity_manager.lock().await;
+        let boxed_identity_manager = identity_manager_inner.clone_box();
+        Arc::new(Mutex::new(boxed_identity_manager))
+    };
+
+    let shinkai_name = ShinkaiName::new(node_env.global_identity_name.clone()).expect("Invalid global identity name");
+    // Start the WebSocket server
+    let manager = WebSocketManager::new(shinkai_db.clone(), shinkai_name, new_identity_manager).await;
+
+    // Update ShinkaiDB with manager so it can trigger updates
+    {
+        let mut shinkai_db = shinkai_db.lock().await;
+        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+    }
+    run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;
 }

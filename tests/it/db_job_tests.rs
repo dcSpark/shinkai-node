@@ -156,8 +156,8 @@ mod tests {
         assert_eq!(job.is_finished, true);
     }
 
-    #[test]
-    fn test_update_step_history() {
+    #[tokio::test]
+    async fn test_update_step_history() {
         setup();
         let job_id = "test_job".to_string();
         let agent_id = "agent4".to_string();
@@ -188,6 +188,7 @@ mod tests {
         // Insert the ShinkaiMessage into the database
         shinkai_db
             .unsafe_insert_inbox_message(&message, None)
+            .await
             .unwrap();
 
         // Update step history
@@ -294,8 +295,8 @@ mod tests {
         assert_eq!(unique_jobs.len(), 5);
     }
 
-    #[test]
-    fn test_job_inbox_empty() {
+    #[tokio::test]
+    async fn test_job_inbox_empty() {
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -321,14 +322,14 @@ mod tests {
         .unwrap();
 
         // Add a message to the job
-        let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None);
+        let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await;
 
         // Check if the job inbox is not empty after adding a message
         assert!(!shinkai_db.is_job_inbox_empty(&job_id).unwrap());
     }
 
-    #[test]
-    fn test_job_inbox_tree_structure() {
+    #[tokio::test]
+    async fn test_job_inbox_tree_structure() {
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -369,7 +370,7 @@ mod tests {
             };
 
             // Add a message to the job
-            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone());
+            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone()).await;
 
             // Update the parent message according to the tree structure
             if i == 1 {
@@ -419,8 +420,8 @@ mod tests {
         assert_eq!(job_message_4.content, "Hello World 4".to_string());
     }
 
-    #[test]
-    fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
+    #[tokio::test]
+    async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -469,7 +470,7 @@ mod tests {
             };
 
             // Add a message to the job
-            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone());
+            let _ = shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, parent_hash.clone()).await;
 
             // Add a step history
             let result = format!("Result {}", i);
@@ -581,8 +582,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_insert_steps_with_simple_tree_structure() {
+    #[tokio::test]
+    async fn test_insert_steps_with_simple_tree_structure() {
         setup();
 
         let node1_identity_name = "@@node1.shinkai";
@@ -636,6 +637,7 @@ mod tests {
             // Insert the ShinkaiMessage into the database
             shinkai_db
                 .unsafe_insert_inbox_message(&message, parent_hash.clone())
+                .await
                 .unwrap();
 
             shinkai_db

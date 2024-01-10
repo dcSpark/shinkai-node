@@ -2,7 +2,7 @@ use chrono::DateTime;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
     schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
-    shinkai_message::shinkai_message::ShinkaiMessage,
+    shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
 
@@ -15,7 +15,7 @@ use crate::schemas::{
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 
 impl ShinkaiDB {
-    pub fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
+    pub async fn create_empty_inbox(&mut self, inbox_name: String) -> Result<(), Error> {
         shinkai_log(
             ShinkaiLogOption::JobExecution,
             ShinkaiLogLevel::Info,
@@ -58,11 +58,21 @@ impl ShinkaiDB {
         // Commit the write batch
         self.db.write(batch)?;
 
+        {
+            // Note: this is the code for enabling WS
+            if let Some(manager) = &self.ws_manager {
+                let m = manager.lock().await;
+                let _ = m
+                    .queue_message(WSTopic::SmartInboxes, "".to_string(), inbox_name.clone())
+                    .await;
+            }
+        }
+
         Ok(())
     }
 
     // This fn doesn't validate access to the inbox (not really a responsibility of this db fn) so it's unsafe in that regard
-    pub fn unsafe_insert_inbox_message(
+    pub async fn unsafe_insert_inbox_message(
         &mut self,
         message: &ShinkaiMessage,
         maybe_parent_message_key: Option<String>,
@@ -84,7 +94,7 @@ impl ShinkaiDB {
 
         // Check if the inbox topic exists and if not, create it
         if self.db.cf_handle(&inbox_name).is_none() {
-            self.create_empty_inbox(inbox_name.clone())?;
+            self.create_empty_inbox(inbox_name.clone()).await?;
         }
 
         // Calculate the hash of the message for the key
@@ -191,13 +201,18 @@ impl ShinkaiDB {
             batch.put_cf(cf_parents, &hash_key, parent_key);
         }
 
+        {
+            // Note: this is the code for enabling WS
+            if let Some(manager) = &self.ws_manager {
+                let m = manager.lock().await;
+                let inbox_name_string = inbox_name.to_string();
+                if let Ok(msg_string) = message.to_string() {
+                    let _ = m.queue_message(WSTopic::Inbox, inbox_name_string, msg_string).await;
+                }
+            }
+        }
+
         self.db.write(batch)?;
-
-        // Call get_last_messages_from_inbox and print the results
-        // eprintln!("Calling get_last_messages_from_inbox");
-        // let last_messages = self.get_last_messages_from_inbox(inbox_name.clone(), 10, None)?;
-        // println!("Last messages: {:?}", last_messages);
-
         Ok(())
     }
 

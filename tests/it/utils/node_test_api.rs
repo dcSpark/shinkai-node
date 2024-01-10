@@ -508,7 +508,7 @@ pub async fn api_initial_registration_with_no_code_for_device(
         clone_signature_secret_key(&device_signature_sk),
         profile_encryption_sk.clone(),
         clone_signature_secret_key(&profile_signature_sk),
-        device_name_for_profile.clone().to_string(),
+        device_name_for_profile.to_string(),
         sender_subidentity.clone(),
         sender.clone(),
         recipient.clone(),

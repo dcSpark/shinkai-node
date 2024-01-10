@@ -2,39 +2,34 @@ use super::{
     node::NEW_PROFILE_SUPPORTED_EMBEDDING_MODELS,
     node_api::{APIError, APIUseRegistrationCodeSuccessResponse},
     node_error::NodeError,
+    node_shareable_logic::validate_message_main_logic,
     Node,
 };
 use crate::{
     db::db_errors::ShinkaiDBError,
-    managers::identity_manager::{self, IdentityManager},
-    network::node_message_handlers::{ping_pong, PingPong},
     planner::{kai_files::KaiJobFile, kai_manager::KaiJobFileManager},
     schemas::{
         identity::{DeviceIdentity, Identity, IdentityType, RegistrationCode, StandardIdentity, StandardIdentityType},
         inbox_permission::InboxPermission,
         smart_inbox::SmartInbox,
     },
-    tools::{js_toolkit::JSToolkit, js_toolkit_executor::JSToolkitExecutor},
+    tools::js_toolkit_executor::JSToolkitExecutor,
     utils::update_global_identity::update_global_identity_name,
 };
+use crate::{db::ShinkaiDB, managers::identity_manager::IdentityManagerTrait};
 use aes_gcm::aead::{generic_array::GenericArray, Aead};
 use aes_gcm::Aes256Gcm;
 use aes_gcm::KeyInit;
 use async_channel::Sender;
-use async_std::eprint;
 use blake3::Hasher;
-use ed25519_dalek::VerifyingKey;
-use futures::task::{Context, Poll};
-use futures::Stream;
-use futures::StreamExt;
-use log::{debug, error, info, trace, warn};
+use log::error;
 use reqwest::StatusCode;
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::{
     schemas::{
         agents::serialized_agent::SerializedAgent,
         inbox_name::InboxName,
-        shinkai_name::{ShinkaiName, ShinkaiNameError, ShinkaiSubidentityType},
+        shinkai_name::{ShinkaiName, ShinkaiSubidentityType},
     },
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -45,18 +40,15 @@ use shinkai_message_primitives::{
     },
     shinkai_utils::{
         encryption::{
-            clone_static_secret_key, encryption_public_key_to_string, encryption_secret_key_to_string,
-            string_to_encryption_public_key, EncryptionMethod,
+            clone_static_secret_key, encryption_public_key_to_string, string_to_encryption_public_key, EncryptionMethod,
         },
         shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
         signatures::{clone_signature_secret_key, signature_public_key_to_string, string_to_signature_public_key},
     },
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use std::pin::Pin;
-use std::{collections::HashMap, convert::TryInto, sync::Arc};
-use warp::Buf;
-use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
+use std::{convert::TryInto, sync::Arc};
+use tokio::sync::Mutex;
 
 impl Node {
     pub async fn validate_message(
@@ -64,182 +56,27 @@ impl Node {
         potentially_encrypted_msg: ShinkaiMessage,
         schema_type: Option<MessageSchemaType>,
     ) -> Result<(ShinkaiMessage, Identity), APIError> {
+        let identity_manager_trait: Box<dyn IdentityManagerTrait + Send> =
+            Box::new(self.identity_manager.lock().await.clone());
         // println!("validate_message: {:?}", potentially_encrypted_msg);
         // Decrypt the message body if needed
-        let msg: ShinkaiMessage;
-        {
-            // check if the message is encrypted
-            let is_body_encrypted = potentially_encrypted_msg.clone().is_body_currently_encrypted();
-            if is_body_encrypted {
-                /*
-                When someone sends an encrypted message, we need to compute the shared key using Diffie-Hellman,
-                but what if they are using a subidentity? We don't know which one because it's encrypted.
-                So the only way to get the pk is if they send it to us in the external_metadata.other field or
-                if they are using intra_sender (which needs to be deleted afterwards).
-                For other cases, we can find it in the identity manager.
-                */
-                let sender_encryption_pk_string = potentially_encrypted_msg.external_metadata.clone().other;
-                let sender_encryption_pk = string_to_encryption_public_key(sender_encryption_pk_string.as_str()).ok();
 
-                if sender_encryption_pk.is_some() {
-                    msg = match potentially_encrypted_msg
-                        .clone()
-                        .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk.unwrap())
-                    {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            return Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Bad Request".to_string(),
-                                message: format!("Failed to decrypt message body: {}", e),
-                            })
-                        }
-                    };
-                } else {
-                    let sender_name = ShinkaiName::from_shinkai_message_using_sender_and_intra_sender(
-                        &potentially_encrypted_msg.clone(),
-                    )?;
-
-                    eprintln!("sender_name: {:?}", sender_name);
-                    let sender_encryption_pk =
-                        match self
-                            .identity_manager
-                            .lock()
-                            .await
-                            .search_identity(sender_name.clone().to_string().as_str())
-                            .await
-                        {
-                            Some(identity) => match identity {
-                                Identity::Standard(std_identity) => match std_identity.identity_type {
-                                    StandardIdentityType::Global => std_identity.node_encryption_public_key,
-                                    StandardIdentityType::Profile => std_identity
-                                        .profile_encryption_public_key
-                                        .unwrap_or_else(|| std_identity.node_encryption_public_key),
-                                },
-                                Identity::Device(device) => device.device_encryption_public_key,
-                                Identity::Agent(_) => return Err(APIError {
-                                    code: StatusCode::UNAUTHORIZED.as_u16(),
-                                    error: "Unauthorized".to_string(),
-                                    message:
-                                        "Failed to get sender encryption pk from message: Agent identity not supported"
-                                            .to_string(),
-                                }),
-                            },
-                            None => {
-                                return Err(APIError {
-                                    code: StatusCode::UNAUTHORIZED.as_u16(),
-                                    error: "Unauthorized".to_string(),
-                                    message: "Failed to get sender encryption pk from message: Identity not found"
-                                        .to_string(),
-                                })
-                            }
-                        };
-                    msg = match potentially_encrypted_msg
-                        .clone()
-                        .decrypt_outer_layer(&self.encryption_secret_key, &sender_encryption_pk)
-                    {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            return Err(APIError {
-                                code: StatusCode::BAD_REQUEST.as_u16(),
-                                error: "Bad Request".to_string(),
-                                message: format!("Failed to decrypt message body: {}", e),
-                            })
-                        }
-                    };
-                }
-            } else {
-                msg = potentially_encrypted_msg.clone();
-            }
-        }
-
-        // shinkai_log(
-        //     ShinkaiLogOption::Identity,
-        //     ShinkaiLogLevel::Info,
-        //     format!("after decrypt_message_body_if_needed: {:?}", msg).as_str(),
-        // );
-
-        // Check that the message has the right schema type
-        if let Some(schema) = schema_type {
-            if let Err(e) = msg.validate_message_schema(schema) {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Invalid message schema: {}", e),
-                });
-            }
-        }
-
-        // Check if the message is coming from one of our subidentities and validate signature
-        let sender_name = match ShinkaiName::from_shinkai_message_using_sender_subidentity(&msg.clone()) {
-            Ok(name) => name,
-            Err(e) => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to get sender name from message: {}", e),
-                })
-            }
-        };
-
-        // We (currently) don't proxy external messages from other nodes to other nodes
-        if sender_name.get_node_name() != self.node_profile_name.get_node_name() {
-            return Err(APIError {
-                code: StatusCode::BAD_REQUEST.as_u16(),
-                error: "Bad Request".to_string(),
-                message: "sender_name.node_name is not the same as self.node_name. It can't proxy through this node."
-                    .to_string(),
-            });
-        }
-
-        // Check that the subidentity that's trying to prox through us exist / is valid and linked to the node
-        let subidentity_manager = self.identity_manager.lock().await;
-        let sender_subidentity = subidentity_manager.find_by_identity_name(sender_name).cloned();
-        std::mem::drop(subidentity_manager);
-
-        // eprintln!(
-        //     "\n\nafter find_by_identity_name> sender_subidentity: {:?}",
-        //     sender_subidentity
-        // );
-
-        // Check that the identity exists locally
-        let sender_subidentity = match sender_subidentity.clone() {
-            Some(sender) => sender,
-            None => {
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: "Sender subidentity is None".to_string(),
-                });
-            }
-        };
-
-        // Check that the message signature is valid according to the local keys
-        match IdentityManager::verify_message_signature(
-            Some(sender_subidentity.clone()),
-            &potentially_encrypted_msg,
-            &msg.clone(),
-        ) {
-            Ok(_) => (),
-            Err(e) => {
-                error!("Failed to verify message signature: {}", e);
-                return Err(APIError {
-                    code: StatusCode::BAD_REQUEST.as_u16(),
-                    error: "Bad Request".to_string(),
-                    message: format!("Failed to verify message signature: {}", e),
-                });
-            }
-        }
-
-        Ok((msg, sender_subidentity))
+        validate_message_main_logic(
+            &self.encryption_secret_key,
+            Arc::new(Mutex::new(identity_manager_trait)),
+            &self.node_profile_name,
+            potentially_encrypted_msg,
+            schema_type,
+        )
+        .await
     }
 
     async fn has_standard_identity_access(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         inbox_name: &InboxName,
         std_identity: &StandardIdentity,
     ) -> Result<bool, NodeError> {
-        let db_lock = self.db.lock().await;
+        let db_lock = db.lock().await;
         let has_permission = db_lock
             .has_permission(&inbox_name.to_string(), &std_identity, InboxPermission::Read)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -247,17 +84,21 @@ impl Node {
     }
 
     async fn has_device_identity_access(
-        &self,
+        db: Arc<Mutex<ShinkaiDB>>,
         inbox_name: &InboxName,
         std_identity: &DeviceIdentity,
     ) -> Result<bool, NodeError> {
         let std_device = std_identity.clone().to_standard_identity().ok_or(NodeError {
             message: "Failed to convert to standard identity".to_string(),
         })?;
-        self.has_standard_identity_access(inbox_name, &std_device).await
+        Self::has_standard_identity_access(db, inbox_name, &std_device).await
     }
 
-    async fn has_inbox_access(&self, inbox_name: &InboxName, sender_subidentity: &Identity) -> Result<bool, NodeError> {
+    pub async fn has_inbox_access(
+        db: Arc<Mutex<ShinkaiDB>>,
+        inbox_name: &InboxName,
+        sender_subidentity: &Identity,
+    ) -> Result<bool, NodeError> {
         let sender_shinkai_name = ShinkaiName::new(sender_subidentity.get_full_identity_name())
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
@@ -269,10 +110,10 @@ impl Node {
 
         match sender_subidentity {
             Identity::Standard(std_identity) => {
-                return self.has_standard_identity_access(inbox_name, std_identity).await;
+                return Self::has_standard_identity_access(db, inbox_name, std_identity).await;
             }
             Identity::Device(std_device) => {
-                return self.has_device_identity_access(inbox_name, std_device).await;
+                return Self::has_device_identity_access(db, inbox_name, std_device).await;
             }
             _ => Err(NodeError {
                 message: format!(
@@ -339,7 +180,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
@@ -421,7 +262,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
@@ -607,7 +448,7 @@ impl Node {
 
         // Check that the message is coming from someone with the right permissions to do this action
         // TODO(Discuss): can local admin read any messages from any device or profile?
-        match self.has_inbox_access(&inbox_name, &sender_subidentity).await {
+        match Self::has_inbox_access(self.db.clone(), &inbox_name, &sender_subidentity).await {
             Ok(value) => {
                 if value == true {
                     let response = self
@@ -628,7 +469,7 @@ impl Node {
                                 .await;
                             return Ok(());
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             let _ = res
                                 .send(Err(APIError {
                                     code: StatusCode::FORBIDDEN.as_u16(),
@@ -1379,7 +1220,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::TextContent))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1814,7 +1655,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::JobMessageSchema))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1856,7 +1697,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::Empty))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1894,7 +1735,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
             .await;
-        let (msg, sender_subidentity) = match validation_result {
+        let (msg, _) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -2277,10 +2118,13 @@ impl Node {
                             // use unsafe_insert_inbox_message because we already validated the message
                             let mut db_guard = self.db.lock().await;
                             // TODO(must): it shouldn't always be None
-                            db_guard.unsafe_insert_inbox_message(&msg.clone(), None).map_err(|e| {
-                                eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
-                                std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
-                            })?;
+                            db_guard
+                                .unsafe_insert_inbox_message(&msg.clone(), None)
+                                .await
+                                .map_err(|e| {
+                                    eprintln!("handle_onionized_message > Error inserting message into db: {}", e);
+                                    std::io::Error::new(std::io::ErrorKind::Other, format!("Insertion error: {}", e))
+                                })?;
                         }
                         Err(e) => {
                             eprintln!(

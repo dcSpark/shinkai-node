@@ -16,6 +16,7 @@ use shinkai_message_primitives::{
     },
 };
 use std::str::FromStr;
+use crate::managers::identity_manager::IdentityManagerTrait;
 
 impl Node {
     pub async fn local_get_last_unread_messages_from_inbox(
