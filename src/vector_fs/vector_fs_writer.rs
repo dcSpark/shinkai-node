@@ -109,7 +109,8 @@ impl VectorFS {
         &mut self,
         writer: &VFSWriter,
         resource: BaseVectorResource,
-        source_file: Option<SourceFile>,
+        source_file: Option<SourceFileMap>,
+        distribution_origin: DistributionOrigin,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
         let mut resource = resource;
@@ -346,3 +347,9 @@ impl VectorFS {
         Ok(())
     }
 }
+
+/// A struct which holds a map of SourceFiles, with the key being
+/// the path within the VectorResource to an internal VR which that
+/// SourceFile matches.
+/// A SourceFile at root means it is the source file for the whole VR.
+pub struct SourceFileMap {}

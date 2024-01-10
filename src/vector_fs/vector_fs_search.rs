@@ -10,6 +10,13 @@ use shinkai_vector_resources::{
     },
 };
 
+// TODO:
+// Add a new VectorResource traversal option which is something like `ApplyNodeValidationBeforeTraversing`.
+// Have it validate the validation function passes true before traversing into a node, or else if false skip over the node.
+//
+// Then use this as the default vector search (wrap in a local method) for the VectorFS, where we use a closure
+// with the fs permissions, and have it validate that the user has read rights for the node validation function.
+//
 impl VectorFS {
     /// Performs a vector search into the VectorFS at a specific path,
     /// returning the retrieved VRHeader nodes.

@@ -1,16 +1,26 @@
 use crate::resource_errors::VRError;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
 use crate::vector_resource::VRPath;
+use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+
+/// What text chunking strategy was used to create this VR from the source file.
+/// This is required for performing content validation/that it matches the VR nodes.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum TextChunkingStrategy {
+    /// The default text chunking strategy implemented in VR lib using Unstructured.
+    V1,
+}
 
 /// The source of a Vector Resource as either the file contents of the source file itself,
 /// or a reference to the source file (either external such as URL, or a FileRef)
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum VRSource {
     Reference(SourceReference),
+    Notarized(NotarizedSourceReference),
     None,
 }
 
@@ -19,6 +29,7 @@ impl VRSource {
     pub fn format_source_string(&self) -> String {
         match self {
             VRSource::Reference(reference) => reference.format_source_string(),
+            VRSource::Notarized(notarized_reference) => notarized_reference.format_source_string(),
             VRSource::None => String::from("None"),
         }
     }
@@ -85,15 +96,24 @@ impl VRSource {
     }
 }
 
+/// Struct which holds the data of a source file which a VR was generated from
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-/// The source file that data was extracted from to create a VectorResource
-pub struct SourceFile {
+pub enum SourceFile {
+    Standard(StandardSourceFile),
+    TLSNotarized(TLSNotarizedSourceFile),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+/// A standard source file that data was extracted from to create a VectorResource.
+pub struct StandardSourceFile {
     pub file_name: String,
     pub file_type: SourceFileType,
     pub file_content: Vec<u8>,
+    // Creation/publication time of the original content which is inside this struct
+    pub original_creation_time: Datetime<Utc>,
 }
 
-impl SourceFile {
+impl StandardSourceFile {
     /// Returns the size of the file content in bytes
     pub fn size(&self) -> usize {
         self.file_content.len()
@@ -123,14 +143,109 @@ impl SourceFile {
     }
 }
 
+/// Struct which holds the contents of the TLSNotary proof for the source file
+struct TLSNotaryProof {}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+/// The source file that data was extracted from to create a VectorResource
+pub struct TLSNotarizedSourceFile {
+    pub file_name: String,
+    pub file_type: SourceFileType,
+    pub file_content: Vec<u8>,
+    // Creation/publication time of the original content which is inside this struct
+    pub original_creation_time: Datetime<Utc>,
+    pub proof: TLSNotaryProof,
+}
+
+impl TLSNotarizedSourceFile {
+    /// Returns the size of the file content in bytes
+    pub fn size(&self) -> usize {
+        self.file_content.len()
+    }
+
+    /// Creates a new instance of SourceFile struct
+    pub fn new(file_name: String, file_type: SourceFileType, file_content: Vec<u8>) -> Self {
+        Self {
+            file_name,
+            file_type,
+            file_content,
+        }
+    }
+
+    pub fn format_source_string(&self) -> String {
+        format!("{}.{}", self.file_name, self.file_type)
+    }
+
+    /// Serializes the SourceFile to a JSON string
+    pub fn to_json(&self) -> Result<String, VRError> {
+        Ok(serde_json::to_string(self)?)
+    }
+
+    /// Deserializes a SourceFile from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, VRError> {
+        Ok(serde_json::from_str(json)?)
+    }
+}
+
+/// Type that acts as a reference to a notarized source file
+/// (meaning one that has some cryptographic proof/signature of origin)
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum NotarizedSourceReference {
+    /// Reference to TLSNotary notarized web content
+    TLSNotarized(TLSNotarizedReference),
+}
+
+impl NotarizedSourceReference {
+    pub fn format_source_string(&self) -> String {
+        match self {
+            NotarizedSourceReference::TLSNotarized(reference) => reference.format_source_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct TLSNotarizedReference {
+    pub file_name: String,
+    pub text_chunking_strategy: TextChunkingStrategy,
+}
+
+impl TLSNotarizedReference {
+    pub fn format_source_string(&self) -> String {
+        format!("{}.{}", self.file_name, self.file_type())
+    }
+
+    pub fn file_type(&self) -> SourceFileType {
+        SourceFileType::Document(DocumentFileType::Html)
+    }
+}
+
+impl fmt::Display for TLSNotarizedReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "TLS Notarized File Name: {}, File Type: {}",
+            self.file_name,
+            self.file_type()
+        )
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 /// Type that acts as a reference to external file/content/data
 pub enum SourceReference {
     /// A typed specific file
     FileRef(SourceFileReference),
-    /// An untyped arbitrary external URI
-    ExternalURI(String),
+    /// An arbitrary external URI
+    ExternalURI(ExternalURIReference),
     Other(String),
+}
+
+/// Struct that represents an external URI like a website URL which
+/// has not been downloaded into a SourceFile, but is just referenced.
+pub struct ExternalURIReference {
+    pub uri: String,
+    // Creation/publication time of the original content which is specified at the uri
+    pub original_creation_time: Datetime<Utc>,
 }
 
 impl SourceReference {
@@ -289,17 +404,13 @@ impl fmt::Display for SourceReference {
 pub struct SourceFileReference {
     pub file_name: String,
     pub file_type: SourceFileType,
-    /// Local path or external URI to file
+    /// Local path or external URI to file TODO: likely remove this as is tracked by VecFS
     pub file_location: Option<String>,
     pub content_hash: String,
+    pub text_chunking_strategy: TextChunkingStrategy,
 }
 
 impl SourceFileReference {
-    /// The default key for this file in the Shinkai DB
-    pub fn shinkai_db_key(&self) -> String {
-        format!("{}:::{}", self.file_name, self.content_hash)
-    }
-
     pub fn format_source_string(&self) -> String {
         format!("{}.{}", self.file_name, self.file_type)
     }
