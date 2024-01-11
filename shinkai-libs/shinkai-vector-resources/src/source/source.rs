@@ -1,6 +1,7 @@
-use crate::notary_source::TLSNotaryProof;
-pub use crate::notary_source::{NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile};
 use crate::resource_errors::VRError;
+use crate::source::notary_source::{
+    NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile, TLSNotaryProof,
+};
 use crate::unstructured::unstructured_parser::UnstructuredParser;
 use crate::vector_resource::VRPath;
 use chrono::{DateTime, Utc};

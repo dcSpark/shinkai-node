@@ -3,7 +3,6 @@ pub mod embedding_generator;
 pub mod embeddings;
 pub mod metadata_index;
 pub mod model_type;
-pub mod notary_source;
 pub mod resource_errors;
 pub mod shinkai_time;
 pub mod source;

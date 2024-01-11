@@ -490,8 +490,15 @@ pub struct VRPath {
 
 impl VRPath {
     /// Create a new VRPath, defaulting to root `/`.
+    /// Equivalent to VRPath::root().
     pub fn new() -> Self {
         Self { path_ids: vec![] }
+    }
+
+    /// Create a new VRPath at root `/`.
+    /// Equivalent to VRPath::new().
+    pub fn root() -> Self {
+        Self::new()
     }
 
     /// Returns if the path is empty (aka pointing at root, `/`). Equivalent to `.is_root()`

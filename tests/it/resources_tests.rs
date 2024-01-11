@@ -44,7 +44,7 @@ pub async fn get_shinkai_intro_doc_async(
     .unwrap();
 
     let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
-    let source_file = SourceFile::new(source_file_name.to_string(), file_type, buffer);
+    let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
 
     Ok((resource.as_document_resource_cloned().unwrap(), source_file))
 }
@@ -133,7 +133,7 @@ fn test_multi_resource_db_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice

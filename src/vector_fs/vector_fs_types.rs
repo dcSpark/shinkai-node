@@ -436,4 +436,5 @@ pub enum DistributionOrigin {
     Uri(String),
     ShinkaiNode(ShinkaiName),
     Other(String),
+    None,
 }
