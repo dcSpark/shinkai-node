@@ -86,6 +86,7 @@ impl NotarizedSourceReference {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct TLSNotarizedReference {
     pub file_name: String,
+    pub file_type: SourceFileType,
     pub text_chunking_strategy: TextChunkingStrategy,
 }
 
@@ -95,7 +96,7 @@ impl TLSNotarizedReference {
     }
 
     pub fn file_type(&self) -> SourceFileType {
-        SourceFileType::Document(DocumentFileType::Html)
+        self.file_type.clone()
     }
 }
 

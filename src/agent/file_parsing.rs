@@ -1,4 +1,5 @@
 use super::error::AgentError;
+use super::execution::chains::tool_execution_chain;
 use super::execution::job_prompts::{JobPromptGenerator, Prompt};
 use super::job_manager::JobManager;
 use csv::Reader;
@@ -6,6 +7,7 @@ use lazy_static::lazy_static;
 use shinkai_message_primitives::schemas::agents::serialized_agent::SerializedAgent;
 use shinkai_vector_resources::embedding_generator::EmbeddingGenerator;
 use shinkai_vector_resources::resource_errors::VRError;
+use shinkai_vector_resources::source::TextChunkingStrategy;
 use shinkai_vector_resources::unstructured::unstructured_api::{self, UnstructuredAPI};
 use shinkai_vector_resources::unstructured::unstructured_parser::UnstructuredParser;
 use shinkai_vector_resources::unstructured::unstructured_types::UnstructuredElement;
@@ -127,7 +129,7 @@ impl ParsingHelper {
         unstructured_api: UnstructuredAPI,
     ) -> Result<(String, VRSource, Vec<UnstructuredElement>), AgentError> {
         let resource_id = UnstructuredParser::generate_data_hash(&file_buffer);
-        let source = VRSource::from_file(&file_name, &file_buffer)?;
+        let source = VRSource::from_file(&file_name, None, TextChunkingStrategy::V1)?;
         let name = SourceFileType::clean_string_of_extension(&file_name);
         let elements = unstructured_api.file_request(file_buffer, &file_name).await?;
         Ok((resource_id, source, elements))

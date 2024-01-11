@@ -1,3 +1,4 @@
+use crate::notary_source::TLSNotaryProof;
 pub use crate::notary_source::{NotarizedSourceReference, TLSNotarizedReference, TLSNotarizedSourceFile};
 use crate::resource_errors::VRError;
 use crate::unstructured::unstructured_parser::UnstructuredParser;
@@ -113,6 +114,48 @@ impl VRSource {
 pub enum SourceFile {
     Standard(StandardSourceFile),
     TLSNotarized(TLSNotarizedSourceFile),
+}
+
+impl SourceFile {
+    pub fn new_standard_source_file(
+        file_name: String,
+        file_type: SourceFileType,
+        file_content: Vec<u8>,
+        original_creation_datetime: Option<DateTime<Utc>>,
+    ) -> Self {
+        Self::Standard(StandardSourceFile {
+            file_name,
+            file_type,
+            file_content,
+            original_creation_datetime,
+        })
+    }
+
+    pub fn new_tls_notarized_source_file(
+        file_name: String,
+        file_type: SourceFileType,
+        file_content: Vec<u8>,
+        original_creation_datetime: Option<DateTime<Utc>>,
+        proof: TLSNotaryProof,
+    ) -> Self {
+        Self::TLSNotarized(TLSNotarizedSourceFile {
+            file_name,
+            file_type,
+            file_content,
+            original_creation_datetime,
+            proof,
+        })
+    }
+
+    /// Serializes the SourceFile to a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserializes a SourceFile from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -330,7 +373,12 @@ impl fmt::Display for SourceReference {
         match self {
             SourceReference::FileRef(reference) => write!(f, "{}", reference),
             SourceReference::ExternalURI(uri) => {
-                write!(f, "{} - {}", uri.uri, uri.original_creation_datetime.to_rfc3339())
+                write!(
+                    f,
+                    "{} - {:?}",
+                    uri.uri,
+                    uri.original_creation_datetime.map(|dt| dt.to_rfc3339())
+                )
             }
             SourceReference::Other(s) => write!(f, "{}", s),
         }

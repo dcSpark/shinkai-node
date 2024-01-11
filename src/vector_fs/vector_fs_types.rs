@@ -429,3 +429,11 @@ impl LastReadIndex {
             .unwrap_or_else(|| ShinkaiTime::generate_time_now())
     }
 }
+
+/// The origin where a VectorResource was downloaded/acquired from before it arrived
+/// in the node's VectorFS
+pub enum DistributionOrigin {
+    Uri(String),
+    ShinkaiNode(ShinkaiName),
+    Other(String),
+}

@@ -1,4 +1,4 @@
-use super::vector_fs_types::{FSFolder, FSItem};
+use super::vector_fs_types::{DistributionOrigin, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db::ProfileBoundWriteBatch;
 use chrono::{DateTime, Utc};
@@ -109,7 +109,8 @@ impl VectorFS {
         &mut self,
         writer: &VFSWriter,
         resource: BaseVectorResource,
-        source_file: Option<SourceFileMap>,
+        // source_file: Option<SourceFileMap>, TODO: Update to using a map
+        source_file: Option<SourceFile>,
         distribution_origin: DistributionOrigin,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
