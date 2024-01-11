@@ -244,22 +244,23 @@ impl FSFolder {
 }
 
 /// An external facing "file" abstraction used to make interacting with the VectorFS easier.
-/// Each FSItem always represents a single stored VectorResource, which sometimes also has an optional SourceFile.
+/// Each FSItem always represents a single stored VectorResource, which sometimes also has an optional SourceFileMap.
 /// Actual data represented by a FSItem is a VRHeader-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSItem {
     pub path: VRPath,
     pub vr_header: VRHeader,
-    pub source_file_saved: bool,
-    /// Datetime the FSItem was first created
+    /// Datetime the Vector Resource in the FSItem was first created
     pub created_datetime: DateTime<Utc>,
     /// Datetime the Vector Resource in the FSItem was last written to, meaning any updates to its contents.
     pub last_written_datetime: DateTime<Utc>,
     /// Datetime the FSItem was last read by any ShinkaiName
     pub last_read_datetime: DateTime<Utc>,
-    /// Datetime the FSItem was last saved, meaning when either the Vector Resource or Source File was saved/updated/moved.
-    /// For example when saving a VR into the FS that someone else generated, last_written and last_saved will be different.
-    pub last_saved_datetime: DateTime<Utc>,
+    /// Datetime the Vector Resource in the FSItem was last saved/updated.
+    /// For example when saving a VR into the FS that someone else generated on their node, last_written and last_saved will be different.
+    pub vr_last_saved_datetime: DateTime<Utc>,
+    /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
+    pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
 }
 
 impl FSItem {
@@ -267,26 +268,21 @@ impl FSItem {
     pub fn new(
         path: VRPath,
         vr_header: VRHeader,
-        source_file_saved: bool,
         created_datetime: DateTime<Utc>,
         last_written_datetime: DateTime<Utc>,
         last_read_datetime: DateTime<Utc>,
-        last_saved_datetime: DateTime<Utc>,
+        vr_last_saved_datetime: DateTime<Utc>,
+        source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
     ) -> Self {
         Self {
             path,
             vr_header,
-            source_file_saved,
             created_datetime,
             last_written_datetime,
             last_read_datetime,
-            last_saved_datetime,
+            vr_last_saved_datetime,
+            source_file_map_last_saved_datetime,
         }
-    }
-
-    /// Metadata key where source_file_saved will be found in a Node.
-    pub fn source_file_saved_metadata_key() -> String {
-        String::from("sf_saved")
     }
 
     /// DB key where the Vector Resource matching this FSEntry is held.
@@ -295,10 +291,15 @@ impl FSItem {
         self.vr_header.reference_string()
     }
 
-    /// Returns the DB key where the SourceFile matching this FSEntry is held.
-    /// If the FSEntry is marked as having no source file saved, then returns an VectorFSError.
-    pub fn source_file_db_key(&self) -> Result<String, VectorFSError> {
-        if self.source_file_saved {
+    /// Checks the last saved datetime to determine if it was ever saved into the FSDB
+    pub fn is_source_file_map_saved(&self) -> bool {
+        self.source_file_map_last_saved_datetime.is_some()
+    }
+
+    /// Returns the DB key where the SourceFileMap matching this FSEntry is held.
+    /// If the FSEntry is marked as having no source file map saved, then returns an VectorFSError.
+    pub fn source_file_map_db_key(&self) -> Result<String, VectorFSError> {
+        if self.is_source_file_map_saved() {
             Ok(self.resource_db_key())
         } else {
             Err(VectorFSError::NoSourceFileAvailable(self.vr_header.reference_string()))
@@ -314,25 +315,18 @@ impl FSItem {
     ) -> Result<Self, VectorFSError> {
         match &node.content {
             NodeContent::VRHeader(header) => {
-                // Read source_file_saved from metadata
-                let source_file_saved = node
-                    .metadata
-                    .as_ref()
-                    .and_then(|metadata| metadata.get(&FSItem::source_file_saved_metadata_key()))
-                    .map_or(false, |value| value == "true");
-
                 // Process datetimes from node
-                let last_saved_datetime = Self::process_datetimes_from_node(&node)?;
+                let (vr_last_saved_datetime, source_file_map_last_saved) = Self::process_datetimes_from_node(&node)?;
                 let last_read_datetime = lr_index.get_last_read_datetime_or_now(&node_fs_path);
 
                 Ok(FSItem::new(
                     node_fs_path,
                     header.clone(),
-                    source_file_saved,
                     header.resource_created_datetime,
                     header.resource_last_written_datetime,
                     last_read_datetime,
-                    last_saved_datetime,
+                    vr_last_saved_datetime,
+                    source_file_map_last_saved,
                 ))
             }
 
@@ -340,29 +334,42 @@ impl FSItem {
         }
     }
 
-    /// Process last_read/last_saved datetimes in a Node from the VectorFS core resource.
+    /// Process the two last_saved datetimes in a Node from the VectorFS core resource.
     /// The node must be an FSItem for this to succeed.
-    pub fn process_datetimes_from_node(node: &Node) -> Result<DateTime<Utc>, VectorFSError> {
+    pub fn process_datetimes_from_node(node: &Node) -> Result<(DateTime<Utc>, Option<DateTime<Utc>>), VectorFSError> {
         // Read last_saved_datetime from metadata
         let last_saved_str = node
             .metadata
             .as_ref()
-            .and_then(|metadata| metadata.get(&Self::last_saved_key()))
-            .ok_or(VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
+            .and_then(|metadata| metadata.get(&Self::vr_last_saved_metadata_key()))
+            .ok_or(VectorFSError::InvalidMetadata(Self::vr_last_saved_metadata_key()))?;
 
         // Parse the datetime strings
         let last_saved_datetime = ShinkaiTime::from_rfc3339_string(last_saved_str)
-            .map_err(|_| VectorFSError::InvalidMetadata(Self::last_saved_key()))?;
+            .map_err(|_| VectorFSError::InvalidMetadata(Self::vr_last_saved_metadata_key()))?;
 
-        Ok(last_saved_datetime)
+        // Read source_file_map_saved from metadata, and convert it back into a DateTime<Utc>
+        let source_file_map_last_saved = match node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&FSItem::source_file_map_last_saved_metadata_key()))
+        {
+            Some(s) => Some(ShinkaiTime::from_rfc3339_string(s)?),
+            None => None,
+        };
+
+        Ok((last_saved_datetime, source_file_map_last_saved))
     }
 
-    /// Returns the metadata key for the last saved datetime.
-    pub fn last_saved_key() -> String {
-        String::from("last_saved")
+    /// Returns the metadata key for the Vector Resource last saved datetime.
+    pub fn vr_last_saved_metadata_key() -> String {
+        String::from("vr_last_saved")
     }
 
-    // ...
+    /// Metadata key where source_file_map_saved will be found in a Node.
+    pub fn source_file_map_last_saved_metadata_key() -> String {
+        String::from("sfm_last_saved")
+    }
 }
 
 /// TODO: Implement SubscriptionsIndex later on when it's relevant. For now struct exists

@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::shinkai_time::ShinkaiTime;
+use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
 use shinkai_vector_resources::{
     embeddings::Embedding,
@@ -109,8 +110,7 @@ impl VectorFS {
         &mut self,
         writer: &VFSWriter,
         resource: BaseVectorResource,
-        // source_file: Option<SourceFileMap>, TODO: Update to using a map
-        source_file: Option<SourceFile>,
+        source_file_map: Option<SourceFileMap>,
         distribution_origin: DistributionOrigin,
     ) -> Result<FSItem, VectorFSError> {
         let batch = ProfileBoundWriteBatch::new(&writer.profile);
@@ -150,9 +150,15 @@ impl VectorFS {
 
             // Now all validation checks/setup have passed, move forward with saving header/resource/source file
             let current_datetime = ShinkaiTime::generate_time_now();
-            // Update the last_saved key of the FSItem node's metadata
+            // Update the last_saved keys of the FSItem node's metadata
             let mut node_metadata = node_metadata.unwrap_or_else(|| HashMap::new());
-            node_metadata.insert(FSItem::last_saved_key(), current_datetime.to_rfc3339());
+            node_metadata.insert(FSItem::vr_last_saved_metadata_key(), current_datetime.to_rfc3339());
+            if source_file_map.is_some() {
+                node_metadata.insert(
+                    FSItem::source_file_map_last_saved_metadata_key(),
+                    current_datetime.to_rfc3339(),
+                );
+            }
 
             // Saving the VRHeader into the core vector resource
             {
@@ -168,8 +174,9 @@ impl VectorFS {
 
         // Finally saving the resource, the source file (if it was provided), and the FSInternals into the FSDB
         let mut write_batch = writer.new_write_batch()?;
-        if let Some(sf) = source_file {
-            self.db.wb_save_source_file(&sf, &source_db_key, &mut write_batch)?;
+        if let Some(sfm) = source_file_map {
+            self.db
+                .wb_save_source_file_map(&sfm, &source_db_key, &mut write_batch)?;
         }
         self.db.wb_save_resource(&resource, &mut write_batch)?;
         let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
@@ -185,7 +192,27 @@ impl VectorFS {
 
     // /// Updates the SourceFile attached to a Vector Resource (FSItem) underneath the current path.
     // /// If no VR (FSItem) with the same name already exists underneath the current path, then errors.
-    // pub fn update_source_file(&mut self, resource: BaseVectorResource) {}
+    // pub fn update_source_file(&mut self,) {
+
+    // Don't forget to update the sourcefile map last saved metadata key
+    // if source_file_map.is_some() {
+    //     node_metadata.insert(
+    //         FSItem::source_file_map_last_saved_metadata_key(),
+    //         current_datetime.to_rfc3339(),
+    //     );
+    // }
+
+    // }
+
+    // /// Attempts to update the FSItem at the VFSWriter's path by mutating it's SourceFileMap (if available)
+    // /// by attaching the `original_creation_datetime` to the SourceFile at  `source_file_map_path` in the map.
+    // pub fn update_source_file_original_creation_datetime(
+    //     &mut self,
+    //     writer: &VFSWriter,
+    //     source_file_map_path: VRPath,
+    //     original_creation_datetime: DateTime<Utc>,
+    // ) -> Result<(), VectorFSError> {
+    // }
 
     /// Internal method used to add a VRHeader into the core resource of a profile's VectorFS internals in memory.
     fn _add_vr_header_to_core_resource(
@@ -348,9 +375,3 @@ impl VectorFS {
         Ok(())
     }
 }
-
-/// A struct which holds a map of SourceFiles, with the key being
-/// the path within the VectorResource to an internal VR which that
-/// SourceFile matches.
-/// A SourceFile at root means it is the source file for the whole VR.
-pub struct SourceFileMap {}

@@ -82,7 +82,7 @@ async fn test_vector_fs_saving_reading() {
         .is_err());
 
     // Create a Vector Resource and source file to be added into the VectorFS
-    let (doc_resource, source_file) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
+    let (doc_resource, source_file_map) = get_shinkai_intro_doc_async(&generator, &vec![]).await.unwrap();
     let resource = BaseVectorResource::Document(doc_resource);
     let writer = vector_fs
         .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
@@ -91,7 +91,7 @@ async fn test_vector_fs_saving_reading() {
         .save_vector_resource_in_folder(
             &writer,
             resource.clone(),
-            Some(source_file.clone()),
+            Some(source_file_map.clone()),
             DistributionOrigin::None,
         )
         .unwrap();
@@ -118,16 +118,16 @@ async fn test_vector_fs_saving_reading() {
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file) = vector_fs.retrieve_vr_and_source_file(&reader).unwrap();
+    let (ret_resource, ret_source_file_map) = vector_fs.retrieve_vr_and_source_file_map(&reader).unwrap();
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file, source_file);
+    assert_eq!(ret_source_file_map, source_file_map);
 
     let reader = vector_fs
         .new_reader(default_test_profile(), folder_path.clone(), default_test_profile())
         .unwrap();
-    let (ret_resource, ret_source_file) = vector_fs
-        .retrieve_vr_and_source_file_in_folder(&reader, resource.as_trait_object().name().to_string())
+    let (ret_resource, ret_source_file_map) = vector_fs
+        .retrieve_vr_and_source_file_map_in_folder(&reader, resource.as_trait_object().name().to_string())
         .unwrap();
     assert_eq!(ret_resource, resource);
-    assert_eq!(ret_source_file, source_file);
+    assert_eq!(ret_source_file_map, source_file_map);
 }

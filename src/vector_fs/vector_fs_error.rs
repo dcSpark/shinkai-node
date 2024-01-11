@@ -47,6 +47,7 @@ pub enum VectorFSError {
     PathDoesNotPointAtFolder(VRPath),
     NoEntryAtPath(VRPath),
     EntryAlreadyExistsAtPath(VRPath),
+    DateTimeParseError(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -133,6 +134,8 @@ impl fmt::Display for VectorFSError {
             VectorFSError::EntryAlreadyExistsAtPath(p) => {
                 write!(f, "FSEntry already exists at path, and cannot overwrite: {}", p)
             }
+
+            VectorFSError::DateTimeParseError(e) => write!(f, "Datetime Parse Error: {}", e),
         }
     }
 }
@@ -228,5 +231,11 @@ impl From<ShinkaiMessageError> for VectorFSError {
         // Convert the ShinkaiMessageError into a VectorFSError
         // You might want to add a new variant to VectorFSError for this
         VectorFSError::ShinkaiMessageError(err.to_string())
+    }
+}
+
+impl From<chrono::ParseError> for VectorFSError {
+    fn from(err: chrono::ParseError) -> VectorFSError {
+        VectorFSError::DateTimeParseError(err.to_string())
     }
 }

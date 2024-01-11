@@ -4,11 +4,12 @@ use shinkai_node::db::ShinkaiDB;
 use shinkai_vector_resources::data_tags::DataTag;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceFile, SourceFileType, SourceReference, VRSource};
+use shinkai_vector_resources::source::{SourceFile, SourceFileMap, SourceFileType, SourceReference, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use shinkai_vector_resources::vector_resource::BaseVectorResource;
 use shinkai_vector_resources::vector_resource::DocumentVectorResource;
 use shinkai_vector_resources::vector_resource::*;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tokio::runtime::Runtime;
@@ -25,7 +26,7 @@ fn default_test_profile() -> ShinkaiName {
 pub async fn get_shinkai_intro_doc_async(
     generator: &RemoteEmbeddingGenerator,
     data_tags: &Vec<DataTag>,
-) -> Result<(DocumentVectorResource, SourceFile), VRError> {
+) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
     let source_file_name = "shinkai_intro.pdf";
     let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
@@ -45,8 +46,10 @@ pub async fn get_shinkai_intro_doc_async(
 
     let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
     let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
+    let mut map = HashMap::new();
+    map.insert(VRPath::root(), source_file);
 
-    Ok((resource.as_document_resource_cloned().unwrap(), source_file))
+    Ok((resource.as_document_resource_cloned().unwrap(), SourceFileMap::new(map)))
 }
 
 pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
