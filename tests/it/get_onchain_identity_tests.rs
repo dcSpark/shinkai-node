@@ -12,7 +12,7 @@ mod tests {
         rt.block_on(async {
             let mut registry = ShinkaiRegistry::new(
                 "https://rpc.sepolia.org",
-                "0xb2945D0CDa4C119DE184380955aA4FbfAFb6B8cC",
+                "0x6964241D2458f0Fd300BB37535CF0145380810E0",
                 "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )
             .await

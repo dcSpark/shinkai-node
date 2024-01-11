@@ -2,20 +2,20 @@ use dashmap::DashMap;
 use ed25519_dalek::VerifyingKey;
 use ethers::abi::Abi;
 use ethers::prelude::*;
+use hex;
 use lazy_static::lazy_static;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
-use x25519_dalek::PublicKey;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
+use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use tokio::task;
-use std::net::{SocketAddr, AddrParseError};
-use hex;
+use x25519_dalek::PublicKey;
 
 lazy_static! {
     static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
@@ -106,7 +106,8 @@ impl OnchainIdentity {
     }
 
     pub fn encryption_public_key(&self) -> Result<PublicKey, ShinkaiRegistryError> {
-        let mut bytes_vec = hex::decode(&self.encryption_key).map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
+        let mut bytes_vec = hex::decode(&self.encryption_key)
+            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
         if bytes_vec.len() != 32 {
             return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
         }
@@ -116,13 +117,15 @@ impl OnchainIdentity {
     }
 
     pub fn signature_verifying_key(&self) -> Result<VerifyingKey, ShinkaiRegistryError> {
-        let mut bytes_vec = hex::decode(&self.signature_key).map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
+        let mut bytes_vec = hex::decode(&self.signature_key)
+            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
         if bytes_vec.len() != 32 {
             return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
         }
         let mut bytes_array = [0u8; 32];
         bytes_array.copy_from_slice(&bytes_vec);
-        VerifyingKey::from_bytes(&bytes_array).map_err(|_| ShinkaiRegistryError::CustomError("Invalid verifying key".to_string()))
+        VerifyingKey::from_bytes(&bytes_array)
+            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid verifying key".to_string()))
     }
 }
 
@@ -142,7 +145,12 @@ pub struct ShinkaiRegistry {
 
 impl ShinkaiRegistry {
     pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        let provider = Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
+        eprintln!("Initializing Shinkai Registry");
+        eprintln!("URL: {}", url);
+        eprintln!("Contract Address: {}", contract_address);
+        eprintln!("ABI Path: {}", abi_path);
+        let provider =
+            Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
             shinkai_log(
                 ShinkaiLogOption::CryptoIdentity,
@@ -163,8 +171,9 @@ impl ShinkaiRegistry {
     }
 
     pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        eprintln!("Getting identity record for {}", identity);
         let now = SystemTime::now();
-    
+
         // If the cache is up-to-date, return the cached value
         if let Some(value) = self.cache.get(&identity) {
             let (last_updated, record) = value.value().clone();
@@ -183,23 +192,30 @@ impl ShinkaiRegistry {
                         );
                     }
                 });
-    
+
+                eprintln!("Returning cached identity record for {}", identity);
                 return Ok(record);
             }
         }
-    
+
         // Otherwise, update the cache
         let record = Self::update_cache(&self.contract, &self.cache, identity.clone()).await?;
+        eprintln!("Returning identity record for {}", identity);
+        eprintln!("Record: {:?}", record);
         Ok(record.clone())
     }
 
-    async fn update_cache(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, cache: &DashMap<String, (SystemTime, OnchainIdentity)>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    async fn update_cache(
+        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
+        cache: &DashMap<String, (SystemTime, OnchainIdentity)>,
+        identity: String,
+    ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         // Fetch the identity record from the contract
         let record = Self::fetch_identity_record(contract, identity.clone()).await?;
-    
+
         // Update the cache and the timestamp
         cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
-    
+
         Ok(record)
     }
 
@@ -207,10 +223,14 @@ impl ShinkaiRegistry {
         self.cache.get(identity).map(|value| value.value().0)
     }
 
-    pub async fn fetch_identity_record(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let function_call = match contract
-            .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity.clone(),))
-        {
+    pub async fn fetch_identity_record(
+        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
+        identity: String,
+    ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let function_call = match contract.method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>(
+            "getIdentityRecord",
+            (identity.clone(),),
+        ) {
             Ok(call) => call,
             Err(err) => {
                 shinkai_log(

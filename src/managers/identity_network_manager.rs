@@ -81,7 +81,7 @@ impl IdentityNetworkManager {
         // TODO: read from config
         let registry = ShinkaiRegistry::new(
             "https://rpc.sepolia.org",
-            "0xb2945D0CDa4C119DE184380955aA4FbfAFb6B8cC",
+            "0x6964241D2458f0Fd300BB37535CF0145380810E0",
             "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
         )
         .await
@@ -97,6 +97,7 @@ impl IdentityNetworkManager {
         &self,
         global_identity: String,
     ) -> Result<OnchainIdentity, &'static str> {
+        eprintln!("Getting identity record for {}", global_identity);
         let record = {
             let mut registry = self.registry.lock().await;
             match registry.get_identity_record(global_identity.clone()).await {
