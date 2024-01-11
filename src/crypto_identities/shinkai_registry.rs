@@ -1,10 +1,12 @@
 use dashmap::DashMap;
+use ed25519_dalek::VerifyingKey;
 use ethers::abi::Abi;
 use ethers::prelude::*;
 use lazy_static::lazy_static;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use x25519_dalek::PublicKey;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
@@ -12,6 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 use tokio::task;
+use std::net::{SocketAddr, AddrParseError};
+use hex;
 
 lazy_static! {
     static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
@@ -25,6 +29,7 @@ pub enum ShinkaiRegistryError {
     JsonError(serde_json::Error),
     CustomError(String),
     SystemTimeError(std::time::SystemTimeError),
+    AddressParseError(AddrParseError),
 }
 
 impl fmt::Display for ShinkaiRegistryError {
@@ -36,7 +41,14 @@ impl fmt::Display for ShinkaiRegistryError {
             ShinkaiRegistryError::JsonError(err) => write!(f, "JSON Error: {}", err),
             ShinkaiRegistryError::CustomError(err) => write!(f, "Custom Error: {}", err),
             ShinkaiRegistryError::SystemTimeError(err) => write!(f, "System Time Error: {}", err),
+            ShinkaiRegistryError::AddressParseError(err) => write!(f, "Address Parse Error: {}", err),
         }
+    }
+}
+
+impl From<AddrParseError> for ShinkaiRegistryError {
+    fn from(err: AddrParseError) -> ShinkaiRegistryError {
+        ShinkaiRegistryError::AddressParseError(err)
     }
 }
 
@@ -74,6 +86,7 @@ impl std::error::Error for ShinkaiRegistryError {}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OnchainIdentity {
+    pub shinkai_identity: String,
     pub bound_nft: U256, // id of the nft
     pub staked_tokens: U256,
     pub encryption_key: String,
@@ -81,6 +94,36 @@ pub struct OnchainIdentity {
     pub routing: bool,
     pub address_or_proxy_nodes: Vec<String>,
     pub delegated_tokens: U256,
+}
+
+impl OnchainIdentity {
+    pub fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
+        if let Some(first_address) = self.address_or_proxy_nodes.first() {
+            first_address.parse().map_err(ShinkaiRegistryError::from)
+        } else {
+            Err(ShinkaiRegistryError::CustomError("No address available".to_string()))
+        }
+    }
+
+    pub fn encryption_public_key(&self) -> Result<PublicKey, ShinkaiRegistryError> {
+        let mut bytes_vec = hex::decode(&self.encryption_key).map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
+        if bytes_vec.len() != 32 {
+            return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
+        }
+        let mut bytes_array = [0u8; 32];
+        bytes_array.copy_from_slice(&bytes_vec);
+        Ok(PublicKey::from(bytes_array))
+    }
+
+    pub fn signature_verifying_key(&self) -> Result<VerifyingKey, ShinkaiRegistryError> {
+        let mut bytes_vec = hex::decode(&self.signature_key).map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
+        if bytes_vec.len() != 32 {
+            return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
+        }
+        let mut bytes_array = [0u8; 32];
+        bytes_array.copy_from_slice(&bytes_vec);
+        VerifyingKey::from_bytes(&bytes_array).map_err(|_| ShinkaiRegistryError::CustomError("Invalid verifying key".to_string()))
+    }
 }
 
 pub trait ShinkaiRegistryTrait {
@@ -166,7 +209,7 @@ impl ShinkaiRegistry {
 
     pub async fn fetch_identity_record(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         let function_call = match contract
-            .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity,))
+            .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity.clone(),))
         {
             Ok(call) => call,
             Err(err) => {
@@ -192,6 +235,7 @@ impl ShinkaiRegistry {
         };
 
         Ok(OnchainIdentity {
+            shinkai_identity: identity,
             bound_nft: result.0,
             staked_tokens: result.1,
             encryption_key: result.2,

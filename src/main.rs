@@ -65,7 +65,9 @@ fn main() {
 
     // Storage db filesystem
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
+    eprintln!("main_db_path: {}", main_db_path);
     let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
+    eprintln!("vector_fs_db_path: {}", vector_fs_db_path);
 
     // Acquire the Node's keys. TODO: Should check with on
     // and then it's with onchain data for matching with the keys provided
@@ -202,13 +204,16 @@ fn main() {
     });
 }
 
-/// Initialzied Tokio runtime
+/// Initialized Tokio runtime
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
 /// Machine filesystem path to the main ShinkaiDB database, pub key based.
 fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_storage_path: Option<String>) -> String {
+    eprintln!("node_storage_path: {:?}", node_storage_path);
+    eprintln!("main_db: {:?}", main_db);
+    eprintln!("identity_public_key: {:?}", identity_public_key);
     if let Some(path) = node_storage_path {
         Path::new(&path)
             .join(main_db)

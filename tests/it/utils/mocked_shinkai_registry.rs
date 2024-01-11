@@ -15,6 +15,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
 
         let identities = vec![
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(1),
                 staked_tokens: U256::from(1000),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
@@ -24,6 +25,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 delegated_tokens: U256::from(500),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(2),
                 staked_tokens: U256::from(1000),
                 encryption_key: "912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f".to_string(),
@@ -33,6 +35,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 delegated_tokens: U256::from(500),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(3),
                 staked_tokens: U256::from(1000),
                 encryption_key: "3273d113e401a215e429e3272352186a7370cf7edf1e2d68aa7ef87a20237371".to_string(),
@@ -42,6 +45,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 delegated_tokens: U256::from(500),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(4),
                 staked_tokens: U256::from(1000),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
@@ -51,6 +55,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 delegated_tokens: U256::from(500),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(5),
                 staked_tokens: U256::from(1000),
                 encryption_key: "912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f".to_string(),

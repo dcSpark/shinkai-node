@@ -2172,6 +2172,7 @@ impl Node {
             .external_profile_to_global_identity(&recipient_node_name_string.clone())
             .await
             .unwrap();
+        // TODO: this shouldn't crash the node
 
         println!(
             "handle_onionized_message > recipient_profile_name_string: {}",

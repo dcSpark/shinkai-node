@@ -2,7 +2,7 @@
 mod tests {
     use std::time::Duration;
 
-    use ethers::{types::U256};
+    use ethers::types::U256;
     use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
@@ -23,6 +23,7 @@ mod tests {
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from_dec_str("11").unwrap(),
                 staked_tokens: U256::from_dec_str("62000000000000000000").unwrap(),
                 encryption_key: "858bef3bb7839329e28e569288f441f8fa86af00d9f41a9845ef50dd3b6cd15f".to_string(),
@@ -32,7 +33,7 @@ mod tests {
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
             };
             assert_eq!(record, expected_record);
-            
+
             let initial_cache_time = registry.get_cache_time(&identity).unwrap();
 
             // Request the identity record again to trigger a cache update
