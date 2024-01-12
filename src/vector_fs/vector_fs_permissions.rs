@@ -80,6 +80,8 @@ impl PermissionsIndex {
         index
     }
 
+    /// Converts internal permissions map into a more generic form where all values are Strings. Also encodes
+    /// the input reader at very unlikely to be used path, to be parsed/read later (used in Vector Searches).
     pub fn convert_fs_permissions_to_json_values(&self, reader: &VFSReader) -> HashMap<VRPath, String> {
         // Convert values to json
         let mut hashmap: HashMap<VRPath, String> = self
@@ -102,15 +104,7 @@ impl PermissionsIndex {
         hashmap
     }
 
-    /// A hard-coded path that isn't likely to be used by the VecFS normally for permissions ever.
-    pub fn vfs_reader_unique_path() -> VRPath {
-        let mut path = VRPath::new();
-        path.push("9529".to_string());
-        path.push("31008".to_string());
-        path.push("7482".to_string());
-        path
-    }
-
+    /// Creates a new PermissionsIndex using an input hashmap where the values are encoded as json Strings.
     pub fn convert_from_json_values(
         profile_name: ShinkaiName,
         json_permissions: HashMap<VRPath, String>,
@@ -121,11 +115,22 @@ impl PermissionsIndex {
         };
 
         for (vrpath, json) in json_permissions {
-            let path_permission = PathPermission::from_json(&json)?;
-            index.fs_permissions.insert(vrpath, path_permission);
+            if vrpath != Self::vfs_reader_unique_path() {
+                let path_permission = PathPermission::from_json(&json)?;
+                index.fs_permissions.insert(vrpath, path_permission);
+            }
         }
 
         Ok(index)
+    }
+
+    /// A hard-coded path that isn't likely to be used by the VecFS normally for permissions ever.
+    pub fn vfs_reader_unique_path() -> VRPath {
+        let mut path = VRPath::new();
+        path.push("9529".to_string());
+        path.push("31008".to_string());
+        path.push("7482".to_string());
+        path
     }
 
     /// Inserts a new path permission into the fs_permissions map. Note, this will overwrite
