@@ -36,6 +36,8 @@ pub enum VectorFSError {
     InvalidProfileActionPermission(ShinkaiName, String),
     InvalidReaderPermission(ShinkaiName, ShinkaiName, VRPath),
     InvalidWriterPermission(ShinkaiName, ShinkaiName, VRPath),
+    InvalidReadPermission(ShinkaiName, VRPath),
+    InvalidWritePermission(ShinkaiName, VRPath),
     NoSourceFileAvailable(String),
     InvalidFSEntryType(String),
     EmbeddingModelTypeMismatch(EmbeddingModelType, EmbeddingModelType),
@@ -136,6 +138,12 @@ impl fmt::Display for VectorFSError {
             }
 
             VectorFSError::DateTimeParseError(e) => write!(f, "Datetime Parse Error: {}", e),
+            VectorFSError::InvalidReadPermission(n, p) => {
+                write!(f, "{} does not have read permissions for path: {}", n, p)
+            }
+            VectorFSError::InvalidWritePermission(n, p) => {
+                write!(f, "{} does not have write permissions for path: {}", n, p)
+            }
         }
     }
 }

@@ -40,9 +40,10 @@ impl VFSWriter {
 
         // Validate write permissions to ensure requester_name has rights
         let fs_internals = vector_fs._get_profile_fs_internals_read_only(&profile)?;
-        if !fs_internals
+        if fs_internals
             .permissions_index
             .validate_read_permission(&requester_name, &path)
+            .is_err()
         {
             return Err(VectorFSError::InvalidWriterPermission(requester_name, profile, path));
         }

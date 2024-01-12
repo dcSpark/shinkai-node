@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use super::vector_fs_permissions::PermissionsIndex;
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -13,6 +11,7 @@ use shinkai_vector_resources::{
         VectorResourceSearch,
     },
 };
+use std::collections::HashMap;
 
 // TODO:
 // Add a new VectorResource traversal option which is something like `ApplyNodeValidationBeforeTraversing`.
@@ -39,7 +38,7 @@ impl VectorFS {
         let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
         let stringified_permissions_map = internals
             .permissions_index
-            .convert_fs_permissions_to_json_values(reader);
+            .export_permissions_hashmap_with_reader(reader);
 
         // Search without unique scoring (ie. hierarchical) because "folders" have no content/real embedding.
         // Also remove any set traversal limit, so we can enforce folder permission traversal limiting.
@@ -115,13 +114,10 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
         },
         None => return false,
     };
-    // Parse the whole permissions index
-    // TODO: This is very resource intensive. Need to rework to only parse the specific path, not whole hashmap.
-    // Might require making PermissionsIndex hold <VRPath, String> by default
-    let perm_index = match PermissionsIndex::convert_from_json_values(reader.profile.clone(), hashmap) {
-        Ok(index) => index,
-        Err(_) => return false,
-    };
+    // Initialize the PermissionsIndex struct
+    let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
 
-    perm_index.validate_read_permission(&reader.requester_name, path)
+    perm_index
+        .validate_read_permission(&reader.requester_name, path)
+        .is_ok()
 }
