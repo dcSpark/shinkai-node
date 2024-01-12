@@ -2,6 +2,7 @@
 mod tests {
     use std::time::Duration;
 
+    use chrono::{DateTime, Utc};
     use ethers::types::U256;
     use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
@@ -23,14 +24,15 @@ mod tests {
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
-                shinkai_identity: "nico.shinkai".to_string(),
-                bound_nft: U256::from_dec_str("11").unwrap(),
-                staked_tokens: U256::from_dec_str("62000000000000000000").unwrap(),
-                encryption_key: "858bef3bb7839329e28e569288f441f8fa86af00d9f41a9845ef50dd3b6cd15f".to_string(),
-                signature_key: "7aa221ec6761fdfdb478616babad8fad5330587392ad7e7dc9002af269909882".to_string(),
+                shinkai_identity: "nico2.shinkai".to_string(),
+                bound_nft: U256::from_dec_str("22").unwrap(),
+                staked_tokens: U256::from_dec_str("40000000000000000000").unwrap(),
+                encryption_key: "12bb5823b96886941da4261219735e10cac53783c9a23f5fa31bacc8a1e68019".to_string(),
+                signature_key: "bdcd4569d4e01cafe0543babfbaf35766feead28ce81932a41dbde8d7da8d720".to_string(),
                 routing: false,
-                address_or_proxy_nodes: vec![],
+                address_or_proxy_nodes: vec!["139.49.219.177:9550".to_string()],
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             };
             assert_eq!(record, expected_record);
 

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use shinkai_node::crypto_identities::shinkai_registry::ShinkaiRegistryError;
 use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistryTrait};
 use dashmap::DashMap;
@@ -23,6 +24,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["192.168.1.109:8080".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
                 shinkai_identity: "nico.shinkai".to_string(),
@@ -33,6 +35,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["192.168.1.233:8081".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
                 shinkai_identity: "nico.shinkai".to_string(),
@@ -43,6 +46,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8082".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
                 shinkai_identity: "nico.shinkai".to_string(),
@@ -53,6 +57,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
                 shinkai_identity: "nico.shinkai".to_string(),
@@ -63,6 +68,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8081".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
         ];
 

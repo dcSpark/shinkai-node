@@ -1,3 +1,5 @@
+use chrono::DateTime;
+use chrono::Utc;
 use dashmap::DashMap;
 use ed25519_dalek::VerifyingKey;
 use ethers::abi::Abi;
@@ -12,8 +14,8 @@ use std::fmt;
 use std::fs;
 use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::SystemTime;
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::task;
 use x25519_dalek::PublicKey;
 
@@ -94,6 +96,7 @@ pub struct OnchainIdentity {
     pub routing: bool,
     pub address_or_proxy_nodes: Vec<String>,
     pub delegated_tokens: U256,
+    pub last_updated: DateTime<Utc>,
 }
 
 impl OnchainIdentity {
@@ -227,8 +230,8 @@ impl ShinkaiRegistry {
         contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
         identity: String,
     ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let function_call = match contract.method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>(
-            "getIdentityRecord",
+        let function_call = match contract.method::<_, (U256, U256, String, String, bool, Vec<String>, U256, U256)>(
+            "getIdentityData",
             (identity.clone(),),
         ) {
             Ok(call) => call,
@@ -242,7 +245,7 @@ impl ShinkaiRegistry {
             }
         };
 
-        let result: (U256, U256, String, String, bool, Vec<String>, U256) = match function_call.call().await {
+        let result: (U256, U256, String, String, bool, Vec<String>, U256, U256) = match function_call.call().await {
             Ok(res) => res,
             Err(e) => {
                 shinkai_log(
@@ -253,6 +256,10 @@ impl ShinkaiRegistry {
                 return Err(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
             }
         };
+        eprintln!("Result: {:?}", result);
+
+        let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
+        let last_updated = DateTime::<Utc>::from(last_updated);
 
         Ok(OnchainIdentity {
             shinkai_identity: identity,
@@ -263,6 +270,7 @@ impl ShinkaiRegistry {
             routing: result.4,
             address_or_proxy_nodes: result.5,
             delegated_tokens: result.6,
+            last_updated,
         })
     }
 }
