@@ -20,8 +20,6 @@ pub enum TraversalMethod {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TraversalOption {
-    /// Limits traversal into deeper Vector Resources only if they match the provided VRBaseType
-    LimitTraversalToType(VRBaseType),
     /// Limits returned result to be within a percentage range (0.0 - 1.0) of the highest scored result.
     /// For example, you can set a tolerance range of 0.1 which means only nodes with a similarity score
     /// within 10% of the top result will be returned.
@@ -32,6 +30,9 @@ pub enum TraversalOption {
     /// Will return BaseVectorResource Nodes if they are the highest scored at the specified depth.
     /// Top/root level starts at 0, and so first level of depth into internal BaseVectorResources is thus 1.
     UntilDepth(u64),
+    /// Set a traversal limiting mode, which stops the Vector Search from going deeper into a BaseVectorResource-holding
+    /// node based on some set condition(s).
+    SetTraversalLimiting(LimitTraversalMode),
     /// By default Vector Search scoring only weighs a node based on it's single embedding alone.
     /// Alternate scoring modes are available which allow weighing a node base on relative scores
     /// above/below/beside, or otherwise to get potentially higher quality results.
@@ -44,6 +45,15 @@ pub enum TraversalOption {
     SetFilterMode(FilterMode),
     /// Set a results mode for a vector search. These modes allow changing which nodes are returned from a Vector Search.
     SetResultsMode(ResultsMode),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LimitTraversalMode {
+    /// Limits traversal into deeper Vector Resources only if they match the provided VRBaseType
+    LimitTraversalToType(VRBaseType),
+    /// Limits traversal by a validation function. If the validation function
+    /// returns `true`, the Vector Search will traverse deeper into it.
+    LimitTraversalByValidation(fn(node: &Node, path: VRPath) -> bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -130,13 +140,27 @@ pub trait TraversalOptionVecExt {
     fn get_set_prefilter_mode_option(&self) -> Option<PrefilterMode>;
     fn get_set_filter_mode_option(&self) -> Option<FilterMode>;
     fn get_set_results_mode_option(&self) -> Option<ResultsMode>;
+    fn get_limit_traversal_by_validation_option(&self) -> Option<fn(&Node, VRPath) -> bool>;
 }
 
 impl TraversalOptionVecExt for Vec<TraversalOption> {
     fn get_limit_traversal_to_type_option(&self) -> Option<&VRBaseType> {
         self.iter().find_map(|option| {
-            if let TraversalOption::LimitTraversalToType(value) = option {
+            if let TraversalOption::SetTraversalLimiting(LimitTraversalMode::LimitTraversalToType(value)) = option {
                 Some(value)
+            } else {
+                None
+            }
+        })
+    }
+
+    fn get_limit_traversal_by_validation_option(&self) -> Option<fn(&Node, VRPath) -> bool> {
+        self.iter().find_map(|option| {
+            if let TraversalOption::SetTraversalLimiting(LimitTraversalMode::LimitTraversalByValidation(
+                validation_func,
+            )) = option
+            {
+                Some(*validation_func)
             } else {
                 None
             }

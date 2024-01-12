@@ -434,28 +434,27 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 if let NodeContent::Resource(node_resource) = node.content.clone() {
                     // Keep track for later sorting efficiency
                     vector_resource_count += 1;
-                    for option in traversal_options {
-                        // If traversal option includes UntilDepth and we've reached the right level
-                        // Don't recurse any deeper, just return current Node with BaseVectorResource
-                        if let TraversalOption::UntilDepth(d) = option {
-                            if d == &traversal_path.depth_inclusive() {
-                                let ret_node = RetrievedNode {
-                                    node: node.clone(),
-                                    score,
-                                    resource_header: self.generate_resource_header(),
-                                    retrieval_path: traversal_path.clone(),
-                                };
-                                current_level_results.push(ret_node);
-                                skip_traversing_deeper = true;
-                                break;
-                            }
+
+                    // If traversal option includes UntilDepth and we've reached the right level
+                    // Don't recurse any deeper, just return current Node with BaseVectorResource
+                    if let Some(d) = traversal_options.get_until_depth_option() {
+                        if d == traversal_path.depth_inclusive() {
+                            let ret_node = RetrievedNode {
+                                node: node.clone(),
+                                score,
+                                resource_header: self.generate_resource_header(),
+                                retrieval_path: traversal_path.clone(),
+                            };
+                            current_level_results.push(ret_node);
+                            skip_traversing_deeper = true;
                         }
-                        // If node Resource does not have same base type as LimitTraversalToType then
-                        // then skip going deeper into it
-                        if let TraversalOption::LimitTraversalToType(base_type) = option {
-                            if &node_resource.resource_base_type() != base_type {
-                                skip_traversing_deeper = true;
-                            }
+                    }
+
+                    // If node Resource does not have same base type as LimitTraversalToType then
+                    // then skip going deeper into it
+                    if let Some(base_type) = traversal_options.get_limit_traversal_to_type_option() {
+                        if &node_resource.resource_base_type() != base_type {
+                            skip_traversing_deeper = true;
                         }
                     }
                 }
