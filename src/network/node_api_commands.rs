@@ -773,7 +773,7 @@ impl Node {
                             string_to_encryption_public_key(device_encryption_pk.as_str()).unwrap();
 
                         let device_identity = DeviceIdentity {
-                            full_identity_name,
+                            full_identity_name: full_identity_name.clone(),
                             node_encryption_public_key: self.encryption_public_key.clone(),
                             node_signature_public_key: self.identity_public_key.clone(),
                             profile_encryption_public_key: encryption_pk_obj,
@@ -788,8 +788,9 @@ impl Node {
                             Ok(_) => {
                                 if main_profile_exists == false && !self.initial_agents.is_empty() {
                                     std::mem::drop(identity_manager);
+                                    let profile = full_identity_name.extract_profile()?;
                                     for agent in &self.initial_agents {
-                                        self.internal_add_agent(agent.clone()).await?;
+                                        self.internal_add_agent(agent.clone(), &profile).await?;
                                     }
                                 }
 
@@ -1735,7 +1736,7 @@ impl Node {
         let validation_result = self
             .validate_message(potentially_encrypted_msg, Some(MessageSchemaType::APIAddAgentRequest))
             .await;
-        let (msg, _) = match validation_result {
+        let (msg, sender_identity) = match validation_result {
             Ok((msg, sender_subidentity)) => (msg, sender_subidentity),
             Err(api_error) => {
                 let _ = res.send(Err(api_error)).await;
@@ -1750,7 +1751,25 @@ impl Node {
                 message: format!("Failed to parse APIAddAgentRequest: {}", e),
             })?;
 
-        match self.internal_add_agent(serialized_agent.agent).await {
+        let profile_result = {
+            let identity_name = sender_identity.get_full_identity_name();
+            ShinkaiName::new(identity_name)
+        };
+
+        let profile = match profile_result {
+            Ok(profile) => profile,
+            Err(err) => {
+                let api_error = APIError {
+                    code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                    error: "Internal Server Error".to_string(),
+                    message: format!("Failed to create profile: {}", err),
+                };
+                let _ = res.send(Err(api_error)).await;
+                return Ok(());
+            }
+        };
+
+        match self.internal_add_agent(serialized_agent.agent, &profile).await {
             Ok(_) => {
                 // If everything went well, send the job_id back with an empty string for error
                 let _ = res.send(Ok("Agent added successfully".to_string())).await;

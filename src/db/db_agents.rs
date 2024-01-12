@@ -1,4 +1,8 @@
-use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
+use super::{
+    db::{ProfileBoundWriteBatch, Topic},
+    db_errors::ShinkaiDBError,
+    ShinkaiDB,
+};
 use rocksdb::{Error, Options};
 use serde_json::{from_slice, to_vec};
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
@@ -23,7 +27,7 @@ impl ShinkaiDB {
         Ok(result)
     }
 
-    pub fn add_agent(&mut self, agent: SerializedAgent) -> Result<(), ShinkaiDBError> {
+    pub fn add_agent(&mut self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Create Options for ColumnFamily
         let mut cf_opts = Options::default();
         cf_opts.create_if_missing(true);
@@ -38,7 +42,7 @@ impl ShinkaiDB {
         self.db.create_cf(&cf_name_toolkits_accessible, &cf_opts)?;
 
         // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
 
         // Get handles to the newly created column families
         let cf_profiles_access = self.cf_handle(&cf_name_profiles_access)?;
@@ -46,24 +50,24 @@ impl ShinkaiDB {
 
         // Write profiles_with_access and toolkits_accessible to respective columns
         for profile in &agent.allowed_message_senders {
-            batch.put_cf(cf_profiles_access, &profile, "".as_bytes());
+            pb_batch.put_cf_pb(cf_profiles_access, &profile, "".as_bytes());
         }
         for toolkit in &agent.toolkit_permissions {
-            batch.put_cf(cf_toolkits_accessible, &toolkit, "".as_bytes());
+            pb_batch.put_cf_pb(cf_toolkits_accessible, &toolkit, "".as_bytes());
         }
 
         // Serialize the agent to bytes and write it to the Agents topic
         let bytes = to_vec(&agent).unwrap();
         let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
-        batch.put_cf(cf_agents, agent.id.as_bytes(), &bytes);
+        pb_batch.put_cf_pb(cf_agents, &agent.id, &bytes);
 
         // Write the batch
-        self.db.write(batch)?;
+        self.write_pb(pb_batch)?;
 
         Ok(())
     }
 
-    pub fn remove_agent(&mut self, agent_id: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_agent(&mut self, agent_id: &str, profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         // Define the unique column family names
         let cf_name_profiles_access = format!("agent_{}_profiles_with_access", agent_id);
         let cf_name_toolkits_accessible = format!("agent_{}_toolkits_accessible", agent_id);
@@ -72,10 +76,10 @@ impl ShinkaiDB {
         let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
 
         // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
 
         // Remove the agent from the Agents topic
-        batch.delete_cf(cf_agents, agent_id.as_bytes());
+        pb_batch.delete_cf_pb(cf_agents, &agent_id);
 
         // Remove the agent's access profiles and toolkits
         // This involves deleting the column families entirely
@@ -83,7 +87,7 @@ impl ShinkaiDB {
         self.db.drop_cf(&cf_name_toolkits_accessible)?;
 
         // Write the batch
-        self.db.write(batch)?;
+        self.write_pb(pb_batch)?;
 
         Ok(())
     }
@@ -91,6 +95,7 @@ impl ShinkaiDB {
     pub fn update_agent_access(
         &mut self,
         agent_id: &str,
+        profile: &ShinkaiName,
         new_profiles_with_access: Option<Vec<String>>,
         new_toolkits_accessible: Option<Vec<String>>,
     ) -> Result<(), ShinkaiDBError> {
@@ -115,43 +120,35 @@ impl ShinkaiDB {
                 )))?;
 
         // Start write batch for atomic operation
-        let mut batch = rocksdb::WriteBatch::default();
+        let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
 
         // Update profiles_with_access if new_profiles_with_access is provided
         if let Some(profiles) = new_profiles_with_access {
             for profile in profiles {
-                batch.put_cf(cf_profiles_access, profile.as_bytes(), "".as_bytes());
+                pb_batch.put_cf_pb(cf_profiles_access, profile.as_str(), "".as_bytes());
             }
         }
 
         // Update toolkits_accessible if new_toolkits_accessible is provided
         if let Some(toolkits) = new_toolkits_accessible {
             for toolkit in toolkits {
-                batch.put_cf(cf_toolkits_access, toolkit.as_bytes(), "".as_bytes());
+                pb_batch.put_cf_pb(cf_toolkits_access, toolkit.as_str(), "".as_bytes());
             }
         }
 
         // Write the batch
-        self.db.write(batch)?;
+        self.write_pb(pb_batch)?;
 
         Ok(())
     }
 
-    pub fn get_agent(&self, agent_id: &str) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
-        // Get cf handle for Agents topic
-        let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
-
+    pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
         // Fetch the agent's bytes by their id from the Agents topic
-        let agent_bytes = self.db.get_cf(cf_agents, agent_id.as_bytes())?;
+        let agent_bytes = self.get_cf_pb(Topic::Agents, agent_id, profile)?;
 
         // If the agent was found, deserialize the bytes into an agent object and return it
-        match agent_bytes {
-            Some(bytes) => {
-                let agent: SerializedAgent = from_slice(&bytes)?;
-                Ok(Some(agent))
-            }
-            None => Ok(None), // If the agent wasn't found, return None
-        }
+        let agent: SerializedAgent = from_slice(agent_bytes.as_slice())?;
+        Ok(Some(agent))
     }
 
     pub fn get_agent_profiles_with_access(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
@@ -188,11 +185,17 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        self.db.delete_cf(cf, profile.as_bytes())?;
+        let shinkai_name = ShinkaiName::new(profile.to_string())?;
+        self.delete_cf_pb(cf, profile, &shinkai_name)?;
         Ok(())
     }
 
-    pub fn remove_toolkit_from_agent_access(&mut self, agent_id: &str, toolkit: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_toolkit_from_agent_access(
+        &mut self,
+        agent_id: &str,
+        toolkit: &str,
+        profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
         let cf = self
             .db
@@ -202,7 +205,7 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        self.db.delete_cf(cf, toolkit.as_bytes())?;
+        self.delete_cf_pb(cf, toolkit, profile)?;
         Ok(())
     }
 

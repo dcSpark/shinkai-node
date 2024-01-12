@@ -350,8 +350,8 @@ impl Node {
         }
     }
 
-    pub async fn internal_add_agent(&self, agent: SerializedAgent) -> Result<(), NodeError> {
-        match self.db.lock().await.add_agent(agent.clone()) {
+    pub async fn internal_add_agent(&self, agent: SerializedAgent, profile: &ShinkaiName) -> Result<(), NodeError> {
+        match self.db.lock().await.add_agent(agent.clone(), profile) {
             Ok(()) => {
                 let mut subidentity_manager = self.identity_manager.lock().await;
                 match subidentity_manager.add_agent_subidentity(agent).await {

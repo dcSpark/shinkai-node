@@ -213,6 +213,7 @@ pub enum NodeCommand {
     },
     AddAgent {
         agent: SerializedAgent,
+        profile: ShinkaiName,
         res: Sender<String>,
     },
     APIAvailableAgents {
@@ -494,7 +495,7 @@ impl Node {
                             Some(NodeCommand::HasInboxPermission { inbox_name, perm_type, identity, res }) => self.has_inbox_permission(inbox_name, perm_type, identity, res).await,
                             Some(NodeCommand::CreateJob { shinkai_message, res }) => self.local_create_new_job(shinkai_message, res).await,
                             Some(NodeCommand::JobMessage { shinkai_message, res: _ }) => self.internal_job_message(shinkai_message).await?,
-                            Some(NodeCommand::AddAgent { agent, res }) => self.local_add_agent(agent, res).await,
+                            Some(NodeCommand::AddAgent { agent, profile, res }) => self.local_add_agent(agent, &profile, res).await,
                             Some(NodeCommand::AvailableAgents { full_profile_name, res }) => self.local_available_agents(full_profile_name, res).await,
                             // Some(NodeCommand::JobPreMessage { tool_calls, content, recipient, res }) => self.job_pre_message(tool_calls, content, recipient, res).await?,
                             // API Endpoints

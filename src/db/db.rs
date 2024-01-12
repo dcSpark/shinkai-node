@@ -1,4 +1,4 @@
-use crate::network::ws_manager::{WebSocketManager, WSUpdateHandler};
+use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
 
 use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
@@ -10,9 +10,9 @@ use shinkai_message_primitives::{
     schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
-use tokio::sync::Mutex;
-use std::{path::Path, sync::Arc};
 use std::fmt;
+use std::{path::Path, sync::Arc};
+use tokio::sync::Mutex;
 
 pub enum Topic {
     Inbox,
@@ -104,11 +104,8 @@ impl ProfileBoundWriteBatch {
         self.write_batch.put_cf(cf, new_key, value);
     }
 
-    /// Saves the value inside of the key (profile-bound) at the provided column family.
-    pub fn delete_cf_pb<V>(&mut self, cf: &impl AsColumnFamilyRef, key: &str, value: V)
-    where
-        V: AsRef<[u8]>,
-    {
+    /// Removes the value inside of the key (profile-bound) at the provided column family.
+    pub fn delete_cf_pb(&mut self, cf: &impl AsColumnFamilyRef, key: &str) {
         let new_key = self.gen_pb_key(key);
         self.write_batch.delete_cf(cf, new_key);
     }

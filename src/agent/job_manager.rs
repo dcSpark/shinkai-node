@@ -259,6 +259,10 @@ impl JobManager {
     }
 
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
+        // TODO: extract sender profile from message
+        let sender_subidentity = message.get_sender_subidentity().ok_or(AgentError::InvalidSubidentity("Error message here".to_string()))?;
+        
+
         if self.is_job_message(message.clone()) {
             match message.clone().body {
                 MessageBody::Unencrypted(body) => {
