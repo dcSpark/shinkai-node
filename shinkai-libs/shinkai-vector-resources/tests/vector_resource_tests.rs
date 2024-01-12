@@ -12,19 +12,19 @@ use shinkai_vector_resources::vector_resource::{
 use std::collections::HashMap;
 
 #[test]
-fn test_remote_embeddings_generation() {
+fn test_remote_embedding_generation() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
-    let dog_embeddings = generator.generate_embedding_default_blocking("dog").unwrap();
-    let cat_embeddings = generator.generate_embedding_default_blocking("cat").unwrap();
+    let dog_embedding = generator.generate_embedding_default_blocking("dog").unwrap();
+    let cat_embedding = generator.generate_embedding_default_blocking("cat").unwrap();
 
-    assert_eq!(dog_embeddings, dog_embeddings);
-    assert_eq!(cat_embeddings, cat_embeddings);
-    assert_ne!(dog_embeddings, cat_embeddings);
+    assert_eq!(dog_embedding, dog_embedding);
+    assert_eq!(cat_embedding, cat_embedding);
+    assert_ne!(dog_embedding, cat_embedding);
 }
 
 #[tokio::test]
-async fn test_remote_embeddings_generation_async_batched() {
+async fn test_remote_embedding_generation_async_batched() {
     let generator = RemoteEmbeddingGenerator::new_default();
 
     let inputs = vec![
@@ -61,7 +61,7 @@ fn test_manual_resource_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -70,16 +70,16 @@ fn test_manual_resource_vector_search() {
 
     // Prepare embeddings + data, then add it to the doc
     let fact1 = "Dogs are creatures with 4 legs that bark.";
-    let fact1_embeddings = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
     let fact2 = "Camels are slow animals with large humps.";
-    let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
+    let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Seals swim in the ocean.";
-    let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &vec![])
+    let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &vec![])
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
         .unwrap();
-    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &vec![])
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
         .unwrap();
 
     // Testing JSON serialization/deserialization
@@ -109,7 +109,7 @@ fn test_manual_resource_vector_search() {
     let mut map_resource = MapVectorResource::new_empty(
         "Tech Facts",
         Some("A collection of facts about technology"),
-        VRSource::new_uri_ref("veryrealtechfacts.com"),
+        VRSource::new_uri_ref("veryrealtechfacts.com", None),
     );
 
     map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -119,12 +119,12 @@ fn test_manual_resource_vector_search() {
 
     // Prepare embeddings + data, then add it to the map resource
     let fact4 = "Phones provide the power of the internet in your pocket.";
-    let fact4_embeddings = generator.generate_embedding_default_blocking(fact4).unwrap();
+    let fact4_embedding = generator.generate_embedding_default_blocking(fact4).unwrap();
     map_resource.insert_text_node(
         "some_key".to_string(),
         fact4.to_string(),
         None,
-        fact4_embeddings.clone(),
+        fact4_embedding.clone(),
         &vec![],
     );
 
@@ -139,17 +139,17 @@ fn test_manual_resource_vector_search() {
     let mut fruit_doc = DocumentVectorResource::new_empty(
         "Fruit Facts",
         Some("A collection of facts about fruits"),
-        VRSource::new_uri_ref("ostensiblyrealfruitfacts.com"),
+        VRSource::new_uri_ref("ostensiblyrealfruitfacts.com", None),
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
     // Prepare embeddings + data, then add it to the fruit doc
     let fact5 = "Apples are sweet and crunchy.";
-    let fact5_embeddings = generator.generate_embedding_default_blocking(fact5).unwrap();
+    let fact5_embedding = generator.generate_embedding_default_blocking(fact5).unwrap();
     let fact6 = "Bananas are tasty and come in their own natural packaging.";
-    let fact6_embeddings = generator.generate_embedding_default_blocking(fact6).unwrap();
-    fruit_doc.append_text_node(fact5.clone(), None, fact5_embeddings.clone(), &vec![]);
-    fruit_doc.append_text_node(fact6.clone(), None, fact6_embeddings.clone(), &vec![]);
+    let fact6_embedding = generator.generate_embedding_default_blocking(fact6).unwrap();
+    fruit_doc.append_text_node(fact5.clone(), None, fact5_embedding.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), None, fact6_embedding.clone(), &vec![]);
 
     // Insert the map resource into the fruit doc
     let map_resource = BaseVectorResource::from(map_resource);
@@ -339,8 +339,8 @@ fn test_manual_resource_vector_search() {
     hm2.insert("common_key".to_string(), "common_value".to_string());
     hm2.insert("unique_key2".to_string(), "unique_value2".to_string());
 
-    fruit_doc.append_text_node(fact5.clone(), Some(hm1), fact5_embeddings.clone(), &vec![]);
-    fruit_doc.append_text_node(fact6.clone(), Some(hm2), fact6_embeddings.clone(), &vec![]);
+    fruit_doc.append_text_node(fact5.clone(), Some(hm1), fact5_embedding.clone(), &vec![]);
+    fruit_doc.append_text_node(fact6.clone(), Some(hm2), fact6_embedding.clone(), &vec![]);
 
     // Check any filtering, with the common key/value
     let res = fruit_doc.vector_search_customized(
@@ -416,6 +416,15 @@ fn test_manual_resource_vector_search() {
     assert_eq!(res.node.id, "3");
     assert_eq!(res.retrieval_path.to_string(), test_path.to_string());
 
+    // Validate embedding retrieval works by regenerating the embedding from the text
+    let embedding = new_map_resource.retrieve_embedding_at_path(test_path.clone()).unwrap();
+    match res.node.content {
+        NodeContent::Text(text) => {
+            let regenerated_embedding = generator.generate_embedding_blocking(&text, "3").unwrap();
+            assert_eq!(embedding, regenerated_embedding);
+        }
+        _ => panic!("Node content is not text"),
+    }
     // Proximity retrieval test
     let test_path = VRPath::from_string("/doc_key/4/doc_key/3").unwrap();
     new_map_resource.print_all_nodes_exhaustive(None, true, false);
@@ -452,7 +461,7 @@ fn test_manual_resource_vector_search() {
             test_path.clone(),
             "----My new node value----".to_string(),
             None,
-            fact6_embeddings.clone(),
+            fact6_embedding.clone(),
             vec![],
         )
         .unwrap();
@@ -471,7 +480,7 @@ fn test_manual_resource_vector_search() {
             test_path.clone(),
             "----My new node value 2----".to_string(),
             None,
-            fact6_embeddings.clone(),
+            fact6_embedding.clone(),
             vec![],
         )
         .unwrap();
@@ -551,14 +560,14 @@ fn test_manual_syntactic_vector_search() {
 
     // Prepare embeddings + data, then add it to the doc
     let fact1 = "Name: Joe Smith - Email: joesmith@gmail.com";
-    let fact1_embeddings = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
     let fact2 = "Birthday: 23/03/1980";
-    let fact2_embeddings = generator.generate_embedding_default_blocking(fact2).unwrap();
+    let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
     let fact3 = "Previous Accomplishments: Drove $1,500,000 in sales at my previous company, which translate to a 4x improvement compared to when I joined.";
-    let fact3_embeddings = generator.generate_embedding_default_blocking(fact3).unwrap();
-    doc.append_text_node(fact1.clone(), None, fact1_embeddings.clone(), &data_tags);
-    doc.append_text_node(fact2.clone(), None, fact2_embeddings.clone(), &data_tags);
-    doc.append_text_node(fact3.clone(), None, fact3_embeddings.clone(), &data_tags);
+    let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &data_tags);
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &data_tags);
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &data_tags);
 
     // println!("Doc data tag index: {:?}", doc.data_tag_index());
 
@@ -595,4 +604,77 @@ fn test_manual_syntactic_vector_search() {
     let fetched_data = doc.syntactic_vector_search(query, 5, &vec![multiplier_tag.name.clone()]);
     let fetched_node = fetched_data.get(0).unwrap();
     assert_eq!(NodeContent::Text(fact3.to_string()), fetched_node.node.content);
+}
+
+#[test]
+fn test_checking_embedding_similarity() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    //
+    // Create a first resource
+    //
+    let mut doc = DocumentVectorResource::new_empty(
+        "3 Animal Facts",
+        Some("A bunch of facts about animals and wildlife"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
+    );
+
+    doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    doc.update_resource_embedding_blocking(&generator, vec!["animal".to_string(), "wild life".to_string()])
+        .unwrap();
+
+    // Prepare embeddings + data, then add it to the doc
+    let fact1 = "Dogs are creatures with 4 legs that bark.";
+    let fact1_embedding = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let fact2 = "Camels are slow animals with large humps.";
+    let fact2_embedding = generator.generate_embedding_default_blocking(fact2).unwrap();
+    let fact3 = "Seals swim in the ocean.";
+    let fact3_embedding = generator.generate_embedding_default_blocking(fact3).unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+        .unwrap();
+
+    // Testing small alternations to the input text still retain a high similarity score
+    let res = doc.vector_search(fact1_embedding.clone(), 1);
+    assert_eq!(fact1.clone(), res[0].node.get_text_content().unwrap().to_string());
+    assert!(res[0].score > 0.99);
+
+    let fact1_embedding_2 = generator.generate_embedding_default_blocking(fact1).unwrap();
+    let res = doc.vector_search(fact1_embedding_2.clone(), 1);
+    assert!(res[0].score > 0.99);
+
+    let similar_to_fact_1 = "Dogs are creatures with 4 legs that bark .";
+    let similar_fact1_embedding = generator
+        .generate_embedding_default_blocking(similar_to_fact_1)
+        .unwrap();
+    let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
+    println!("{} : {}", res[0].score, similar_to_fact_1);
+    assert!(res[0].score > 0.99);
+
+    let similar_to_fact_1 = "Dogs are creatures with 4 legs that bark";
+    let similar_fact1_embedding = generator
+        .generate_embedding_default_blocking(similar_to_fact_1)
+        .unwrap();
+    let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
+    println!("{} : {}", res[0].score, similar_to_fact_1);
+    assert!(res[0].score > 0.99);
+
+    let similar_to_fact_1 = "Dogs   are   creatures with 4   legs that   bark";
+    let similar_fact1_embedding = generator
+        .generate_embedding_default_blocking(similar_to_fact_1)
+        .unwrap();
+    let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
+    println!("{} : {}", res[0].score, similar_to_fact_1);
+    assert!(res[0].score > 0.99);
+
+    let similar_to_fact_1 = "Dogs --   are ||  creatures ~ with 4 legs, that   bark";
+    let similar_fact1_embedding = generator
+        .generate_embedding_default_blocking(similar_to_fact_1)
+        .unwrap();
+    let res = doc.vector_search(similar_fact1_embedding.clone(), 1);
+    println!("{} : {}", res[0].score, similar_to_fact_1);
+    assert!(res[0].score < 0.99);
 }

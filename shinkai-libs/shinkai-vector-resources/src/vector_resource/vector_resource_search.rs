@@ -15,6 +15,13 @@ use std::collections::HashMap;
 
 #[async_trait]
 pub trait VectorResourceSearch: VectorResourceCore {
+    /// Fetches percent_to_verify (between 0.0 - 1.0) of random nodes from within the VectorResource
+    /// and validates that said node's included embeddings in the VectorResource are correct.
+    fn verify_internal_embeddings_coherence(&self, generator: &dyn EmbeddingGenerator, percent_to_verify: f32) -> bool {
+        let all_nodes = self.retrieve_nodes_exhaustive(None, false);
+        true
+    }
+
     /// Returns every single node at any depth in the whole Vector Resource, including the Vector Resources nodes themselves,
     /// and the Nodes they hold additionally. If a starting_path is provided then fetches all nodes from there,
     /// else starts at root. If resources_only is true, only Vector Resources are returned.

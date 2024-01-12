@@ -210,14 +210,28 @@ pub trait VectorResourceCore: Send + Sync {
         VRBaseType::is_base_vector_resource(self.resource_base_type())
     }
 
-    /// Retrieves a node at any depth, given its path.
+    /// Retrieves a node and its embedding at any depth, given its path.
     /// If the path is invalid at any part, or empty, then method will error.
-    fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
+    fn retrieve_node_and_embedding_at_path(&self, path: VRPath) -> Result<(RetrievedNode, Embedding), VRError> {
         let results = self._internal_retrieve_node_at_path(path.clone(), None)?;
         if results.is_empty() {
             return Err(VRError::InvalidVRPath(path));
         }
-        Ok(results[0].clone())
+        Ok((results[0].0.clone(), results[0].1.clone()))
+    }
+
+    /// Retrieves a node at any depth, given its path.
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn retrieve_node_at_path(&self, path: VRPath) -> Result<RetrievedNode, VRError> {
+        let (node, _) = self.retrieve_node_and_embedding_at_path(path)?;
+        Ok(node)
+    }
+
+    /// Retrieves the embedding of a node at any depth, given its path.
+    /// If the path is invalid at any part, or empty, then method will error.
+    fn retrieve_embedding_at_path(&self, path: VRPath) -> Result<Embedding, VRError> {
+        let (_, embedding) = self.retrieve_node_and_embedding_at_path(path)?;
+        Ok(embedding)
     }
 
     /// Retrieves a node and `proximity_window` number of nodes before/after it, given a path.
@@ -228,6 +242,7 @@ pub trait VectorResourceCore: Send + Sync {
         proximity_window: u64,
     ) -> Result<Vec<RetrievedNode>, VRError> {
         self._internal_retrieve_node_at_path(path.clone(), Some(proximity_window))
+            .map(|nodes| nodes.into_iter().map(|(node, _)| node).collect())
     }
 
     /// Internal method shared by retrieved node at path methods
@@ -235,12 +250,13 @@ pub trait VectorResourceCore: Send + Sync {
         &self,
         path: VRPath,
         proximity_window: Option<u64>,
-    ) -> Result<Vec<RetrievedNode>, VRError> {
+    ) -> Result<Vec<(RetrievedNode, Embedding)>, VRError> {
         if path.path_ids.is_empty() {
             return Err(VRError::InvalidVRPath(path.clone()));
         }
         // Fetch the node at root depth directly, then iterate through the rest
         let mut node = self.get_node(path.path_ids[0].clone())?;
+        let mut embedding = self.get_embedding(path.path_ids[0].clone())?;
         let mut last_resource_header = self.generate_resource_header();
         let mut retrieved_nodes = Vec::new();
 
@@ -258,36 +274,42 @@ pub trait VectorResourceCore: Send + Sync {
                         // If returning proximity, then try to coerce into an OrderedVectorResource and perform proximity get
                         if let Some(prox_window) = proximity_window {
                             if let Ok(ord_res) = resource.as_ordered_vector_resource() {
-                                retrieved_nodes = ord_res.get_node_and_proximity(id.clone(), prox_window)?;
+                                // TODO: Eventually update get_node_and_proximity to also return their embeddings.
+                                // Technically not important, because for now we only use the embedding for non-proximity methods.
+                                let new_ret_nodes = ord_res.get_node_and_proximity(id.clone(), prox_window)?;
+                                retrieved_nodes = new_ret_nodes
+                                    .iter()
+                                    .map(|ret_node| (ret_node.clone(), embedding.clone()))
+                                    .collect();
                             } else {
                                 return Err(VRError::InvalidVRBaseType);
                             }
                         }
                     }
+                    embedding = resource_obj.get_embedding(id.clone())?;
                     node = resource_obj.get_node(id.clone())?;
                 }
+                // If we hit a non VR-holding node before the end of the path, then the path is invalid
                 _ => {
-                    if let Some(last) = path.path_ids.last() {
-                        // TODO: potentially delete this if, should always error probably
-                        if id != last {
-                            return Err(VRError::InvalidVRPath(path.clone()));
-                        }
-                    }
+                    return Err(VRError::InvalidVRPath(path.clone()));
                 }
             }
         }
 
         // If there are no retrieved nodes, then simply add the final node that was at the path
         if retrieved_nodes.is_empty() {
-            retrieved_nodes.push(node);
+            retrieved_nodes.push((node, embedding));
         }
 
         // Convert the results into retrieved nodes
         let mut final_nodes = vec![];
         for n in retrieved_nodes {
             let mut node_path = path.pop_cloned();
-            node_path.push(n.id.clone());
-            final_nodes.push(RetrievedNode::new(n, 0.0, last_resource_header.clone(), node_path));
+            node_path.push(n.0.id.clone());
+            final_nodes.push((
+                RetrievedNode::new(n.0, 0.0, last_resource_header.clone(), node_path),
+                n.1,
+            ));
         }
         Ok(final_nodes)
     }
