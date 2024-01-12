@@ -11,15 +11,56 @@ pub use crate::source::VRSource;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
+use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
+use rand::SeedableRng;
 use std::collections::HashMap;
 
 #[async_trait]
 pub trait VectorResourceSearch: VectorResourceCore {
+    #[cfg(feature = "native-http")]
     /// Fetches percent_to_verify (between 0.0 - 1.0) of random nodes from within the VectorResource
     /// and validates that said node's included embeddings in the VectorResource are correct.
-    fn verify_internal_embeddings_coherence(&self, generator: &dyn EmbeddingGenerator, percent_to_verify: f32) -> bool {
+    async fn verify_internal_embeddings_coherence(
+        &self,
+        generator: &dyn EmbeddingGenerator,
+        percent_to_verify: f32,
+    ) -> Result<bool, VRError> {
         let all_nodes = self.retrieve_nodes_exhaustive(None, false);
-        true
+        println!("Nodes num: {}", all_nodes.len());
+        let percent_to_verify = percent_to_verify.max(0.0).min(1.0);
+        let num_to_verify = (all_nodes.len() as f32 * percent_to_verify).ceil() as usize;
+        // Ensure at least one node is verified always
+        let num_to_verify = num_to_verify.max(1);
+
+        // Filter out any non-text nodes, and randomly select from these nodes for the list of nodes to be verified
+        // TODO: Later on also allow VectorResource nodes, and re-generate the resource embedding + verify it.
+        let mut rng = StdRng::from_entropy();
+        let nodes_to_verify: Vec<_> = all_nodes
+            .into_iter()
+            .filter(|node| matches!(node.node.content, NodeContent::Text(_)))
+            .choose_multiple(&mut rng, num_to_verify);
+
+        println!("Nodes to verify num: {}", nodes_to_verify.len());
+
+        for ret_node in nodes_to_verify {
+            println!("Verifying Node at path: {}", ret_node.retrieval_path);
+            let embedding = self.retrieve_embedding_at_path(ret_node.retrieval_path)?;
+            match ret_node.node.content {
+                NodeContent::Text(text) => {
+                    let regenerated_embedding = generator.generate_embedding_default(&text).await?;
+                    // We check if the score of the regenerated embedding is ever below 0.99 (some leeway in case some models are not 100% deterministic)
+                    let score = embedding.cosine_similarity(&regenerated_embedding) < 0.99;
+                    println!("Similarity Score: {}", score);
+                    if score {
+                        return Ok(false);
+                    }
+                }
+                _ => return Err(VRError::InvalidNodeType("Node must hold Text content".to_string())),
+            }
+        }
+
+        Ok(true)
     }
 
     /// Returns every single node at any depth in the whole Vector Resource, including the Vector Resources nodes themselves,

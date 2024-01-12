@@ -678,3 +678,40 @@ fn test_checking_embedding_similarity() {
     println!("{} : {}", res[0].score, similar_to_fact_1);
     assert!(res[0].score < 0.99);
 }
+
+#[tokio::test]
+async fn test_embeddings_coherence() {
+    let generator = RemoteEmbeddingGenerator::new_default();
+
+    let mut doc = DocumentVectorResource::new_empty(
+        "3 Animal Facts",
+        Some("A bunch of facts about animals and wildlife"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
+    );
+
+    doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
+    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
+        .await
+        .unwrap();
+
+    // Prepare embeddings + data, then add it to the doc
+    let fact1 = "Dogs are creatures with 4 legs that bark.";
+    let fact1_embedding = generator.generate_embedding_default(fact1).await.unwrap();
+    let fact2 = "Camels are slow animals with large humps.";
+    let fact2_embedding = generator.generate_embedding_default(fact2).await.unwrap();
+    let fact3 = "Seals swim in the ocean.";
+    let fact3_embedding = generator.generate_embedding_default(fact3).await.unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+        .unwrap();
+
+    let cloned_doc = BaseVectorResource::Document(doc.clone());
+    doc.append_vector_resource_node_auto(cloned_doc, None);
+
+    assert!(doc.verify_internal_embeddings_coherence(&generator, 0.5).await.is_ok());
+    assert!(doc.verify_internal_embeddings_coherence(&generator, 0.0).await.is_ok());
+    assert!(doc.verify_internal_embeddings_coherence(&generator, 23.4).await.is_ok());
+}

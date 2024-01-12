@@ -38,7 +38,7 @@ impl Embedding {
         println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);
     }
 
-    /// Calculate the cosine similarity between two embedding vectors
+    /// Calculate the cosine similarity between Self and the input Embedding
     pub fn cosine_similarity(&self, embedding2: &Embedding) -> f32 {
         let dot_product = self.dot(&self.vector, &embedding2.vector);
         let magnitude1 = self.magnitude(&self.vector);
