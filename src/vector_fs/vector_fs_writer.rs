@@ -150,17 +150,29 @@ impl VectorFS {
 
             // Now all validation checks/setup have passed, move forward with saving header/resource/source file
             let current_datetime = ShinkaiTime::generate_time_now();
-            // Update the last_saved keys of the FSItem node's metadata
+            // Update the metadata keys of the FSItem node
             let mut node_metadata = node_metadata.unwrap_or_else(|| HashMap::new());
             node_metadata.insert(FSItem::vr_last_saved_metadata_key(), current_datetime.to_rfc3339());
-            if source_file_map.is_some() {
+            if let Some(sfm) = &source_file_map {
+                // Last Saved SFM
                 node_metadata.insert(
                     FSItem::source_file_map_last_saved_metadata_key(),
                     current_datetime.to_rfc3339(),
                 );
+                // SFM Size
+                let sfm_size = sfm.encoded_size()?;
+                node_metadata.insert(FSItem::source_file_map_size_metadata_key(), sfm_size.to_string());
             }
+            // Update distribution_origin key in metadata
+            node_metadata.insert(
+                FSItem::distribution_origin_metadata_key(),
+                distribution_origin.to_json()?,
+            );
+            // Update vr_size key in metadata
+            let vr_size = resource.as_trait_object().encoded_size()?;
+            node_metadata.insert(FSItem::vr_size_metadata_key(), vr_size.to_string());
 
-            // Saving the VRHeader into the core vector resource
+            // Now after updating the metadata, finally save the VRHeader Node into the core vector resource
             {
                 new_item = Some(self._add_vr_header_to_core_resource(
                     writer,

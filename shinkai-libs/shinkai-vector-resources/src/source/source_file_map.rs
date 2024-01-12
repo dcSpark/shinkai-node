@@ -1,5 +1,5 @@
 use super::SourceFile;
-use crate::vector_resource::VRPath;
+use crate::{resource_errors::VRError, vector_resource::VRPath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -19,6 +19,12 @@ impl SourceFileMap {
             map,
             source_files_count,
         }
+    }
+
+    /// Returns the size of the whole SourceFileMap after being encoded as JSON.
+    pub fn encoded_size(&self) -> Result<usize, VRError> {
+        let json = self.to_json()?;
+        Ok(json.as_bytes().len())
     }
 
     /// Checks if the map contains only a single root SourceFile.

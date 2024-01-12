@@ -92,6 +92,13 @@ pub trait VectorResourceCore: Send + Sync {
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError>;
 
+    /// Returns the size of the whole Vector Resource after being encoded as JSON.
+    /// Of note, encoding as JSON ensures we get accurate numbers when the user transfers/saves the VR to file.
+    fn encoded_size(&self) -> Result<usize, VRError> {
+        let json = self.to_json()?;
+        Ok(json.as_bytes().len())
+    }
+
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source
     /// and the provided keywords.

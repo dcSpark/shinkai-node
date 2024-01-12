@@ -6,7 +6,7 @@ use shinkai_vector_resources::{
     shinkai_time::ShinkaiTime,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, NodeContent, VRHeader, VRPath},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, mem::discriminant};
 
 /// Enum that holds the types of external-facing entries used in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -261,6 +261,12 @@ pub struct FSItem {
     pub vr_last_saved_datetime: DateTime<Utc>,
     /// Datetime the SourceFileMap in the FSItem was last saved/updated. None if no SourceFileMap was ever saved.
     pub source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
+    /// The original location where the VectorResource/SourceFileMap in this FSItem were downloaded/fetched/synced from.
+    pub distribution_origin: DistributionOrigin,
+    /// The size of the Vector Resource in this FSItem
+    pub vr_size: usize,
+    /// The size of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
+    pub source_file_map_size: usize,
 }
 
 impl FSItem {
@@ -273,6 +279,9 @@ impl FSItem {
         last_read_datetime: DateTime<Utc>,
         vr_last_saved_datetime: DateTime<Utc>,
         source_file_map_last_saved_datetime: Option<DateTime<Utc>>,
+        distribution_origin: DistributionOrigin,
+        vr_size: usize,
+        source_file_map_size: usize,
     ) -> Self {
         Self {
             path,
@@ -282,18 +291,15 @@ impl FSItem {
             last_read_datetime,
             vr_last_saved_datetime,
             source_file_map_last_saved_datetime,
+            distribution_origin,
+            vr_size,
+            source_file_map_size,
         }
     }
-
     /// DB key where the Vector Resource matching this FSEntry is held.
     /// Uses the VRHeader reference string.
     pub fn resource_db_key(&self) -> String {
         self.vr_header.reference_string()
-    }
-
-    /// Checks the last saved datetime to determine if it was ever saved into the FSDB
-    pub fn is_source_file_map_saved(&self) -> bool {
-        self.source_file_map_last_saved_datetime.is_some()
     }
 
     /// Returns the DB key where the SourceFileMap matching this FSEntry is held.
@@ -306,6 +312,11 @@ impl FSItem {
         }
     }
 
+    /// Checks the last saved datetime to determine if it was ever saved into the FSDB
+    pub fn is_source_file_map_saved(&self) -> bool {
+        self.source_file_map_last_saved_datetime.is_some()
+    }
+
     /// Generates a new FSItem using a VRHeader holding Node + the path where the node was retrieved
     /// from in the VecFS internals. Use VRPath::new() if the path is root.
     pub fn from_vr_header_node(
@@ -315,9 +326,11 @@ impl FSItem {
     ) -> Result<Self, VectorFSError> {
         match &node.content {
             NodeContent::VRHeader(header) => {
-                // Process datetimes from node
+                // Process data  from node metadata
                 let (vr_last_saved_datetime, source_file_map_last_saved) = Self::process_datetimes_from_node(&node)?;
                 let last_read_datetime = lr_index.get_last_read_datetime_or_now(&node_fs_path);
+                let (vr_size, sfm_size) = Self::process_sizes_from_node(&node)?;
+                let distribution_origin = Self::process_distribution_origin(&node)?;
 
                 Ok(FSItem::new(
                     node_fs_path,
@@ -327,6 +340,9 @@ impl FSItem {
                     last_read_datetime,
                     vr_last_saved_datetime,
                     source_file_map_last_saved,
+                    distribution_origin,
+                    vr_size,
+                    sfm_size,
                 ))
             }
 
@@ -361,14 +377,68 @@ impl FSItem {
         Ok((last_saved_datetime, source_file_map_last_saved))
     }
 
+    /// Process the two sizes stored in metadata in an FSItem Node from the VectorFS core resource.
+    /// The node must be an FSItem for this to succeed.
+    pub fn process_sizes_from_node(node: &Node) -> Result<(usize, usize), VectorFSError> {
+        let vr_size_str = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&Self::vr_size_metadata_key()));
+        let vr_size = match vr_size_str {
+            Some(s) => s
+                .parse::<usize>()
+                .map_err(|_| VectorFSError::InvalidMetadata(Self::vr_size_metadata_key()))?,
+            None => 0,
+        };
+
+        let sfm_size_str = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&Self::source_file_map_size_metadata_key()));
+        let sfm_size = match sfm_size_str {
+            Some(s) => s
+                .parse::<usize>()
+                .map_err(|_| VectorFSError::InvalidMetadata(Self::source_file_map_size_metadata_key()))?,
+            None => 0,
+        };
+
+        Ok((vr_size, sfm_size))
+    }
+
+    /// Process the distribution origin stored in metadata in an FSItem Node from the VectorFS core resource.
+    /// The node must be an FSItem for this to succeed.
+    pub fn process_distribution_origin(node: &Node) -> Result<DistributionOrigin, VectorFSError> {
+        let dist_origin_str = node
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(&Self::distribution_origin_metadata_key()))
+            .ok_or(VectorFSError::InvalidMetadata(Self::distribution_origin_metadata_key()))?;
+        Ok(DistributionOrigin::from_json(dist_origin_str)?)
+    }
+
     /// Returns the metadata key for the Vector Resource last saved datetime.
     pub fn vr_last_saved_metadata_key() -> String {
         String::from("vr_last_saved")
     }
 
-    /// Metadata key where source_file_map_saved will be found in a Node.
+    /// Metadata key where Vector Resource's size will be found in a Node.
+    pub fn vr_size_metadata_key() -> String {
+        String::from("vr_size")
+    }
+
+    /// Metadata key where Source File Map's last saved datetime will be found in a Node.
     pub fn source_file_map_last_saved_metadata_key() -> String {
         String::from("sfm_last_saved")
+    }
+
+    /// Metadata key where SourceFileMap's size will be found in a Node.
+    pub fn source_file_map_size_metadata_key() -> String {
+        String::from("sfm_size")
+    }
+
+    /// Metadata key where DistributionOrigin will be found in a Node.
+    pub fn distribution_origin_metadata_key() -> String {
+        String::from("dist_origin")
     }
 }
 
@@ -439,9 +509,22 @@ impl LastReadIndex {
 
 /// The origin where a VectorResource was downloaded/acquired from before it arrived
 /// in the node's VectorFS
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum DistributionOrigin {
     Uri(String),
-    ShinkaiNode(ShinkaiName),
+    ShinkaiNode((ShinkaiName, VRPath)),
     Other(String),
     None,
+}
+
+impl DistributionOrigin {
+    // Converts the DistributionOrigin to a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    // Creates a DistributionOrigin from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
