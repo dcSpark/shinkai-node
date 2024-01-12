@@ -1,5 +1,6 @@
 use super::super::{vector_fs_error::VectorFSError, vector_fs_internals::VectorFSInternals};
 use crate::db::db::ProfileBoundWriteBatch;
+use crate::db::ShinkaiDB;
 use rand::Rng;
 use rand::{distributions::Alphanumeric, thread_rng};
 use rocksdb::{
@@ -205,9 +206,7 @@ impl VectorFSDB {
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key_from_str(key: &str, profile_name: &str) -> String {
-        let mut res = profile_name.to_string();
-        res.push_str(key);
-        res
+        ShinkaiDB::generate_profile_bound_key_from_str(key, profile_name)
     }
 
     /// Extracts the profile name with VectorFSError wrapping

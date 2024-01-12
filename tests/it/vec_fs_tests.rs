@@ -113,7 +113,7 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     internals.fs_core_resource.print_all_nodes_exhaustive(None, true, false);
 
-    /// Retrieve the Vector Resource & Source File from the db
+    /// Retrieve the Vector Resource & Source File Map from the db
     // Test both retrieve interfaces
     let reader = vector_fs
         .new_reader(default_test_profile(), item_path.clone(), default_test_profile())
@@ -130,4 +130,7 @@ async fn test_vector_fs_saving_reading() {
         .unwrap();
     assert_eq!(ret_resource, resource);
     assert_eq!(ret_source_file_map, source_file_map);
+
+    println!("Retrieved Vector Resource: {:?}", ret_resource);
+    assert!(1 == 2);
 }
