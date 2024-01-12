@@ -417,7 +417,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
 
         for (score, id) in scores {
             let mut skip_traversing_deeper = false;
-            if let Ok(node) = self.get_node(id) {
+            if let Ok(node) = self.get_node(id.clone()) {
                 // Perform validations based on Filter Mode
                 let filter_mode = traversal_options.get_set_filter_mode_option();
                 if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {
@@ -454,6 +454,16 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     // then skip going deeper into it
                     if let Some(base_type) = traversal_options.get_limit_traversal_to_type_option() {
                         if &node_resource.resource_base_type() != base_type {
+                            skip_traversing_deeper = true;
+                        }
+                    }
+
+                    // If node does not pass the validation check then skip going deeper into it
+                    if let Some((validation_func, hash_map)) =
+                        traversal_options.get_limit_traversal_by_validation_with_map_option()
+                    {
+                        let node_path = traversal_path.push_cloned(id.clone());
+                        if !validation_func(&node, &node_path, hash_map) {
                             skip_traversing_deeper = true;
                         }
                     }

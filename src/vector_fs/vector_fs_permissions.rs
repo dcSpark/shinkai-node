@@ -2,6 +2,8 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::VRPath;
 use std::{collections::HashMap, fmt::Write};
 
+use super::vector_fs_reader::VFSReader;
+
 /// Struct that holds the read/write permissions specified for a specific path in the VectorFS
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathPermission {
@@ -10,6 +12,18 @@ pub struct PathPermission {
     /// Whitelist which specifies per ShinkaiName which perms they have. Checked
     /// if either read or write perms are set to Whitelist, respectively.
     whitelist: HashMap<ShinkaiName, WhitelistPermission>,
+}
+
+impl PathPermission {
+    /// Serialize the PathPermission struct into a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserialize a JSON string into a PathPermission struct
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 /// Enum representing the different types of read permissions a VRPath can have.
@@ -64,6 +78,54 @@ impl PermissionsIndex {
         // Set permissions for the FS root to be private by default (only for profile owner)
         index.insert_path_permission(VRPath::new(), ReadPermission::Private, WritePermission::Private);
         index
+    }
+
+    pub fn convert_fs_permissions_to_json_values(&self, reader: &VFSReader) -> HashMap<VRPath, String> {
+        // Convert values to json
+        let mut hashmap: HashMap<VRPath, String> = self
+            .fs_permissions
+            .iter()
+            .filter_map(|(vrpath, path_permission)| {
+                if let Ok(path_permission_json) = path_permission.to_json() {
+                    Some((vrpath.clone(), path_permission_json))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Add reader at a hard-coded path that can't be used by the VecFS normally
+        if let Ok(json) = reader.to_json() {
+            hashmap.insert(Self::vfs_reader_unique_path(), json);
+        }
+
+        hashmap
+    }
+
+    /// A hard-coded path that isn't likely to be used by the VecFS normally for permissions ever.
+    pub fn vfs_reader_unique_path() -> VRPath {
+        let mut path = VRPath::new();
+        path.push("9529".to_string());
+        path.push("31008".to_string());
+        path.push("7482".to_string());
+        path
+    }
+
+    pub fn convert_from_json_values(
+        profile_name: ShinkaiName,
+        json_permissions: HashMap<VRPath, String>,
+    ) -> Result<Self, serde_json::Error> {
+        let mut index = Self {
+            fs_permissions: HashMap::new(),
+            profile_name,
+        };
+
+        for (vrpath, json) in json_permissions {
+            let path_permission = PathPermission::from_json(&json)?;
+            index.fs_permissions.insert(vrpath, path_permission);
+        }
+
+        Ok(index)
     }
 
     /// Inserts a new path permission into the fs_permissions map. Note, this will overwrite

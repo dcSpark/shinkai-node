@@ -3,6 +3,7 @@ use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot, LastReadIndex};
 use super::vector_fs_writer::VFSWriter;
 use crate::db::db::ProfileBoundWriteBatch;
+use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -16,6 +17,7 @@ use shinkai_vector_resources::{embeddings::Embedding, vector_resource::VRPath};
 /// A struct that represents having access rights to read the VectorFS under a profile/at a specific path.
 /// If a VFSReader struct is constructed, that means the `requester_name` has passed
 /// permissions validation and is thus allowed to read `path`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct VFSReader {
     pub requester_name: ShinkaiName,
     pub path: VRPath,
@@ -70,6 +72,16 @@ impl VFSReader {
     /// Write permissions are verified before the VFSWriter is produced.
     pub fn _new_writer_copied_data(&self, path: VRPath, vector_fs: &mut VectorFS) -> Result<VFSWriter, VectorFSError> {
         VFSWriter::new(self.requester_name.clone(), path, vector_fs, self.profile.clone())
+    }
+
+    /// Serialize the PathPermission struct into a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Deserialize a JSON string into a PathPermission struct
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
     }
 }
 

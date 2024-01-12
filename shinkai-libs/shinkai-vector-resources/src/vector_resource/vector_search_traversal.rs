@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 
@@ -51,9 +53,14 @@ pub enum TraversalOption {
 pub enum LimitTraversalMode {
     /// Limits traversal into deeper Vector Resources only if they match the provided VRBaseType
     LimitTraversalToType(VRBaseType),
-    /// Limits traversal by a validation function. If the validation function
-    /// returns `true`, the Vector Search will traverse deeper into it.
-    LimitTraversalByValidation(fn(node: &Node, path: VRPath) -> bool),
+    /// Limits traversal by a validation function with an input HashMap. If the validation function returns `true`, the Vector Search will
+    ///  traverse deeper into the Vector Resource-holding Node.
+    LimitTraversalByValidationWithMap(
+        (
+            fn(&Node, &VRPath, HashMap<VRPath, String>) -> bool,
+            HashMap<VRPath, String>,
+        ),
+    ),
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -140,7 +147,12 @@ pub trait TraversalOptionVecExt {
     fn get_set_prefilter_mode_option(&self) -> Option<PrefilterMode>;
     fn get_set_filter_mode_option(&self) -> Option<FilterMode>;
     fn get_set_results_mode_option(&self) -> Option<ResultsMode>;
-    fn get_limit_traversal_by_validation_option(&self) -> Option<fn(&Node, VRPath) -> bool>;
+    fn get_limit_traversal_by_validation_with_map_option(
+        &self,
+    ) -> Option<(
+        fn(&Node, &VRPath, HashMap<VRPath, String>) -> bool,
+        HashMap<VRPath, String>,
+    )>;
 }
 
 impl TraversalOptionVecExt for Vec<TraversalOption> {
@@ -154,13 +166,19 @@ impl TraversalOptionVecExt for Vec<TraversalOption> {
         })
     }
 
-    fn get_limit_traversal_by_validation_option(&self) -> Option<fn(&Node, VRPath) -> bool> {
+    fn get_limit_traversal_by_validation_with_map_option(
+        &self,
+    ) -> Option<(
+        fn(&Node, &VRPath, HashMap<VRPath, String>) -> bool,
+        HashMap<VRPath, String>,
+    )> {
         self.iter().find_map(|option| {
-            if let TraversalOption::SetTraversalLimiting(LimitTraversalMode::LimitTraversalByValidation(
+            if let TraversalOption::SetTraversalLimiting(LimitTraversalMode::LimitTraversalByValidationWithMap((
                 validation_func,
-            )) = option
+                hashmap,
+            ))) = option
             {
-                Some(*validation_func)
+                Some((*validation_func, hashmap.clone()))
             } else {
                 None
             }

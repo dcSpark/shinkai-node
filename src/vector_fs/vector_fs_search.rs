@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
+use super::vector_fs_permissions::PermissionsIndex;
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use shinkai_vector_resources::vector_resource::{LimitTraversalMode, Node};
 use shinkai_vector_resources::{
     embeddings::Embedding,
     vector_resource::{
@@ -18,6 +22,17 @@ use shinkai_vector_resources::{
 // with the fs permissions, and have it validate that the user has read rights for the node validation function.
 //
 impl VectorFS {
+    fn permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath, String>) -> bool {
+        // Check if the hashmap contains the key path
+        if !hashmap.contains_key(path) {
+            return false;
+        }
+
+        let reader = VFSReader::from_json(hashmap.get(&PermissionsIndex::vfs_reader_unique_path()).unwrap()).unwrap();
+        let perm_index = PermissionsIndex::convert_from_json_values(reader.profile.clone(), hashmap).unwrap();
+        perm_index.validate_read_permission(&reader.requester_name, path)
+    }
+
     /// Performs a vector search into the VectorFS at a specific path,
     /// returning the retrieved VRHeader nodes.
     pub fn vector_search_headers(
@@ -28,12 +43,23 @@ impl VectorFS {
         profile: &ShinkaiName,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let internals = self._get_profile_fs_internals_read_only(profile)?;
+        let stringified_permissions_map = internals
+            .permissions_index
+            .convert_fs_permissions_to_json_values(reader);
+
+        let traversal_options = vec![TraversalOption::SetTraversalLimiting(
+            LimitTraversalMode::LimitTraversalByValidationWithMap((
+                Self::permissions_validation_func,
+                stringified_permissions_map,
+            )),
+        )];
         // Vector search without hierarchical scoring because "folders" have no content/real embedding
+        // + using our permissions validation function.
         let results = internals.fs_core_resource.vector_search_customized(
             query,
             num_of_results,
             TraversalMethod::Exhaustive,
-            &vec![],
+            &traversal_options,
             Some(reader.path.clone()),
         );
 

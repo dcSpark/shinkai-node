@@ -132,5 +132,4 @@ async fn test_vector_fs_saving_reading() {
     assert_eq!(ret_source_file_map, source_file_map);
 
     println!("Retrieved Vector Resource: {:?}", ret_resource);
-    assert!(1 == 2);
 }
