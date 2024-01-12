@@ -13,13 +13,6 @@ use shinkai_vector_resources::{
 };
 use std::collections::HashMap;
 
-// TODO:
-// Add a new VectorResource traversal option which is something like `ApplyNodeValidationBeforeTraversing`.
-// Have it validate the validation function passes true before traversing into a node, or else if false skip over the node.
-//
-// Then use this as the default vector search (wrap in a local method) for the VectorFS, where we use a closure
-// with the fs permissions, and have it validate that the user has read rights for the node validation function.
-//
 impl VectorFS {
     /// Core method all VectorFS vector searches *must* use. Performs a vector search into the VectorFS at
     /// the specified path in reader, returning the retrieved VRHeader nodes.
@@ -32,7 +25,6 @@ impl VectorFS {
         num_of_results: u64,
         traversal_method: TraversalMethod,
         traversal_options: &Vec<TraversalOption>,
-        path: Option<VRPath>,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
         let mut traversal_options = traversal_options.clone();
         let internals = self._get_profile_fs_internals_read_only(&reader.profile)?;
@@ -60,7 +52,7 @@ impl VectorFS {
             num_of_results,
             traversal_method,
             &traversal_options,
-            path,
+            Some(reader.path.clone()),
         );
 
         Ok(results)
@@ -74,14 +66,7 @@ impl VectorFS {
         query: Embedding,
         num_of_results: u64,
     ) -> Result<Vec<RetrievedNode>, VectorFSError> {
-        self.vector_search_core(
-            reader,
-            query,
-            num_of_results,
-            TraversalMethod::Exhaustive,
-            &vec![],
-            Some(reader.path.clone()),
-        )
+        self.vector_search_core(reader, query, num_of_results, TraversalMethod::Exhaustive, &vec![])
     }
 
     /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
