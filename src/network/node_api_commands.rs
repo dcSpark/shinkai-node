@@ -2094,7 +2094,6 @@ impl Node {
         //
         // Part 2: Check if the message needs to be sent to another node or not
         //
-
         let recipient_node_name = ShinkaiName::from_shinkai_message_only_using_recipient_node_name(&msg.clone())
             .unwrap()
             .get_node_name();
@@ -2165,19 +2164,26 @@ impl Node {
             .unwrap()
             .to_string();
 
-        let external_global_identity = self
+        let external_global_identity_result = self
             .identity_manager
             .lock()
             .await
             .external_profile_to_global_identity(&recipient_node_name_string.clone())
-            .await
-            .unwrap();
-        // TODO: this shouldn't crash the node
+            .await;
 
-        println!(
-            "handle_onionized_message > recipient_profile_name_string: {}",
-            recipient_node_name_string
-        );
+        let external_global_identity = match external_global_identity_result {
+            Ok(identity) => identity,
+            Err(err) => {
+                let _ = res
+                    .send(Err(APIError {
+                        code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+                        error: "Error".to_string(),
+                        message: err,
+                    }))
+                    .await;
+                return Ok(());
+            }
+        };
 
         msg.external_metadata.intra_sender = "".to_string();
         msg.encryption = EncryptionMethod::DiffieHellmanChaChaPoly1305;

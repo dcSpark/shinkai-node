@@ -109,7 +109,6 @@ mod tests {
         .await;
 
         // let result = scraper.download_and_parse().await;
-        eprintln!("result: {:?}", result);
         assert!(result.is_ok());
     }
 

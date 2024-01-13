@@ -86,6 +86,9 @@ fn main() {
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
 
+    eprintln!("Encryption Public Key: {}", encryption_public_key_string);
+    eprintln!("Signature Public Key: {}", identity_public_key_string);
+
     // Initialize Embedding Generator & Unstructured API
     let embedding_generator = init_embedding_generator(&node_env);
     let unstructured_api = init_unstructured_api(&node_env);
@@ -213,7 +216,6 @@ fn initialize_runtime() -> Runtime {
 fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_storage_path: Option<String>) -> String {
     eprintln!("node_storage_path: {:?}", node_storage_path);
     eprintln!("main_db: {:?}", main_db);
-    eprintln!("identity_public_key: {:?}", identity_public_key);
     if let Some(path) = node_storage_path {
         Path::new(&path)
             .join(main_db)

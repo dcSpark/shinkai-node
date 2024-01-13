@@ -187,7 +187,6 @@ mod tests {
             _ => Err(PaymentManagerError::UnsupportedNetwork),
         };
 
-        eprintln!("Result: {:?}", result);
         assert!(result.is_ok());
 
         // Create SHIN token

@@ -181,11 +181,7 @@ impl IdentityManager {
         db.get_all_agents()
     }
 
-    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Option<StandardIdentity> {
-        eprintln!(
-            "external_profile_to_global_identity > full_profile_name: {}",
-            full_profile_name
-        );
+    pub async fn external_profile_to_global_identity(&self, full_profile_name: &str) -> Result<StandardIdentity, String> {
         shinkai_log(
             ShinkaiLogOption::Identity,
             ShinkaiLogLevel::Debug,
@@ -207,7 +203,10 @@ impl IdentityManager {
                     )
                     .as_str(),
                 );
-                return None;
+                return Err(format!(
+                    "Failed to convert profile name to ShinkaiName: {}",
+                    full_profile_name
+                ));
             }
         };
         let node_name = full_identity_name.get_node_name().to_string();
@@ -220,15 +219,17 @@ impl IdentityManager {
         {
             Ok(identity_network_manager) => match identity_network_manager.first_address() {
                 Ok(first_address) => {
+                    eprintln!("first_address: {:?}", first_address);
+                    eprintln!("identity_network_manager: {:?}", identity_network_manager);
                     let encryption_key = match identity_network_manager.encryption_public_key() {
                         Ok(key) => key,
-                        Err(_) => return None,
+                        Err(e) => return Err(format!("Failed to get encryption public key: {}", e.to_string())),
                     };
                     let signature_key = match identity_network_manager.signature_verifying_key() {
                         Ok(key) => key,
-                        Err(_) => return None,
+                        Err(e) => return Err(format!("Failed to get signature verifying key: {}", e.to_string())),
                     };
-                    Some(StandardIdentity::new(
+                    Ok(StandardIdentity::new(
                         full_identity_name.extract_node(),
                         Some(first_address),
                         encryption_key,
@@ -239,9 +240,9 @@ impl IdentityManager {
                         IdentityPermissions::None,
                     ))
                 }
-                Err(_) => None,
+                Err(_) => Err("Failed to get first address".to_string()),
             },
-            Err(_) => None, // return None if the identity is not found in the network manager
+            Err(_) => Err(format!("Failed to get identity network manager for profile name: {}", full_profile_name)),
         }
     }
 }

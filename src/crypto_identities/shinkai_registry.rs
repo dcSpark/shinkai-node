@@ -6,9 +6,11 @@ use ethers::abi::Abi;
 use ethers::prelude::*;
 use hex;
 use lazy_static::lazy_static;
+use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
@@ -109,26 +111,15 @@ impl OnchainIdentity {
     }
 
     pub fn encryption_public_key(&self) -> Result<PublicKey, ShinkaiRegistryError> {
-        let mut bytes_vec = hex::decode(&self.encryption_key)
-            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
-        if bytes_vec.len() != 32 {
-            return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
-        }
-        let mut bytes_array = [0u8; 32];
-        bytes_array.copy_from_slice(&bytes_vec);
-        Ok(PublicKey::from(bytes_array))
+        string_to_encryption_public_key(&self.encryption_key)
+            .map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))
     }
 
     pub fn signature_verifying_key(&self) -> Result<VerifyingKey, ShinkaiRegistryError> {
-        let mut bytes_vec = hex::decode(&self.signature_key)
-            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid hex format".to_string()))?;
-        if bytes_vec.len() != 32 {
-            return Err(ShinkaiRegistryError::CustomError("Invalid key length".to_string()));
-        }
-        let mut bytes_array = [0u8; 32];
-        bytes_array.copy_from_slice(&bytes_vec);
-        VerifyingKey::from_bytes(&bytes_array)
-            .map_err(|_| ShinkaiRegistryError::CustomError("Invalid verifying key".to_string()))
+        eprintln!("Getting signature verifying key for {}", self.shinkai_identity);
+        eprintln!("Signature key: {}", self.signature_key);
+        string_to_signature_public_key(&self.signature_key)
+            .map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))
     }
 }
 
@@ -256,7 +247,6 @@ impl ShinkaiRegistry {
                 return Err(ShinkaiRegistryError::CustomError("Contract Error".to_string()));
             }
         };
-        eprintln!("Result: {:?}", result);
 
         let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
         let last_updated = DateTime::<Utc>::from(last_updated);
