@@ -139,10 +139,6 @@ pub struct ShinkaiRegistry {
 
 impl ShinkaiRegistry {
     pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        eprintln!("Initializing Shinkai Registry");
-        eprintln!("URL: {}", url);
-        eprintln!("Contract Address: {}", contract_address);
-        eprintln!("ABI Path: {}", abi_path);
         let provider =
             Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {

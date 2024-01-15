@@ -3,6 +3,10 @@ use colored::*;
 use tracing::{span, Level, error, info, debug, instrument};
 use tracing_subscriber::FmtSubscriber;
 
+// Note(Nico): Added this to avoid issues when running tests
+use std::sync::Once;
+static INIT: Once = Once::new();
+
 #[derive(PartialEq, Debug)]
 pub enum ShinkaiLogOption {
     Blockchain,
@@ -139,9 +143,12 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
 }
 
 pub fn init_tracing() {
-    let subscriber = FmtSubscriber::builder()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .finish();
+    INIT.call_once(|| {
+        let subscriber = FmtSubscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish();
 
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+    });
 }
