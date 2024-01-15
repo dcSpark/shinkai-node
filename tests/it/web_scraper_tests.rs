@@ -7,7 +7,7 @@ mod tests {
     use mockito::Server;
     use shinkai_message_primitives::{
         schemas::shinkai_name::ShinkaiName,
-        shinkai_utils::signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+        shinkai_utils::{signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_tracing},
     };
     use shinkai_node::{
         agent::job_manager::JobManager,
@@ -22,7 +22,6 @@ mod tests {
     use tokio::sync::Mutex;
     use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
-    #[test]
     fn setup() {
         let path = Path::new("db_tests/");
         let _ = fs::remove_dir_all(&path);
@@ -30,6 +29,7 @@ mod tests {
 
     #[test]
     fn test_extract_links() {
+        init_tracing(); 
         let links = WebScraper::extract_links(&get_unstructured_response());
         assert_eq!(links.len(), 30);
     }
@@ -37,6 +37,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_web_scraper() {
+        init_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let (identity_secret_key, _) = unsafe_deterministic_signature_keypair(0);

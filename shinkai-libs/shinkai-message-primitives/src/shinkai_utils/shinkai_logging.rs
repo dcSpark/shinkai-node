@@ -1,5 +1,7 @@
 use chrono::Local;
 use colored::*;
+use tracing::{span, Level, error, info, debug, instrument};
+use tracing_subscriber::FmtSubscriber;
 
 #[derive(PartialEq, Debug)]
 pub enum ShinkaiLogOption {
@@ -26,11 +28,11 @@ pub enum ShinkaiLogLevel {
 }
 
 impl ShinkaiLogLevel {
-    fn to_log_level(&self) -> log::Level {
+    fn to_log_level(&self) -> Level {
         match self {
-            ShinkaiLogLevel::Error => log::Level::Error,
-            ShinkaiLogLevel::Info => log::Level::Info,
-            ShinkaiLogLevel::Debug => log::Level::Debug,
+            ShinkaiLogLevel::Error => Level::ERROR,
+            ShinkaiLogLevel::Info => Level::INFO,
+            ShinkaiLogLevel::Debug => Level::DEBUG,
         }
     }
 }
@@ -120,11 +122,26 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
             format!("{} - {} - {} - {}", header, level_str, option_str, message)
         };
 
-        match level.to_log_level() {
-            log::Level::Error => eprintln!("{}", color_fn(&message_with_header)),
-            log::Level::Info => println!("{}", color_fn(&message_with_header)),
-            log::Level::Debug => println!("{}", color_fn(&message_with_header)),
-            _ => {}
+        // Create a span with a specified level.
+        let span = match level {
+            ShinkaiLogLevel::Error => span!(Level::ERROR, "{}", option_str),
+            ShinkaiLogLevel::Info => span!(Level::INFO, "{}", option_str),
+            ShinkaiLogLevel::Debug => span!(Level::DEBUG, "{}", option_str),
+        };
+        let _enter = span.enter();
+
+        match level {
+            ShinkaiLogLevel::Error => error!("{}", message_with_header),
+            ShinkaiLogLevel::Info => info!("{}", message_with_header),
+            ShinkaiLogLevel::Debug => debug!("{}", message_with_header),
         }
     }
+}
+
+pub fn init_tracing() {
+    let subscriber = FmtSubscriber::builder()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }

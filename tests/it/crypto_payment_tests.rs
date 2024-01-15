@@ -5,6 +5,7 @@ mod tests {
     use ethers::core::k256::SecretKey;
     use ethers::signers::LocalWallet;
     use ethers::signers::Signer;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
     use shinkai_node::payments::execute_transaction::execute_transaction;
     use shinkai_node::payments::payment_manager::{PaymentManager, PaymentManagerError};
     use shinkai_node::payments::payment_methods::CryptoNetwork;
@@ -98,6 +99,7 @@ mod tests {
     #[ignore]
     #[tokio::test]
     async fn test_payment_manager() {
+        init_tracing(); 
         let sepolia_rpc = "https://ethereum-sepolia.publicnode.com";
         let execute_transaction_evm: fn(
             CryptoWallet,
