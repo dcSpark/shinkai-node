@@ -30,6 +30,7 @@ pub enum VRError {
     InvalidNodeType(String),
     InvalidMerkleHashString(String),
     MerkleRootNotFound(String),
+    MerkleHashNotFoundInNode(String),
 }
 
 impl fmt::Display for VRError {
@@ -74,6 +75,7 @@ impl fmt::Display for VRError {
             VRError::InvalidNodeType(ref s) => write!(f, "Unexpected/unsupported NodeContent type for Node with id: {}", s),
             VRError::InvalidMerkleHashString(ref s) => write!(f, "The provided merkle hash String is not a validly encoded Blake3 hash: {}", s),
             VRError::MerkleRootNotFound(ref s) => write!(f, "The Vector Resource does not contain a merkle root: {}", s),
+            VRError::MerkleHashNotFoundInNode(ref s) => write!(f, "The Node does not contain a merkle root: {}", s),
  
         }
     }

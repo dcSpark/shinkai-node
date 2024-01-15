@@ -6,6 +6,7 @@ pub use crate::source::{
     DocumentFileType, ImageFileType, SourceFileReference, SourceFileType, SourceReference, VRSource,
 };
 use crate::vector_resource::base_vector_resources::{BaseVectorResource, VRBaseType};
+use blake3::hash;
 use chrono::{DateTime, Utc};
 use ordered_float::NotNan;
 use serde::{Deserialize, Deserializer};
@@ -159,6 +160,7 @@ pub struct Node {
     pub metadata: Option<HashMap<String, String>>,
     pub data_tag_names: Vec<String>,
     pub last_written_datetime: DateTime<Utc>,
+    pub merkle_hash: Option<String>,
 }
 
 impl Node {
@@ -377,6 +379,66 @@ impl Node {
             Some(keys)
         }
     }
+
+    /// Gets the Merkle hash of the Node.
+    /// For VRHeader nodes, uses the resource_merkle_root.
+    pub fn get_merkle_hash(&self) -> Result<String, VRError> {
+        match &self.content {
+            NodeContent::VRHeader(header) => header
+                .resource_merkle_root
+                .clone()
+                .ok_or(VRError::MerkleRootNotFound(header.reference_string())),
+            _ => self.merkle_hash.clone().ok_or(VRError::MerkleRootNotFound(self.id)),
+        }
+    }
+
+    /// Updates the Merkle hash of the Node using its current content.
+    /// This should be called internally whenever the content is updated internally.
+    pub fn update_merkle_hash(&mut self) -> Result<(), VRError> {
+        let new_hash = self.generate_merkle_hash()?;
+        self.set_merkle_hash(new_hash)
+    }
+
+    /// Generates a Merkle hash based on the node content.
+    /// For Vector Resource & VRHeader nodes, returns the resource merkle_root.
+    fn generate_merkle_hash(&self) -> Result<String, VRError> {
+        /// TODO: If it's a vector resource, use its merkle_root hash instead just like the VR
+        match &self.content {
+            NodeContent::VRHeader(_) => match self.get_merkle_hash() {
+                Ok(hash) => Ok(hash),
+                Err(_) => Ok(Self::hash_node_content(&self.content)?),
+            },
+            _ => Ok(Self::hash_node_content(&self.content)?),
+        }
+    }
+
+    /// Creates a Blake3 hash of the NodeContent.
+    fn hash_node_content(content: &NodeContent) -> Result<String, VRError> {
+        let content = content.to_json()?.as_bytes();
+        let hash = hash(content);
+        Ok(hash.to_hex().to_string())
+    }
+
+    /// Sets the Merkle hash of the Node.
+    /// For Vector Resource & VRHeader nodes, sets the resource merkle_root.
+    fn set_merkle_hash(&mut self, merkle_hash: String) -> Result<(), VRError> {
+        /// TODO: If it's a vector resource, use its merkle_root hash instead just like the VR
+        match &mut self.content {
+            NodeContent::VRHeader(header) => {
+                header.resource_merkle_root = Some(merkle_hash);
+                Ok(())
+            }
+            _ => {
+                self.merkle_hash = Some(merkle_hash);
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns the key used for storing the Merkle hash in the metadata.
+    fn merkle_hash_metadata_key() -> &'static str {
+        "merkle_hash"
+    }
 }
 
 /// Contents of a Node
@@ -386,6 +448,18 @@ pub enum NodeContent {
     Resource(BaseVectorResource),
     ExternalContent(SourceReference),
     VRHeader(VRHeader),
+}
+
+impl NodeContent {
+    /// Converts the NodeContent to a JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Creates a NodeContent from a JSON string
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 /// Struct which holds descriptive information about a given Vector Resource.
@@ -399,6 +473,7 @@ pub struct VRHeader {
     pub resource_created_datetime: DateTime<Utc>,
     pub resource_last_written_datetime: DateTime<Utc>,
     pub resource_embedding_model_used: EmbeddingModelType,
+    pub resource_merkle_root: Option<String>,
     /// List of data tag names matching in internal nodes
     pub data_tag_names: Vec<String>,
     /// List of metadata keys held in internal nodes
@@ -418,6 +493,7 @@ impl VRHeader {
         resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
+        resource_merkle_root: Option<String>,
     ) -> Self {
         Self {
             resource_name: resource_name.to_string(),
@@ -430,6 +506,7 @@ impl VRHeader {
             resource_last_written_datetime,
             metadata_index_keys,
             resource_embedding_model_used,
+            resource_merkle_root,
         }
     }
 
@@ -444,6 +521,7 @@ impl VRHeader {
         resource_last_written_datetime: DateTime<Utc>,
         metadata_index_keys: Vec<String>,
         resource_embedding_model_used: EmbeddingModelType,
+        resource_merkle_root: Option<String>,
     ) -> Result<Self, VRError> {
         let parts: Vec<&str> = reference_string.split(":::").collect();
         if parts.len() != 2 {
@@ -463,6 +541,7 @@ impl VRHeader {
             resource_last_written_datetime,
             metadata_index_keys,
             resource_embedding_model_used,
+            resource_merkle_root,
         })
     }
 

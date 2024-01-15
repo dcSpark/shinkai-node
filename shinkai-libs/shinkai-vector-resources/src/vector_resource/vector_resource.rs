@@ -110,6 +110,14 @@ pub trait VectorResourceCore: Send + Sync {
         self.get_merkle_root().is_ok()
     }
 
+    /// Updates the merkle root of the Vector Resource.
+    fn update_merkle_root(&self) -> Result<(), VRError> {
+        let nodes = self.get_nodes();
+
+        /// TODO: generate the merkle root from all the nodes
+        
+    }
+
     #[cfg(feature = "native-http")]
     /// Regenerates and updates the resource's embedding using the name/description/source
     /// and the provided keywords.
@@ -208,6 +216,7 @@ pub trait VectorResourceCore: Send + Sync {
         let tag_names = self.data_tag_index().data_tag_names();
         let embedding = self.resource_embedding().clone();
         let metadata_index_keys = self.metadata_index().get_all_metadata_keys();
+        let merkle_root = self.get_merkle_root().ok();
 
         VRHeader::new(
             self.name(),
@@ -220,6 +229,7 @@ pub trait VectorResourceCore: Send + Sync {
             self.last_written_datetime(),
             metadata_index_keys,
             self.embedding_model_used(),
+            merkle_root,
         )
     }
 
