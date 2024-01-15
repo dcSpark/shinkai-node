@@ -31,6 +31,7 @@ pub enum VRError {
     InvalidMerkleHashString(String),
     MerkleRootNotFound(String),
     MerkleHashNotFoundInNode(String),
+    VectorResourceIsNotMerkelized(String),
 }
 
 impl fmt::Display for VRError {
@@ -76,6 +77,7 @@ impl fmt::Display for VRError {
             VRError::InvalidMerkleHashString(ref s) => write!(f, "The provided merkle hash String is not a validly encoded Blake3 hash: {}", s),
             VRError::MerkleRootNotFound(ref s) => write!(f, "The Vector Resource does not contain a merkle root: {}", s),
             VRError::MerkleHashNotFoundInNode(ref s) => write!(f, "The Node does not contain a merkle root: {}", s),
+            VRError::VectorResourceIsNotMerkelized(ref s) => write!(f, "The Vector Resource is not merkelized, and thus cannot perform merkel-related functionality: {}", s),
  
         }
     }

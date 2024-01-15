@@ -110,12 +110,29 @@ pub trait VectorResourceCore: Send + Sync {
         self.get_merkle_root().is_ok()
     }
 
-    /// Updates the merkle root of the Vector Resource.
-    fn update_merkle_root(&self) -> Result<(), VRError> {
-        let nodes = self.get_nodes();
+    /// Updates the merkle root of the Vector Resource by hashing the merkle hashes of all root nodes.
+    /// Errors if the Vector Resource is not merkelized.
+    /// TODO: Trigger node merkle hash & resource merkle root updating when insert/replacing new nodes.
+    fn update_merkle_root(&mut self) -> Result<(), VRError> {
+        if !self.is_merkelized() {
+            return Err(VRError::VectorResourceIsNotMerkelized(self.reference_string()));
+        }
 
-        /// TODO: generate the merkle root from all the nodes
-        
+        let nodes = self.get_nodes();
+        let mut hashes = Vec::new();
+
+        // Collect the merkle hash of each node
+        for node in nodes {
+            let node_hash = node.get_merkle_hash()?;
+            hashes.push(node_hash);
+        }
+
+        // Combine the hashes to create a root hash
+        let combined_hashes = hashes.join("");
+        let root_hash = blake3::hash(combined_hashes.as_bytes());
+
+        // Set the new merkle root hash
+        self.set_merkle_root(root_hash.to_hex().to_string())
     }
 
     #[cfg(feature = "native-http")]

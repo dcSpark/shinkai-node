@@ -173,13 +173,16 @@ impl Node {
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
 
-        Self {
+        let mut node = Self {
             id,
             content: NodeContent::Text(text.to_string()),
             metadata,
             data_tag_names: data_tag_names.clone(),
             last_written_datetime: current_time,
-        }
+            merkle_hash: None,
+        };
+        node.generate_merkle_hash();
+        node
     }
 
     /// Create a new text-holding Node with a provided u64 id, which gets converted to string internally
@@ -199,13 +202,17 @@ impl Node {
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        Node {
+        let node = Node {
             id: id,
             content: NodeContent::Resource(vector_resource.clone()),
             metadata: metadata,
             data_tag_names: vector_resource.as_trait_object().data_tag_index().data_tag_names(),
             last_written_datetime: current_time,
-        }
+            merkle_hash: None,
+        };
+
+        node.generate_merkle_hash();
+        node
     }
 
     /// Create a new BaseVectorResource-holding Node with a provided u64 id, which gets converted to string internally
@@ -224,13 +231,17 @@ impl Node {
         metadata: Option<HashMap<String, String>>,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        Node {
+        let node = Node {
             id,
             content: NodeContent::ExternalContent(external_content.clone()),
             metadata,
             data_tag_names: vec![],
             last_written_datetime: current_time,
-        }
+            merkle_hash: None,
+        };
+
+        node.generate_merkle_hash();
+        node
     }
 
     /// Create a new ExternalContent-holding Node with a provided u64 id, which gets converted to string internally
@@ -251,13 +262,17 @@ impl Node {
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
 
-        Self {
+        let node = Self {
             id,
             content: NodeContent::VRHeader(vr_header.clone()),
             metadata,
             data_tag_names: data_tag_names.clone(),
             last_written_datetime: current_time,
-        }
+            merkle_hash: None,
+        };
+
+        node.generate_merkle_hash();
+        node
     }
 
     /// Create a new VRHeader-holding Node with a provided u64 id, which gets converted to string internally
@@ -278,13 +293,17 @@ impl Node {
         data_tag_names: Vec<String>,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
-        Self {
+        let node = Self {
             id,
             content,
             metadata,
             data_tag_names,
             last_written_datetime: current_time,
-        }
+            merkle_hash: None,
+        };
+
+        node.generate_merkle_hash();
+        node
     }
 
     /// Creates a new Node using provided content with a u64 id
@@ -381,40 +400,54 @@ impl Node {
     }
 
     /// Gets the Merkle hash of the Node.
-    /// For VRHeader nodes, uses the resource_merkle_root.
+    /// For VRHeader/Vector Resource nodes, uses the resource merkle_root.
     pub fn get_merkle_hash(&self) -> Result<String, VRError> {
         match &self.content {
             NodeContent::VRHeader(header) => header
                 .resource_merkle_root
                 .clone()
                 .ok_or(VRError::MerkleRootNotFound(header.reference_string())),
-            _ => self.merkle_hash.clone().ok_or(VRError::MerkleRootNotFound(self.id)),
+            NodeContent::Resource(resource) => resource.as_trait_object().get_merkle_root(),
+            _ => self
+                .merkle_hash
+                .clone()
+                .ok_or(VRError::MerkleHashNotFoundInNode(self.id.clone())),
         }
     }
 
     /// Updates the Merkle hash of the Node using its current content.
-    /// This should be called internally whenever the content is updated internally.
+    /// This should be called whenever content in the Node is updated internally.
     pub fn update_merkle_hash(&mut self) -> Result<(), VRError> {
-        let new_hash = self.generate_merkle_hash()?;
-        self.set_merkle_hash(new_hash)
+        match &mut self.content {
+            NodeContent::Resource(resource) => resource.as_trait_object_mut().update_merkle_root(),
+            _ => {
+                let new_hash = self.generate_merkle_hash()?;
+                self.set_merkle_hash(new_hash)
+            }
+        }
     }
 
     /// Generates a Merkle hash based on the node content.
-    /// For Vector Resource & VRHeader nodes, returns the resource merkle_root.
+    /// For VRHeader and BaseVectorResource nodes, returns the resource merkle_root if it is available,
+    /// however if root == None, then generates a new hash from the content.
     fn generate_merkle_hash(&self) -> Result<String, VRError> {
-        /// TODO: If it's a vector resource, use its merkle_root hash instead just like the VR
         match &self.content {
-            NodeContent::VRHeader(_) => match self.get_merkle_hash() {
-                Ok(hash) => Ok(hash),
-                Err(_) => Ok(Self::hash_node_content(&self.content)?),
+            NodeContent::VRHeader(header) => match header.resource_merkle_root.clone() {
+                Some(hash) => Ok(hash),
+                None => Self::hash_node_content(&self.content),
             },
-            _ => Ok(Self::hash_node_content(&self.content)?),
+            NodeContent::Resource(resource) => match resource.as_trait_object().get_merkle_root() {
+                Ok(hash) => Ok(hash),
+                Err(_) => Self::hash_node_content(&self.content),
+            },
+            _ => Self::hash_node_content(&self.content),
         }
     }
 
     /// Creates a Blake3 hash of the NodeContent.
     fn hash_node_content(content: &NodeContent) -> Result<String, VRError> {
-        let content = content.to_json()?.as_bytes();
+        let json = content.to_json()?;
+        let content = json.as_bytes();
         let hash = hash(content);
         Ok(hash.to_hex().to_string())
     }
@@ -422,10 +455,13 @@ impl Node {
     /// Sets the Merkle hash of the Node.
     /// For Vector Resource & VRHeader nodes, sets the resource merkle_root.
     fn set_merkle_hash(&mut self, merkle_hash: String) -> Result<(), VRError> {
-        /// TODO: If it's a vector resource, use its merkle_root hash instead just like the VR
         match &mut self.content {
             NodeContent::VRHeader(header) => {
                 header.resource_merkle_root = Some(merkle_hash);
+                Ok(())
+            }
+            NodeContent::Resource(resource) => {
+                resource.as_trait_object_mut().set_merkle_root(merkle_hash);
                 Ok(())
             }
             _ => {
