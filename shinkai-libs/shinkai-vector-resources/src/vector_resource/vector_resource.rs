@@ -18,6 +18,7 @@ use crate::vector_resource::base_vector_resources::VRBaseType;
 pub use crate::vector_resource::vector_resource_types::*;
 pub use crate::vector_resource::vector_search_traversal::*;
 use async_trait::async_trait;
+use blake3::Hash;
 use chrono::{DateTime, Utc};
 use std::any::Any;
 
@@ -51,6 +52,10 @@ pub trait VectorResourceCore: Send + Sync {
     fn get_node(&self, id: String) -> Result<Node, VRError>;
     /// Retrieves copies of all Nodes at the root level of the Vector Resource
     fn get_nodes(&self) -> Vec<Node>;
+    /// Returns the merkle root of the Vector Resource (if it is not None).
+    fn get_merkle_root(&self) -> Result<String, VRError>;
+    /// Sets the merkle root of the Vector Resource, errors if provided hash is not a Blake3 hash.
+    fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError>;
     /// Insert a Node/Embedding into the VR using the provided id (root level depth). Overwrites existing data.
     fn insert_node(
         &mut self,
@@ -97,6 +102,12 @@ pub trait VectorResourceCore: Send + Sync {
     fn encoded_size(&self) -> Result<usize, VRError> {
         let json = self.to_json()?;
         Ok(json.as_bytes().len())
+    }
+
+    /// Checks if the Vector Resource is merkelized. Some VRs may opt to not be merkelized
+    /// for specific use cases or for extremely large datasets where maximum performance is required.
+    fn is_merkelized(&self) -> bool {
+        self.get_merkle_root().is_ok()
     }
 
     #[cfg(feature = "native-http")]

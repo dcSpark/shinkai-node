@@ -41,6 +41,7 @@ impl VectorFSInternals {
             HashMap::new(),
             HashMap::new(),
             default_embedding_model_used,
+            true,
         );
         Self {
             fs_core_resource: core_resource,

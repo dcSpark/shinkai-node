@@ -137,6 +137,7 @@ fn test_multi_resource_db_vector_search() {
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice

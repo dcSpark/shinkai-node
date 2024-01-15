@@ -28,6 +28,8 @@ pub enum VRError {
     InvalidPathString(String),
     ResourceDoesNotSupportOrderedOperations(String),
     InvalidNodeType(String),
+    InvalidMerkleHashString(String),
+    MerkleRootNotFound(String),
 }
 
 impl fmt::Display for VRError {
@@ -70,6 +72,9 @@ impl fmt::Display for VRError {
             VRError::InvalidPathString(ref s) => write!(f, "String is not formatted as a proper path string: {}", s),
             VRError::ResourceDoesNotSupportOrderedOperations(ref s) => write!(f, "Attempted to perform ordered operations on a resource that does not implement OrderedVectorResource: {}", s),
             VRError::InvalidNodeType(ref s) => write!(f, "Unexpected/unsupported NodeContent type for Node with id: {}", s),
+            VRError::InvalidMerkleHashString(ref s) => write!(f, "The provided merkle hash String is not a validly encoded Blake3 hash: {}", s),
+            VRError::MerkleRootNotFound(ref s) => write!(f, "The Vector Resource does not contain a merkle root: {}", s),
+ 
         }
     }
 }

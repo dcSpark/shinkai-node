@@ -62,6 +62,7 @@ fn test_manual_resource_vector_search() {
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -110,6 +111,7 @@ fn test_manual_resource_vector_search() {
         "Tech Facts",
         Some("A collection of facts about technology"),
         VRSource::new_uri_ref("veryrealtechfacts.com", None),
+        true,
     );
 
     map_resource.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -140,6 +142,7 @@ fn test_manual_resource_vector_search() {
         "Fruit Facts",
         Some("A collection of facts about fruits"),
         VRSource::new_uri_ref("ostensiblyrealfruitfacts.com", None),
+        true,
     );
     fruit_doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
 
@@ -528,6 +531,7 @@ fn test_manual_syntactic_vector_search() {
         "CV Data From Resume",
         Some("A bunch of data theoretically parsed out of a CV"),
         VRSource::None,
+        true,
     );
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
     doc.update_resource_embedding_blocking(&generator, vec!["cv".to_string(), "email".to_string()])
@@ -617,6 +621,7 @@ fn test_checking_embedding_similarity() {
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -687,6 +692,7 @@ async fn test_embeddings_coherence() {
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
         VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice

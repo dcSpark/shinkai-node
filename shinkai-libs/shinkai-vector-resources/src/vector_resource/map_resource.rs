@@ -33,6 +33,7 @@ pub struct MapVectorResource {
     created_datetime: DateTime<Utc>,
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
+    merkle_root: Option<String>,
 }
 impl VectorResource for MapVectorResource {}
 impl VectorResourceSearch for MapVectorResource {}
@@ -58,6 +59,24 @@ impl VectorResourceCore for MapVectorResource {
         Err(VRError::ResourceDoesNotSupportOrderedOperations(
             self.resource_base_type().to_str().to_string(),
         ))
+    }
+
+    /// Returns the merkle root of the Vector Resource (if it is not None).
+    fn get_merkle_root(&self) -> Result<String, VRError> {
+        self.merkle_root
+            .clone()
+            .ok_or(VRError::MerkleRootNotFound(self.reference_string()))
+    }
+
+    /// Sets the merkle root of the Vector Resource, errors if provided hash is not a valid Blake3 hash.
+    fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError> {
+        // Validate the hash format
+        if blake3::Hash::from_hex(&merkle_hash).is_ok() {
+            self.merkle_root = Some(merkle_hash);
+            Ok(())
+        } else {
+            Err(VRError::InvalidMerkleHashString(merkle_hash))
+        }
     }
 
     /// RFC3339 Datetime when then Vector Resource was created
@@ -268,7 +287,9 @@ impl VectorResourceCore for MapVectorResource {
 }
 
 impl MapVectorResource {
-    /// Create a new MapVectorResource
+    /// Create a new MapVectorResource.
+    /// If is_merkelized == true, then this VR will automatically generate a merkle root
+    /// & merkle hashes for all nodes.
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -277,8 +298,16 @@ impl MapVectorResource {
         embeddings: HashMap<String, Embedding>,
         nodes: HashMap<String, Node>,
         embedding_model_used: EmbeddingModelType,
+        is_merkelized: bool,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
+        let merkle_root = if is_merkelized {
+            let empty_hash = blake3::Hasher::new().finalize();
+            Some(empty_hash.to_hex().to_string())
+        } else {
+            None
+        };
+
         let mut resource = MapVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
@@ -294,14 +323,16 @@ impl MapVectorResource {
             created_datetime: current_time.clone(),
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
+            merkle_root,
         };
         // Generate a unique resource_id:
         resource.generate_and_update_resource_id();
         resource
     }
 
-    /// Initializes an empty `MapVectorResource` with empty defaults.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
+    /// Initializes an empty `MapVectorResource` with empty defaults. Of note, make sure EmbeddingModelType
+    /// is correct before adding any nodes into the VR.
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, is_merkelized: bool) -> Self {
         MapVectorResource::new(
             name,
             desc,
@@ -310,6 +341,7 @@ impl MapVectorResource {
             HashMap::new(),
             HashMap::new(),
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
+            is_merkelized,
         )
     }
 

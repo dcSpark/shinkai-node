@@ -28,7 +28,7 @@ impl VectorResourceRouter {
         let desc = Some("Enables performing vector searches to find relevant resources.");
         let source = VRSource::None;
         VectorResourceRouter {
-            routing_resource: MapVectorResource::new_empty(name, desc, source),
+            routing_resource: MapVectorResource::new_empty(name, desc, source, true),
         }
     }
 

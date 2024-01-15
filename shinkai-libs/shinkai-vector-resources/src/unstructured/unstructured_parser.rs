@@ -151,7 +151,7 @@ impl UnstructuredParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
@@ -211,7 +211,7 @@ impl UnstructuredParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.

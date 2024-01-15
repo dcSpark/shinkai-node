@@ -7,6 +7,7 @@ use crate::resource_errors::VRError;
 use crate::shinkai_time::{ShinkaiStringTime, ShinkaiTime};
 use crate::source::{SourceReference, VRSource};
 use crate::vector_resource::{Node, NodeContent, OrderedVectorResource, VRPath, VectorResource, VectorResourceCore};
+use blake3::Hash;
 use chrono::{DateTime, Utc};
 use serde_json;
 use std::any::Any;
@@ -31,6 +32,7 @@ pub struct DocumentVectorResource {
     created_datetime: DateTime<Utc>,
     last_written_datetime: DateTime<Utc>,
     metadata_index: MetadataIndex,
+    merkle_root: Option<String>,
 }
 impl VectorResource for DocumentVectorResource {}
 impl VectorResourceSearch for DocumentVectorResource {}
@@ -99,6 +101,24 @@ impl VectorResourceCore for DocumentVectorResource {
     /// the struct does not support the OrderedVectorResource trait.
     fn as_ordered_vector_resource_mut(&mut self) -> Result<&mut dyn OrderedVectorResource, VRError> {
         Ok(self as &mut dyn OrderedVectorResource)
+    }
+
+    /// Returns the merkle root of the Vector Resource (if it is not None).
+    fn get_merkle_root(&self) -> Result<String, VRError> {
+        self.merkle_root
+            .clone()
+            .ok_or(VRError::MerkleRootNotFound(self.reference_string()))
+    }
+
+    /// Sets the merkle root of the Vector Resource, errors if provided hash is not a valid Blake3 hash.
+    fn set_merkle_root(&mut self, merkle_hash: String) -> Result<(), VRError> {
+        // Validate the hash format
+        if blake3::Hash::from_hex(&merkle_hash).is_ok() {
+            self.merkle_root = Some(merkle_hash);
+            Ok(())
+        } else {
+            Err(VRError::InvalidMerkleHashString(merkle_hash))
+        }
     }
 
     /// RFC3339 Datetime when then Vector Resource was created
@@ -354,6 +374,8 @@ impl VectorResourceCore for DocumentVectorResource {
 
 impl DocumentVectorResource {
     /// Create a new MapVectorResource
+    /// If is_merkelized == true, then this VR will automatically generate a merkle root
+    /// & merkle hashes for all nodes.
     pub fn new(
         name: &str,
         desc: Option<&str>,
@@ -362,8 +384,16 @@ impl DocumentVectorResource {
         embeddings: Vec<Embedding>,
         nodes: Vec<Node>,
         embedding_model_used: EmbeddingModelType,
+        is_merkelized: bool,
     ) -> Self {
         let current_time = ShinkaiTime::generate_time_now();
+        let merkle_root = if is_merkelized {
+            let empty_hash = blake3::Hasher::new().finalize();
+            Some(empty_hash.to_hex().to_string())
+        } else {
+            None
+        };
+
         let mut resource = DocumentVectorResource {
             name: String::from(name),
             description: desc.map(String::from),
@@ -379,15 +409,17 @@ impl DocumentVectorResource {
             created_datetime: current_time.clone(),
             last_written_datetime: current_time,
             metadata_index: MetadataIndex::new(),
+            merkle_root,
         };
 
-        // Generate a unique resource_id:
+        // Generate a unique resource_id
         resource.generate_and_update_resource_id();
         resource
     }
 
-    /// Initializes an empty `DocumentVectorResource` with empty defaults.
-    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource) -> Self {
+    /// Initializes an empty `DocumentVectorResource` with empty defaults. Of note, make sure EmbeddingModelType
+    /// is correct before adding any nodes into the VR.
+    pub fn new_empty(name: &str, desc: Option<&str>, source: VRSource, is_merkelized: bool) -> Self {
         DocumentVectorResource::new(
             name,
             desc,
@@ -396,6 +428,7 @@ impl DocumentVectorResource {
             Vec::new(),
             Vec::new(),
             EmbeddingModelType::TextEmbeddingsInference(TextEmbeddingsInference::AllMiniLML6v2),
+            is_merkelized,
         )
     }
 

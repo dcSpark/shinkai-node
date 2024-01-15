@@ -84,7 +84,7 @@ impl VectorFS {
     pub fn create_new_folder(&mut self, writer: &VFSWriter, folder_name: &str) -> Result<FSFolder, VectorFSError> {
         // Create a new MapVectorResource which represents a folder
         let current_datetime = ShinkaiTime::generate_time_now();
-        let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None));
+        let new_vr = BaseVectorResource::Map(MapVectorResource::new_empty(folder_name, None, VRSource::None, true));
         let embedding = Embedding::new("", vec![]); // Empty embedding as folders do not score in VecFS search
 
         // Setup default metadata for new folder node
