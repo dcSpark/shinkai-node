@@ -21,22 +21,22 @@ mod tests {
             .await
             .unwrap();
 
-            let identity = "nico.shinkai".to_string();
+            let identity = "node1_test.shinkai".to_string();
 
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
-                shinkai_identity: "nico2.shinkai".to_string(),
-                bound_nft: U256::from_dec_str("22").unwrap(),
-                staked_tokens: U256::from_dec_str("40000000000000000000").unwrap(),
-                encryption_key: "12bb5823b96886941da4261219735e10cac53783c9a23f5fa31bacc8a1e68019".to_string(),
-                signature_key: "bdcd4569d4e01cafe0543babfbaf35766feead28ce81932a41dbde8d7da8d720".to_string(),
+                shinkai_identity: "node1_test.shinkai".to_string(),
+                bound_nft: U256::from_dec_str("29").unwrap(),
+                staked_tokens: U256::from_dec_str("50000000000000000000").unwrap(),
+                encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
+                signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
                 routing: false,
-                address_or_proxy_nodes: vec!["139.49.219.177:9550".to_string()],
+                address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
-                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705342752)),
             };
-            assert_eq!(record, expected_record);
+            assert_eq!(record, expected_record);    
 
             let initial_cache_time = registry.get_cache_time(&identity).unwrap();
 

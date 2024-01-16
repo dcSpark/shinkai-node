@@ -116,8 +116,6 @@ impl OnchainIdentity {
     }
 
     pub fn signature_verifying_key(&self) -> Result<VerifyingKey, ShinkaiRegistryError> {
-        eprintln!("Getting signature verifying key for {}", self.shinkai_identity);
-        eprintln!("Signature key: {}", self.signature_key);
         string_to_signature_public_key(&self.signature_key)
             .map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))
     }
@@ -161,7 +159,6 @@ impl ShinkaiRegistry {
     }
 
     pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        eprintln!("Getting identity record for {}", identity);
         let now = SystemTime::now();
 
         // If the cache is up-to-date, return the cached value
@@ -183,15 +180,12 @@ impl ShinkaiRegistry {
                     }
                 });
 
-                eprintln!("Returning cached identity record for {}", identity);
                 return Ok(record);
             }
         }
 
         // Otherwise, update the cache
         let record = Self::update_cache(&self.contract, &self.cache, identity.clone()).await?;
-        eprintln!("Returning identity record for {}", identity);
-        eprintln!("Record: {:?}", record);
         Ok(record.clone())
     }
 
