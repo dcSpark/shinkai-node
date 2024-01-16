@@ -15,10 +15,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-/// A node that was retrieved from a search.
-/// Includes extra data like the resource_header of the resource it was from
-/// and the similarity score from the vector search. Resource header is especially
-/// helpful when you have multiple layers of VectorResources inside of each other.
+/// A node that was retrieved from inside of a Vector Resource. Includes extra data like the retrieval path
+/// and the similarity score from the vector search.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetrievedNode {
     pub node: Node,

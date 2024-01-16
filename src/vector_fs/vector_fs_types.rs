@@ -263,7 +263,9 @@ impl FSFolder {
 /// Actual data represented by a FSItem is a VRHeader-holding Node.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FSItem {
+    /// Path where the FSItem is held in the VectorFS
     pub path: VRPath,
+    /// The VRHeader matching the Vector Resource stored at this FSItem's path
     pub vr_header: VRHeader,
     /// Datetime the Vector Resource in the FSItem was first created
     pub created_datetime: DateTime<Utc>,
@@ -315,9 +317,20 @@ impl FSItem {
             merkle_hash,
         }
     }
+
+    /// Returns the name of the FSItem (based on the name in VRHeader)
+    pub fn name(&self) -> String {
+        self.vr_header.resource_name.to_string()
+    }
+
     /// DB key where the Vector Resource matching this FSEntry is held.
-    /// Uses the VRHeader reference string.
+    /// Uses the VRHeader reference string. Equivalent to self.resource_reference_string().
     pub fn resource_db_key(&self) -> String {
+        self.vr_header.reference_string()
+    }
+
+    /// Returns the VRHeader's reference string. Equivalent to self.resource_db_key().
+    pub fn resource_reference_string(&self) -> String {
         self.vr_header.reference_string()
     }
 

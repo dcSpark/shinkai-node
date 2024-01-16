@@ -557,9 +557,6 @@ fn test_manual_resource_vector_search() {
         original_merkle_hash, reverted_merkle_hash,
         "Merkle hash should be the same as original after pop"
     );
-
-    println!("------------------");
-    fruit_doc.print_all_nodes_exhaustive(None, true, false);
 }
 
 #[test]
