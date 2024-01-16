@@ -49,6 +49,7 @@ pub enum AgentError {
     AgentsCapabilitiesManagerError(ModelCapabilitiesManagerError),
     UnexpectedPromptResultVariant(String),
     ImageContentNotFound(String),
+    NetworkError(String),
     NoUserProfileFound,
 }
 
@@ -108,6 +109,7 @@ impl fmt::Display for AgentError {
             AgentError::UnexpectedPromptResultVariant(s) => write!(f, "Unexpected prompt result variant: {}", s),
             AgentError::ImageContentNotFound(s) => write!(f, "Image content not found: {}", s),
             AgentError::NoUserProfileFound => write!(f, "Cannot proceed as User Profile returned None."),
+            AgentError::NetworkError(s) => write!(f, "Network error: {}", s),
         }
     }
 }
