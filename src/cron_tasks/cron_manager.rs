@@ -162,7 +162,7 @@ impl CronManager {
             loop {
                 let jobs_to_process: HashMap<String, Vec<(String, CronTask)>> = {
                     let mut db_lock = db.lock().await;
-                    db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
+                    db_lock.get_all_cron_tasks_from_all_profiles(node_profile_name.clone()).unwrap_or(HashMap::new())
                 };
                 if !jobs_to_process.is_empty() {
                     shinkai_log(
