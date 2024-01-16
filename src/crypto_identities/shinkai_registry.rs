@@ -1,17 +1,25 @@
+use chrono::DateTime;
+use chrono::Utc;
 use dashmap::DashMap;
+use ed25519_dalek::VerifyingKey;
 use ethers::abi::Abi;
 use ethers::prelude::*;
+use hex;
 use lazy_static::lazy_static;
+use shinkai_message_primitives::shinkai_utils::encryption::string_to_encryption_public_key;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::shinkai_log;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogLevel;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::ShinkaiLogOption;
+use shinkai_message_primitives::shinkai_utils::signatures::string_to_signature_public_key;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs;
+use std::net::{AddrParseError, SocketAddr};
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::SystemTime;
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::task;
+use x25519_dalek::PublicKey;
 
 lazy_static! {
     static ref CACHE_TIME: Duration = Duration::from_secs(60 * 10);
@@ -25,6 +33,7 @@ pub enum ShinkaiRegistryError {
     JsonError(serde_json::Error),
     CustomError(String),
     SystemTimeError(std::time::SystemTimeError),
+    AddressParseError(AddrParseError),
 }
 
 impl fmt::Display for ShinkaiRegistryError {
@@ -36,7 +45,14 @@ impl fmt::Display for ShinkaiRegistryError {
             ShinkaiRegistryError::JsonError(err) => write!(f, "JSON Error: {}", err),
             ShinkaiRegistryError::CustomError(err) => write!(f, "Custom Error: {}", err),
             ShinkaiRegistryError::SystemTimeError(err) => write!(f, "System Time Error: {}", err),
+            ShinkaiRegistryError::AddressParseError(err) => write!(f, "Address Parse Error: {}", err),
         }
+    }
+}
+
+impl From<AddrParseError> for ShinkaiRegistryError {
+    fn from(err: AddrParseError) -> ShinkaiRegistryError {
+        ShinkaiRegistryError::AddressParseError(err)
     }
 }
 
@@ -74,6 +90,7 @@ impl std::error::Error for ShinkaiRegistryError {}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OnchainIdentity {
+    pub shinkai_identity: String,
     pub bound_nft: U256, // id of the nft
     pub staked_tokens: U256,
     pub encryption_key: String,
@@ -81,6 +98,27 @@ pub struct OnchainIdentity {
     pub routing: bool,
     pub address_or_proxy_nodes: Vec<String>,
     pub delegated_tokens: U256,
+    pub last_updated: DateTime<Utc>,
+}
+
+impl OnchainIdentity {
+    pub fn first_address(&self) -> Result<SocketAddr, ShinkaiRegistryError> {
+        if let Some(first_address) = self.address_or_proxy_nodes.first() {
+            first_address.parse().map_err(ShinkaiRegistryError::from)
+        } else {
+            Err(ShinkaiRegistryError::CustomError("No address available".to_string()))
+        }
+    }
+
+    pub fn encryption_public_key(&self) -> Result<PublicKey, ShinkaiRegistryError> {
+        string_to_encryption_public_key(&self.encryption_key)
+            .map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))
+    }
+
+    pub fn signature_verifying_key(&self) -> Result<VerifyingKey, ShinkaiRegistryError> {
+        string_to_signature_public_key(&self.signature_key)
+            .map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))
+    }
 }
 
 pub trait ShinkaiRegistryTrait {
@@ -99,7 +137,8 @@ pub struct ShinkaiRegistry {
 
 impl ShinkaiRegistry {
     pub async fn new(url: &str, contract_address: &str, abi_path: &str) -> Result<Self, ShinkaiRegistryError> {
-        let provider = Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
+        let provider =
+            Provider::<Http>::try_from(url).map_err(|err| ShinkaiRegistryError::CustomError(err.to_string()))?;
         let contract_address: Address = contract_address.parse().map_err(|e| {
             shinkai_log(
                 ShinkaiLogOption::CryptoIdentity,
@@ -121,7 +160,7 @@ impl ShinkaiRegistry {
 
     pub async fn get_identity_record(&mut self, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         let now = SystemTime::now();
-    
+
         // If the cache is up-to-date, return the cached value
         if let Some(value) = self.cache.get(&identity) {
             let (last_updated, record) = value.value().clone();
@@ -140,23 +179,27 @@ impl ShinkaiRegistry {
                         );
                     }
                 });
-    
+
                 return Ok(record);
             }
         }
-    
+
         // Otherwise, update the cache
         let record = Self::update_cache(&self.contract, &self.cache, identity.clone()).await?;
         Ok(record.clone())
     }
 
-    async fn update_cache(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, cache: &DashMap<String, (SystemTime, OnchainIdentity)>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+    async fn update_cache(
+        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
+        cache: &DashMap<String, (SystemTime, OnchainIdentity)>,
+        identity: String,
+    ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
         // Fetch the identity record from the contract
         let record = Self::fetch_identity_record(contract, identity.clone()).await?;
-    
+
         // Update the cache and the timestamp
         cache.insert(identity.clone(), (SystemTime::now(), record.clone()));
-    
+
         Ok(record)
     }
 
@@ -164,10 +207,14 @@ impl ShinkaiRegistry {
         self.cache.get(identity).map(|value| value.value().0)
     }
 
-    pub async fn fetch_identity_record(contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>, identity: String) -> Result<OnchainIdentity, ShinkaiRegistryError> {
-        let function_call = match contract
-            .method::<_, (U256, U256, String, String, bool, Vec<String>, U256)>("getIdentityRecord", (identity,))
-        {
+    pub async fn fetch_identity_record(
+        contract: &ContractInstance<Arc<Provider<Http>>, Provider<Http>>,
+        identity: String,
+    ) -> Result<OnchainIdentity, ShinkaiRegistryError> {
+        let function_call = match contract.method::<_, (U256, U256, String, String, bool, Vec<String>, U256, U256)>(
+            "getIdentityData",
+            (identity.clone(),),
+        ) {
             Ok(call) => call,
             Err(err) => {
                 shinkai_log(
@@ -179,7 +226,7 @@ impl ShinkaiRegistry {
             }
         };
 
-        let result: (U256, U256, String, String, bool, Vec<String>, U256) = match function_call.call().await {
+        let result: (U256, U256, String, String, bool, Vec<String>, U256, U256) = match function_call.call().await {
             Ok(res) => res,
             Err(e) => {
                 shinkai_log(
@@ -191,7 +238,11 @@ impl ShinkaiRegistry {
             }
         };
 
+        let last_updated = UNIX_EPOCH + Duration::from_secs(result.7.low_u64());
+        let last_updated = DateTime::<Utc>::from(last_updated);
+
         Ok(OnchainIdentity {
+            shinkai_identity: identity,
             bound_nft: result.0,
             staked_tokens: result.1,
             encryption_key: result.2,
@@ -199,6 +250,7 @@ impl ShinkaiRegistry {
             routing: result.4,
             address_or_proxy_nodes: result.5,
             delegated_tokens: result.6,
+            last_updated,
         })
     }
 }

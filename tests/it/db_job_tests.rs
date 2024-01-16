@@ -67,7 +67,7 @@ mod tests {
         shinkai_message::shinkai_message_schemas::JobMessage,
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair, job_scope::JobScope,
-            shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair,
+            shinkai_message_builder::ShinkaiMessageBuilder, signatures::unsafe_deterministic_signature_keypair, shinkai_logging::init_tracing,
         },
         shinkai_utils::{signatures::clone_signature_secret_key, utils::hash_string},
     };
@@ -77,6 +77,7 @@ mod tests {
 
     #[test]
     fn test_create_new_job() {
+        init_tracing(); 
         setup();
         let job_id = "job1".to_string();
         let agent_id = "agent1".to_string();
@@ -103,6 +104,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs() {
+        init_tracing(); 
         setup();
         let agent_id = "agent2".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -135,6 +137,7 @@ mod tests {
 
     #[test]
     fn test_update_job_to_finished() {
+        init_tracing(); 
         setup();
         let job_id = "job3".to_string();
         let agent_id = "agent3".to_string();
@@ -158,6 +161,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_update_step_history() {
+        init_tracing(); 
         setup();
         let job_id = "test_job".to_string();
         let agent_id = "agent4".to_string();
@@ -210,6 +214,7 @@ mod tests {
 
     #[test]
     fn test_get_non_existent_job() {
+        init_tracing(); 
         setup();
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
@@ -227,6 +232,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs_none_exist() {
+        init_tracing(); 
         setup();
         let agent_id = "agent_without_jobs".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -249,6 +255,7 @@ mod tests {
 
     #[test]
     fn test_update_non_existent_job() {
+        init_tracing(); 
         setup();
         let job_id = "non_existent_job".to_string();
         let agent_id = "agent".to_string();
@@ -266,6 +273,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_jobs_multiple_jobs() {
+        init_tracing(); 
         setup();
         let agent_id = "agent5".to_string();
         let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
@@ -297,6 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_empty() {
+        init_tracing(); 
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -330,6 +339,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure() {
+        init_tracing(); 
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -422,6 +432,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_job_inbox_tree_structure_with_step_history_and_execution_context() {
+        init_tracing(); 
         setup();
         let job_id = "job_test".to_string();
         let agent_id = "agent_test".to_string();
@@ -584,6 +595,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_steps_with_simple_tree_structure() {
+        init_tracing(); 
         setup();
 
         let node1_identity_name = "@@node1.shinkai";

@@ -7,7 +7,6 @@ use rocksdb::{IteratorMode, Options, WriteBatch};
 use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 
 enum JobInfo {
     IsFinished,

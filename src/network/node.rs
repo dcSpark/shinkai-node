@@ -825,7 +825,7 @@ impl Node {
         // TODO: add identity to this fn so we can check for permissions
         shinkai_log(
             ShinkaiLogOption::Node,
-            ShinkaiLogLevel::Debug,
+            ShinkaiLogLevel::Info,
             &format!("save_to_db> message_to_save: {:?}", message_to_save.clone()),
         );
         let mut db = db.lock().await;

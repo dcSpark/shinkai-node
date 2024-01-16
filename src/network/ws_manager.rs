@@ -118,7 +118,7 @@ impl WebSocketManager {
     ) {
         loop {
             // Sleep for a while
-            sleep(Duration::from_millis(500)).await;
+            sleep(Duration::from_millis(200)).await;
 
             // Check if there are any messages in the queue
             let message = {
@@ -141,7 +141,6 @@ impl WebSocketManager {
         // Message can't be encrypted at this point
         let is_body_encrypted = message.clone().is_body_currently_encrypted();
         if is_body_encrypted {
-            eprintln!("Message body is encrypted, can't validate user: {}", shinkai_name);
             shinkai_log(
                 ShinkaiLogOption::DetailedAPI,
                 ShinkaiLogLevel::Debug,
@@ -180,17 +179,29 @@ impl WebSocketManager {
                 };
 
                 match Node::has_inbox_access(self.shinkai_db.clone(), &inbox_name, &sender_identity).await {
-                    Ok(_) => {
-                        shinkai_log(
-                            ShinkaiLogOption::WsAPI,
-                            ShinkaiLogLevel::Error,
-                            format!(
-                                "Access granted for inbox: {} and sender_subidentity: {}",
-                                inbox_name, shinkai_name.full_name
-                            )
-                            .as_str(),
-                        );
-                        return true;
+                    Ok(value) => {
+                        if value {
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Debug,
+                                format!(
+                                    "Access granted for inbox: {} and sender_subidentity: {}",
+                                    inbox_name, shinkai_name.full_name
+                                )
+                                .as_str(),
+                            );
+                        } else {
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Debug,
+                                format!(
+                                    "Access denied for inbox: {} and sender_subidentity: {}",
+                                    inbox_name, shinkai_name.full_name
+                                )
+                                .as_str(),
+                            );
+                        }
+                        return value;
                     }
                     Err(_) => {
                         shinkai_log(
@@ -339,9 +350,9 @@ impl WebSocketManager {
         );
     }
 
-    pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {
-        self.connections.values().cloned().collect()
-    }
+    // pub fn get_all_connections(&self) -> Vec<Arc<Mutex<SplitSink<WebSocket, Message>>>> {
+    //      self.connections.values().cloned().collect()
+    // }
 
     pub async fn handle_update(&self, topic: WSTopic, subtopic: String, update: String) {
         let topic_subtopic = format!("{}:::{}", topic, subtopic);
@@ -351,19 +362,41 @@ impl WebSocketManager {
             format!("Sending update to topic: {}", topic_subtopic).as_str(),
         );
 
-        // Check if topic is WS::SmartInboxes and ignore it if it is
-        if topic == WSTopic::SmartInboxes {
-            shinkai_log(
-                ShinkaiLogOption::WsAPI,
-                ShinkaiLogLevel::Debug,
-                format!("Ignoring update to topic: {}", topic_subtopic).as_str(),
-            );
-            return;
-        }
-
         // Send the update to all active connections that are subscribed to the topic
         for (id, connection) in self.connections.iter() {
-            if self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some() {
+            let is_subscribed_to_smart_inboxes = self
+                .subscriptions
+                .get(id)
+                .unwrap()
+                .get(&format!("{}:::{}", WSTopic::SmartInboxes, ""))
+                .is_some();
+            let is_subscribed_to_topic = self.subscriptions.get(id).unwrap().get(&topic_subtopic).is_some();
+
+            if is_subscribed_to_smart_inboxes || is_subscribed_to_topic {
+                // If the user is subscribed to SmartInboxes, check if they have access to the specific inbox
+                if is_subscribed_to_smart_inboxes {
+                    match ShinkaiName::new(id.clone()) {
+                        Ok(shinkai_name) => {
+                            let shinkai_name_clone = shinkai_name.clone();
+                            if !self.has_access(shinkai_name_clone, topic.clone(), Some(subtopic.clone())).await {
+                                continue;
+                            }
+                            eprintln!(
+                                "Access granted for shinkai_name: {} on topic: {:?} and subtopic: {:?}",
+                                shinkai_name, topic, subtopic
+                            );
+                        },
+                        Err(e) => {
+                            shinkai_log(
+                                ShinkaiLogOption::WsAPI,
+                                ShinkaiLogLevel::Error,
+                                format!("Failed to create ShinkaiName for id {}: {}", id, e).as_str(),
+                            );
+                            continue;
+                        }
+                    }
+                }
+
                 let mut connection = connection.lock().await;
 
                 // Encrypt the update using the shared key
@@ -375,8 +408,16 @@ impl WebSocketManager {
                 let encrypted_update_hex = hex::encode(&encrypted_update);
 
                 match connection.send(Message::text(encrypted_update_hex.clone())).await {
-                    Ok(_) => eprintln!("Successfully sent update to connection {}", id),
-                    Err(e) => eprintln!("Failed to send update to connection {}: {}", id, e),
+                    Ok(_) => shinkai_log(
+                        ShinkaiLogOption::WsAPI,
+                        ShinkaiLogLevel::Info,
+                        format!("Successfully sent update to connection {}", id).as_str(),
+                    ),
+                    Err(e) => shinkai_log(
+                        ShinkaiLogOption::WsAPI,
+                        ShinkaiLogLevel::Error,
+                        format!("Failed to send update to connection {}: {}", id, e).as_str(),
+                    ),
                 }
             } else {
                 shinkai_log(

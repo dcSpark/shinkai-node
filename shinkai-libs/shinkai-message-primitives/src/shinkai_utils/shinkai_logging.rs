@@ -1,5 +1,11 @@
 use chrono::Local;
 use colored::*;
+use tracing::{span, Level, error, info, debug, instrument};
+use tracing_subscriber::FmtSubscriber;
+
+// Note(Nico): Added this to avoid issues when running tests
+use std::sync::Once;
+static INIT: Once = Once::new();
 
 #[derive(PartialEq, Debug)]
 pub enum ShinkaiLogOption {
@@ -26,11 +32,11 @@ pub enum ShinkaiLogLevel {
 }
 
 impl ShinkaiLogLevel {
-    fn to_log_level(&self) -> log::Level {
+    fn to_log_level(&self) -> Level {
         match self {
-            ShinkaiLogLevel::Error => log::Level::Error,
-            ShinkaiLogLevel::Info => log::Level::Info,
-            ShinkaiLogLevel::Debug => log::Level::Debug,
+            ShinkaiLogLevel::Error => Level::ERROR,
+            ShinkaiLogLevel::Info => Level::INFO,
+            ShinkaiLogLevel::Debug => Level::DEBUG,
         }
     }
 }
@@ -100,31 +106,49 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
 pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &str) {
     let active_options = active_log_options();
     if active_options.contains(&option) {
-        let time = Local::now().format("%Y-%m-%dT%H:%M:%S%.fZ"); // RFC 3339 timestamp
-        let option_str = format!("{:?}", option);
+        let is_simple_log = std::env::var("LOG_SIMPLE").is_ok();
+        let time = Local::now().format("%Y-%m-%d %H:%M:%S"); // Simplified timestamp
 
-        let (level_str, color_fn): (&str, Box<dyn Fn(&str) -> ColoredString>) = match level {
-            ShinkaiLogLevel::Error => ("(ERROR)", Box::new(|s: &str| s.red())),
-            ShinkaiLogLevel::Info => ("(INFO)", Box::new(|s: &str| s.yellow())),
-            ShinkaiLogLevel::Debug => ("(DEBUG)", Box::new(|s: &str| s.normal())),
+        let option_str = format!("{:?}", option);
+        let level_str = match level {
+            ShinkaiLogLevel::Error => "ERROR",
+            ShinkaiLogLevel::Info => "INFO",
+            ShinkaiLogLevel::Debug => "DEBUG",
         };
 
-        let message_with_header = if std::env::var("LOG_SIMPLE").is_ok() {
-            format!("{} {} - {} - {}", time, level_str, option_str, message)
+        let message_with_header = if is_simple_log {
+            format!("{}", message)
         } else {
             let hostname = "localhost";
             let app_name = "shinkai";
             let proc_id = std::process::id().to_string();
-            let msg_id = "-"; // No specific message ID
+            let msg_id = "-";
             let header = format!("{} {} {} {} {}", time, hostname, app_name, proc_id, msg_id);
             format!("{} - {} - {} - {}", header, level_str, option_str, message)
         };
 
-        match level.to_log_level() {
-            log::Level::Error => eprintln!("{}", color_fn(&message_with_header)),
-            log::Level::Info => println!("{}", color_fn(&message_with_header)),
-            log::Level::Debug => println!("{}", color_fn(&message_with_header)),
-            _ => {}
+        let span = match level {
+            ShinkaiLogLevel::Error => span!(Level::ERROR, "{}", option_str),
+            ShinkaiLogLevel::Info => span!(Level::INFO, "{}", option_str),
+            ShinkaiLogLevel::Debug => span!(Level::DEBUG, "{}", option_str),
+        };
+        let _enter = span.enter();
+
+        match level {
+            ShinkaiLogLevel::Error => error!("{}", message_with_header),
+            ShinkaiLogLevel::Info => info!("{}", message_with_header),
+            ShinkaiLogLevel::Debug => debug!("{}", message_with_header),
         }
     }
+}
+
+pub fn init_tracing() {
+    INIT.call_once(|| {
+        let subscriber = FmtSubscriber::builder()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+    });
 }

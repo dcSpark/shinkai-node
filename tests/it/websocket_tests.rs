@@ -19,6 +19,7 @@ use shinkai_message_primitives::shinkai_utils::encryption::EncryptionMethod;
 use shinkai_message_primitives::shinkai_utils::file_encryption::aes_encryption_key_to_string;
 use shinkai_message_primitives::shinkai_utils::file_encryption::unsafe_deterministic_aes_encryption_key;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::unsafe_deterministic_signature_keypair;
 use shinkai_message_primitives::shinkai_utils::utils::hash_string;
@@ -70,7 +71,6 @@ impl MockIdentityManager {
 #[async_trait]
 impl IdentityManagerTrait for MockIdentityManager {
     fn find_by_identity_name(&self, _full_profile_name: ShinkaiName) -> Option<&Identity> {
-        eprintln!("find_by_identity_name: {}", _full_profile_name);
         if _full_profile_name.to_string() == "@@node1.shinkai/main_profile_node1" {
             Some(&self.dummy_standard_identity)
         } else {
@@ -79,7 +79,6 @@ impl IdentityManagerTrait for MockIdentityManager {
     }
 
     async fn search_identity(&self, _full_identity_name: &str) -> Option<Identity> {
-        eprintln!("search_identity: {}", _full_identity_name);
         if _full_identity_name == "@@node1.shinkai/main_profile_node1" {
             Some(self.dummy_standard_identity.clone())
         } else {
@@ -151,6 +150,7 @@ fn setup() {
 
 #[tokio::test]
 async fn test_websocket() {
+    init_tracing();
     // Setup
     setup();
     let job_id1 = "test_job".to_string();
@@ -449,112 +449,192 @@ async fn test_websocket() {
         .expect("Failed to send close message");
 }
 
-// Note(Nico): I'm rethinking if we actually need this or we if we can do everything that we need
-// by just using message updates
+// TODO(Nico): if you subscribe to smart_inbox you will receive messages of all the inboxes that you have access to
+#[tokio::test]
+async fn test_websocket_smart_inbox() {
+    init_tracing();
+    // Setup
+    setup();
 
-// #[tokio::test]
-// async fn test_websocket_smart_inbox() {
-//     // Setup
-//     setup();
-    
-//     let agent_id = "agent4".to_string();
-//     let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
-//     let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
-//     let shinkai_db = Arc::new(Mutex::new(shinkai_db));
+    let job_id1 = "test_job".to_string();
+    let no_access_job_id = "no_access_job_id".to_string();
+    let agent_id = "agent4".to_string();
+    let db_path = format!("db_tests/{}", hash_string(&agent_id.clone()));
+    let shinkai_db = ShinkaiDB::new(&db_path).unwrap();
+    let shinkai_db = Arc::new(Mutex::new(shinkai_db));
 
-//     let node1_identity_name = "@@node1.shinkai";
-//     let node1_subidentity_name = "main_profile_node1";
-//     let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
-//     let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
+    let node1_identity_name = "@@node1.shinkai";
+    let node1_subidentity_name = "main_profile_node1";
+    let (node1_identity_sk, _) = unsafe_deterministic_signature_keypair(0);
+    let (node1_encryption_sk, node1_encryption_pk) = unsafe_deterministic_encryption_keypair(0);
 
-//     let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
-//     let identity_manager_trait = Arc::new(Mutex::new(
-//         Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
-//     ));
+    let node_name = ShinkaiName::new(node1_identity_name.to_string()).unwrap();
+    let identity_manager_trait = Arc::new(Mutex::new(
+        Box::new(MockIdentityManager::new()) as Box<dyn IdentityManagerTrait + Send>
+    ));
 
-//     // Start the WebSocket server
-//     let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
-//     let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
-//     tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
+    let inbox_name1 = InboxName::get_job_inbox_name_from_params(job_id1.to_string()).unwrap();
+    let inbox_name1_string = match inbox_name1 {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value.clone(),
+    };
 
-//     // Update ShinkaiDB with manager so it can trigger updates
-//     {
-//         let mut shinkai_db = shinkai_db.lock().await;
-//         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
-//     }
+    let no_access_job_id_name = InboxName::get_job_inbox_name_from_params(no_access_job_id.to_string()).unwrap();
+    let no_access_job_id_name_string = match no_access_job_id_name {
+        InboxName::RegularInbox { value, .. } | InboxName::JobInbox { value, .. } => value.clone(),
+    };
 
-//     // Give the server a little time to start
-//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    // Start the WebSocket server
+    let manager = WebSocketManager::new(shinkai_db.clone(), node_name, identity_manager_trait.clone()).await;
+    let ws_address = "127.0.0.1:8080".parse().expect("Failed to parse WebSocket address");
+    tokio::spawn(run_ws_api(ws_address, Arc::clone(&manager)));
 
-//     // Connect to the server
-//     let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
+    // Update ShinkaiDB with manager so it can trigger updates
+    {
+        let mut shinkai_db = shinkai_db.lock().await;
+        shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
+    }
 
-//     // Check if the connection was successful
-//     assert!(connection_result.is_ok(), "Failed to connect");
+    // Give the server a little time to start
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-//     let (mut ws_stream, _) = connection_result.expect("Failed to connect");
+    // Connect to the server
+    let connection_result = tokio_tungstenite::connect_async("ws://127.0.0.1:8080/ws").await;
 
-//     // Create a shared encryption key Aes256Gcm
-//     let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
-//     let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
+    // Check if the connection was successful
+    assert!(connection_result.is_ok(), "Failed to connect");
 
-//     // Send a message to the server to establish the connection and subscribe to a topic
-//     let ws_message = WSMessage {
-//         subscriptions: vec![TopicSubscription {
-//             topic: WSTopic::SmartInboxes,
-//             subtopic: None,
-//         }],
-//         unsubscriptions: vec![],
-//         shared_key: Some(shared_enc_string.to_string()),
-//     };
+    let (mut ws_stream, _) = connection_result.expect("Failed to connect");
 
-//     // Serialize WSMessage to a JSON string
-//     let ws_message_json = serde_json::to_string(&ws_message).unwrap();
+    // Create a shared encryption key Aes256Gcm
+    let symmetrical_sk = unsafe_deterministic_aes_encryption_key(0);
+    let shared_enc_string = aes_encryption_key_to_string(symmetrical_sk);
 
-//     // Generate a ShinkaiMessage
-//     let shinkai_message = generate_message_with_text(
-//         ws_message_json,
-//         "".to_string(),
-//         node1_encryption_sk.clone(),
-//         node1_identity_sk.clone(),
-//         node1_encryption_pk,
-//         node1_subidentity_name.to_string(),
-//         node1_identity_name.to_string(),
-//         "2023-07-02T20:53:34.810Z".to_string(),
-//     );
+    // Send a message to the server to establish the connection and subscribe to a topic
+    let ws_message = WSMessage {
+        subscriptions: vec![TopicSubscription {
+            topic: WSTopic::SmartInboxes,
+            subtopic: None,
+        }],
+        unsubscriptions: vec![],
+        shared_key: Some(shared_enc_string.to_string()),
+    };
 
-//     // Convert ShinkaiMessage to String
-//     let message_string = shinkai_message.to_string().unwrap();
+    // Serialize WSMessage to a JSON string
+    let ws_message_json = serde_json::to_string(&ws_message).unwrap();
 
-//     ws_stream
-//         .send(tungstenite::Message::Text(message_string))
-//         .await
-//         .expect("Failed to send message");
+    // Generate a ShinkaiMessage
+    let shinkai_message = generate_message_with_text(
+        ws_message_json,
+        "".to_string(),
+        node1_encryption_sk.clone(),
+        node1_identity_sk.clone(),
+        node1_encryption_pk,
+        node1_subidentity_name.to_string(),
+        node1_identity_name.to_string(),
+        "2023-07-02T20:53:34.810Z".to_string(),
+    );
 
-//     // Wait for the server to process the subscription message
-//     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    {
+        // Add identity to the database
+        let sender_subidentity = {
+            let shinkai_name =
+                ShinkaiName::from_node_and_profile(node1_identity_name.to_string(), node1_subidentity_name.to_string())
+                    .unwrap();
+            let identity_manager_lock = identity_manager_trait.lock().await;
+            match identity_manager_lock.find_by_identity_name(shinkai_name).unwrap() {
+                Identity::Standard(std_identity) => std_identity.clone(),
+                _ => panic!("Identity is not of type StandardIdentity"),
+            }
+        };
 
-//     // Send a new message to inbox_name1_string
-//     {
-//         let mut shinkai_db = shinkai_db.lock().await;
-//         let _ = shinkai_db.create_empty_inbox("test_inbox".to_string()).await;
-//     }
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db.insert_profile(sender_subidentity.clone());
+        let scope = JobScope::new_default();
+        match shinkai_db.create_new_job(job_id1, agent_id.clone(), scope.clone()) {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to create a new job: {}", e),
+        }
+        shinkai_db
+            .add_permission(&inbox_name1_string, &sender_subidentity, InboxPermission::Admin)
+            .unwrap();
 
-//     // Check the response
-//     let msg = ws_stream
-//         .next()
-//         .await
-//         .expect("Failed to read message")
-//         .expect("Failed to read message");
+        match shinkai_db.create_new_job(no_access_job_id, agent_id, scope) {
+            Ok(_) => (),
+            Err(e) => panic!("Failed to create a new job: {}", e),
+        }
+    }
 
-//     let encrypted_message = msg.to_text().unwrap();
-//     let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
+    // Convert ShinkaiMessage to String
+    let message_string = shinkai_message.to_string().unwrap();
 
-//     assert_eq!(decrypted_message, "test_inbox");
+    ws_stream
+        .send(tungstenite::Message::Text(message_string))
+        .await
+        .expect("Failed to send message");
 
-//     // Send a close message
-//     ws_stream
-//         .send(tungstenite::Message::Close(None))
-//         .await
-//         .expect("Failed to send close message");
-// }
+    // Wait for the server to process the subscription message
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Send a new message to inbox_name1_string
+    {
+        // Generate a ShinkaiMessage
+        let shinkai_message = generate_message_with_text(
+            "Hello, world!".to_string(),
+            inbox_name1_string.to_string(),
+            node1_encryption_sk.clone(),
+            node1_identity_sk.clone(),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
+
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .await;
+    }
+
+    // Check the response
+    let msg = ws_stream
+        .next()
+        .await
+        .expect("Failed to read message")
+        .expect("Failed to read message");
+
+    let encrypted_message = msg.to_text().unwrap();
+    let decrypted_message = decrypt_message(encrypted_message, &shared_enc_string).expect("Failed to decrypt message");
+    let recovered_shinkai = ShinkaiMessage::from_string(decrypted_message).unwrap();
+    let recovered_content = recovered_shinkai.get_message_content().unwrap();
+    assert_eq!(recovered_content, "Hello, world!");
+
+    // Send a message to an inbox that the user DOES NOT have access. the user shouldn't receive a notification
+    {
+        let shinkai_message = generate_message_with_text(
+            "Hello, no one!".to_string(),
+            no_access_job_id_name_string.to_string(),
+            node1_encryption_sk.clone(),
+            node1_identity_sk.clone(),
+            node1_encryption_pk,
+            node1_subidentity_name.to_string(),
+            node1_identity_name.to_string(),
+            "2023-07-02T20:53:34.810Z".to_string(),
+        );
+
+        let mut shinkai_db = shinkai_db.lock().await;
+        let _ = shinkai_db
+            .unsafe_insert_inbox_message(&&shinkai_message.clone(), None)
+            .await;
+    }
+
+    // Check that no message is received
+    let result = tokio::time::timeout(tokio::time::Duration::from_secs(1), ws_stream.next()).await;
+    eprintln!("result: {:?}", result);
+    assert!(result.is_err());
+
+    // Send a close message
+    ws_stream
+        .send(tungstenite::Message::Close(None))
+        .await
+        .expect("Failed to send close message");
+}
