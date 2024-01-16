@@ -124,10 +124,10 @@ pub fn fetch_node_environment() -> NodeEnvironment {
 
     let js_toolkit_executor_remote: Option<String> = env::var("JS_TOOLKIT_ADDRESS").ok().filter(|s| !s.is_empty());
 
-    let no_secrets_file: bool = env::var("NO_secretsS_FILE")
+    let no_secrets_file: bool = env::var("NO_SECRET_FILE")
         .unwrap_or_else(|_| "false".to_string())
         .parse()
-        .expect("Failed to parse NO_secretsS_FILE");
+        .expect("Failed to parse NO_SECRET_FILE");
 
     // Define the address and port where your node will listen
     let listen_address = SocketAddr::new(ip, port);

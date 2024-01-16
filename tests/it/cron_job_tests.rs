@@ -10,7 +10,7 @@ mod tests {
         },
         shinkai_utils::{
             encryption::unsafe_deterministic_encryption_keypair,
-            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair},
+            signatures::{clone_signature_secret_key, unsafe_deterministic_signature_keypair}, shinkai_logging::init_tracing,
         },
     };
     use shinkai_node::{
@@ -38,6 +38,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_process_cron_job() {
+        init_tracing(); 
         setup();
         let db = Arc::new(Mutex::new(ShinkaiDB::new("db_tests/").unwrap()));
         let (identity_secret_key, identity_public_key) = unsafe_deterministic_signature_keypair(0);
@@ -174,6 +175,8 @@ mod tests {
 
     #[test]
     fn test_should_execute_cron_task() {
+        init_tracing(); 
+        
         use chrono::Timelike;
         use chrono::Utc;
 

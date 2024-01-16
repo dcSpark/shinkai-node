@@ -1,5 +1,5 @@
 use crate::{db::ShinkaiDB, managers::IdentityManager, network::Node};
-use ed25519_dalek::{VerifyingKey, SigningKey};
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::{
     shinkai_message::{
         shinkai_message::{MessageBody, MessageData, ShinkaiMessage},
@@ -131,10 +131,7 @@ pub fn extract_message(bytes: &[u8], receiver_address: SocketAddr) -> io::Result
     })
 }
 
-pub fn verify_message_signature(
-    sender_signature_pk: VerifyingKey,
-    message: &ShinkaiMessage,
-) -> io::Result<()> {
+pub fn verify_message_signature(sender_signature_pk: VerifyingKey, message: &ShinkaiMessage) -> io::Result<()> {
     match message.verify_outer_layer_signature(&sender_signature_pk) {
         Ok(is_valid) if is_valid => Ok(()),
         Ok(_) => {
@@ -143,10 +140,14 @@ pub fn verify_message_signature(
                 ShinkaiLogLevel::Error,
                 "Failed to validate message's signature",
             );
-            shinkai_log(ShinkaiLogOption::Network, ShinkaiLogLevel::Error, &format!(
-                "Sender signature pk: {:?}",
-                signature_public_key_to_string(sender_signature_pk)
-            ));
+            shinkai_log(
+                ShinkaiLogOption::Network,
+                ShinkaiLogLevel::Error,
+                &format!(
+                    "Sender signature pk: {:?}",
+                    signature_public_key_to_string(sender_signature_pk)
+                ),
+            );
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "Failed to validate message's signature",
@@ -198,37 +199,52 @@ pub async fn handle_default_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    _receiver_address: SocketAddr,
+    _unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
-    println!(
-        "{} > handle_default_encryption message: {:?}",
-        receiver_address, message
-    );
-    println!(
-        "Sender encryption pk: {:?}",
-        encryption_public_key_to_string(sender_encryption_pk)
-    );
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
-        Ok(_) => {
-            println!(
-                "{} > Got message from {:?}. Sending ACK",
-                receiver_address, unsafe_sender_address
-            );
-            send_ack(
-                (sender_address.clone(), sender_profile_name.clone()),
-                clone_static_secret_key(my_encryption_secret_key),
-                clone_signature_secret_key(my_signature_secret_key),
-                sender_encryption_pk,
-                my_node_profile_name.to_string(),
-                sender_profile_name,
-                maybe_db,
-                maybe_identity_manager,
-            )
-            .await
+        Ok(content) => {
+            // println!(
+            //     "{} > Got message from {:?}. Sending ACK",
+            //     receiver_address, unsafe_sender_address
+            // );
+
+            let message = content.get_message_content();
+            match message {
+                Ok(message_content) => {
+                    if message_content != "ACK" {
+                        let _ = send_ack(
+                            (sender_address.clone(), sender_profile_name.clone()),
+                            clone_static_secret_key(my_encryption_secret_key),
+                            clone_signature_secret_key(my_signature_secret_key),
+                            sender_encryption_pk,
+                            my_node_profile_name.to_string(),
+                            sender_profile_name,
+                            maybe_db,
+                            maybe_identity_manager,
+                        )
+                        .await;
+                    }
+                }
+                Err(_) => {
+                    // Note(Nico): if we can't decrypt the inner content (it's okay). We still send an ACK
+                    let _ = send_ack(
+                        (sender_address.clone(), sender_profile_name.clone()),
+                        clone_static_secret_key(my_encryption_secret_key),
+                        clone_signature_secret_key(my_signature_secret_key),
+                        sender_encryption_pk,
+                        my_node_profile_name.to_string(),
+                        sender_profile_name,
+                        maybe_db,
+                        maybe_identity_manager,
+                    )
+                    .await;
+                }
+            }
+            Ok(())
         }
         Err(_) => {
             println!("handle_default_encryption > Failed to decrypt message.");

@@ -1,5 +1,6 @@
 use serde_json::Value as JsonValue;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use shinkai_node::db::ShinkaiDB;
 use shinkai_node::tools::js_toolkit::JSToolkit;
 use shinkai_node::tools::js_toolkit_executor::JSToolkitExecutor;
@@ -39,6 +40,7 @@ fn load_test_js_toolkit_from_file() -> Result<String, std::io::Error> {
 
 #[test]
 fn test_default_js_toolkit_json_parsing() {
+    init_tracing(); 
     let toolkit = JSToolkit::from_toolkit_json(&default_toolkit_json(), "").unwrap();
 
     assert_eq!(toolkit.name, "Google Calendar Toolkit");
@@ -56,6 +58,7 @@ fn test_default_js_toolkit_json_parsing() {
 
 #[tokio::test]
 async fn test_js_toolkit_execution() {
+    init_tracing(); 
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
@@ -88,6 +91,7 @@ async fn test_js_toolkit_execution() {
 
 #[tokio::test]
 async fn test_toolkit_installation_and_retrieval() {
+    init_tracing(); 
     setup();
     // Load the toolkit
     let toolkit_js_code = load_test_js_toolkit_from_file().unwrap();
@@ -119,6 +123,7 @@ async fn test_toolkit_installation_and_retrieval() {
 
 #[tokio::test]
 async fn test_tool_router_and_toolkit_flow() {
+    init_tracing(); 
     setup();
 
     let generator = RemoteEmbeddingGenerator::new_default();

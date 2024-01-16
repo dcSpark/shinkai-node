@@ -18,7 +18,7 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_tracing};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -48,7 +48,7 @@ mod utils;
 mod vector_fs;
 
 fn main() {
-    env_logger::init();
+    init_tracing();
 
     let main_db: &str = "main_db";
     let vector_fs_db: &str = "vector_fs_db";
@@ -65,7 +65,9 @@ fn main() {
 
     // Storage db filesystem
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
+    eprintln!("main_db_path: {}", main_db_path);
     let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
+    eprintln!("vector_fs_db_path: {}", vector_fs_db_path);
 
     // Acquire the Node's keys. TODO: Should check with on
     // and then it's with onchain data for matching with the keys provided
@@ -83,6 +85,9 @@ fn main() {
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
+
+    eprintln!("Encryption Public Key: {}", encryption_public_key_string);
+    eprintln!("Signature Public Key: {}", identity_public_key_string);
 
     // Initialize Embedding Generator & Unstructured API
     let embedding_generator = init_embedding_generator(&node_env);
@@ -202,13 +207,15 @@ fn main() {
     });
 }
 
-/// Initialzied Tokio runtime
+/// Initialized Tokio runtime
 fn initialize_runtime() -> Runtime {
     Runtime::new().unwrap()
 }
 
 /// Machine filesystem path to the main ShinkaiDB database, pub key based.
 fn get_main_db_path(main_db: &str, identity_public_key: &VerifyingKey, node_storage_path: Option<String>) -> String {
+    eprintln!("node_storage_path: {:?}", node_storage_path);
+    eprintln!("main_db: {:?}", main_db);
     if let Some(path) = node_storage_path {
         Path::new(&path)
             .join(main_db)

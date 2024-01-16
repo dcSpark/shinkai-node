@@ -2,37 +2,42 @@
 mod tests {
     use std::time::Duration;
 
-    use ethers::{types::U256};
+    use chrono::{DateTime, Utc};
+    use ethers::types::U256;
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
     use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistry};
     use tokio::{runtime::Runtime, time::sleep};
 
     #[test]
     fn test_get_identity_record() {
+        init_tracing(); 
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let mut registry = ShinkaiRegistry::new(
                 "https://rpc.sepolia.org",
-                "0xb2945D0CDa4C119DE184380955aA4FbfAFb6B8cC",
+                "0x6964241D2458f0Fd300BB37535CF0145380810E0",
                 "./src/crypto_identities/abi/ShinkaiRegistry.sol/ShinkaiRegistry.json",
             )
             .await
             .unwrap();
 
-            let identity = "nico.shinkai".to_string();
+            let identity = "node1_test.shinkai".to_string();
 
             let record = registry.get_identity_record(identity.clone()).await.unwrap();
 
             let expected_record = OnchainIdentity {
-                bound_nft: U256::from_dec_str("11").unwrap(),
-                staked_tokens: U256::from_dec_str("62000000000000000000").unwrap(),
-                encryption_key: "858bef3bb7839329e28e569288f441f8fa86af00d9f41a9845ef50dd3b6cd15f".to_string(),
-                signature_key: "7aa221ec6761fdfdb478616babad8fad5330587392ad7e7dc9002af269909882".to_string(),
+                shinkai_identity: "node1_test.shinkai".to_string(),
+                bound_nft: U256::from_dec_str("29").unwrap(),
+                staked_tokens: U256::from_dec_str("50000000000000000000").unwrap(),
+                encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
+                signature_key: "69fa099bdce516bfeb46d5fc6e908f6cf8ffac0aba76ca0346a7b1a751a2712e".to_string(),
                 routing: false,
-                address_or_proxy_nodes: vec![],
+                address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
                 delegated_tokens: U256::from_dec_str("0").unwrap(),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1705342752)),
             };
-            assert_eq!(record, expected_record);
-            
+            assert_eq!(record, expected_record);    
+
             let initial_cache_time = registry.get_cache_time(&identity).unwrap();
 
             // Request the identity record again to trigger a cache update

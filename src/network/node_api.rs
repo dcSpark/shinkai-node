@@ -65,6 +65,26 @@ impl From<&str> for APIError {
     }
 }
 
+impl From<async_channel::SendError<NodeCommand>> for APIError {
+    fn from(error: async_channel::SendError<NodeCommand>) -> Self {
+        APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: format!("Failed with error: {}", error),
+        }
+    }
+}
+
+impl From<String> for APIError {
+    fn from(error: String) -> Self {
+        APIError {
+            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            error: "Internal Server Error".to_string(),
+            message: error,
+        }
+    }
+}
+
 impl warp::reject::Reject for APIError {}
 
 pub async fn run_api(node_commands_sender: Sender<NodeCommand>, address: SocketAddr, node_name: String) {
@@ -505,14 +525,15 @@ async fn send_msg_handler(
             res: res_send_msg_sender,
         })
         .await
-        .map_err(|_| warp::reject::reject())?;
-    let send_result = res_send_msg_receiver.recv().await.map_err(|_| warp::reject::reject())?;
-    if send_result.is_err() {
-        return Err(warp::reject::reject());
+        .map_err(|e| warp::reject::custom(APIError::from(e)))?;
+    let send_result = res_send_msg_receiver.recv().await.map_err(|e| warp::reject::custom(APIError::from(format!("{}", e))))?;
+    match send_result {
+        Ok(_) => {
+            let resp = warp::reply::json(&"Message sent successfully");
+            Ok(resp)
+        }
+        Err(api_error) => Err(warp::reject::custom(api_error)),
     }
-
-    let resp = warp::reply::json(&"Message sent successfully");
-    Ok(resp)
 }
 
 async fn get_peers_handler(node_commands_sender: Sender<NodeCommand>) -> Result<impl warp::Reply, warp::Rejection> {
@@ -923,7 +944,11 @@ async fn get_all_subidentities_handler(
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
-    if err.is_not_found() {
+    eprintln!("rejection: {:?}", err);
+    if let Some(api_error) = err.find::<APIError>() {
+        let json = warp::reply::json(api_error);
+        return Ok(warp::reply::with_status(json, StatusCode::from_u16(api_error.code).unwrap()));
+    } else if err.is_not_found() {
         let json = warp::reply::json(&APIError::new(
             StatusCode::NOT_FOUND,
             "Not Found",

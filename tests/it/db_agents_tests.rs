@@ -18,7 +18,7 @@ mod tests {
             agents::serialized_agent::{AgentLLMInterface, OpenAI, SerializedAgent},
             shinkai_name::ShinkaiName,
         },
-        shinkai_utils::utils::hash_string,
+        shinkai_utils::{utils::hash_string, shinkai_logging::init_tracing},
     };
     use shinkai_node::agent::{agent::Agent, error::AgentError, execution::job_prompts::JobPromptGenerator};
 
@@ -26,6 +26,7 @@ mod tests {
 
     #[test]
     fn test_add_and_remove_agent() {
+        init_tracing(); 
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -79,6 +80,7 @@ mod tests {
 
     #[test]
     fn test_update_agent_access() {
+        init_tracing(); 
         setup();
         // Initialize ShinkaiDB
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
@@ -130,6 +132,7 @@ mod tests {
 
     #[test]
     fn test_get_agent_profiles_and_toolkits() {
+        init_tracing(); 
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
@@ -168,6 +171,7 @@ mod tests {
 
     #[test]
     fn test_remove_profile_and_toolkit_from_agent_access() {
+        init_tracing(); 
         setup();
         let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
@@ -209,6 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_call_external_api_openai() {
+        init_tracing(); 
         let mut server = Server::new();
         let _m = server
             .mock("POST", "/v1/chat/completions")
