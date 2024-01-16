@@ -58,16 +58,6 @@ impl ShinkaiDB {
         // Commit the write batch
         self.db.write(batch)?;
 
-        {
-            // Note: this is the code for enabling WS
-            if let Some(manager) = &self.ws_manager {
-                let m = manager.lock().await;
-                let _ = m
-                    .queue_message(WSTopic::SmartInboxes, "".to_string(), inbox_name.clone())
-                    .await;
-            }
-        }
-
         Ok(())
     }
 

@@ -1,5 +1,6 @@
 use async_channel::{bounded, Receiver, Sender};
 use async_std::println;
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use core::panic;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -41,6 +42,7 @@ fn setup() {
 
 #[test]
 fn subidentity_registration() {
+    init_tracing(); 
     setup();
     let rt = Runtime::new().unwrap();
 
