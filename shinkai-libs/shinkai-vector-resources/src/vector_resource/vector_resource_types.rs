@@ -49,7 +49,22 @@ impl RetrievedNode {
         let scores: Vec<(NotNan<f32>, String)> = retrieved_data
             .into_iter()
             .map(|node| {
-                let ref_key = node.resource_header.reference_string().clone();
+                let ref_key = if let Ok(hash) = node.node.get_merkle_hash() {
+                    format!(
+                        "{}-{}-{}-{}",
+                        hash,
+                        node.retrieval_path,
+                        node.node.last_written_datetime.to_rfc3339(),
+                        node.score
+                    )
+                } else {
+                    format!(
+                        "{}-{}-{}",
+                        node.retrieval_path,
+                        node.node.last_written_datetime.to_rfc3339(),
+                        node.score
+                    )
+                };
                 let id_ref_key = format!("{}-{}", node.node.id.clone(), ref_key);
                 nodes.insert(id_ref_key.clone(), node.clone());
                 (NotNan::new(nodes[&id_ref_key].score).unwrap(), id_ref_key)
@@ -62,7 +77,7 @@ impl RetrievedNode {
         // Map the sorted_scores back to a vector of RetrievedNode
         let sorted_data: Vec<RetrievedNode> = sorted_scores
             .into_iter()
-            .map(|(_, id_db_key)| nodes[&id_db_key].clone())
+            .map(|(_, id_ref_key)| nodes[&id_ref_key].clone())
             .collect();
 
         sorted_data
