@@ -50,6 +50,7 @@ impl ShinkaiDB {
 
         // Write profiles_with_access and toolkits_accessible to respective columns
         for profile in &agent.allowed_message_senders {
+            // TODO: this doesnt add up
             pb_batch.put_cf_pb(cf_profiles_access, &profile, "".as_bytes());
         }
         for toolkit in &agent.toolkit_permissions {
@@ -151,8 +152,10 @@ impl ShinkaiDB {
         Ok(Some(agent))
     }
 
-    pub fn get_agent_profiles_with_access(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_agent_profiles_with_access(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Vec<String>, ShinkaiDBError> {
+        // Start write batch for atomic operation
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
+    
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -160,10 +163,10 @@ impl ShinkaiDB {
                 "Column family not found for: {}",
                 cf_name
             )))?;
-        self.get_column_family_data(cf)
+        self.get_all_keys_cf_pb(cf, profile)
     }
 
-    pub fn get_agent_toolkits_accessible(&self, agent_id: &str) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_agent_toolkits_accessible(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
         let cf = self
             .db
@@ -172,10 +175,10 @@ impl ShinkaiDB {
                 "Column family not found for: {}",
                 cf_name
             )))?;
-        self.get_column_family_data(cf)
+        self.get_all_keys_cf_pb(cf, profile)
     }
 
-    pub fn remove_profile_from_agent_access(&mut self, agent_id: &str, profile: &str) -> Result<(), ShinkaiDBError> {
+    pub fn remove_profile_from_agent_access(&mut self, agent_id: &str, profile: &str, bounded_profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
         let cf = self
             .db
@@ -185,8 +188,7 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        let shinkai_name = ShinkaiName::new(profile.to_string())?;
-        self.delete_cf_pb(cf, profile, &shinkai_name)?;
+        self.delete_cf_pb(cf, profile, &bounded_profile)?;
         Ok(())
     }
 
@@ -194,7 +196,7 @@ impl ShinkaiDB {
         &mut self,
         agent_id: &str,
         toolkit: &str,
-        profile: &ShinkaiName,
+        bounded_profile: &ShinkaiName,
     ) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
         let cf = self
@@ -205,7 +207,7 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        self.delete_cf_pb(cf, toolkit, profile)?;
+        self.delete_cf_pb(cf, toolkit, bounded_profile)?;
         Ok(())
     }
 

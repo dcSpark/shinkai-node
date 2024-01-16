@@ -74,7 +74,7 @@ mod tests {
 
             let agent = SerializedAgent {
                 id: agent_id.clone(),
-                full_identity_name: agent_name,
+                full_identity_name: agent_name.clone(),
                 perform_locally: false,
                 external_url: Some("https://api.openai.com".to_string()),
                 api_key: env::var("INITIAL_AGENT_API_KEY").ok(),
@@ -84,8 +84,10 @@ mod tests {
                 allowed_message_senders: vec![],
             };
 
+            let profile = agent_name.clone().extract_profile().unwrap();
+
             // add agent
-            match db_lock.add_agent(agent.clone()) {
+            match db_lock.add_agent(agent.clone(), &profile) {
                 Ok(()) => {
                     let mut subidentity_manager = identity_manager.lock().await;
                     match subidentity_manager.add_agent_subidentity(agent).await {

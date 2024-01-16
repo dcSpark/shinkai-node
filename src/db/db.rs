@@ -224,6 +224,28 @@ impl ShinkaiDB {
         self.get_cf(topic, new_key)
     }
 
+    /// Fetches all keys in a ColumnFamily that are profile-bound.
+    pub fn get_all_keys_cf_pb(
+        &self,
+        cf: &impl AsColumnFamilyRef,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<String>, ShinkaiDBError> {
+        let profile_prefix = ShinkaiDB::get_profile_name(profile)?.into_bytes();
+        let iter = self.db.iterator_cf(cf, IteratorMode::Start);
+        let mut keys = Vec::new();
+
+        for item in iter {
+            let (key, _) = item.map_err(ShinkaiDBError::from)?;
+            if key.starts_with(&profile_prefix) {
+                let key_str =
+                    String::from_utf8(key[profile_prefix.len()..].to_vec()).map_err(|_| ShinkaiDBError::InvalidData)?;
+                keys.push(key_str);
+            }
+        }
+
+        Ok(keys)
+    }
+
     /// Iterates over the provided column family
     pub fn iterator_cf<'a>(
         &'a self,

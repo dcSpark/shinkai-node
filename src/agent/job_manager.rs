@@ -9,6 +9,7 @@ use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
+use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
@@ -259,9 +260,7 @@ impl JobManager {
     }
 
     pub async fn process_job_message(&mut self, message: ShinkaiMessage) -> Result<String, AgentError> {
-        // TODO: extract sender profile from message
-        let sender_subidentity = message.get_sender_subidentity().ok_or(AgentError::InvalidSubidentity("Error message here".to_string()))?;
-        
+        let profile = ShinkaiName::from_shinkai_message_using_recipient_subidentity(&message)?;
 
         if self.is_job_message(message.clone()) {
             match message.clone().body {
@@ -276,7 +275,7 @@ impl JobManager {
                                     let agent_id = agent_name.get_agent_name().ok_or(AgentError::AgentNotFound)?;
                                     let job_creation: JobCreationInfo = serde_json::from_str(&data.message_raw_content)
                                         .map_err(|_| AgentError::ContentParseFailed)?;
-                                    self.process_job_creation(job_creation, &agent_id).await
+                                    self.process_job_creation(job_creation, &profile, &agent_id).await
                                 }
                                 MessageSchemaType::JobMessageSchema => {
                                     let job_message: JobMessage = serde_json::from_str(&data.message_raw_content)
@@ -318,6 +317,7 @@ impl JobManager {
     pub async fn process_job_creation(
         &mut self,
         job_creation: JobCreationInfo,
+        profile: &ShinkaiName,
         agent_id: &String,
     ) -> Result<String, AgentError> {
         // TODO: add job_id to agent so it's aware
@@ -344,7 +344,7 @@ impl JobManager {
 
                     if agent_found.is_none() {
                         let identity_manager = self.identity_manager.lock().await;
-                        if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id).await {
+                        if let Some(serialized_agent) = identity_manager.search_local_agent(&agent_id, profile).await {
                             let agent = Agent::from_serialized_agent(serialized_agent);
                             agent_found = Some(Arc::new(Mutex::new(agent)));
                             self.agents.push(agent_found.clone().unwrap());
@@ -393,7 +393,9 @@ impl JobManager {
             let inbox_name = InboxName::get_job_inbox_name_from_params(job_message.job_id.to_string())?.to_string();
             shinkai_db.update_smart_inbox_name(&inbox_name.to_string(), &content)?;
         }
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &message, None).await?;
+        shinkai_db
+            .add_message_to_job_inbox(&job_message.job_id.clone(), &message, None)
+            .await?;
         std::mem::drop(shinkai_db);
 
         self.add_job_message_to_job_queue(&job_message, &profile).await?;

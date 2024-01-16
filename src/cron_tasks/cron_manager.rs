@@ -258,7 +258,7 @@ impl CronManager {
         let job_id = job_manager
             .lock()
             .await
-            .process_job_creation(job_creation, &cron_job.agent_id)
+            .process_job_creation(job_creation, &shinkai_profile, &cron_job.agent_id)
             .await?;
 
         // Note(Nico): should we close the job after the processing?
