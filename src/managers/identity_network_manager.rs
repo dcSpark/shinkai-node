@@ -33,7 +33,7 @@ impl IdentityNetworkManager {
         &self,
         global_identity: String,
     ) -> Result<OnchainIdentity, &'static str> {
-        eprintln!("Getting identity record for {}", global_identity);
+        eprintln!("(external_identity) Getting identity record for {}", global_identity);
         let record = {
             let identity = global_identity.trim_start_matches("@@");
             let mut registry = self.registry.lock().await;

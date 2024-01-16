@@ -106,27 +106,27 @@ fn active_log_options() -> Vec<ShinkaiLogOption> {
 pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &str) {
     let active_options = active_log_options();
     if active_options.contains(&option) {
-        let time = Local::now().format("%Y-%m-%dT%H:%M:%S%.fZ"); // RFC 3339 timestamp
-        let option_str = format!("{:?}", option);
+        let is_simple_log = std::env::var("LOG_SIMPLE").is_ok();
+        let time = Local::now().format("%Y-%m-%d %H:%M:%S"); // Simplified timestamp
 
-        let (level_str, color_fn): (&str, Box<dyn Fn(&str) -> ColoredString>) = match level {
-            ShinkaiLogLevel::Error => ("(ERROR)", Box::new(|s: &str| s.red())),
-            ShinkaiLogLevel::Info => ("(INFO)", Box::new(|s: &str| s.yellow())),
-            ShinkaiLogLevel::Debug => ("(DEBUG)", Box::new(|s: &str| s.normal())),
+        let option_str = format!("{:?}", option);
+        let level_str = match level {
+            ShinkaiLogLevel::Error => "ERROR",
+            ShinkaiLogLevel::Info => "INFO",
+            ShinkaiLogLevel::Debug => "DEBUG",
         };
 
-        let message_with_header = if std::env::var("LOG_SIMPLE").is_ok() {
-            format!("{} {} - {} - {}", time, level_str, option_str, message)
+        let message_with_header = if is_simple_log {
+            format!("{}", message)
         } else {
             let hostname = "localhost";
             let app_name = "shinkai";
             let proc_id = std::process::id().to_string();
-            let msg_id = "-"; // No specific message ID
+            let msg_id = "-";
             let header = format!("{} {} {} {} {}", time, hostname, app_name, proc_id, msg_id);
             format!("{} - {} - {} - {}", header, level_str, option_str, message)
         };
 
-        // Create a span with a specified level.
         let span = match level {
             ShinkaiLogLevel::Error => span!(Level::ERROR, "{}", option_str),
             ShinkaiLogLevel::Info => span!(Level::INFO, "{}", option_str),

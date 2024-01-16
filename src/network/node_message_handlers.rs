@@ -199,35 +199,23 @@ pub async fn handle_default_encryption(
     my_encryption_secret_key: &EncryptionStaticKey,
     my_signature_secret_key: &SigningKey,
     my_node_profile_name: &str,
-    receiver_address: SocketAddr,
-    unsafe_sender_address: SocketAddr,
+    _receiver_address: SocketAddr,
+    _unsafe_sender_address: SocketAddr,
     maybe_db: Arc<Mutex<ShinkaiDB>>,
     maybe_identity_manager: Arc<Mutex<IdentityManager>>,
 ) -> Result<(), NodeError> {
-    println!(
-        "{} > handle_default_encryption message: {:?}",
-        receiver_address, message
-    );
-    println!(
-        "Sender encryption pk: {:?}",
-        encryption_public_key_to_string(sender_encryption_pk)
-    );
     let decrypted_message_result = message.decrypt_outer_layer(&my_encryption_secret_key, &sender_encryption_pk);
     match decrypted_message_result {
         Ok(content) => {
-            println!(
-                "{} > Got message from {:?}. Sending ACK",
-                receiver_address, unsafe_sender_address
-            );
-            eprintln!("Decrypted message: {:?}", content);
-            // Why content is also encrypted? I guess we can send an ACK anyways
+            // println!(
+            //     "{} > Got message from {:?}. Sending ACK",
+            //     receiver_address, unsafe_sender_address
+            // );
 
             let message = content.get_message_content();
             match message {
                 Ok(message_content) => {
-                    eprintln!("Message content: {:?}", message_content);
                     if message_content != "ACK" {
-                        eprintln!("Sending ACK");
                         let _ = send_ack(
                             (sender_address.clone(), sender_profile_name.clone()),
                             clone_static_secret_key(my_encryption_secret_key),
