@@ -517,6 +517,48 @@ fn test_manual_resource_vector_search() {
     let test_path = VRPath::from_string("/3/doc_key/4").unwrap();
     let res = fruit_doc.retrieve_node_at_path(test_path.clone());
     assert_eq!(res.is_ok(), false);
+
+    //
+    // Merkelization Tests
+    //
+    let path = VRPath::from_string("/3/doc_key/2").unwrap();
+    let res = fruit_doc.retrieve_node_at_path(path.clone()).unwrap();
+    let regened_merkle_hash = res.node._generate_merkle_hash().unwrap();
+    assert_eq!(regened_merkle_hash, res.node.get_merkle_hash().unwrap());
+
+    // Store the original Merkle hash
+    let original_merkle_hash = fruit_doc.get_merkle_root().unwrap();
+
+    // Append a node into a Doc Resource
+    let path = VRPath::from_string("/3/doc_key/").unwrap();
+    fruit_doc
+        .append_text_node_at_path(
+            path.clone(),
+            "--- appended text node ---",
+            None,
+            new_map_resource.resource_embedding().clone(),
+            &vec![],
+        )
+        .unwrap();
+
+    // Retrieve and store the new Merkle hash
+    let new_merkle_hash = fruit_doc.get_merkle_root().unwrap();
+    assert_ne!(
+        original_merkle_hash, new_merkle_hash,
+        "Merkle hash should be different after append"
+    );
+
+    // Pop the previously appended node
+    fruit_doc.pop_node_at_path(path).unwrap();
+
+    // Retrieve the Merkle hash again and assert it's the same as the original
+    let reverted_merkle_hash = fruit_doc.get_merkle_root().unwrap();
+    assert_eq!(
+        original_merkle_hash, reverted_merkle_hash,
+        "Merkle hash should be the same as original after pop"
+    );
+
+    println!("------------------");
     fruit_doc.print_all_nodes_exhaustive(None, true, false);
 }
 

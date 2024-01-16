@@ -181,7 +181,7 @@ impl Node {
             last_written_datetime: current_time,
             merkle_hash: None,
         };
-        node.generate_merkle_hash();
+        node._generate_merkle_hash();
         node
     }
 
@@ -211,7 +211,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node.generate_merkle_hash();
+        node._generate_merkle_hash();
         node
     }
 
@@ -240,7 +240,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node.generate_merkle_hash();
+        node._generate_merkle_hash();
         node
     }
 
@@ -271,7 +271,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node.generate_merkle_hash();
+        node._generate_merkle_hash();
         node
     }
 
@@ -302,7 +302,7 @@ impl Node {
             merkle_hash: None,
         };
 
-        node.generate_merkle_hash();
+        node._generate_merkle_hash();
         node
     }
 
@@ -421,7 +421,7 @@ impl Node {
         match &mut self.content {
             NodeContent::Resource(resource) => resource.as_trait_object_mut().update_merkle_root(),
             _ => {
-                let new_hash = self.generate_merkle_hash()?;
+                let new_hash = self._generate_merkle_hash()?;
                 self.set_merkle_hash(new_hash)
             }
         }
@@ -430,7 +430,7 @@ impl Node {
     /// Generates a Merkle hash based on the node content.
     /// For VRHeader and BaseVectorResource nodes, returns the resource merkle_root if it is available,
     /// however if root == None, then generates a new hash from the content.
-    fn generate_merkle_hash(&self) -> Result<String, VRError> {
+    pub fn _generate_merkle_hash(&self) -> Result<String, VRError> {
         match &self.content {
             NodeContent::VRHeader(header) => match header.resource_merkle_root.clone() {
                 Some(hash) => Ok(hash),

@@ -112,7 +112,6 @@ pub trait VectorResourceCore: Send + Sync {
 
     /// Updates the merkle root of the Vector Resource by hashing the merkle hashes of all root nodes.
     /// Errors if the Vector Resource is not merkelized.
-    /// TODO: Trigger node merkle hash & resource merkle root updating when insert/replacing new nodes.
     fn update_merkle_root(&mut self) -> Result<(), VRError> {
         if !self.is_merkelized() {
             return Err(VRError::VectorResourceIsNotMerkelized(self.reference_string()));

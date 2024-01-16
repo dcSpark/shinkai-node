@@ -117,7 +117,20 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     format!("Header For Vector Resource: {}", header.reference_string())
                 }
             };
-            println!("{}: {}", path, data);
+            // Adding merkle hash if it exists to output string
+            let mut merkle_hash = String::new();
+            if let Ok(hash) = node.node.get_merkle_hash() {
+                if hash.chars().count() > 15 {
+                    merkle_hash = hash.chars().take(15).collect::<String>() + "..."
+                } else {
+                    merkle_hash = hash.to_string()
+                }
+            }
+            if merkle_hash.len() == 0 {
+                println!("{}: {}", path, data);
+            } else {
+                println!("{}: {} | Merkle Hash: {}", path, data, merkle_hash);
+            }
         }
     }
 

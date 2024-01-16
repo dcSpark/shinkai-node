@@ -208,6 +208,10 @@ impl VectorResourceCore for MapVectorResource {
         updated_node.set_last_written(current_datetime);
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
+        // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
+        if self.is_merkelized() {
+            updated_node.update_merkle_hash()?;
+        }
 
         // Insert node/embeddings
         self._insert_node(updated_node.clone());
@@ -218,6 +222,10 @@ impl VectorResourceCore for MapVectorResource {
         self.metadata_index.add_node(&updated_node);
 
         self.set_last_written_datetime(current_datetime);
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
+        }
         Ok(())
     }
 
@@ -236,10 +244,16 @@ impl VectorResourceCore for MapVectorResource {
             ShinkaiTime::generate_time_now()
         };
 
-        // Replace old node, and get old embedding
+        // Update new_node id/last written
         let mut new_node = node;
         new_node.id = id.clone();
         new_node.set_last_written(current_datetime);
+        // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
+        if self.is_merkelized() {
+            new_node.update_merkle_hash()?;
+        }
+
+        // Replace old node, and get old embedding
         let old_node = self
             .nodes
             .insert(id.to_string(), new_node.clone())
@@ -262,6 +276,11 @@ impl VectorResourceCore for MapVectorResource {
         self.embeddings.insert(id.to_string(), embedding);
         self.set_last_written_datetime(current_datetime);
 
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
+        }
+
         Ok((old_node, old_embedding))
     }
 
@@ -282,6 +301,12 @@ impl VectorResourceCore for MapVectorResource {
 
         let results = self.remove_node_at_path(path);
         self.set_last_written_datetime(current_datetime);
+
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
+        }
+
         results
     }
 }

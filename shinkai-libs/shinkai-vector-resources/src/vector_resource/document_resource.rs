@@ -286,6 +286,11 @@ impl VectorResourceCore for DocumentVectorResource {
         updated_node.set_last_written(current_datetime);
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
+        // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
+        if self.is_merkelized() {
+            updated_node.update_merkle_hash()?;
+        }
+
         // Insert the new node and embedding
         self.nodes[index] = updated_node.clone();
         self.embeddings[index] = embedding;
@@ -295,6 +300,11 @@ impl VectorResourceCore for DocumentVectorResource {
 
         self.node_count += 1;
         self.set_last_written_datetime(current_datetime);
+
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
+        }
 
         Ok(())
     }
@@ -327,6 +337,10 @@ impl VectorResourceCore for DocumentVectorResource {
         let mut embedding = embedding.clone();
         embedding.set_id(id.to_string());
         new_node.set_last_written(current_datetime);
+        // Update the node merkle hash if the VR is merkelized. This guarantees merkle hash is always up to date.
+        if self.is_merkelized() {
+            new_node.update_merkle_hash()?;
+        }
 
         // Replace the old node and fetch old embedding
         let old_node = std::mem::replace(&mut self.nodes[index], new_node.clone());
@@ -344,6 +358,11 @@ impl VectorResourceCore for DocumentVectorResource {
         if old_node.metadata_keys() != new_node.metadata_keys() {
             self.metadata_index.remove_node(&old_node);
             self.metadata_index.add_node(&new_node);
+        }
+
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
         }
 
         Ok((old_node, old_embedding))
@@ -368,6 +387,12 @@ impl VectorResourceCore for DocumentVectorResource {
         }
         let results = self.remove_node_with_integer(integer_id);
         self.set_last_written_datetime(current_datetime);
+
+        // Regenerate the Vector Resource's merkle root after updating its contents
+        if self.is_merkelized() {
+            self.update_merkle_root()?;
+        }
+
         results
     }
 }
