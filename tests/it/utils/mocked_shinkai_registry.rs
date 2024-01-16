@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use shinkai_node::crypto_identities::shinkai_registry::ShinkaiRegistryError;
 use shinkai_node::crypto_identities::shinkai_registry::{OnchainIdentity, ShinkaiRegistryTrait};
 use dashmap::DashMap;
@@ -15,6 +16,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
 
         let identities = vec![
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(1),
                 staked_tokens: U256::from(1000),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
@@ -22,8 +24,10 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["192.168.1.109:8080".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(2),
                 staked_tokens: U256::from(1000),
                 encryption_key: "912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f".to_string(),
@@ -31,8 +35,10 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["192.168.1.233:8081".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(3),
                 staked_tokens: U256::from(1000),
                 encryption_key: "3273d113e401a215e429e3272352186a7370cf7edf1e2d68aa7ef87a20237371".to_string(),
@@ -40,8 +46,10 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8082".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(4),
                 staked_tokens: U256::from(1000),
                 encryption_key: "60045bdb15c24b161625cf05558078208698272bfe113f792ea740dbd79f4708".to_string(),
@@ -49,8 +57,10 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8080".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
             OnchainIdentity {
+                shinkai_identity: "nico.shinkai".to_string(),
                 bound_nft: U256::from(5),
                 staked_tokens: U256::from(1000),
                 encryption_key: "912fed05e286af45f44580d6a87da61e1f9a0946237dd29f7bc2d3cbeba0857f".to_string(),
@@ -58,6 +68,7 @@ impl ShinkaiRegistryTrait for MockedShinkaiRegistry {
                 routing: true,
                 address_or_proxy_nodes: vec!["127.0.0.1:8081".to_string()],
                 delegated_tokens: U256::from(500),
+                last_updated: DateTime::<Utc>::from(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1704927408)),
             },
         ];
 

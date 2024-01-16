@@ -1,1515 +1,1109 @@
 [
-  {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "delegatedTokens",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stakedTokens",
-        "type": "uint256"
-      }
-    ],
-    "name": "DelegatedTokensExceedingStakedTokens",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "IdentityNotAvailable",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InputArityMismatch",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InsufficientStakeAmountForDelegation",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InsufficientStakeAmountForIdentity",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "rate",
-        "type": "uint256"
-      }
-    ],
-    "name": "InvalidBaseRewardsRate",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "InvalidDelegationAmount",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      }
-    ],
-    "name": "InvalidName",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      }
-    ],
-    "name": "InvalidNamespace",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "Unauthorized",
-    "type": "error"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "bool",
-        "name": "routing",
-        "type": "bool"
-      },
-      {
-        "indexed": false,
-        "internalType": "string[]",
-        "name": "addressOrProxyNodes",
-        "type": "string[]"
-      }
-    ],
-    "name": "AddressOrProxyNodesUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "previousAdmin",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "newAdmin",
-        "type": "address"
-      }
-    ],
-    "name": "AdminChanged",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "newRate",
-        "type": "uint256"
-      }
-    ],
-    "name": "BaseRewardsRateUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "beacon",
-        "type": "address"
-      }
-    ],
-    "name": "BeaconUpgraded",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "newDelegatedTokens",
-        "type": "uint256"
-      }
-    ],
-    "name": "DelegatedTokensUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "rewards",
-        "type": "uint256"
-      }
-    ],
-    "name": "DelegationRewardsAccrual",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "rewards",
-        "type": "uint256"
-      }
-    ],
-    "name": "DelegationRewardsClaim",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "delegatee",
-            "type": "string"
-          },
-          {
-            "internalType": "uint256",
-            "name": "amount",
-            "type": "uint256"
-          }
-        ],
-        "indexed": false,
-        "internalType": "struct ShinkaiRegistryInterface.Delegation[]",
-        "name": "delegations",
-        "type": "tuple[]"
-      }
-    ],
-    "name": "DelegationsUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "nftTokenId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "string",
-        "name": "identityRaw",
-        "type": "string"
-      }
-    ],
-    "name": "IdentityClaim",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "nftTokenId",
-        "type": "uint256"
-      }
-    ],
-    "name": "IdentityUnclaim",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": false,
-        "internalType": "uint8",
-        "name": "version",
-        "type": "uint8"
-      }
-    ],
-    "name": "Initialized",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "string",
-        "name": "encryptionKey",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "string",
-        "name": "signatureKey",
-        "type": "string"
-      }
-    ],
-    "name": "KeysUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "string[]",
-        "name": "keys",
-        "type": "string[]"
-      }
-    ],
-    "name": "MetadataRemoval",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "string[]",
-        "name": "keys",
-        "type": "string[]"
-      },
-      {
-        "indexed": false,
-        "internalType": "string[]",
-        "name": "values",
-        "type": "string[]"
-      }
-    ],
-    "name": "MetadataUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "previousOwner",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "OwnershipTransferred",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "newStake",
-        "type": "uint256"
-      }
-    ],
-    "name": "StakeUpdate",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "rewards",
-        "type": "uint256"
-      }
-    ],
-    "name": "StakingRewardsClaim",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "implementation",
-        "type": "address"
-      }
-    ],
-    "name": "Upgraded",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "accrueDelegationRewards",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "baseRewardsRate",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "baseRewardsRateMaxMantissa",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "claimDelegationRewards",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "identities",
-        "type": "string[]"
-      }
-    ],
-    "name": "claimDelegationRewardsBatched",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stakeAmount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      }
-    ],
-    "name": "claimIdentity",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "stakeAmount",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      },
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "encryptionKey",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "signatureKey",
-            "type": "string"
-          },
-          {
-            "internalType": "bool",
-            "name": "routing",
-            "type": "bool"
-          },
-          {
-            "internalType": "string[]",
-            "name": "addressOrProxyNodes",
-            "type": "string[]"
-          }
-        ],
-        "internalType": "struct ShinkaiRegistryInterface.SetRecordParams",
-        "name": "setRecordParams",
-        "type": "tuple"
-      }
-    ],
-    "name": "claimIdentityAndSetRecord",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "names",
-        "type": "string[]"
-      },
-      {
-        "internalType": "uint256[]",
-        "name": "namespaces",
-        "type": "uint256[]"
-      },
-      {
-        "internalType": "uint256[]",
-        "name": "stakeAmounts",
-        "type": "uint256[]"
-      },
-      {
-        "internalType": "address[]",
-        "name": "owners",
-        "type": "address[]"
-      }
-    ],
-    "name": "claimIdentityBatched",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "claimRewards",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "identities",
-        "type": "string[]"
-      }
-    ],
-    "name": "claimRewardsBatched",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "claimStakingRewards",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "identities",
-        "type": "string[]"
-      }
-    ],
-    "name": "claimStakingRewardsBatched",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "tokensAccrued",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "decreaseStake",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "getAvailableTokensForDelegation",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "fromIdentity",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "toIdentity",
-        "type": "string"
-      }
-    ],
-    "name": "getDelegatedTokensTowards",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "getDelegatees",
-    "outputs": [
-      {
-        "internalType": "string[]",
-        "name": "",
-        "type": "string[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      }
-    ],
-    "name": "getIdentity",
-    "outputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "pure",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "getIdentityRecord",
-    "outputs": [
-      {
-        "components": [
-          {
-            "internalType": "uint256",
-            "name": "boundNft",
-            "type": "uint256"
-          },
-          {
-            "internalType": "uint256",
-            "name": "stakedTokens",
-            "type": "uint256"
-          },
-          {
-            "internalType": "string",
-            "name": "encryptionKey",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "signatureKey",
-            "type": "string"
-          },
-          {
-            "internalType": "bool",
-            "name": "routing",
-            "type": "bool"
-          },
-          {
-            "internalType": "string[]",
-            "name": "addressOrProxyNodes",
-            "type": "string[]"
-          },
-          {
-            "internalType": "uint256",
-            "name": "delegatedTokens",
-            "type": "uint256"
-          }
-        ],
-        "internalType": "struct ShinkaiRegistryInterface.IdentityRecord",
-        "name": "",
-        "type": "tuple"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "identityDelegatees",
-    "outputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "identityDelegationAccrued",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "identityDelegationIndex",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "identityDelegations",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "namespace",
-        "type": "uint256"
-      }
-    ],
-    "name": "identityStakeRequirement",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "pure",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "name": "identityStakingIndex",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "increaseStake",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "shinToken_",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "shinkaiNft_",
-        "type": "address"
-      }
-    ],
-    "name": "initialize",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "owner",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "ownerOf",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "proxiableUUID",
-    "outputs": [
-      {
-        "internalType": "bytes32",
-        "name": "",
-        "type": "bytes32"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "keys",
-        "type": "string[]"
-      },
-      {
-        "internalType": "string[]",
-        "name": "values",
-        "type": "string[]"
-      }
-    ],
-    "name": "readMetadata",
-    "outputs": [
-      {
-        "internalType": "string[]",
-        "name": "",
-        "type": "string[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "keys",
-        "type": "string[]"
-      }
-    ],
-    "name": "removeMetadata",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "renounceOwnership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "resetIdentityData",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "rewardsState",
-    "outputs": [
-      {
-        "internalType": "uint224",
-        "name": "index",
-        "type": "uint224"
-      },
-      {
-        "internalType": "uint32",
-        "name": "block",
-        "type": "uint32"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "rate",
-        "type": "uint256"
-      }
-    ],
-    "name": "setBaseRewardsRate",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "delegatee",
-            "type": "string"
-          },
-          {
-            "internalType": "uint256",
-            "name": "amount",
-            "type": "uint256"
-          }
-        ],
-        "internalType": "struct ShinkaiRegistryInterface.Delegation[]",
-        "name": "delegations",
-        "type": "tuple[]"
-      }
-    ],
-    "name": "setDelegations",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "encryptionKey",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "signatureKey",
-        "type": "string"
-      }
-    ],
-    "name": "setKeys",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "nodeAddress",
-        "type": "string"
-      }
-    ],
-    "name": "setNodeAddress",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "proxyNodes",
-        "type": "string[]"
-      }
-    ],
-    "name": "setProxyNodes",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "encryptionKey",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "signatureKey",
-            "type": "string"
-          },
-          {
-            "internalType": "bool",
-            "name": "routing",
-            "type": "bool"
-          },
-          {
-            "internalType": "string[]",
-            "name": "addressOrProxyNodes",
-            "type": "string[]"
-          }
-        ],
-        "internalType": "struct ShinkaiRegistryInterface.SetRecordParams",
-        "name": "params",
-        "type": "tuple"
-      }
-    ],
-    "name": "setRecord",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "identities",
-        "type": "string[]"
-      },
-      {
-        "components": [
-          {
-            "internalType": "string",
-            "name": "encryptionKey",
-            "type": "string"
-          },
-          {
-            "internalType": "string",
-            "name": "signatureKey",
-            "type": "string"
-          },
-          {
-            "internalType": "bool",
-            "name": "routing",
-            "type": "bool"
-          },
-          {
-            "internalType": "string[]",
-            "name": "addressOrProxyNodes",
-            "type": "string[]"
-          }
-        ],
-        "internalType": "struct ShinkaiRegistryInterface.SetRecordParams[]",
-        "name": "setRecordsParams",
-        "type": "tuple[]"
-      }
-    ],
-    "name": "setRecordBatched",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "shinToken",
-    "outputs": [
-      {
-        "internalType": "contract ShinkaiTokenInterface",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "shinkaiNft",
-    "outputs": [
-      {
-        "internalType": "contract ShinkaiNFTInterface",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "tokenIdToIdentity",
-    "outputs": [
-      {
-        "internalType": "string",
-        "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "transferOwnership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      }
-    ],
-    "name": "unclaimIdentity",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string[]",
-        "name": "identities",
-        "type": "string[]"
-      }
-    ],
-    "name": "unclaimIdentityBatched",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "identity",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "keys",
-        "type": "string[]"
-      },
-      {
-        "internalType": "string[]",
-        "name": "values",
-        "type": "string[]"
-      }
-    ],
-    "name": "updateMetadata",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newImplementation",
-        "type": "address"
-      }
-    ],
-    "name": "upgradeTo",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newImplementation",
-        "type": "address"
-      },
-      {
-        "internalType": "bytes",
-        "name": "data",
-        "type": "bytes"
-      }
-    ],
-    "name": "upgradeToAndCall",
-    "outputs": [],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "name",
-        "type": "string"
-      }
-    ],
-    "name": "validName",
-    "outputs": [
-      {
-        "internalType": "bool",
-        "name": "",
-        "type": "bool"
-      }
-    ],
-    "stateMutability": "pure",
-    "type": "function"
-  }
-]
+    { "type": "constructor", "inputs": [], "stateMutability": "nonpayable" },
+    {
+      "type": "function",
+      "name": "accrueDelegationRewards",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "baseRewardsRate",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "baseRewardsRateMaxMantissa",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "claimDelegationRewards",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimDelegationRewardsBatched",
+      "inputs": [
+        { "name": "identities", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimIdentity",
+      "inputs": [
+        {
+          "name": "params",
+          "type": "tuple",
+          "internalType": "struct ShinkaiRegistryInterface.ClaimIdentityParams",
+          "components": [
+            { "name": "name", "type": "string", "internalType": "string" },
+            {
+              "name": "namespace",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            { "name": "owner", "type": "address", "internalType": "address" }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimIdentityAndSetData",
+      "inputs": [
+        {
+          "name": "params",
+          "type": "tuple",
+          "internalType": "struct ShinkaiRegistryInterface.ClaimIdentityParams",
+          "components": [
+            { "name": "name", "type": "string", "internalType": "string" },
+            {
+              "name": "namespace",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            { "name": "owner", "type": "address", "internalType": "address" }
+          ]
+        },
+        {
+          "name": "setDataParams",
+          "type": "tuple",
+          "internalType": "struct ShinkaiRegistryInterface.SetDataParams",
+          "components": [
+            {
+              "name": "encryptionKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signatureKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            { "name": "routing", "type": "bool", "internalType": "bool" },
+            {
+              "name": "addressOrProxyNodes",
+              "type": "string[]",
+              "internalType": "string[]"
+            }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimIdentityBatched",
+      "inputs": [
+        {
+          "name": "params",
+          "type": "tuple[]",
+          "internalType": "struct ShinkaiRegistryInterface.ClaimIdentityParams[]",
+          "components": [
+            { "name": "name", "type": "string", "internalType": "string" },
+            {
+              "name": "namespace",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "stakeAmount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            { "name": "owner", "type": "address", "internalType": "address" }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimRewards",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimRewardsBatched",
+      "inputs": [
+        { "name": "identities", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimStakingRewards",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "claimStakingRewardsBatched",
+      "inputs": [
+        { "name": "identities", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [
+        {
+          "name": "tokensAccrued",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "decreaseStake",
+      "inputs": [
+        { "name": "name", "type": "string", "internalType": "string" },
+        { "name": "namespace", "type": "uint256", "internalType": "uint256" },
+        { "name": "amount", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "getAvailableTokensForDelegation",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getDelegatedTokensTowards",
+      "inputs": [
+        { "name": "fromIdentity", "type": "string", "internalType": "string" },
+        { "name": "toIdentity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getDelegatees",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [
+        { "name": "", "type": "string[]", "internalType": "string[]" }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getIdentity",
+      "inputs": [
+        { "name": "name", "type": "string", "internalType": "string" },
+        { "name": "namespace", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "getIdentityData",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "tuple",
+          "internalType": "struct ShinkaiRegistryInterface.IdentityData",
+          "components": [
+            {
+              "name": "boundNft",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "stakedTokens",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "encryptionKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signatureKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            { "name": "routing", "type": "bool", "internalType": "bool" },
+            {
+              "name": "addressOrProxyNodes",
+              "type": "string[]",
+              "internalType": "string[]"
+            },
+            {
+              "name": "delegatedTokens",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "lastUpdated",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "identityDelegatees",
+      "inputs": [
+        { "name": "", "type": "string", "internalType": "string" },
+        { "name": "", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "identityDelegationAccrued",
+      "inputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "identityDelegationIndex",
+      "inputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "identityDelegations",
+      "inputs": [
+        { "name": "", "type": "string", "internalType": "string" },
+        { "name": "", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "identityStakeRequirement",
+      "inputs": [
+        { "name": "name", "type": "string", "internalType": "string" },
+        { "name": "namespace", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
+      "name": "identityStakingIndex",
+      "inputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "outputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "increaseStake",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "amount", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "inputs": [
+        { "name": "shinToken_", "type": "address", "internalType": "address" },
+        { "name": "shinkaiNft_", "type": "address", "internalType": "address" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "ownerOf",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [{ "name": "", "type": "address", "internalType": "address" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "proxiableUUID",
+      "inputs": [],
+      "outputs": [{ "name": "", "type": "bytes32", "internalType": "bytes32" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "readRecords",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "keys", "type": "string[]", "internalType": "string[]" },
+        { "name": "values", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [
+        { "name": "", "type": "string[]", "internalType": "string[]" }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "removeRecords",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "keys", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "resetIdentityData",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "rewardsState",
+      "inputs": [],
+      "outputs": [
+        { "name": "index", "type": "uint224", "internalType": "uint224" },
+        { "name": "block", "type": "uint32", "internalType": "uint32" }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "setBaseRewardsRate",
+      "inputs": [
+        { "name": "rate", "type": "uint256", "internalType": "uint256" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setData",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        {
+          "name": "params",
+          "type": "tuple",
+          "internalType": "struct ShinkaiRegistryInterface.SetDataParams",
+          "components": [
+            {
+              "name": "encryptionKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signatureKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            { "name": "routing", "type": "bool", "internalType": "bool" },
+            {
+              "name": "addressOrProxyNodes",
+              "type": "string[]",
+              "internalType": "string[]"
+            }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setDataBatched",
+      "inputs": [
+        {
+          "name": "identities",
+          "type": "string[]",
+          "internalType": "string[]"
+        },
+        {
+          "name": "setDataParams",
+          "type": "tuple[]",
+          "internalType": "struct ShinkaiRegistryInterface.SetDataParams[]",
+          "components": [
+            {
+              "name": "encryptionKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            {
+              "name": "signatureKey",
+              "type": "string",
+              "internalType": "string"
+            },
+            { "name": "routing", "type": "bool", "internalType": "bool" },
+            {
+              "name": "addressOrProxyNodes",
+              "type": "string[]",
+              "internalType": "string[]"
+            }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setDelegations",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        {
+          "name": "delegations",
+          "type": "tuple[]",
+          "internalType": "struct ShinkaiRegistryInterface.Delegation[]",
+          "components": [
+            { "name": "delegatee", "type": "string", "internalType": "string" },
+            { "name": "amount", "type": "uint256", "internalType": "uint256" }
+          ]
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setKeys",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "encryptionKey", "type": "string", "internalType": "string" },
+        { "name": "signatureKey", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setNodeAddress",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "nodeAddress", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setProxyNodes",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "proxyNodes", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "shinToken",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract ShinkaiTokenInterface"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "shinkaiNft",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract ShinkaiNFTInterface"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "tokenIdToIdentity",
+      "inputs": [{ "name": "", "type": "uint256", "internalType": "uint256" }],
+      "outputs": [{ "name": "", "type": "string", "internalType": "string" }],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "inputs": [
+        { "name": "newOwner", "type": "address", "internalType": "address" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "unclaimIdentity",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "unclaimIdentityBatched",
+      "inputs": [
+        { "name": "identities", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "updateRecords",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" },
+        { "name": "keys", "type": "string[]", "internalType": "string[]" },
+        { "name": "values", "type": "string[]", "internalType": "string[]" }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "upgradeTo",
+      "inputs": [
+        {
+          "name": "newImplementation",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "upgradeToAndCall",
+      "inputs": [
+        {
+          "name": "newImplementation",
+          "type": "address",
+          "internalType": "address"
+        },
+        { "name": "data", "type": "bytes", "internalType": "bytes" }
+      ],
+      "outputs": [],
+      "stateMutability": "payable"
+    },
+    {
+      "type": "function",
+      "name": "validName",
+      "inputs": [
+        { "name": "name", "type": "string", "internalType": "string" }
+      ],
+      "outputs": [{ "name": "", "type": "bool", "internalType": "bool" }],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "event",
+      "name": "AddressOrProxyNodesUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "routing",
+          "type": "bool",
+          "indexed": false,
+          "internalType": "bool"
+        },
+        {
+          "name": "addressOrProxyNodes",
+          "type": "string[]",
+          "indexed": false,
+          "internalType": "string[]"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "AdminChanged",
+      "inputs": [
+        {
+          "name": "previousAdmin",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        },
+        {
+          "name": "newAdmin",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "BaseRewardsRateUpdate",
+      "inputs": [
+        {
+          "name": "newRate",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "BeaconUpgraded",
+      "inputs": [
+        {
+          "name": "beacon",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DelegatedTokensUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "newDelegatedTokens",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DelegationRewardsAccrual",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "rewards",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DelegationRewardsClaim",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "rewards",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "DelegationsUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "delegations",
+          "type": "tuple[]",
+          "indexed": false,
+          "internalType": "struct ShinkaiRegistryInterface.Delegation[]",
+          "components": [
+            { "name": "delegatee", "type": "string", "internalType": "string" },
+            { "name": "amount", "type": "uint256", "internalType": "uint256" }
+          ]
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "IdentityClaim",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "nftTokenId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "identityRaw",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        },
+        {
+          "name": "owner",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "IdentityUnclaim",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "nftTokenId",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Initialized",
+      "inputs": [
+        {
+          "name": "version",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "KeysUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "encryptionKey",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        },
+        {
+          "name": "signatureKey",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "name": "previousOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "RecordsRemoval",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "keys",
+          "type": "string[]",
+          "indexed": false,
+          "internalType": "string[]"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "RecordsUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "keys",
+          "type": "string[]",
+          "indexed": false,
+          "internalType": "string[]"
+        },
+        {
+          "name": "values",
+          "type": "string[]",
+          "indexed": false,
+          "internalType": "string[]"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StakeUpdate",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "newStake",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "StakingRewardsClaim",
+      "inputs": [
+        {
+          "name": "identity",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "rewards",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "Upgraded",
+      "inputs": [
+        {
+          "name": "implementation",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "DelegatedTokensExceedingStakedTokens",
+      "inputs": [
+        {
+          "name": "delegatedTokens",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        { "name": "stakedTokens", "type": "uint256", "internalType": "uint256" }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "IdentityNotAvailable",
+      "inputs": [
+        { "name": "identity", "type": "string", "internalType": "string" }
+      ]
+    },
+    { "type": "error", "name": "InputArityMismatch", "inputs": [] },
+    {
+      "type": "error",
+      "name": "InsufficientStakeAmountForDelegation",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InsufficientStakeAmountForIdentity",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "InvalidBaseRewardsRate",
+      "inputs": [
+        { "name": "rate", "type": "uint256", "internalType": "uint256" }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidDelegationAmount",
+      "inputs": [
+        { "name": "amount", "type": "uint256", "internalType": "uint256" }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "InvalidName",
+      "inputs": [{ "name": "name", "type": "string", "internalType": "string" }]
+    },
+    {
+      "type": "error",
+      "name": "InvalidNamespace",
+      "inputs": [
+        { "name": "namespace", "type": "uint256", "internalType": "uint256" }
+      ]
+    },
+    { "type": "error", "name": "Unauthorized", "inputs": [] }
+  ]

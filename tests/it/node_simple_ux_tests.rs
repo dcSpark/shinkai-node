@@ -7,6 +7,7 @@ use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMe
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
 };
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use shinkai_message_primitives::shinkai_utils::shinkai_message_builder::ShinkaiMessageBuilder;
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, unsafe_deterministic_signature_keypair,
@@ -30,6 +31,7 @@ use super::utils;
 
 #[test]
 fn simple_node_registration_test() {
+    init_tracing(); 
     run_test_one_node_network(|env| {
         Box::pin(async move {
             let node1_commands_sender = env.node1_commands_sender.clone();

@@ -5,6 +5,7 @@ mod tests {
     use super::*;
     use reqwest::Client;
     use shinkai_message_primitives::schemas::agents::serialized_agent::{AgentLLMInterface, GenericAPI, OpenAI};
+    use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
     use shinkai_node::agent::execution::job_prompts::Prompt;
     use shinkai_node::agent::providers::LLMProvider;
     use shinkai_node::agent::{
@@ -44,6 +45,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_a() {
+        init_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<Vec<String>> =
@@ -62,6 +64,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_prompts_case_b() {
+        init_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![get_zeko_description() /* add more elements here */];
@@ -85,6 +88,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_call_llm_with_simple_prompt() {
+        init_tracing(); 
         match setup_vars() {
             Ok((provider, client, url, api_key)) => {
                 let elements_list: Vec<String> = vec![
