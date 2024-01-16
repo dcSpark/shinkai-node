@@ -11,7 +11,6 @@ impl Node {
         // Call the get_all_cron_tasks_from_all_profiles function
         match self.db.lock().await.get_all_cron_tasks_from_all_profiles(self.node_profile_name.clone()) {
             Ok(tasks) => {
-                eprintln!("Got {} cron tasks", tasks.len());
                 // If everything went well, send the tasks back as a JSON string
                 let tasks_json = serde_json::to_string(&tasks).unwrap();
                 let _ = res.send(Ok(tasks_json)).await;

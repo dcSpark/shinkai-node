@@ -1,6 +1,5 @@
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, StandardIdentity, StandardIdentityType};
-use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::VerifyingKey;
 use rand::RngCore;
 use shinkai_message_primitives::schemas::shinkai_name::{ShinkaiName, ShinkaiSubidentityType};
@@ -11,8 +10,6 @@ use shinkai_message_primitives::shinkai_utils::encryption::{
 use shinkai_message_primitives::shinkai_utils::signatures::{
     signature_public_key_to_string, string_to_signature_public_key,
 };
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use x25519_dalek::{PublicKey as EncryptionPublicKey, StaticSecret as EncryptionStaticKey};
 
 #[derive(PartialEq, Debug)]
@@ -222,8 +219,6 @@ impl ShinkaiDB {
                 }
             }
             RegistrationCodeType::Device(profile_name) => {
-                println!("profile name: {}", profile_name);
-
                 let current_identity_name =
                     match ShinkaiName::from_node_and_profile(node_name.to_string(), profile_name.to_lowercase()) {
                         Ok(name) => name,
@@ -235,7 +230,6 @@ impl ShinkaiDB {
                         }
                     };
 
-                println!("current identity name: {}", current_identity_name);
                 let profile = match self.get_profile(current_identity_name.clone())? {
                     None if profile_name == "main" => {
                         // Create main profile
@@ -342,7 +336,7 @@ impl ShinkaiDB {
                 };
 
                 let device = DeviceIdentity {
-                    full_identity_name,
+                    full_identity_name: full_identity_name.clone(),
                     node_encryption_public_key: profile.node_encryption_public_key,
                     node_signature_public_key: profile.node_signature_public_key,
                     profile_encryption_public_key,
@@ -352,7 +346,6 @@ impl ShinkaiDB {
                     permission_type: code_info.permission,
                 };
 
-                println!("device: {}", device);
                 self.add_device_to_profile(device)?;
             }
         }

@@ -9,7 +9,6 @@ use crate::vector_fs::vector_fs::VectorFS;
 use ed25519_dalek::SigningKey;
 use futures::Future;
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
-use shinkai_message_primitives::schemas::shinkai_name::ShinkaiNameError;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
 use shinkai_message_primitives::{
     schemas::shinkai_name::ShinkaiName,
