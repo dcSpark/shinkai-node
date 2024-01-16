@@ -67,6 +67,8 @@ pub struct FSRoot {
     /// Datetime which is updated whenever any writes take place. In other words, when
     /// a FSItem or FSFolder is updated/moved/renamed/deleted/etc., last written timestamp is updated.
     pub last_written_datetime: DateTime<Utc>,
+    /// Merkle root of the profile's FS
+    pub merkle_root: String,
 }
 
 impl FSRoot {
@@ -91,6 +93,7 @@ impl From<FSFolder> for FSRoot {
             child_items: folder.child_items,
             created_datetime: folder.created_datetime,
             last_written_datetime: folder.last_written_datetime,
+            merkle_root: folder.merkle_hash,
         }
     }
 }
@@ -112,6 +115,8 @@ pub struct FSFolder {
     /// Datetime the FSFolder was last written to, meaning any write took place under the folder. In other words, even when
     /// a VR is updated or moved/renamed, then last written is always updated.
     pub last_written_datetime: DateTime<Utc>,
+    /// Merkle hash comprised of all of the FSEntries within this folder
+    pub merkle_hash: String,
 }
 
 impl FSFolder {
@@ -124,6 +129,7 @@ impl FSFolder {
         last_written_datetime: DateTime<Utc>,
         last_read_datetime: DateTime<Utc>,
         last_modified_datetime: DateTime<Utc>,
+        merkle_hash: String,
     ) -> Self {
         Self {
             path,
@@ -133,11 +139,17 @@ impl FSFolder {
             last_read_datetime,
             last_modified_datetime,
             last_written_datetime,
+            merkle_hash,
         }
     }
 
     /// Initializes a new FSFolder struct with all datetimes set to the current moment.
-    pub fn _new_current_time(path: VRPath, child_folders: Vec<FSFolder>, child_items: Vec<FSItem>) -> Self {
+    pub fn _new_current_time(
+        path: VRPath,
+        child_folders: Vec<FSFolder>,
+        child_items: Vec<FSItem>,
+        merkle_hash: String,
+    ) -> Self {
         let now = ShinkaiTime::generate_time_now();
         Self::new(
             path,
@@ -147,6 +159,7 @@ impl FSFolder {
             now.clone(),
             now.clone(),
             now.clone(),
+            merkle_hash,
         )
     }
 
@@ -205,10 +218,11 @@ impl FSFolder {
             }
         }
 
-        // Fetch the datetimes, and return the created FSFolder
+        // Fetch the datetimes/merkle root, and return the created FSFolder
         let last_read_datetime = lr_index.get_last_read_datetime_or_now(&resource_fs_path);
         let created_datetime = resource.as_trait_object().created_datetime();
         let last_written_datetime = resource.as_trait_object().last_written_datetime();
+        let merkle_hash = resource.as_trait_object().get_merkle_root()?;
         Ok(Self::new(
             VRPath::new(),
             child_folders,
@@ -217,6 +231,7 @@ impl FSFolder {
             last_written_datetime,
             last_read_datetime,
             last_modified_datetime,
+            merkle_hash,
         ))
     }
 
@@ -267,6 +282,8 @@ pub struct FSItem {
     pub vr_size: usize,
     /// The size of the SourceFileMap in this FSItem. Will be 0 if no SourceFiles are saved.
     pub source_file_map_size: usize,
+    /// Merkle hash, which is in fact the merkle root of the Vector Resource stored in the FSItem
+    pub merkle_hash: String,
 }
 
 impl FSItem {
@@ -282,6 +299,7 @@ impl FSItem {
         distribution_origin: DistributionOrigin,
         vr_size: usize,
         source_file_map_size: usize,
+        merkle_hash: String,
     ) -> Self {
         Self {
             path,
@@ -294,6 +312,7 @@ impl FSItem {
             distribution_origin,
             vr_size,
             source_file_map_size,
+            merkle_hash,
         }
     }
     /// DB key where the Vector Resource matching this FSEntry is held.
@@ -331,6 +350,7 @@ impl FSItem {
                 let last_read_datetime = lr_index.get_last_read_datetime_or_now(&node_fs_path);
                 let (vr_size, sfm_size) = Self::process_sizes_from_node(&node)?;
                 let distribution_origin = Self::process_distribution_origin(&node)?;
+                let merkle_hash = node.get_merkle_hash()?;
 
                 Ok(FSItem::new(
                     node_fs_path,
@@ -343,6 +363,7 @@ impl FSItem {
                     distribution_origin,
                     vr_size,
                     sfm_size,
+                    merkle_hash,
                 ))
             }
 

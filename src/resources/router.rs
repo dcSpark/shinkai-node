@@ -115,7 +115,7 @@ impl VectorResourceRouter {
                         ret_node.node.last_written_datetime.clone(),
                         vec![],
                         NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone(),
-                        true,
+                        None,
                     );
                     if let Ok(resource_header) = resource_header {
                         resource_headers.push(resource_header);

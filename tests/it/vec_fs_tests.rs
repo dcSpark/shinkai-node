@@ -67,7 +67,7 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), path.clone(), default_test_profile())
         .unwrap();
     let folder_name = "first_folder";
-    vector_fs.create_new_folder(&writer, folder_name);
+    vector_fs.create_new_folder(&writer, folder_name).unwrap();
 
     // Validate new folder path points to an entry at all (not empty), then specifically a folder, and finally not to an item.
     let folder_path = path.push_cloned(folder_name.to_string());
