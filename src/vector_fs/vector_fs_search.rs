@@ -19,9 +19,38 @@ use std::collections::HashMap;
 /// Includes the path of the FSItem in the VectorFS and the retrieved node
 /// from the Vector Resource inside the FSItem's path.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-struct FSRetrievedNode {
+pub struct FSRetrievedNode {
     fs_item_path: VRPath,
-    resource_retrieved_node: RetrievedNode,
+    pub resource_retrieved_node: RetrievedNode,
+}
+
+impl FSRetrievedNode {
+    /// Creates a new FSRetrievedNode.
+    pub fn new(fs_item_path: VRPath, resource_retrieved_node: RetrievedNode) -> Self {
+        FSRetrievedNode {
+            fs_item_path,
+            resource_retrieved_node,
+        }
+    }
+    /// Returns the path of the FSItem the node was from
+    pub fn fs_item_path(&self) -> VRPath {
+        self.fs_item_path.clone()
+    }
+
+    /// Returns the name of the FSItem the node was from
+    pub fn fs_item_name(&self) -> String {
+        self.resource_retrieved_node.resource_header.resource_name.to_string()
+    }
+
+    /// Returns the reference_string of the FSItem (db key where the VR is stored)
+    pub fn reference_string(&self) -> String {
+        self.resource_retrieved_node.resource_header.reference_string()
+    }
+
+    /// Returns the similarity score of the retrieved node
+    pub fn score(&self) -> f32 {
+        self.resource_retrieved_node.score
+    }
 }
 
 impl VectorFS {
@@ -36,6 +65,43 @@ impl VectorFS {
         Ok(generator
             .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64) // TODO: remove the hard-coding of embedding string size
             .await?)
+    }
+
+    /// Performs a  "deep" vector search into the VectorFS starting at the reader's path,
+    /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
+    /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
+    pub fn vector_search_fs_retrieved_node(
+        &mut self,
+        reader: &VFSReader,
+        query: Embedding,
+        num_of_resources_to_search_into: u64,
+        num_of_results: u64,
+    ) -> Result<Vec<FSRetrievedNode>, VectorFSError> {
+        let mut ret_nodes = Vec::new();
+        let mut fs_path_hashmap = HashMap::new();
+        let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
+
+        for item in items {
+            // Create a new reader at the path of the fs_item, and then fetch the VR from there
+            let new_reader = reader._new_reader_copied_data(item.path.clone(), self)?;
+            let resource = self.retrieve_vector_resource(&new_reader)?;
+
+            // Store the VectorFS path of the item in the hashmap for use later
+            fs_path_hashmap.insert(resource.as_trait_object().reference_string(), item.path);
+
+            // Perform the internal vector search into the resource itself
+            let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+            ret_nodes.extend(results);
+        }
+
+        let mut results = vec![];
+        for node in RetrievedNode::sort_by_score(&ret_nodes, num_of_results) {
+            let fs_path = fs_path_hashmap.get(&node.resource_header.reference_string()).ok_or(
+                VectorFSError::FailedGettingFSPathOfRetrievedNode(node.resource_header.reference_string()),
+            )?;
+            results.push(FSRetrievedNode::new(fs_path.clone(), node))
+        }
+        Ok(results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
@@ -94,8 +160,8 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let res_pair = self.retrieve_vector_resource_in_folder(reader, item.name())?;
-            results.push(res_pair);
+            let res = self.retrieve_vector_resource_in_folder(reader, item.name())?;
+            results.push(res);
         }
         Ok(results)
     }
@@ -112,8 +178,8 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let res_pair = self.retrieve_source_file_map_in_folder(reader, item.name())?;
-            results.push(res_pair);
+            let res = self.retrieve_source_file_map_in_folder(reader, item.name())?;
+            results.push(res);
         }
         Ok(results)
     }

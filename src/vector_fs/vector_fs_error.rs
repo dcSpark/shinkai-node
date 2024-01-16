@@ -50,6 +50,7 @@ pub enum VectorFSError {
     NoEntryAtPath(VRPath),
     EntryAlreadyExistsAtPath(VRPath),
     DateTimeParseError(String),
+    FailedGettingFSPathOfRetrievedNode(String),
 }
 
 impl fmt::Display for VectorFSError {
@@ -144,6 +145,7 @@ impl fmt::Display for VectorFSError {
             VectorFSError::InvalidWritePermission(n, p) => {
                 write!(f, "{} does not have write permissions for path: {}", n, p)
             }
+            VectorFSError::FailedGettingFSPathOfRetrievedNode(s) => write!(f, "While performing 2-tier 'deep' vector search, unable to get VectorFS path of the VR the retrieved node was from: {}", s),
         }
     }
 }
