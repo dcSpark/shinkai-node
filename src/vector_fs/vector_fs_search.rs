@@ -16,11 +16,12 @@ use shinkai_vector_resources::{
 use std::collections::HashMap;
 
 /// A retrieved node from within a Vector Resource inside of the VectorFS.
-/// Includes FSItem
+/// Includes the path of the FSItem in the VectorFS and the retrieved node
+/// from the Vector Resource inside the FSItem's path.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct FSRetrievedNode {
-    origin_fs_item: FSItem,
-    retrieved_node: RetrievedNode,
+    fs_item_path: VRPath,
+    resource_retrieved_node: RetrievedNode,
 }
 
 impl VectorFS {

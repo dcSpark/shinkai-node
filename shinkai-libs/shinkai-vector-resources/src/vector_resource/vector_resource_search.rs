@@ -268,6 +268,9 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         starting_path: Option<VRPath>,
     ) -> Vec<RetrievedNode> {
+        // Setup the root VRHeader that will be attached to all RetrievedNodes
+        let root_vr_header = self.generate_resource_header();
+
         if let Some(path) = starting_path {
             match self.retrieve_node_at_path(path.clone()) {
                 Ok(ret_node) => {
@@ -279,6 +282,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             traversal_options,
                             vec![],
                             path,
+                            root_vr_header.clone(),
                         );
                     }
                 }
@@ -293,6 +297,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             vec![],
             VRPath::new(),
+            root_vr_header,
         );
 
         // After getting all results from the vector search, perform final filtering
@@ -340,7 +345,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             }
         }
 
-        // Check if we are using traveral method unscored all nodes
+        // Check if we are using traversal method unscored all nodes
         if traversal_method != TraversalMethod::UnscoredAllNodes {
             results.truncate(num_of_results as usize);
         }
@@ -357,6 +362,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
+        root_vr_header: VRHeader,
     ) -> Vec<RetrievedNode> {
         // First we fetch the embeddings we want to score
         let mut embeddings_to_score = vec![];
@@ -410,6 +416,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
             traversal_options,
             hierarchical_scores,
             traversal_path,
+            root_vr_header,
         )
     }
 
@@ -423,6 +430,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
+        root_vr_header: VRHeader,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         let mut vector_resource_count = 0;
@@ -455,7 +463,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                             let ret_node = RetrievedNode {
                                 node: node.clone(),
                                 score,
-                                resource_header: self.generate_resource_header(),
+                                resource_header: root_vr_header.clone(),
                                 retrieval_path: traversal_path.clone(),
                             };
                             current_level_results.push(ret_node);
@@ -494,6 +502,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     traversal_options,
                     hierarchical_scores.clone(),
                     traversal_path.clone(),
+                    root_vr_header.clone(),
                 );
                 current_level_results.extend(results);
             }
@@ -519,6 +528,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
         traversal_options: &Vec<TraversalOption>,
         hierarchical_scores: Vec<f32>,
         traversal_path: VRPath,
+        root_vr_header: VRHeader,
     ) -> Vec<RetrievedNode> {
         let mut current_level_results: Vec<RetrievedNode> = vec![];
         // Concat the current score into a new hierarchical scores Vec before moving forward
@@ -536,6 +546,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     traversal_options,
                     new_hierarchical_scores,
                     new_traversal_path.clone(),
+                    root_vr_header.clone(),
                 );
 
                 // If traversing with UnscoredAllNodes, include the Vector Resource
@@ -545,7 +556,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                     current_level_results.push(RetrievedNode {
                         node: node.clone(),
                         score,
-                        resource_header: self.generate_resource_header(),
+                        resource_header: root_vr_header.clone(),
                         retrieval_path: new_traversal_path,
                     });
                 }
@@ -563,7 +574,7 @@ pub trait VectorResourceSearch: VectorResourceCore {
                 current_level_results.push(RetrievedNode {
                     node: node.clone(),
                     score,
-                    resource_header: self.generate_resource_header(),
+                    resource_header: root_vr_header.clone(),
                     retrieval_path: new_traversal_path,
                 });
             }

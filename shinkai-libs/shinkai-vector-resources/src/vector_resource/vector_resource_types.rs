@@ -16,7 +16,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 /// A node that was retrieved from inside of a Vector Resource. Includes extra data like the retrieval path
-/// and the similarity score from the vector search.
+/// and the similarity score from the vector search. The resource_header is the VRHeader from the root
+/// Vector Resource the RetrievedNode is from.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RetrievedNode {
     pub node: Node,
