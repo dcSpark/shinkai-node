@@ -15,7 +15,7 @@ use shinkai_message_primitives::{
     shinkai_utils::{shinkai_message_builder::ShinkaiMessageBuilder, signatures::clone_signature_secret_key},
 };
 use shinkai_vector_resources::embedding_generator::RemoteEmbeddingGenerator;
-use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, VRSource};
+use shinkai_vector_resources::source::{DocumentFileType, SourceFile, SourceFileType, TextChunkingStrategy, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
 use std::result::Result::Ok;
 use std::time::Instant;
@@ -114,7 +114,9 @@ impl JobManager {
 
                 // Save response data to DB
                 let mut shinkai_db = db.lock().await;
-                shinkai_db.add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None).await?;
+                shinkai_db
+                    .add_message_to_job_inbox(&job_id.clone(), &shinkai_message, None)
+                    .await?;
             }
         }
 
@@ -193,7 +195,9 @@ impl JobManager {
             inference_response_content.to_string(),
             None,
         )?;
-        shinkai_db.add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None).await?;
+        shinkai_db
+            .add_message_to_job_inbox(&job_message.job_id.clone(), &shinkai_message, None)
+            .await?;
         shinkai_db.set_job_execution_context(job_message.job_id.clone(), new_execution_context, None)?;
 
         Ok(())
@@ -505,24 +509,26 @@ impl JobManager {
             .await?;
 
             // Now create Local/DBScopeEntry depending on setting
+            let text_chunking_strategy = TextChunkingStrategy::V1;
             if save_to_db_directly {
-                let resource_header = resource.as_trait_object().generate_resource_header(None);
+                let resource_header = resource.as_trait_object().generate_resource_header();
                 let shinkai_db = db.lock().await;
                 shinkai_db.init_profile_resource_router(&profile)?;
                 shinkai_db.save_resource(resource, &profile).unwrap();
 
                 let db_scope_entry = DBScopeEntry {
                     resource_header: resource_header,
-                    source: VRSource::from_file(&filename, &content)?,
+                    source: VRSource::from_file(&filename, None, text_chunking_strategy)?,
                 };
                 files_map.insert(filename, ScopeEntry::Database(db_scope_entry));
             } else {
                 let local_scope_entry = LocalScopeEntry {
                     resource: resource,
-                    source: SourceFile::new(
+                    source: SourceFile::new_standard_source_file(
                         filename.clone(),
-                        SourceFileType::Document(DocumentFileType::Pdf),
+                        SourceFileType::detect_file_type(&filename)?,
                         content,
+                        None,
                     ),
                 };
                 files_map.insert(filename, ScopeEntry::Local(local_scope_entry));

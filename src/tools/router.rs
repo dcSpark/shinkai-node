@@ -6,9 +6,10 @@ use crate::tools::rust_tools::{RustTool, RUST_TOOLKIT};
 use serde_json;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VectorResource};
+use shinkai_vector_resources::vector_resource::{
+    MapVectorResource, NodeContent, RetrievedNode, VectorResource, VectorResourceCore, VectorResourceSearch,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -292,7 +293,7 @@ impl ToolRouter {
         let source = VRSource::None;
 
         // Initialize the MapVectorResource and add all of the rust tools by default
-        let mut routing_resource = MapVectorResource::new_empty(name, desc, source);
+        let mut routing_resource = MapVectorResource::new_empty(name, desc, source, true);
         let mut metadata = HashMap::new();
         metadata.insert(Self::tool_type_metadata_key(), Self::tool_type_rust_value());
 
@@ -406,7 +407,7 @@ impl ToolRouter {
         let key = ShinkaiTool::gen_router_key(tool_name.to_string(), toolkit_name.to_string());
         self.routing_resource.print_all_nodes_exhaustive(None, false, false);
         println!("Tool key: {}", key);
-        self.routing_resource.remove_node(key)?;
+        self.routing_resource.remove_node(key, None)?;
         Ok(())
     }
 

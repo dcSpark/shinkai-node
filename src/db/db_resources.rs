@@ -1,17 +1,15 @@
+use super::db::ProfileBoundWriteBatch;
+use super::db_errors::*;
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::base_vector_resources::{BaseVectorResource, VRBaseType};
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::vector_resource::{
-    RetrievedNode, ScoringMode, TraversalMethod, TraversalOption, VRHeader, VectorResource,
+    BaseVectorResource, DocumentVectorResource, RetrievedNode, ScoringMode, TraversalMethod, TraversalOption,
+    VRBaseType, VRHeader, VectorResource,
 };
-
-use super::db::ProfileBoundWriteBatch;
-use super::db_errors::*;
 
 impl ShinkaiDB {
     /// Saves the supplied `VectorResourceRouter` into the ShinkaiDB as the profile resource router.
@@ -109,7 +107,7 @@ impl ShinkaiDB {
 
             // Add the resource_header to the router, then putting the router
             // into the batch
-            let resource_header = resource.as_trait_object().generate_resource_header(None);
+            let resource_header = resource.as_trait_object().generate_resource_header();
             router.add_resource_header(&resource_header)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router)?;
             pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);

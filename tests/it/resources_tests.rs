@@ -2,14 +2,15 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::init_tracing;
 use shinkai_node::agent::file_parsing::ParsingHelper;
 use shinkai_node::db::ShinkaiDB;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::data_tags::DataTag;
-use shinkai_vector_resources::document_resource::DocumentVectorResource;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::resource_errors::VRError;
-use shinkai_vector_resources::source::{SourceReference, VRSource};
+use shinkai_vector_resources::source::{SourceFile, SourceFileMap, SourceFileType, SourceReference, VRSource};
 use shinkai_vector_resources::unstructured::unstructured_api::UnstructuredAPI;
-use shinkai_vector_resources::vector_resource::VectorResource;
+use shinkai_vector_resources::vector_resource::BaseVectorResource;
+use shinkai_vector_resources::vector_resource::DocumentVectorResource;
+use shinkai_vector_resources::vector_resource::*;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tokio::runtime::Runtime;
@@ -20,36 +21,46 @@ fn setup() {
 }
 
 fn default_test_profile() -> ShinkaiName {
-    ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap()
+    ShinkaiName::new("@@localhost.shinkai/profileName".to_string()).unwrap()
 }
 
-fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
+pub async fn get_shinkai_intro_doc_async(
+    generator: &RemoteEmbeddingGenerator,
+    data_tags: &Vec<DataTag>,
+) -> Result<(DocumentVectorResource, SourceFileMap), VRError> {
     // Read the pdf from file into a buffer
-    let buffer = std::fs::read("files/shinkai_intro.pdf")
-        .map_err(|_| VRError::FailedPDFParsing)
-        .unwrap();
+    let source_file_name = "shinkai_intro.pdf";
+    let buffer = std::fs::read(format!("files/{}", source_file_name.clone())).map_err(|_| VRError::FailedPDFParsing)?;
 
+    let desc = "An initial introduction to the Shinkai Network.";
+    let resource = ParsingHelper::parse_file_into_resource(
+        buffer.clone(),
+        generator,
+        "shinkai_intro.pdf".to_string(),
+        Some(desc.to_string()),
+        data_tags,
+        500,
+        UnstructuredAPI::new_default(),
+    )
+    .await
+    .unwrap();
+
+    let file_type = SourceFileType::detect_file_type(&source_file_name).unwrap();
+    let source_file = SourceFile::new_standard_source_file(source_file_name.to_string(), file_type, buffer, None);
+    let mut map = HashMap::new();
+    map.insert(VRPath::root(), source_file);
+
+    Ok((resource.as_document_resource_cloned().unwrap(), SourceFileMap::new(map)))
+}
+
+pub fn get_shinkai_intro_doc(generator: &RemoteEmbeddingGenerator, data_tags: &Vec<DataTag>) -> DocumentVectorResource {
     // Create a new Tokio runtime
     let rt = Runtime::new().unwrap();
 
-    // Use block_on to run the async-based batched embedding generation logic
-    let resource = rt
-        .block_on(async {
-            let desc = "An initial introduction to the Shinkai Network.";
-            return ParsingHelper::parse_file_into_resource(
-                buffer,
-                generator,
-                "shinkai_intro.pdf".to_string(),
-                Some(desc.to_string()),
-                data_tags,
-                500,
-                UnstructuredAPI::new_default(),
-            )
-            .await;
-        })
-        .unwrap();
+    // Use block_on to run the async-based get_shinkai_intro_doc_async function
+    let (resource, _) = rt.block_on(get_shinkai_intro_doc_async(generator, data_tags)).unwrap();
 
-    resource.as_document_resource_cloned().unwrap()
+    resource
 }
 
 #[test]
@@ -70,7 +81,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
         "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
-        res[0].node.get_text_content().unwrap()
+        res[0].node.get_text_content().unwrap().to_string()
     );
 
     let query_string = "What about up-front costs?";
@@ -78,7 +89,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "No longer will we need heavy up-front costs to build apps that allow users to use their money/data to interact with others in an extremely limited experience (while also taking away control from the user), but instead we will build the underlying architecture which unlocks the ability for the user’s various AI agents to go about performing everything they need done and connecting all of their devices/data together.",
-            res[0].node.get_text_content().unwrap()
+            res[0].node.get_text_content().unwrap().to_string()
         );
 
     let query_string = "Does this relate to crypto?";
@@ -86,7 +97,7 @@ fn test_pdf_parsed_document_resource_vector_search() {
     let res = doc.vector_search(query_embedding, 1);
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            res[0].node.get_text_content().unwrap()
+            res[0].node.get_text_content().unwrap().to_string()
         );
 }
 
@@ -129,7 +140,8 @@ fn test_multi_resource_db_vector_search() {
     let mut doc = DocumentVectorResource::new_empty(
         "3 Animal Facts",
         Some("A bunch of facts about animals and wildlife"),
-        VRSource::new_uri_ref("animalwildlife.com"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
     );
 
     doc.set_embedding_model_used(generator.model_type()); // Not required, but good practice
@@ -180,7 +192,7 @@ fn test_multi_resource_db_vector_search() {
     let query = generator.generate_embedding_default_blocking("Camels").unwrap();
     let ret_nodes = shinkai_db.vector_search(query, 10, 10, &profile).unwrap();
     let ret_node = ret_nodes.get(0).unwrap();
-    assert_eq!(fact2.clone(), &ret_node.node.get_text_content().unwrap());
+    assert_eq!(fact2.clone(), &ret_node.node.get_text_content().unwrap().to_string());
 
     // Camel Node vector search
     let query = generator
@@ -190,7 +202,7 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     assert_eq!(
             "With lessons derived from the P2P nature of blockchains, we in fact have all of the core primitives at hand to build a new AI-coordinated computing paradigm that takes decentralization and user-privacy seriously while offering native integration into the modern crypto stack. This paradigm is unlocked via developing a novel P2P messaging network, Shinkai, which connects all of their devices together and uses LLM agents as the engine that processes all human input. This node will rival the",
-            &ret_node.node.get_text_content().unwrap()
+            &ret_node.node.get_text_content().unwrap().to_string()
         );
 
     // // Camel Node proximity vector search
@@ -199,9 +211,9 @@ fn test_multi_resource_db_vector_search() {
     // let ret_node = ret_nodes.get(0).unwrap();
     // let ret_node2 = ret_nodes.get(1).unwrap();
     // let ret_node3 = ret_nodes.get(2).unwrap();
-    // assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
-    // assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
-    // assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap());
+    // assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap().to_string());
+    // assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap().to_string());
+    // assert_eq!(fact3.clone(), &ret_node3.node.get_text_content().unwrap().to_string());
 
     // Animal tolerance range vector search
     let query = generator
@@ -214,8 +226,8 @@ fn test_multi_resource_db_vector_search() {
     let ret_node = ret_nodes.get(0).unwrap();
     let ret_node2 = ret_nodes.get(1).unwrap();
 
-    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap());
-    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap());
+    assert_eq!(fact1.clone(), &ret_node.node.get_text_content().unwrap().to_string());
+    assert_eq!(fact2.clone(), &ret_node2.node.get_text_content().unwrap().to_string());
 }
 
 #[test]

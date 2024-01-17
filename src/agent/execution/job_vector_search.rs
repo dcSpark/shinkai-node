@@ -3,9 +3,8 @@ use crate::db::db_errors::ShinkaiDBError;
 use crate::db::ShinkaiDB;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
-use shinkai_vector_resources::base_vector_resources::BaseVectorResource;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::vector_resource_types::{Node, RetrievedNode, VRHeader};
+use shinkai_vector_resources::vector_resource::{BaseVectorResource, Node, RetrievedNode, VRHeader};
 use std::result::Result::Ok;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -117,10 +116,7 @@ impl JobManager {
 
             // Iterate through resources until we find one with a matching resource reference string
             for resource in resources {
-                if resource
-                    .as_trait_object()
-                    .generate_resource_header(None)
-                    .reference_string()
+                if resource.as_trait_object().generate_resource_header().reference_string()
                     == resource_header.reference_string()
                 {
                     if let Some(description) = resource.as_trait_object().description() {

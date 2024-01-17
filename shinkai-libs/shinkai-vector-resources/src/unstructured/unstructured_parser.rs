@@ -1,13 +1,11 @@
 use super::unstructured_types::{GroupedText, UnstructuredElement};
-use crate::base_vector_resources::BaseVectorResource;
 use crate::data_tags::DataTag;
-use crate::document_resource::DocumentVectorResource;
 use crate::embedding_generator::EmbeddingGenerator;
 use crate::embeddings::Embedding;
 use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
 use crate::resource_errors::VRError;
 use crate::source::VRSource;
-use crate::vector_resource::VectorResource;
+use crate::vector_resource::{BaseVectorResource, DocumentVectorResource, VectorResource, VectorResourceCore};
 #[cfg(feature = "native-http")]
 use async_recursion::async_recursion;
 use blake3::Hasher;
@@ -70,7 +68,6 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: String,
         max_chunk_size: u64,
     ) -> Result<BaseVectorResource, VRError> {
         Self::process_elements_into_resource_blocking_with_custom_collection(
@@ -80,7 +77,6 @@ impl UnstructuredParser {
             desc,
             source,
             parsing_tags,
-            resource_id,
             max_chunk_size,
             Self::collect_texts_and_indices,
         )
@@ -123,7 +119,6 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: String,
         max_chunk_size: u64,
         collect_texts_and_indices: fn(&[GroupedText], &mut Vec<String>, &mut Vec<(Vec<usize>, usize)>, u64, Vec<usize>),
     ) -> Result<BaseVectorResource, VRError> {
@@ -140,16 +135,7 @@ impl UnstructuredParser {
             collect_texts_and_indices,
         )?;
 
-        Self::process_new_doc_resource_blocking(
-            new_text_groups,
-            &*generator,
-            &name,
-            desc,
-            source,
-            parsing_tags,
-            &resource_id,
-            None,
-        )
+        Self::process_new_doc_resource_blocking(new_text_groups, &*generator, &name, desc, source, parsing_tags, None)
     }
 
     #[async_recursion]
@@ -165,7 +151,7 @@ impl UnstructuredParser {
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
@@ -222,11 +208,10 @@ impl UnstructuredParser {
         desc: Option<String>,
         source: VRSource,
         parsing_tags: &Vec<DataTag>,
-        resource_id: &str,
         resource_embedding: Option<Embedding>,
     ) -> Result<BaseVectorResource, VRError> {
         let resource_desc = Self::setup_resource_description(desc, &text_groups);
-        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone());
+        let mut doc = DocumentVectorResource::new_empty(name, resource_desc.as_deref(), source.clone(), true);
         doc.set_embedding_model_used(generator.model_type());
 
         // Sets a Resource Embedding if none provided. Primarily only used at the root level as the rest should already have them.
@@ -249,7 +234,6 @@ impl UnstructuredParser {
                     None,
                     source.clone(),
                     parsing_tags,
-                    &new_resource_id,
                     grouped_text.embedding.clone(),
                 )?;
                 doc.append_vector_resource_node_auto(new_doc, metadata);
