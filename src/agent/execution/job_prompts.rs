@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json::to_string;
 use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption};
-use shinkai_vector_resources::vector_resource_types::RetrievedNode;
+use shinkai_vector_resources::vector_resource::RetrievedNode;
 use std::{collections::HashMap, convert::TryInto};
 use tiktoken_rs::{get_chat_completion_max_tokens, num_tokens_from_messages, ChatCompletionRequestMessage};
 

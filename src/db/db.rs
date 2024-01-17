@@ -1,5 +1,5 @@
-use crate::network::ws_manager::{WSUpdateHandler, WebSocketManager};
-
+use crate::vector_fs::vector_fs_error::VectorFSError;
+use crate::network::ws_manager::{WebSocketManager, WSUpdateHandler};
 use super::db_errors::ShinkaiDBError;
 use chrono::{DateTime, Utc};
 use rocksdb::{
@@ -7,7 +7,7 @@ use rocksdb::{
     Options, SingleThreaded, WriteBatch, DB,
 };
 use shinkai_message_primitives::{
-    schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
+    schemas::{shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::shinkai_message::ShinkaiMessage,
 };
 use std::fmt;
@@ -84,6 +84,7 @@ pub struct ProfileBoundWriteBatch {
 }
 
 impl ProfileBoundWriteBatch {
+    /// Create a new ProfileBoundWriteBatch with ShinkaiDBError wrapping
     pub fn new(profile: &ShinkaiName) -> Result<Self, ShinkaiDBError> {
         // Also validates that the name includes a profile
         let profile_name = ShinkaiDB::get_profile_name(profile)?;
@@ -93,6 +94,22 @@ impl ProfileBoundWriteBatch {
             write_batch,
             profile_name,
         })
+    }
+
+    /// Create a new ProfileBoundWriteBatch with VectorFSError wrapping
+    pub fn new_vfs_batch(profile: &ShinkaiName) -> Result<Self, VectorFSError> {
+        // Also validates that the name includes a profile
+        match ShinkaiDB::get_profile_name(profile) {
+            Ok(profile_name) => {
+                // Create write batch
+                let write_batch = rocksdb::WriteBatch::default();
+                Ok(Self {
+                    write_batch,
+                    profile_name,
+                })
+            }
+            Err(e) => Err(VectorFSError::FailedCreatingProfileBoundWriteBatch(profile.to_string())),
+        }
     }
 
     /// Saves the value inside of the key (profile-bound) at the provided column family.
@@ -342,7 +359,7 @@ impl ShinkaiDB {
 
     /// Prepends the profile name to the provided key to make it "profile bound"
     pub fn generate_profile_bound_key_from_str(key: &str, profile_name: &str) -> String {
-        let mut prof_name = profile_name.to_string();
+        let mut prof_name = profile_name.to_string() + ":";
         prof_name.push_str(key);
         prof_name
     }
@@ -398,7 +415,7 @@ impl ShinkaiDB {
 
         // Calculate the scheduled time or current time
         let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
 
@@ -439,7 +456,7 @@ impl ShinkaiDB {
 
         // Calculate the scheduled time or current time
         let time_key = match message.external_metadata.clone().scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => message.external_metadata.clone().scheduled_time.clone(),
         };
 

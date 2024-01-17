@@ -1,8 +1,9 @@
+use super::utils::test_boilerplate::run_test_one_node_network;
 use async_channel::{bounded, Receiver, Sender};
 use shinkai_message_primitives::schemas::agents::serialized_agent::{OpenAI, SerializedAgent};
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
+use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -16,7 +17,6 @@ use shinkai_message_primitives::shinkai_utils::utils::hash_string;
 use shinkai_node::network::node::NodeCommand;
 use shinkai_node::network::node_api::APIError;
 use shinkai_node::network::Node;
-use super::utils::test_boilerplate::run_test_one_node_network;
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
@@ -24,7 +24,8 @@ use std::{net::SocketAddr, time::Duration};
 use tokio::runtime::Runtime;
 
 use super::utils::node_test_api::{
-    api_agent_registration, api_create_job, api_message_job, api_registration_device_node_profile_main, api_initial_registration_with_no_code_for_device,
+    api_agent_registration, api_create_job, api_initial_registration_with_no_code_for_device, api_message_job,
+    api_registration_device_node_profile_main,
 };
 
 use super::utils;
@@ -60,8 +61,6 @@ fn simple_node_registration_test() {
                 )
                 .await;
             }
-
-
         })
     });
 }

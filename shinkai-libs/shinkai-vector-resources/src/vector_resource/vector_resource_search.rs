@@ -1,0 +1,635 @@
+use super::VectorResourceCore;
+#[cfg(feature = "native-http")]
+use crate::embedding_generator::EmbeddingGenerator;
+#[cfg(feature = "native-http")]
+use crate::embedding_generator::RemoteEmbeddingGenerator;
+use crate::embeddings::Embedding;
+use crate::embeddings::MAX_EMBEDDING_STRING_SIZE;
+use crate::model_type::EmbeddingModelType;
+use crate::resource_errors::VRError;
+pub use crate::source::VRSource;
+pub use crate::vector_resource::vector_resource_types::*;
+pub use crate::vector_resource::vector_search_traversal::*;
+use async_trait::async_trait;
+use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
+use rand::SeedableRng;
+use std::collections::HashMap;
+
+#[async_trait]
+pub trait VectorResourceSearch: VectorResourceCore {
+    #[cfg(feature = "native-http")]
+    /// Fetches percent_to_verify (between 0.0 - 1.0) of random nodes from within the VectorResource
+    /// and validates that said node's included embeddings in the VectorResource are correct.
+    async fn verify_internal_embeddings_coherence(
+        &self,
+        generator: &dyn EmbeddingGenerator,
+        percent_to_verify: f32,
+    ) -> Result<bool, VRError> {
+        let all_nodes = self.retrieve_nodes_exhaustive(None, false);
+        let percent_to_verify = percent_to_verify.max(0.0).min(1.0);
+        let num_to_verify = (all_nodes.len() as f32 * percent_to_verify).ceil() as usize;
+        // Ensure at least one node is verified always
+        let num_to_verify = num_to_verify.max(1);
+
+        // Filter out any non-text nodes, and randomly select from these nodes for the list of nodes to be verified
+        // TODO: Later on also allow VectorResource nodes, and re-generate the resource embedding + verify it.
+        let mut rng = StdRng::from_entropy();
+        let nodes_to_verify: Vec<_> = all_nodes
+            .into_iter()
+            .filter(|node| matches!(node.node.content, NodeContent::Text(_)))
+            .choose_multiple(&mut rng, num_to_verify);
+
+        for ret_node in nodes_to_verify {
+            let embedding = self.retrieve_embedding_at_path(ret_node.retrieval_path)?;
+            match ret_node.node.content {
+                NodeContent::Text(text) => {
+                    let regenerated_embedding = generator.generate_embedding_default(&text).await?;
+                    // We check if the score of the regenerated embedding is ever below 0.99 (some leeway in case some models are not 100% deterministic)
+                    let score = embedding.cosine_similarity(&regenerated_embedding) < 0.99;
+                    if score {
+                        return Ok(false);
+                    }
+                }
+                _ => return Err(VRError::InvalidNodeType("Node must hold Text content".to_string())),
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Returns every single node at any depth in the whole Vector Resource, including the Vector Resources nodes themselves,
+    /// and the Nodes they hold additionally. If a starting_path is provided then fetches all nodes from there,
+    /// else starts at root. If resources_only is true, only Vector Resources are returned.
+    fn retrieve_nodes_exhaustive(&self, starting_path: Option<VRPath>, resources_only: bool) -> Vec<RetrievedNode> {
+        let empty_embedding = Embedding::new("", vec![]);
+        let mut nodes = self.vector_search_customized(
+            empty_embedding,
+            0,
+            TraversalMethod::UnscoredAllNodes,
+            &vec![],
+            starting_path,
+        );
+
+        if resources_only {
+            nodes.retain(|node| matches!(node.node.content, NodeContent::Resource(_)));
+        }
+
+        nodes
+    }
+
+    /// Prints all nodes and their paths to easily/quickly examine a Vector Resource.
+    /// This is exhaustive and can begin from any starting_path.
+    /// `shorten_data` - Cuts the string content short to improve readability.
+    /// `resources_only` - Only prints Vector Resources
+    fn print_all_nodes_exhaustive(&self, starting_path: Option<VRPath>, shorten_data: bool, resources_only: bool) {
+        let nodes = self.retrieve_nodes_exhaustive(starting_path, resources_only);
+        for node in nodes {
+            let path = node.retrieval_path.format_to_string();
+            let data = match &node.node.content {
+                NodeContent::Text(s) => {
+                    if shorten_data && s.chars().count() > 25 {
+                        s.chars().take(25).collect::<String>() + "..."
+                    } else {
+                        s.to_string()
+                    }
+                }
+                NodeContent::Resource(resource) => {
+                    println!("");
+                    format!(
+                        "<{}> - {} Nodes Held Inside",
+                        resource.as_trait_object().name(),
+                        resource.as_trait_object().get_embeddings().len()
+                    )
+                }
+                NodeContent::ExternalContent(external_content) => {
+                    println!("");
+                    format!("External: {}", external_content)
+                }
+
+                NodeContent::VRHeader(header) => {
+                    println!("");
+                    format!("Header For Vector Resource: {}", header.reference_string())
+                }
+            };
+            // Adding merkle hash if it exists to output string
+            let mut merkle_hash = String::new();
+            if let Ok(hash) = node.node.get_merkle_hash() {
+                if hash.chars().count() > 15 {
+                    merkle_hash = hash.chars().take(15).collect::<String>() + "..."
+                } else {
+                    merkle_hash = hash.to_string()
+                }
+            }
+            if merkle_hash.len() == 0 {
+                println!("{}: {}", path, data);
+            } else {
+                println!("{}: {} | Merkle Hash: {}", path, data, merkle_hash);
+            }
+        }
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
+    /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    async fn dynamic_vector_search(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        self.dynamic_vector_search_customized(
+            input_query,
+            num_of_results,
+            &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+            None,
+            embedding_generator,
+        )
+        .await
+    }
+
+    #[cfg(feature = "native-http")]
+    /// Performs a dynamic vector search that returns the most similar nodes based on the input query String.
+    /// Dynamic Vector Searches support internal VectorResources with different Embedding models by automatically generating
+    /// the query Embedding from the input_query for each model. Dynamic Vector Searches are always Exhaustive.
+    /// NOTE: Not all traversal_options (ex. UntilDepth) will work with Dynamic Vector Searches.
+    async fn dynamic_vector_search_customized(
+        &self,
+        input_query: String,
+        num_of_results: u64,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+        embedding_generator: RemoteEmbeddingGenerator,
+    ) -> Result<Vec<RetrievedNode>, VRError> {
+        // We only traverse 1 level of depth at a time to be able to re-process the input_query as needed
+        let mut traversal_options = traversal_options.clone();
+        traversal_options.push(TraversalOption::UntilDepth(0));
+        // Create a hash_map to save the embedding queries generated based on model type
+        let mut input_query_embeddings: HashMap<EmbeddingModelType, Embedding> = HashMap::new();
+
+        // First manually embedding generate & search the self Vector Resource
+        let mut query_embedding = embedding_generator
+            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
+            .await?;
+        input_query_embeddings.insert(embedding_generator.model_type(), query_embedding.clone());
+        let mut latest_returned_results = self.vector_search_customized(
+            query_embedding,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &traversal_options,
+            starting_path.clone(),
+        );
+
+        // Keep looping until we go through all nodes in the Vector Resource while carrying foward the score weighting
+        // through the deeper levels of the Vector Resource
+        let mut node_results = vec![];
+        while let Some(ret_node) = latest_returned_results.pop() {
+            match ret_node.node.content {
+                NodeContent::Resource(ref resource) => {
+                    // Reuse a previously generated query embedding if matching is available
+                    if let Some(embedding) =
+                        input_query_embeddings.get(&resource.as_trait_object().embedding_model_used())
+                    {
+                        query_embedding = embedding.clone();
+                    }
+                    // If a new embedding model is found for this resource, then initialize a new generator & generate the embedding
+                    else {
+                        let new_generator = resource.as_trait_object().initialize_compatible_embeddings_generator(
+                            &embedding_generator.api_url,
+                            embedding_generator.api_key.clone(),
+                        );
+                        query_embedding = embedding_generator
+                            .generate_embedding_shorten_input_default(&input_query, MAX_EMBEDDING_STRING_SIZE as u64)
+                            .await?;
+                        input_query_embeddings.insert(new_generator.model_type(), query_embedding.clone());
+                    }
+
+                    // Call vector_search() on the resource to get all the next depth Nodes from it
+                    let new_results = resource.as_trait_object().vector_search_customized(
+                        query_embedding,
+                        num_of_results,
+                        TraversalMethod::Exhaustive,
+                        &traversal_options,
+                        starting_path.clone(),
+                    );
+                    // Take into account current resource score, then push the new results to latest_returned_results to be further processed
+                    if let Some(ScoringMode::HierarchicalAverageScoring) =
+                        traversal_options.get_set_scoring_mode_option()
+                    {
+                        // Average resource's score into the retrieved results scores, then push them to latest_returned_results
+                        for result in new_results {
+                            let mut updated_result = result.clone();
+                            updated_result.score =
+                                vec![updated_result.score, ret_node.score].iter().sum::<f32>() / 2 as f32;
+                            latest_returned_results.push(updated_result)
+                        }
+                    }
+                }
+                _ => {
+                    // For any non-Vector Resource nodes, simply push them into the results
+                    node_results.push(ret_node);
+                }
+            }
+        }
+
+        // Now that we have all of the node results, sort them efficiently and return the expected number of results
+        let final_results = RetrievedNode::sort_by_score(&node_results, num_of_results);
+
+        Ok(final_results)
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query with
+    /// default traversal method/options.
+    fn vector_search(&self, query: Embedding, num_of_results: u64) -> Vec<RetrievedNode> {
+        self.vector_search_customized(
+            query,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &vec![TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring)],
+            None,
+        )
+    }
+
+    /// Performs a vector search that returns the most similar nodes based on the query.
+    /// The input traversal_method/options allows the developer to choose how the search moves through the levels.
+    /// The optional starting_path allows the developer to choose to start searching from a Vector Resource
+    /// held internally at a specific path.
+    fn vector_search_customized(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        starting_path: Option<VRPath>,
+    ) -> Vec<RetrievedNode> {
+        // Setup the root VRHeader that will be attached to all RetrievedNodes
+        let root_vr_header = self.generate_resource_header();
+
+        // Only retrieve inner path if it exists and is not root
+        if let Some(path) = starting_path {
+            if path != VRPath::root() {
+                match self.retrieve_node_at_path(path.clone()) {
+                    Ok(ret_node) => {
+                        if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
+                            return resource.as_trait_object()._vector_search_customized_core(
+                                query,
+                                num_of_results,
+                                traversal_method,
+                                traversal_options,
+                                vec![],
+                                path,
+                                root_vr_header.clone(),
+                            );
+                        }
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+        // Perform the vector search and continue forward
+        let mut results = self._vector_search_customized_core(
+            query.clone(),
+            num_of_results,
+            traversal_method.clone(),
+            traversal_options,
+            vec![],
+            VRPath::new(),
+            root_vr_header,
+        );
+
+        // After getting all results from the vector search, perform final filtering
+        // Check if we need to cut results according to tolerance range
+        let tolerance_range_option = traversal_options.iter().find_map(|option| {
+            if let TraversalOption::ToleranceRangeResults(range) = option {
+                Some(*range)
+            } else {
+                None
+            }
+        });
+        if let Some(tolerance_range) = tolerance_range_option {
+            results = self._tolerance_range_results(tolerance_range, &results);
+        }
+
+        // Check if we need to cut results according to the minimum score
+        let min_score_option = traversal_options.iter().find_map(|option| {
+            if let TraversalOption::MinimumScore(score) = option {
+                Some(*score)
+            } else {
+                None
+            }
+        });
+        if let Some(min_score) = min_score_option {
+            results = results
+                .into_iter()
+                .filter(|ret_node| ret_node.score >= min_score)
+                .collect();
+        }
+
+        // Check if we need to adjust based on the ResultsMode
+        if let Some(result_mode) = traversal_options.get_set_results_mode_option() {
+            if let ResultsMode::ProximitySearch(proximity_window) = result_mode {
+                if let Some(first_result) = results.first() {
+                    if let Ok(new_results) =
+                        self.proximity_retrieve_node_at_path(first_result.retrieval_path.clone(), proximity_window)
+                    {
+                        results = new_results
+                    } else {
+                        // If proximity retrieval fails, most likely due to path not pointing to OrderedVectorResource,
+                        // then just return the single highest scored node as the failure case when using proximity search.
+                        results = vec![first_result.clone()]
+                    }
+                }
+            }
+        }
+
+        // Check if we are using traversal method unscored all nodes
+        if traversal_method != TraversalMethod::UnscoredAllNodes {
+            results.truncate(num_of_results as usize);
+        }
+
+        results
+    }
+
+    /// Internal method which is used to keep track of traversal info
+    fn _vector_search_customized_core(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        hierarchical_scores: Vec<f32>,
+        traversal_path: VRPath,
+        root_vr_header: VRHeader,
+    ) -> Vec<RetrievedNode> {
+        // First we fetch the embeddings we want to score
+        let mut embeddings_to_score = vec![];
+        // Check for syntactic search prefilter mode
+        let syntactic_search_option = traversal_options.iter().find_map(|option| match option {
+            TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tags)) => {
+                Some(data_tags.clone())
+            }
+            _ => None,
+        });
+        if let Some(data_tag_names) = syntactic_search_option {
+            // If SyntacticVectorSearch is in traversal_options, fetch nodes with matching data tags
+            let ids = self._syntactic_search_id_fetch(&data_tag_names);
+            for id in ids {
+                if let Ok(embedding) = self.get_embedding(id) {
+                    embeddings_to_score.push(embedding);
+                }
+            }
+        } else {
+            // If SyntacticVectorSearch is not in traversal_options, get all embeddings
+            embeddings_to_score = self.get_embeddings();
+        }
+
+        // Score embeddings based on traversal method
+        let mut score_num_of_results = num_of_results;
+        let mut scores = vec![];
+        match traversal_method {
+            // Score all if exhaustive
+            TraversalMethod::Exhaustive => {
+                score_num_of_results = embeddings_to_score.len() as u64;
+                scores = query.score_similarities(&embeddings_to_score, score_num_of_results);
+            }
+            // Fake score all as 0 if unscored exhaustive
+            TraversalMethod::UnscoredAllNodes => {
+                scores = embeddings_to_score
+                    .iter()
+                    .map(|embedding| (0.0, embedding.id.clone()))
+                    .collect();
+            }
+            // Else score as normal
+            _ => {
+                scores = query.score_similarities(&embeddings_to_score, score_num_of_results);
+            }
+        }
+
+        self._order_vector_search_results(
+            scores,
+            query,
+            num_of_results,
+            traversal_method,
+            traversal_options,
+            hierarchical_scores,
+            traversal_path,
+            root_vr_header,
+        )
+    }
+
+    /// Internal method that orders all scores, and importantly traverses into any nodes holding further BaseVectorResources.
+    fn _order_vector_search_results(
+        &self,
+        scores: Vec<(f32, String)>,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        hierarchical_scores: Vec<f32>,
+        traversal_path: VRPath,
+        root_vr_header: VRHeader,
+    ) -> Vec<RetrievedNode> {
+        let mut current_level_results: Vec<RetrievedNode> = vec![];
+        let mut vector_resource_count = 0;
+        let mut query = query.clone();
+
+        for (score, id) in scores {
+            let mut skip_traversing_deeper = false;
+            if let Ok(node) = self.get_node(id.clone()) {
+                // Perform validations based on Filter Mode
+                let filter_mode = traversal_options.get_set_filter_mode_option();
+                if let Some(FilterMode::ContainsAnyMetadataKeyValues(kv_pairs)) = filter_mode.clone() {
+                    if !FilterMode::node_metadata_any_check(&node, &kv_pairs) {
+                        continue;
+                    }
+                }
+                if let Some(FilterMode::ContainsAllMetadataKeyValues(kv_pairs)) = filter_mode {
+                    if !FilterMode::node_metadata_all_check(&node, &kv_pairs) {
+                        continue;
+                    }
+                }
+                // Perform validations related to node content type
+                if let NodeContent::Resource(node_resource) = node.content.clone() {
+                    // Keep track for later sorting efficiency
+                    vector_resource_count += 1;
+
+                    // If traversal option includes UntilDepth and we've reached the right level
+                    // Don't recurse any deeper, just return current Node with BaseVectorResource
+                    if let Some(d) = traversal_options.get_until_depth_option() {
+                        if d == traversal_path.depth_inclusive() {
+                            let ret_node = RetrievedNode {
+                                node: node.clone(),
+                                score,
+                                resource_header: root_vr_header.clone(),
+                                retrieval_path: traversal_path.clone(),
+                            };
+                            current_level_results.push(ret_node);
+                            skip_traversing_deeper = true;
+                        }
+                    }
+
+                    // If node Resource does not have same base type as LimitTraversalToType then
+                    // then skip going deeper into it
+                    if let Some(base_type) = traversal_options.get_limit_traversal_to_type_option() {
+                        if &node_resource.resource_base_type() != base_type {
+                            skip_traversing_deeper = true;
+                        }
+                    }
+
+                    // If node does not pass the validation check then skip going deeper into it
+                    if let Some((validation_func, hash_map)) =
+                        traversal_options.get_limit_traversal_by_validation_with_map_option()
+                    {
+                        let node_path = traversal_path.push_cloned(id.clone());
+                        if !validation_func(&node, &node_path, hash_map) {
+                            skip_traversing_deeper = true;
+                        }
+                    }
+                }
+                if skip_traversing_deeper {
+                    continue;
+                }
+
+                let results = self._recursive_data_extraction(
+                    node.clone(),
+                    score,
+                    query.clone(),
+                    num_of_results,
+                    traversal_method.clone(),
+                    traversal_options,
+                    hierarchical_scores.clone(),
+                    traversal_path.clone(),
+                    root_vr_header.clone(),
+                );
+                current_level_results.extend(results);
+            }
+        }
+
+        // If at least one vector resource exists in the Nodes then re-sort
+        // after fetching deeper level results to ensure ordering is correct
+        if vector_resource_count >= 1 && traversal_method != TraversalMethod::UnscoredAllNodes {
+            return RetrievedNode::sort_by_score(&current_level_results, num_of_results);
+        }
+        // Otherwise just return 1st level results
+        current_level_results
+    }
+
+    /// Internal method for recursing into deeper levels of Vector Resources
+    fn _recursive_data_extraction(
+        &self,
+        node: Node,
+        score: f32,
+        query: Embedding,
+        num_of_results: u64,
+        traversal_method: TraversalMethod,
+        traversal_options: &Vec<TraversalOption>,
+        hierarchical_scores: Vec<f32>,
+        traversal_path: VRPath,
+        root_vr_header: VRHeader,
+    ) -> Vec<RetrievedNode> {
+        let mut current_level_results: Vec<RetrievedNode> = vec![];
+        // Concat the current score into a new hierarchical scores Vec before moving forward
+        let new_hierarchical_scores = [&hierarchical_scores[..], &[score]].concat();
+        // Create a new traversal path with the node id
+        let new_traversal_path = traversal_path.push_cloned(node.id.clone());
+
+        match &node.content {
+            NodeContent::Resource(resource) => {
+                // If no data tag names provided, it means we are doing a normal vector search
+                let sub_results = resource.as_trait_object()._vector_search_customized_core(
+                    query.clone(),
+                    num_of_results,
+                    traversal_method.clone(),
+                    traversal_options,
+                    new_hierarchical_scores,
+                    new_traversal_path.clone(),
+                    root_vr_header.clone(),
+                );
+
+                // If traversing with UnscoredAllNodes, include the Vector Resource
+                // nodes as well in the results, prepended before their nodes
+                // held inside
+                if traversal_method == TraversalMethod::UnscoredAllNodes {
+                    current_level_results.push(RetrievedNode {
+                        node: node.clone(),
+                        score,
+                        resource_header: root_vr_header.clone(),
+                        retrieval_path: new_traversal_path,
+                    });
+                }
+
+                current_level_results.extend(sub_results);
+            }
+            _ => {
+                let mut score = score;
+                for option in traversal_options {
+                    if let TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring) = option {
+                        score = new_hierarchical_scores.iter().sum::<f32>() / new_hierarchical_scores.len() as f32;
+                        break;
+                    }
+                }
+                current_level_results.push(RetrievedNode {
+                    node: node.clone(),
+                    score,
+                    resource_header: root_vr_header.clone(),
+                    retrieval_path: new_traversal_path,
+                });
+            }
+        }
+        current_level_results
+    }
+
+    /// Ease-of-use function for performing a syntactic vector search. Uses exhaustive traversal and hierarchical average scoring.
+    /// A syntactic vector search efficiently pre-filters all Nodes held internally to a subset that matches the provided list of data tag names.
+    fn syntactic_vector_search(
+        &self,
+        query: Embedding,
+        num_of_results: u64,
+        data_tag_names: &Vec<String>,
+    ) -> Vec<RetrievedNode> {
+        self.vector_search_customized(
+            query,
+            num_of_results,
+            TraversalMethod::Exhaustive,
+            &vec![
+                TraversalOption::SetScoringMode(ScoringMode::HierarchicalAverageScoring),
+                TraversalOption::SetPrefilterMode(PrefilterMode::SyntacticVectorSearch(data_tag_names.clone())),
+            ],
+            None,
+        )
+    }
+
+    /// Returns the most similar nodes within a specific range of the provided top similarity score.
+    fn _tolerance_range_results(&self, tolerance_range: f32, results: &Vec<RetrievedNode>) -> Vec<RetrievedNode> {
+        // Calculate the top similarity score
+        let top_similarity_score = results.first().map_or(0.0, |ret_node| ret_node.score);
+
+        // Clamp the tolerance_range to be between 0 and 1
+        let tolerance_range = tolerance_range.max(0.0).min(1.0);
+
+        // Calculate the range of acceptable similarity scores
+        let lower_bound = top_similarity_score * (1.0 - tolerance_range);
+
+        // Filter the results to only include those within the range of the top similarity score
+        let mut filtered_results = Vec::new();
+        for ret_node in results {
+            if ret_node.score >= lower_bound && ret_node.score <= top_similarity_score {
+                filtered_results.push(ret_node.clone());
+            }
+        }
+
+        filtered_results
+    }
+
+    /// Internal method to fetch all node ids for syntactic searches
+    fn _syntactic_search_id_fetch(&self, data_tag_names: &Vec<String>) -> Vec<String> {
+        let mut ids = vec![];
+        for name in data_tag_names {
+            if let Some(node_ids) = self.data_tag_index().get_node_ids(&name) {
+                ids.extend(node_ids.iter().map(|id| id.to_string()));
+            }
+        }
+        ids
+    }
+}

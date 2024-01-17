@@ -4,7 +4,7 @@ use shinkai_message_primitives::schemas::agents::serialized_agent::{
 };
 use shinkai_message_primitives::schemas::inbox_name::InboxName;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_message_primitives::schemas::shinkai_time::ShinkaiTime;
+use shinkai_message_primitives::schemas::shinkai_time::ShinkaiStringTime;
 use shinkai_message_primitives::shinkai_message::shinkai_message_schemas::{JobMessage, MessageSchemaType};
 use shinkai_message_primitives::shinkai_utils::encryption::{
     clone_static_secret_key, unsafe_deterministic_encryption_keypair, EncryptionMethod,
@@ -360,7 +360,8 @@ fn node_agent_registration() {
                 assert!(node2_last_messages.len() == 3);
 
                 let shinkai_message_content_user = node2_last_messages[0].get_message_content().unwrap();
-                let prev_message_content_user: JobMessage = serde_json::from_str(&shinkai_message_content_user).unwrap();
+                let prev_message_content_user: JobMessage =
+                    serde_json::from_str(&shinkai_message_content_user).unwrap();
 
                 let offset = node2_last_messages[1].calculate_message_hash();
                 let next_msg = ShinkaiMessageBuilder::get_last_unread_messages_from_inbox(
@@ -452,7 +453,7 @@ fn node_agent_registration() {
                 let message = "scheduled message".to_string();
                 let inbox_name = InboxName::get_job_inbox_name_from_params(job_id.clone()).unwrap();
                 let sender = format!("{}/{}", node1_identity_name.clone(), node1_subidentity_name.clone());
-                let future_time_2_secs = ShinkaiTime::generate_time_in_future_with_secs(2);
+                let future_time_2_secs = ShinkaiStringTime::generate_time_in_future_with_secs(2);
 
                 let msg = ShinkaiMessageBuilder::new(
                     clone_static_secret_key(&node1_profile_encryption_sk),

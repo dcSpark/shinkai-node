@@ -1,7 +1,7 @@
 use chrono::DateTime;
 use rocksdb::{Error, Options, WriteBatch};
 use shinkai_message_primitives::{
-    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiTime},
+    schemas::{inbox_name::InboxName, shinkai_name::ShinkaiName, shinkai_time::ShinkaiStringTime},
     shinkai_message::{shinkai_message::ShinkaiMessage, shinkai_message_schemas::WSTopic},
     shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption},
 };
@@ -96,7 +96,7 @@ impl ShinkaiDB {
 
         // Get the scheduled time or calculate current time
         let time_key = match ext_metadata.scheduled_time.is_empty() {
-            true => ShinkaiTime::generate_time_now(),
+            true => ShinkaiStringTime::generate_time_now(),
             false => ext_metadata.scheduled_time.clone(),
         };
 

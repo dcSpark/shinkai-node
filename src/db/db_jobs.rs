@@ -4,7 +4,7 @@ use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::agent::execution::job_prompts::{Prompt, SubPromptType};
 use crate::agent::job::{Job, JobLike, JobStepResult};
 use rocksdb::{IteratorMode, Options, WriteBatch};
-use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiTime};
+use shinkai_message_primitives::schemas::{inbox_name::InboxName, shinkai_time::ShinkaiStringTime};
 use shinkai_message_primitives::shinkai_message::shinkai_message::ShinkaiMessage;
 use shinkai_message_primitives::shinkai_utils::job_scope::JobScope;
 
@@ -87,7 +87,7 @@ impl ShinkaiDB {
         let mut batch = WriteBatch::default();
 
         // Generate time currently, used as a key. It should be safe because it's generated here so it shouldn't be duplicated (presumably)
-        let current_time = ShinkaiTime::generate_time_now();
+        let current_time = ShinkaiStringTime::generate_time_now();
         let scope_bytes = scope.to_bytes()?;
 
         let cf_job_id = self.cf_handle(&cf_job_id_name)?;
@@ -363,7 +363,7 @@ impl ShinkaiDB {
         };
 
         let cf_name = format!("{}_{}_execution_context", &job_id, &message_key);
-        let current_time = ShinkaiTime::generate_time_now();
+        let current_time = ShinkaiStringTime::generate_time_now();
 
         // Convert the context to bytes
         let context_bytes = bincode::serialize(&context).map_err(|_| {
@@ -518,7 +518,7 @@ impl ShinkaiDB {
             .db
             .cf_handle(&cf_name)
             .ok_or(ShinkaiDBError::ProfileNameNonExistent(cf_name))?;
-        let current_time = ShinkaiTime::generate_time_now();
+        let current_time = ShinkaiStringTime::generate_time_now();
         self.db.put_cf(cf_handle, current_time.as_bytes(), message.as_bytes())?;
         Ok(())
     }
@@ -549,7 +549,7 @@ impl ShinkaiDB {
         };
 
         let cf_name = format!("{}_{}_step_history", &job_id, &message_key);
-        let current_time = ShinkaiTime::generate_time_now();
+        let current_time = ShinkaiStringTime::generate_time_now();
 
         // Create prompt & JobStepResult
         let mut prompt = Prompt::new();

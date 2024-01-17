@@ -77,12 +77,12 @@ fn test_unstructured_parse_pdf_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.node.get_text_content().unwrap()
+            result.node.get_text_content().unwrap().to_string()
         );
     }
     assert_eq!(
         "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
-        res[0].node.get_text_content().unwrap()
+        res[0].node.get_text_content().unwrap().to_string()
     );
 }
 
@@ -120,12 +120,12 @@ fn test_unstructured_parse_txt_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.node.get_text_content().unwrap()
+            result.node.get_text_content().unwrap().to_string()
         );
     }
     assert_eq!(
         " Ottawa and its three largest metropolitan areas are Toronto, Montreal, and Vancouver.",
-        res[0].node.get_text_content().unwrap()
+        res[0].node.get_text_content().unwrap().to_string()
     );
 }
 
@@ -163,12 +163,12 @@ fn test_unstructured_parse_epub_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.node.get_text_content().unwrap()
+            result.node.get_text_content().unwrap().to_string()
         );
     }
     assert_eq!(
         "This document contains tests which are fundamental to the\naccessibility of Reading Systems for users with disabilities. This is\none test book in a suite of EPUBs for testing accessibility; the other\nbooks cover additional fundamental tests as well as advanced tests.",
-        res[0].node.get_text_content().unwrap()
+        res[0].node.get_text_content().unwrap().to_string()
     );
 }
 
@@ -206,12 +206,12 @@ fn test_unstructured_parse_html_vector_resource() {
         println!(
             "Score {} - Data: {}",
             result.score,
-            result.node.get_text_content().unwrap()
+            result.node.get_text_content().unwrap().to_string()
         );
     }
     assert_eq!(
         "The unstructured library aims to simplify and streamline the preprocessing of structured and unstructured documents for downstream tasks. And what that means is no matter where your data is
 and no matter what format that data is in, Unstructured’s toolkit will transform and preprocess that data",
-        res[1].node.get_text_content().unwrap()
+        res[1].node.get_text_content().unwrap().to_string()
     );
 }

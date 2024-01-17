@@ -38,7 +38,7 @@ impl Embedding {
         println!("  Embeddings first 10: {:.02?}", &self.vector[0..10]);
     }
 
-    /// Calculate the cosine similarity between two embedding vectors
+    /// Calculate the cosine similarity between Self and the input Embedding
     pub fn cosine_similarity(&self, embedding2: &Embedding) -> f32 {
         let dot_product = self.dot(&self.vector, &embedding2.vector);
         let magnitude1 = self.magnitude(&self.vector);
@@ -57,8 +57,8 @@ impl Embedding {
         v.iter().map(|&x| x * x).sum::<f32>().sqrt()
     }
 
-    /// Calculate the cosine similarity score between the query embedding
-    /// (self) and a list of embeddings, returning the num_of_results
+    /// Calculate the cosine similarity score between the self embedding
+    /// and a list of embeddings, returning the `num_of_results`
     /// most similar embeddings as a tuple of (score, embedding_id)
     pub fn score_similarities(&self, embeddings: &Vec<Embedding>, num_of_results: u64) -> Vec<(f32, String)> {
         let num_of_results = num_of_results as usize;
@@ -68,18 +68,19 @@ impl Embedding {
         let scores: Vec<(NotNan<f32>, String)> = embeddings
             .iter()
             .filter_map(|embedding| {
-                let similarity = self.cosine_similarity(embedding);
+                let similarity = self.cosine_similarity(&embedding);
                 match NotNan::new(similarity) {
                     Ok(not_nan_similarity) => {
                         // If the similarity is a negative, set it to 0 to ensure sorting works properly
-                        let final_simliarity = if similarity < 0.0 {
+                        let final_similarity = if similarity < 0.0 {
                             NotNan::new(0.0).unwrap() // Safe unwrap
                         } else {
                             not_nan_similarity
                         };
-                        return Some((final_simliarity, embedding.id.clone()));
+                        return Some((final_similarity, embedding.id.clone()));
                     }
-                    Err(_) => None, // Skip this embedding if similarity is NaN
+                    // If the similarity was Nan, set it to 0 to ensure sorting works properly
+                    Err(_) => Some((NotNan::new(0.0).unwrap(), embedding.id.clone())), // Safe unwrap
                 }
             })
             .collect();

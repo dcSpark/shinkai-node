@@ -1,11 +1,11 @@
-use super::super::{fs_error::VectorFSError, fs_internals::VectorFSInternals};
+use super::super::{vector_fs_error::VectorFSError, vector_fs_internals::VectorFSInternals};
 use super::fs_db::{FSTopic, VectorFSDB};
 use crate::db::db::ProfileBoundWriteBatch;
 use serde_json::from_str;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_search_traversal::VRSource;
+use shinkai_vector_resources::vector_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::VRSource;
 use std::collections::HashMap;
 
 impl VectorFSDB {
@@ -53,7 +53,6 @@ impl VectorFSDB {
 
     /// Fetches the profile's `VectorFSInternals` from the DB
     pub fn get_profile_fs_internals(&self, profile: &ShinkaiName) -> Result<VectorFSInternals, VectorFSError> {
-        println!("Profile: {:?}", profile.to_string());
         let bytes = self.get_cf_pb(
             FSTopic::FileSystem,
             &VectorFSInternals::profile_fs_internals_shinkai_db_key(),

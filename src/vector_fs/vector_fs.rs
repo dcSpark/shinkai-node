@@ -1,12 +1,11 @@
-use super::fs_internals::VectorFSInternals;
+use super::vector_fs_internals::VectorFSInternals;
 use super::vector_fs_reader::VFSReader;
 use super::vector_fs_writer::VFSWriter;
-use super::{db::fs_db::VectorFSDB, fs_error::VectorFSError};
+use super::{db::fs_db::VectorFSDB, vector_fs_error::VectorFSError};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
-use shinkai_vector_resources::model_type::EmbeddingModelType;
-use shinkai_vector_resources::vector_resource::VectorResource;
-use shinkai_vector_resources::vector_search_traversal::VRPath;
+use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
+use shinkai_vector_resources::vector_resource::{VRPath, VectorResource, VectorResourceCore};
 use std::collections::HashMap;
 
 /// Struct that wraps all functionality of the VectorFS.
@@ -14,8 +13,8 @@ use std::collections::HashMap;
 /// for all profiles on the node.
 pub struct VectorFS {
     pub node_name: ShinkaiName,
-    internals_map: HashMap<ShinkaiName, VectorFSInternals>,
-    db: VectorFSDB,
+    pub internals_map: HashMap<ShinkaiName, VectorFSInternals>,
+    pub db: VectorFSDB,
     /// Intended to be used only for generating query embeddings for Vector Search
     /// Processing content into Vector Resources should always be done outside of the VectorFS
     /// to prevent locking for long periods of time. (If VR with unsupported model is tried to be added to FS, should error, and regeneration happens externally)
@@ -79,8 +78,8 @@ impl VectorFS {
 
     /// Creates a new VFSReader if the `requester_name` passes read permission validation check.
     /// VFSReader can then be used to perform read actions at the specified path.
-    pub fn reader(
-        &self,
+    pub fn new_reader(
+        &mut self,
         requester_name: ShinkaiName,
         path: VRPath,
         profile: ShinkaiName,
@@ -90,7 +89,7 @@ impl VectorFS {
 
     /// Creates a new VFSWriter if the `requester_name` passes write permission validation check.
     /// VFSWriter can then be used to perform write actions at the specified path.
-    pub fn writer(
+    pub fn new_writer(
         &mut self,
         requester_name: ShinkaiName,
         path: VRPath,

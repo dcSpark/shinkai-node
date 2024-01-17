@@ -1,12 +1,14 @@
 use serde_json;
-use shinkai_vector_resources::base_vector_resources::VRBaseType;
 use shinkai_vector_resources::embeddings::Embedding;
-use shinkai_vector_resources::map_resource::MapVectorResource;
 use shinkai_vector_resources::model_type::EmbeddingModelType;
 use shinkai_vector_resources::resource_errors::VRError;
 use shinkai_vector_resources::source::VRSource;
-use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, VRHeader, VectorResource};
-use shinkai_vector_resources::vector_resource_types::VRPath;
+use shinkai_vector_resources::vector_resource::MapVectorResource;
+use shinkai_vector_resources::vector_resource::VRBaseType;
+use shinkai_vector_resources::vector_resource::VRPath;
+use shinkai_vector_resources::vector_resource::{
+    NodeContent, RetrievedNode, VRHeader, VectorResource, VectorResourceCore, VectorResourceSearch,
+};
 use std::collections::HashMap;
 use std::str::FromStr;
 
@@ -26,7 +28,7 @@ impl VectorResourceRouter {
         let desc = Some("Enables performing vector searches to find relevant resources.");
         let source = VRSource::None;
         VectorResourceRouter {
-            routing_resource: MapVectorResource::new_empty(name, desc, source),
+            routing_resource: MapVectorResource::new_empty(name, desc, source, true),
         }
     }
 
@@ -63,7 +65,7 @@ impl VectorResourceRouter {
     /// Returns all VRHeaders in the Resource Router
     pub fn get_all_resource_headers(&self) -> Vec<VRHeader> {
         let nodes = self.routing_resource.get_nodes();
-        let map_resource_header = self.routing_resource.generate_resource_header(None);
+        let map_resource_header = self.routing_resource.generate_resource_header();
         let mut resource_headers = vec![];
 
         for node in nodes {
@@ -109,11 +111,11 @@ impl VectorResourceRouter {
                         embedding,
                         ret_node.node.data_tag_names.clone(),
                         source,
-                        ret_node.node.last_modified_datetime.clone(),
-                        ret_node.node.last_modified_datetime.clone(),
-                        None,
+                        ret_node.node.last_written_datetime.clone(),
+                        ret_node.node.last_written_datetime.clone(),
                         vec![],
                         NEW_PROFILE_DEFAULT_EMBEDDING_MODEL.clone(),
+                        None,
                     );
                     if let Ok(resource_header) = resource_header {
                         resource_headers.push(resource_header);
@@ -204,7 +206,8 @@ impl VectorResourceRouter {
 
     /// Deletes the resource resource_header inside of the VectorResourceRouter given a valid id
     pub fn delete_resource_header(&mut self, old_resource_header_id: &str) -> Result<(), VRError> {
-        self.routing_resource.remove_node(old_resource_header_id.to_string())?;
+        self.routing_resource
+            .remove_node(old_resource_header_id.to_string(), None)?;
         Ok(())
     }
 
@@ -226,6 +229,6 @@ impl VectorResourceRouter {
     }
     /// Convert to json
     pub fn to_json(&self) -> Result<String, VRError> {
-        serde_json::to_string(self).map_err(|_| VRError::FailedJSONParsing)
+        Ok(serde_json::to_string(self)?)
     }
 }
