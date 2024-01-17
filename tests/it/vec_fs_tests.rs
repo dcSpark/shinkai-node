@@ -131,5 +131,40 @@ async fn test_vector_fs_saving_reading() {
     assert_eq!(ret_resource, resource);
     assert_eq!(ret_source_file_map, source_file_map);
 
-    println!("Retrieved Vector Resource: {:?}", ret_resource);
+    //
+    // Vector Search Tests
+    //
+
+    // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
+    let reader = vector_fs
+        .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let query_string = "Who is building Shinkai?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_fs_retrieved_node(&reader, query_embedding, 100, 100)
+        .unwrap();
+    assert_eq!(
+        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
+        res[0]
+            .resource_retrieved_node
+            .node
+            .get_text_content()
+            .unwrap()
+            .to_string()
+    );
+
+    // Searching for FSItems
+    let reader = vector_fs
+        .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let query_string = "Who is building Shinkai?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs.vector_search_fs_item(&reader, query_embedding, 100).unwrap();
 }

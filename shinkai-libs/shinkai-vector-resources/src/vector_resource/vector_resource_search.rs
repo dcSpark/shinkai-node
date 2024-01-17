@@ -27,7 +27,6 @@ pub trait VectorResourceSearch: VectorResourceCore {
         percent_to_verify: f32,
     ) -> Result<bool, VRError> {
         let all_nodes = self.retrieve_nodes_exhaustive(None, false);
-        println!("Nodes num: {}", all_nodes.len());
         let percent_to_verify = percent_to_verify.max(0.0).min(1.0);
         let num_to_verify = (all_nodes.len() as f32 * percent_to_verify).ceil() as usize;
         // Ensure at least one node is verified always
@@ -41,17 +40,13 @@ pub trait VectorResourceSearch: VectorResourceCore {
             .filter(|node| matches!(node.node.content, NodeContent::Text(_)))
             .choose_multiple(&mut rng, num_to_verify);
 
-        println!("Nodes to verify num: {}", nodes_to_verify.len());
-
         for ret_node in nodes_to_verify {
-            println!("Verifying Node at path: {}", ret_node.retrieval_path);
             let embedding = self.retrieve_embedding_at_path(ret_node.retrieval_path)?;
             match ret_node.node.content {
                 NodeContent::Text(text) => {
                     let regenerated_embedding = generator.generate_embedding_default(&text).await?;
                     // We check if the score of the regenerated embedding is ever below 0.99 (some leeway in case some models are not 100% deterministic)
                     let score = embedding.cosine_similarity(&regenerated_embedding) < 0.99;
-                    println!("Similarity Score: {}", score);
                     if score {
                         return Ok(false);
                     }
@@ -271,22 +266,25 @@ pub trait VectorResourceSearch: VectorResourceCore {
         // Setup the root VRHeader that will be attached to all RetrievedNodes
         let root_vr_header = self.generate_resource_header();
 
+        // Only retrieve inner path if it exists and is not root
         if let Some(path) = starting_path {
-            match self.retrieve_node_at_path(path.clone()) {
-                Ok(ret_node) => {
-                    if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
-                        return resource.as_trait_object()._vector_search_customized_core(
-                            query,
-                            num_of_results,
-                            traversal_method,
-                            traversal_options,
-                            vec![],
-                            path,
-                            root_vr_header.clone(),
-                        );
+            if path != VRPath::root() {
+                match self.retrieve_node_at_path(path.clone()) {
+                    Ok(ret_node) => {
+                        if let NodeContent::Resource(resource) = ret_node.node.content.clone() {
+                            return resource.as_trait_object()._vector_search_customized_core(
+                                query,
+                                num_of_results,
+                                traversal_method,
+                                traversal_options,
+                                vec![],
+                                path,
+                                root_vr_header.clone(),
+                            );
+                        }
                     }
+                    Err(_) => {}
                 }
-                Err(_) => {}
             }
         }
         // Perform the vector search and continue forward

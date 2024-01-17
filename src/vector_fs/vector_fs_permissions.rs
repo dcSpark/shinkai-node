@@ -65,9 +65,9 @@ pub enum WhitelistPermission {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PermissionsIndex {
     /// Map which defines the kind of read and write permission per path in the VectorFS
-    fs_permissions: HashMap<VRPath, String>,
+    pub fs_permissions: HashMap<VRPath, String>,
     /// ShinkaiName of the profile this permissions index is for.
-    profile_name: ShinkaiName,
+    pub profile_name: ShinkaiName,
 }
 
 impl PermissionsIndex {

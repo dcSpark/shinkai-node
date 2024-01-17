@@ -1,6 +1,6 @@
-use super::vector_fs_permissions::PermissionsIndex;
 use super::vector_fs_types::FSItem;
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
+use crate::vector_fs::vector_fs_permissions::PermissionsIndex;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;
@@ -67,6 +67,16 @@ impl VectorFS {
             .await?)
     }
 
+    /// Generates an Embedding for the input query to be used in a Vector Search in the VecFS.
+    /// This automatically uses the correct default embedding model for the given profile in reader.
+    pub async fn generate_query_embedding_using_reader(
+        &self,
+        input_query: String,
+        reader: &VFSReader,
+    ) -> Result<Embedding, VectorFSError> {
+        self.generate_query_embedding(input_query, &reader.profile).await
+    }
+
     /// Performs a  "deep" vector search into the VectorFS starting at the reader's path,
     /// first finding the num_of_resources_to_search_into most relevant FSItems, then performing another
     /// vector search into each Vector Resource (inside the FSItem) to find and return the highest scored nodes.
@@ -82,6 +92,7 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
 
         for item in items {
+            println!("Item: {:?}", item);
             // Create a new reader at the path of the fs_item, and then fetch the VR from there
             let new_reader = reader._new_reader_copied_data(item.path.clone(), self)?;
             let resource = self.retrieve_vector_resource(&new_reader)?;
@@ -91,17 +102,18 @@ impl VectorFS {
 
             // Perform the internal vector search into the resource itself
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
+            println!("\nResults: {:?}\n\n", results);
             ret_nodes.extend(results);
         }
 
-        let mut results = vec![];
+        let mut final_results = vec![];
         for node in RetrievedNode::sort_by_score(&ret_nodes, num_of_results) {
             let fs_path = fs_path_hashmap.get(&node.resource_header.reference_string()).ok_or(
                 VectorFSError::FailedGettingFSPathOfRetrievedNode(node.resource_header.reference_string()),
             )?;
-            results.push(FSRetrievedNode::new(fs_path.clone(), node))
+            final_results.push(FSRetrievedNode::new(fs_path.clone(), node))
         }
-        Ok(results)
+        Ok(final_results)
     }
 
     /// Performs a vector search into the VectorFS starting at the reader's path,
@@ -118,6 +130,7 @@ impl VectorFS {
 
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
+            println!("Ret Node: {:?}", ret_node);
             if let NodeContent::VRHeader(_) = ret_node.node.content {
                 fs_items.push(FSItem::from_vr_header_node(
                     ret_node.node,
@@ -238,6 +251,11 @@ impl VectorFS {
             )),
         ));
 
+        println!(
+            "Core resource node count: {}",
+            internals.fs_core_resource.get_nodes().len()
+        );
+
         let results = internals.fs_core_resource.vector_search_customized(
             query,
             num_of_results,
@@ -245,6 +263,8 @@ impl VectorFS {
             &traversal_options,
             Some(reader.path.clone()),
         );
+
+        println!("Results: {:?}", results);
 
         Ok(results)
     }
@@ -255,6 +275,10 @@ impl VectorFS {
 fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath, String>) -> bool {
     // If the specified path has no permissions, then the default is to now allow traversing deeper
     if !hashmap.contains_key(path) {
+        println!(" path being checked in permissions hashmap: {}", path);
+        println!("doesn't contain key");
+
+        println!("Permissions hashmap: {:?}", hashmap);
         return false;
     }
 
@@ -266,8 +290,12 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
         },
         None => return false,
     };
+
+    println!("got reader");
     // Initialize the PermissionsIndex struct
     let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
+
+    println!("initialized perm index");
 
     perm_index
         .validate_read_permission(&reader.requester_name, path)

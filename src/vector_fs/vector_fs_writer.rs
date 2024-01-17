@@ -1,6 +1,7 @@
 use super::vector_fs_types::{DistributionOrigin, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
 use crate::db::db::ProfileBoundWriteBatch;
+use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::resource_errors::VRError;
@@ -53,7 +54,7 @@ impl VFSWriter {
         let mut write_batch = ProfileBoundWriteBatch::new_vfs_batch(&profile)?;
         vector_fs
             .db
-            .wb_add_write_access_log(requester_name, &path, current_datetime, profile, &mut write_batch);
+            .wb_add_write_access_log(requester_name, &path, current_datetime, profile, &mut write_batch)?;
         vector_fs.db.write_pb(write_batch)?;
 
         Ok(writer)
@@ -94,10 +95,21 @@ impl VectorFS {
         // Add the folder into the internals
         let new_folder =
             self._add_existing_vr_to_core_resource(writer, new_vr, embedding, Some(metadata), current_datetime)?;
+        let new_folder_path = new_folder.path.clone();
+
+        // Add private read/write permission for the folder path
+        {
+            let internals = self._get_profile_fs_internals(&writer.profile)?;
+            internals.permissions_index.insert_path_permission(
+                new_folder_path,
+                ReadPermission::Private,
+                WritePermission::Private,
+            )?;
+        }
 
         // Save the FSInternals into the FSDB
-        let mut write_batch = writer.new_write_batch()?;
         let internals = self._get_profile_fs_internals_read_only(&writer.profile)?;
+        let mut write_batch = writer.new_write_batch()?;
         self.db.wb_save_profile_fs_internals(internals, &mut write_batch)?;
         self.db.write_pb(write_batch)?;
 

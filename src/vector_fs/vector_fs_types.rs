@@ -224,7 +224,7 @@ impl FSFolder {
         let last_written_datetime = resource.as_trait_object().last_written_datetime();
         let merkle_hash = resource.as_trait_object().get_merkle_root()?;
         Ok(Self::new(
-            VRPath::new(),
+            resource_fs_path,
             child_folders,
             child_items,
             created_datetime,
