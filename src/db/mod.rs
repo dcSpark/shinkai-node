@@ -15,3 +15,4 @@ pub mod db_retry;
 pub mod db_toolkits;
 pub mod db_utils;
 pub mod db_inbox_get_messages;
+pub mod db_profile_bound;

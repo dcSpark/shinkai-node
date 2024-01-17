@@ -1,8 +1,4 @@
-use super::{
-    db::{ProfileBoundWriteBatch, Topic},
-    db_errors::ShinkaiDBError,
-    ShinkaiDB,
-};
+use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB, db_profile_bound::ProfileBoundWriteBatch};
 use rocksdb::{Error, Options};
 use serde_json::{from_slice, to_vec};
 use shinkai_message_primitives::schemas::{agents::serialized_agent::SerializedAgent, shinkai_name::ShinkaiName};
@@ -51,16 +47,16 @@ impl ShinkaiDB {
         // Write profiles_with_access and toolkits_accessible to respective columns
         for profile in &agent.allowed_message_senders {
             // TODO: this doesnt add up
-            pb_batch.put_cf_pb(cf_profiles_access, &profile, "".as_bytes());
+            pb_batch.pb_put_cf(cf_profiles_access, &profile, "".as_bytes());
         }
         for toolkit in &agent.toolkit_permissions {
-            pb_batch.put_cf_pb(cf_toolkits_accessible, &toolkit, "".as_bytes());
+            pb_batch.pb_put_cf(cf_toolkits_accessible, &toolkit, "".as_bytes());
         }
 
         // Serialize the agent to bytes and write it to the Agents topic
         let bytes = to_vec(&agent).unwrap();
         let cf_agents = self.cf_handle(Topic::Agents.as_str())?;
-        pb_batch.put_cf_pb(cf_agents, &agent.id, &bytes);
+        pb_batch.pb_put_cf(cf_agents, &agent.id, &bytes);
 
         // Write the batch
         self.write_pb(pb_batch)?;
@@ -80,7 +76,7 @@ impl ShinkaiDB {
         let mut pb_batch = ProfileBoundWriteBatch::new(profile)?;
 
         // Remove the agent from the Agents topic
-        pb_batch.delete_cf_pb(cf_agents, &agent_id);
+        pb_batch.pb_delete_cf(cf_agents, &agent_id);
 
         // Remove the agent's access profiles and toolkits
         // This involves deleting the column families entirely
@@ -126,14 +122,14 @@ impl ShinkaiDB {
         // Update profiles_with_access if new_profiles_with_access is provided
         if let Some(profiles) = new_profiles_with_access {
             for profile in profiles {
-                pb_batch.put_cf_pb(cf_profiles_access, profile.as_str(), "".as_bytes());
+                pb_batch.pb_put_cf(cf_profiles_access, profile.as_str(), "".as_bytes());
             }
         }
 
         // Update toolkits_accessible if new_toolkits_accessible is provided
         if let Some(toolkits) = new_toolkits_accessible {
             for toolkit in toolkits {
-                pb_batch.put_cf_pb(cf_toolkits_access, toolkit.as_str(), "".as_bytes());
+                pb_batch.pb_put_cf(cf_toolkits_access, toolkit.as_str(), "".as_bytes());
             }
         }
 
@@ -145,17 +141,21 @@ impl ShinkaiDB {
 
     pub fn get_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Option<SerializedAgent>, ShinkaiDBError> {
         // Fetch the agent's bytes by their id from the Agents topic
-        let agent_bytes = self.get_cf_pb(Topic::Agents, agent_id, profile)?;
+        let agent_bytes = self.pb_topic_get(Topic::Agents, agent_id, profile)?;
 
         // If the agent was found, deserialize the bytes into an agent object and return it
         let agent: SerializedAgent = from_slice(agent_bytes.as_slice())?;
         Ok(Some(agent))
     }
 
-    pub fn get_agent_profiles_with_access(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_agent_profiles_with_access(
+        &self,
+        agent_id: &str,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<String>, ShinkaiDBError> {
         // Start write batch for atomic operation
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
-    
+
         let cf = self
             .db
             .cf_handle(&cf_name)
@@ -163,10 +163,14 @@ impl ShinkaiDB {
                 "Column family not found for: {}",
                 cf_name
             )))?;
-        self.get_all_keys_cf_pb(cf, profile)
+        self.pb_cf_get_all_keys(cf, profile)
     }
 
-    pub fn get_agent_toolkits_accessible(&self, agent_id: &str, profile: &ShinkaiName) -> Result<Vec<String>, ShinkaiDBError> {
+    pub fn get_agent_toolkits_accessible(
+        &self,
+        agent_id: &str,
+        profile: &ShinkaiName,
+    ) -> Result<Vec<String>, ShinkaiDBError> {
         let cf_name = format!("agent_{}_toolkits_accessible", agent_id);
         let cf = self
             .db
@@ -175,10 +179,15 @@ impl ShinkaiDB {
                 "Column family not found for: {}",
                 cf_name
             )))?;
-        self.get_all_keys_cf_pb(cf, profile)
+        self.pb_cf_get_all_keys(cf, profile)
     }
 
-    pub fn remove_profile_from_agent_access(&mut self, agent_id: &str, profile: &str, bounded_profile: &ShinkaiName) -> Result<(), ShinkaiDBError> {
+    pub fn remove_profile_from_agent_access(
+        &mut self,
+        agent_id: &str,
+        profile: &str,
+        bounded_profile: &ShinkaiName,
+    ) -> Result<(), ShinkaiDBError> {
         let cf_name = format!("agent_{}_profiles_with_access", agent_id);
         let cf = self
             .db
@@ -188,7 +197,7 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        self.delete_cf_pb(cf, profile, &bounded_profile)?;
+        self.pb_delete_cf(cf, profile, &bounded_profile)?;
         Ok(())
     }
 
@@ -207,7 +216,7 @@ impl ShinkaiDB {
                 cf_name
             )))?;
 
-        self.delete_cf_pb(cf, toolkit, bounded_profile)?;
+        self.pb_delete_cf(cf, toolkit, bounded_profile)?;
         Ok(())
     }
 

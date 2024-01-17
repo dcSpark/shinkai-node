@@ -329,7 +329,6 @@ impl CronManager {
         let next_execution_time = match cron_parser::parse(&cron_task.cron, &now_rounded) {
             Ok(datetime) => datetime,
             Err(_) => {
-                eprintln!("Invalid cron expression: {}", &cron_task.cron);
                 shinkai_log(
                     ShinkaiLogOption::CronExecution,
                     ShinkaiLogLevel::Error,

@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 
-use super::{db::ProfileBoundWriteBatch, db_errors::ShinkaiDBError, ShinkaiDB, Topic};
+use super::{db_errors::ShinkaiDBError, ShinkaiDB, Topic, db_profile_bound::ProfileBoundWriteBatch};
 use chrono::Utc;
 use rocksdb::{IteratorMode, Options};
 use serde::{Deserialize, Serialize};
@@ -149,16 +149,16 @@ impl ShinkaiDB {
 
         let mut pb_batch = ProfileBoundWriteBatch::new(&profile)?;
 
-        pb_batch.put_cf_pb(cf_schedule, &task_id, &cron);
-        pb_batch.put_cf_pb(cf_prompt, &task_id, &prompt);
-        pb_batch.put_cf_pb(cf_subprompt, &task_id, &subprompt);
-        pb_batch.put_cf_pb(cf_url, &task_id, &url);
-        pb_batch.put_cf_pb(cf_crawl_links, &task_id, &crawl_links.to_string());
+        pb_batch.pb_put_cf(cf_schedule, &task_id, &cron);
+        pb_batch.pb_put_cf(cf_prompt, &task_id, &prompt);
+        pb_batch.pb_put_cf(cf_subprompt, &task_id, &subprompt);
+        pb_batch.pb_put_cf(cf_url, &task_id, &url);
+        pb_batch.pb_put_cf(cf_crawl_links, &task_id, &crawl_links.to_string());
 
         let created_at = Utc::now().to_rfc3339();
-        pb_batch.put_cf_pb(cf_created_at, &task_id, &created_at);
-        pb_batch.put_cf_pb(cf_agent_id, &task_id, &agent_id);
-        pb_batch.put_cf_pb(cf_cron_queues, &task_id, &profile_name);
+        pb_batch.pb_put_cf(cf_created_at, &task_id, &created_at);
+        pb_batch.pb_put_cf(cf_agent_id, &task_id, &agent_id);
+        pb_batch.pb_put_cf(cf_cron_queues, &task_id, &profile_name);
 
         self.write_pb(pb_batch)?;
 
@@ -236,14 +236,14 @@ impl ShinkaiDB {
             )))?;
 
         let mut pb_batch = ProfileBoundWriteBatch::new(&profile)?;
-        pb_batch.delete_cf_pb(cf_schedule, &task_id);
-        pb_batch.delete_cf_pb(cf_prompt, &task_id);
-        pb_batch.delete_cf_pb(cf_subprompt, &task_id);
-        pb_batch.delete_cf_pb(cf_url, &task_id);
-        pb_batch.delete_cf_pb(cf_crawl_links, &task_id);
-        pb_batch.delete_cf_pb(cf_created_at, &task_id);
-        pb_batch.delete_cf_pb(cf_agent_id, &task_id);
-        pb_batch.delete_cf_pb(cf_cron_queues, &task_id);
+        pb_batch.pb_delete_cf(cf_schedule, &task_id);
+        pb_batch.pb_delete_cf(cf_prompt, &task_id);
+        pb_batch.pb_delete_cf(cf_subprompt, &task_id);
+        pb_batch.pb_delete_cf(cf_url, &task_id);
+        pb_batch.pb_delete_cf(cf_crawl_links, &task_id);
+        pb_batch.pb_delete_cf(cf_created_at, &task_id);
+        pb_batch.pb_delete_cf(cf_agent_id, &task_id);
+        pb_batch.pb_delete_cf(cf_cron_queues, &task_id);
 
         self.write_pb(pb_batch)?;
         Ok(())

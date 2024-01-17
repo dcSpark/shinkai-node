@@ -1,4 +1,4 @@
-use super::db::ProfileBoundWriteBatch;
+use super::db_profile_bound::ProfileBoundWriteBatch;
 use super::{db::Topic, db_errors::ShinkaiDBError, ShinkaiDB};
 use crate::schemas::identity::{DeviceIdentity, Identity, StandardIdentity, StandardIdentityType};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -453,12 +453,12 @@ impl ShinkaiDB {
         let device_encryption_public_key = encryption_public_key_to_string_ref(&device.device_encryption_public_key);
 
         // Add the device information to the batch
-        pb_batch.put_cf_pb(
+        pb_batch.pb_put_cf(
             cf_device_identity,
             &device.full_identity_name.to_string(),
             device_signature_public_key.as_bytes(),
         );
-        pb_batch.put_cf_pb(
+        pb_batch.pb_put_cf(
             cf_device_encryption,
             &device.full_identity_name.to_string(),
             device_encryption_public_key.as_bytes(),
@@ -471,7 +471,7 @@ impl ShinkaiDB {
         let permission_str = device.permission_type.to_string();
 
         // Add the device permission to the batch
-        pb_batch.put_cf_pb(
+        pb_batch.pb_put_cf(
             cf_device_permissions,
             &device.full_identity_name.to_string(),
             permission_str.as_bytes(),

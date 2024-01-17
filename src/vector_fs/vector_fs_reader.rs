@@ -1,8 +1,9 @@
+use crate::db::db_profile_bound::ProfileBoundWriteBatch;
+
 use super::vector_fs::{self, VectorFS};
 use super::vector_fs_error::VectorFSError;
 use super::vector_fs_types::{FSEntry, FSFolder, FSItem, FSRoot, LastReadIndex};
 use super::vector_fs_writer::VFSWriter;
-use crate::db::db::ProfileBoundWriteBatch;
 use serde::{Deserialize, Serialize};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::embeddings::MAX_EMBEDDING_STRING_SIZE;

@@ -1,6 +1,6 @@
 use super::vector_fs_types::{DistributionOrigin, FSFolder, FSItem};
 use super::{vector_fs::VectorFS, vector_fs_error::VectorFSError, vector_fs_reader::VFSReader};
-use crate::db::db::ProfileBoundWriteBatch;
+use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_permissions::{ReadPermission, WritePermission};
 use chrono::{DateTime, Utc};
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
@@ -10,11 +10,9 @@ use shinkai_vector_resources::source::SourceFileMap;
 use shinkai_vector_resources::vector_resource::{NodeContent, RetrievedNode, SourceFileType};
 use shinkai_vector_resources::{
     embeddings::Embedding,
-    source::SourceFile,
     vector_resource::{BaseVectorResource, MapVectorResource, Node, VRHeader, VRPath, VRSource, VectorResourceCore},
 };
 use std::collections::HashMap;
-use std::process::ExitStatus;
 
 /// A struct that represents having rights to write to the VectorFS under a profile/at a specific path.
 /// If a VFSWriter struct is constructed, that means the `requester_name` has passed
