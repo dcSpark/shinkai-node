@@ -263,10 +263,14 @@ impl VectorFS {
             let node_id = vr_header.resource_name.clone();
             let resource = node.get_vector_resource_content_mut()?;
             let new_vr_header_node = Node::new_vr_header(node_id, &vr_header, metadata.clone(), &vec![]);
+            let new_node_embedding = vr_header
+                .resource_embedding
+                .clone()
+                .ok_or(VRError::NoEmbeddingProvided)?;
             resource.as_trait_object_mut().insert_node(
                 vr_header.resource_name.clone(),
                 new_vr_header_node,
-                embedding.clone(),
+                new_node_embedding,
                 Some(current_datetime),
             )?;
             Ok(())

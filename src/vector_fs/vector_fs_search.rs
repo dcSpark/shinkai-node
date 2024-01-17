@@ -92,7 +92,6 @@ impl VectorFS {
         let items = self.vector_search_fs_item(reader, query.clone(), num_of_resources_to_search_into)?;
 
         for item in items {
-            println!("Item: {:?}", item);
             // Create a new reader at the path of the fs_item, and then fetch the VR from there
             let new_reader = reader._new_reader_copied_data(item.path.clone(), self)?;
             let resource = self.retrieve_vector_resource(&new_reader)?;
@@ -102,7 +101,6 @@ impl VectorFS {
 
             // Perform the internal vector search into the resource itself
             let results = resource.as_trait_object().vector_search(query.clone(), num_of_results);
-            println!("\nResults: {:?}\n\n", results);
             ret_nodes.extend(results);
         }
 
@@ -130,10 +128,14 @@ impl VectorFS {
 
         let mut fs_items = vec![];
         for ret_node in ret_nodes {
-            println!("Ret Node: {:?}", ret_node);
             if let NodeContent::VRHeader(_) = ret_node.node.content {
+                println!(
+                    "Merkle hash: {:?} -- Score: {}",
+                    ret_node.node.get_merkle_hash(),
+                    &ret_node.score
+                );
                 fs_items.push(FSItem::from_vr_header_node(
-                    ret_node.node,
+                    ret_node.node.clone(),
                     ret_node.retrieval_path,
                     &internals.last_read_index,
                 )?)
@@ -155,7 +157,8 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let res_pair = self.retrieve_vr_and_source_file_map_in_folder(reader, item.name())?;
+            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let res_pair = self.retrieve_vr_and_source_file_map_in_folder(&new_reader, item.name())?;
             results.push(res_pair);
         }
         Ok(results)
@@ -173,7 +176,8 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let res = self.retrieve_vector_resource_in_folder(reader, item.name())?;
+            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let res = self.retrieve_vector_resource_in_folder(&new_reader, item.name())?;
             results.push(res);
         }
         Ok(results)
@@ -191,7 +195,8 @@ impl VectorFS {
         let mut results = vec![];
 
         for item in items {
-            let res = self.retrieve_source_file_map_in_folder(reader, item.name())?;
+            let new_reader = reader._new_reader_copied_data(item.path.parent_path(), self)?;
+            let res = self.retrieve_source_file_map_in_folder(&new_reader, item.name())?;
             results.push(res);
         }
         Ok(results)
@@ -251,11 +256,6 @@ impl VectorFS {
             )),
         ));
 
-        println!(
-            "Core resource node count: {}",
-            internals.fs_core_resource.get_nodes().len()
-        );
-
         let results = internals.fs_core_resource.vector_search_customized(
             query,
             num_of_results,
@@ -263,8 +263,6 @@ impl VectorFS {
             &traversal_options,
             Some(reader.path.clone()),
         );
-
-        println!("Results: {:?}", results);
 
         Ok(results)
     }
@@ -275,10 +273,6 @@ impl VectorFS {
 fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath, String>) -> bool {
     // If the specified path has no permissions, then the default is to now allow traversing deeper
     if !hashmap.contains_key(path) {
-        println!(" path being checked in permissions hashmap: {}", path);
-        println!("doesn't contain key");
-
-        println!("Permissions hashmap: {:?}", hashmap);
         return false;
     }
 
@@ -291,11 +285,8 @@ fn _permissions_validation_func(_: &Node, path: &VRPath, hashmap: HashMap<VRPath
         None => return false,
     };
 
-    println!("got reader");
     // Initialize the PermissionsIndex struct
     let perm_index = PermissionsIndex::from_hashmap(reader.profile.clone(), hashmap);
-
-    println!("initialized perm index");
 
     perm_index
         .validate_read_permission(&reader.requester_name, path)

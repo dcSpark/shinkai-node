@@ -9,7 +9,8 @@ use shinkai_node::vector_fs::{db::fs_db::VectorFSDB, vector_fs::VectorFS, vector
 use shinkai_vector_resources::embedding_generator::{EmbeddingGenerator, RemoteEmbeddingGenerator};
 use shinkai_vector_resources::model_type::{EmbeddingModelType, TextEmbeddingsInference};
 use shinkai_vector_resources::vector_resource::{
-    BaseVectorResource, VRPath, VectorResource, VectorResourceCore, VectorResourceSearch,
+    BaseVectorResource, DocumentVectorResource, VRPath, VRSource, VectorResource, VectorResourceCore,
+    VectorResourceSearch,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -67,7 +68,16 @@ async fn test_vector_fs_saving_reading() {
         .new_writer(default_test_profile(), path.clone(), default_test_profile())
         .unwrap();
     let folder_name = "first_folder";
-    vector_fs.create_new_folder(&writer, folder_name).unwrap();
+    vector_fs.create_new_folder(&writer, folder_name.clone()).unwrap();
+    let writer = vector_fs
+        .new_writer(
+            default_test_profile(),
+            path.push_cloned(folder_name.to_string()),
+            default_test_profile(),
+        )
+        .unwrap();
+    let folder_name_2 = "second_folder";
+    vector_fs.create_new_folder(&writer, folder_name_2).unwrap();
 
     // Validate new folder path points to an entry at all (not empty), then specifically a folder, and finally not to an item.
     let folder_path = path.push_cloned(folder_name.to_string());
@@ -135,27 +145,42 @@ async fn test_vector_fs_saving_reading() {
     // Vector Search Tests
     //
 
-    // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
-    let reader = vector_fs
-        .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
-        .unwrap();
-    let query_string = "Who is building Shinkai?".to_string();
-    let query_embedding = vector_fs
-        .generate_query_embedding_using_reader(query_string, &reader)
+    // First add a 2nd VR into the VecFS
+    let generator = RemoteEmbeddingGenerator::new_default();
+    let mut doc = DocumentVectorResource::new_empty(
+        "3 Animal Facts",
+        Some("A bunch of facts about animals and wildlife"),
+        VRSource::new_uri_ref("animalwildlife.com", None),
+        true,
+    );
+    doc.set_embedding_model_used(generator.model_type());
+    doc.update_resource_embedding(&generator, vec!["animal".to_string(), "wild life".to_string()])
         .await
         .unwrap();
-    let res = vector_fs
-        .vector_search_fs_retrieved_node(&reader, query_embedding, 100, 100)
+    let fact1 = "Dogs are creatures with 4 legs that bark.";
+    let fact1_embedding = generator.generate_embedding_default(fact1).await.unwrap();
+    let fact2 = "Camels are slow animals with large humps.";
+    let fact2_embedding = generator.generate_embedding_default(fact2).await.unwrap();
+    let fact3 = "Seals swim in the ocean.";
+    let fact3_embedding = generator.generate_embedding_default(fact3).await.unwrap();
+    doc.append_text_node(fact1.clone(), None, fact1_embedding.clone(), &vec![])
         .unwrap();
-    assert_eq!(
-        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
-        res[0]
-            .resource_retrieved_node
-            .node
-            .get_text_content()
-            .unwrap()
-            .to_string()
-    );
+    doc.append_text_node(fact2.clone(), None, fact2_embedding.clone(), &vec![])
+        .unwrap();
+    doc.append_text_node(fact3.clone(), None, fact3_embedding.clone(), &vec![])
+        .unwrap();
+
+    let writer = vector_fs
+        .new_writer(default_test_profile(), folder_path.clone(), default_test_profile())
+        .unwrap();
+    vector_fs
+        .save_vector_resource_in_folder(
+            &writer,
+            BaseVectorResource::Document(doc),
+            Some(source_file_map.clone()),
+            DistributionOrigin::None,
+        )
+        .unwrap();
 
     // Searching for FSItems
     let reader = vector_fs
@@ -167,4 +192,61 @@ async fn test_vector_fs_saving_reading() {
         .await
         .unwrap();
     let res = vector_fs.vector_search_fs_item(&reader, query_embedding, 100).unwrap();
+    assert_eq!(res[0].name(), "shinkai_intro");
+
+    // Searching into the Vector Resources themselves in the VectorFS to acquire internal nodes
+    let reader = vector_fs
+        .new_reader(default_test_profile(), VRPath::root(), default_test_profile())
+        .unwrap();
+    let query_string = "Who is building Shinkai?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .unwrap();
+    assert_eq!(
+        "Shinkai Network Manifesto (Early Preview) Robert Kornacki rob@shinkai.com Nicolas Arqueros",
+        res[0]
+            .resource_retrieved_node
+            .node
+            .get_text_content()
+            .unwrap()
+            .to_string()
+    );
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding, 1)
+        .unwrap();
+    assert_eq!("shinkai_intro", res[0].as_trait_object().name());
+
+    // Animal facts search
+    let query_string = "What do you know about camels?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_fs_retrieved_node(&reader, query_embedding.clone(), 100, 100)
+        .unwrap();
+    assert_eq!(
+        "Camels are slow animals with large humps.",
+        res[0]
+            .resource_retrieved_node
+            .node
+            .get_text_content()
+            .unwrap()
+            .to_string()
+    );
+
+    let query_string = "What are popular animals?".to_string();
+    let query_embedding = vector_fs
+        .generate_query_embedding_using_reader(query_string, &reader)
+        .await
+        .unwrap();
+    let res = vector_fs
+        .vector_search_vector_resource(&reader, query_embedding, 100)
+        .unwrap();
+    assert_eq!("3 Animal Facts", res[1].as_trait_object().name());
+    assert_eq!("3 Animal Facts", res[0].as_trait_object().name());
 }

@@ -685,11 +685,17 @@ impl VRPath {
         new_path
     }
 
-    /// Creates a cloned VRPath and removes an element from the end
+    /// Returns a cloned VRPath with the last id removed from the end
     pub fn pop_cloned(&self) -> Self {
         let mut new_path = self.clone();
         new_path.pop();
         new_path
+    }
+
+    /// Returns a VRPath which is the path prior to self (the "parent path").
+    /// Ie. For path "/a/b/c", this will return "/a/b".
+    pub fn parent_path(&self) -> Self {
+        self.pop_cloned()
     }
 
     /// Create a VRPath from a path string
