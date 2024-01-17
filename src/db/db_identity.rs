@@ -414,7 +414,6 @@ impl ShinkaiDB {
 
     pub fn add_device_to_profile(&self, device: DeviceIdentity) -> Result<(), ShinkaiDBError> {
         // Get the profile name from the device identity name
-        let profile = device.full_identity_name.extract_profile()?;
         let profile_name = match device.full_identity_name.get_profile_name() {
             Some(name) => name,
             None => {
@@ -446,19 +445,19 @@ impl ShinkaiDB {
         }
 
         // Start write batch for atomic operation
-        let mut pb_batch = ProfileBoundWriteBatch::new(&profile)?;
+        let mut batch = rocksdb::WriteBatch::default();
 
         // Convert the public keys to strings
         let device_signature_public_key = signature_public_key_to_string_ref(&device.device_signature_public_key);
         let device_encryption_public_key = encryption_public_key_to_string_ref(&device.device_encryption_public_key);
 
         // Add the device information to the batch
-        pb_batch.pb_put_cf(
+        batch.put_cf(
             cf_device_identity,
             &device.full_identity_name.to_string(),
             device_signature_public_key.as_bytes(),
         );
-        pb_batch.pb_put_cf(
+        batch.put_cf(
             cf_device_encryption,
             &device.full_identity_name.to_string(),
             device_encryption_public_key.as_bytes(),
@@ -471,14 +470,14 @@ impl ShinkaiDB {
         let permission_str = device.permission_type.to_string();
 
         // Add the device permission to the batch
-        pb_batch.pb_put_cf(
+        batch.put_cf(
             cf_device_permissions,
             &device.full_identity_name.to_string(),
             permission_str.as_bytes(),
         );
 
         // Write the batch
-        self.write_pb(pb_batch)?;
+        self.db.write(batch)?;
 
         Ok(())
     }
