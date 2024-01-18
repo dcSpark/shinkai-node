@@ -1,5 +1,5 @@
-use super::db::ProfileBoundWriteBatch;
 use super::db_errors::*;
+use super::db_profile_bound::ProfileBoundWriteBatch;
 use crate::db::{ShinkaiDB, Topic};
 use crate::resources::router::VectorResourceRouter;
 use serde_json::from_str;
@@ -21,7 +21,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_profile_resource_router(router)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(
+        self.pb_put_cf(
             cf,
             &VectorResourceRouter::profile_router_shinkai_db_key(),
             bytes,
@@ -56,7 +56,7 @@ impl ShinkaiDB {
         let (bytes, cf) = self._prepare_resource(resource)?;
 
         // Insert into the "VectorResources" column family
-        self.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes, profile)?;
+        self.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes, profile)?;
 
         Ok(())
     }
@@ -103,14 +103,14 @@ impl ShinkaiDB {
         for resource in resources {
             // Adds the JSON of the resource to the batch
             let (bytes, cf) = self._prepare_resource(&resource)?;
-            pb_batch.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes);
+            pb_batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
             // Add the resource_header to the router, then putting the router
             // into the batch
             let resource_header = resource.as_trait_object().generate_resource_header();
             router.add_resource_header(&resource_header)?;
             let (bytes, cf) = self._prepare_profile_resource_router(&router)?;
-            pb_batch.put_cf_pb(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);
+            pb_batch.pb_put_cf(cf, &VectorResourceRouter::profile_router_shinkai_db_key(), &bytes);
         }
 
         self.write_pb(pb_batch)?;
@@ -130,7 +130,7 @@ impl ShinkaiDB {
     /// Fetches the BaseVectorResource from the DB
     pub fn get_resource(&self, key: &str, profile: &ShinkaiName) -> Result<BaseVectorResource, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf_pb(Topic::VectorResources, key, profile)?;
+        let bytes = self.pb_topic_get(Topic::VectorResources, key, profile)?;
         let json_str = std::str::from_utf8(&bytes)?;
 
         Ok(BaseVectorResource::from_json(json_str)?)
@@ -139,7 +139,7 @@ impl ShinkaiDB {
     /// Fetches the Global VectorResource Router from  the DB
     pub fn get_profile_resource_router(&self, profile: &ShinkaiName) -> Result<VectorResourceRouter, ShinkaiDBError> {
         // Fetch and convert the bytes to a valid UTF-8 string
-        let bytes = self.get_cf_pb(
+        let bytes = self.pb_topic_get(
             Topic::VectorResources,
             &VectorResourceRouter::profile_router_shinkai_db_key(),
             profile,

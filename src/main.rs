@@ -18,7 +18,9 @@ use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_message_primitives::shinkai_utils::encryption::{
     encryption_public_key_to_string, encryption_secret_key_to_string,
 };
-use shinkai_message_primitives::shinkai_utils::shinkai_logging::{shinkai_log, ShinkaiLogLevel, ShinkaiLogOption, init_tracing};
+use shinkai_message_primitives::shinkai_utils::shinkai_logging::{
+    init_tracing, shinkai_log, ShinkaiLogLevel, ShinkaiLogOption,
+};
 use shinkai_message_primitives::shinkai_utils::signatures::{
     clone_signature_secret_key, hash_signature_public_key, signature_public_key_to_string,
     signature_secret_key_to_string,
@@ -65,9 +67,7 @@ fn main() {
 
     // Storage db filesystem
     let main_db_path = get_main_db_path(main_db, &node_keys.identity_public_key, node_storage_path.clone());
-    eprintln!("main_db_path: {}", main_db_path);
     let vector_fs_db_path = get_vector_fs_db_path(vector_fs_db, &node_keys.identity_public_key, node_storage_path);
-    eprintln!("vector_fs_db_path: {}", vector_fs_db_path);
 
     // Acquire the Node's keys. TODO: Should check with on
     // and then it's with onchain data for matching with the keys provided
@@ -85,9 +85,6 @@ fn main() {
     let identity_public_key_string = signature_public_key_to_string(node_keys.identity_public_key.clone());
     let encryption_secret_key_string = encryption_secret_key_to_string(node_keys.encryption_secret_key.clone());
     let encryption_public_key_string = encryption_public_key_to_string(node_keys.encryption_public_key.clone());
-
-    eprintln!("Encryption Public Key: {}", encryption_public_key_string);
-    eprintln!("Signature Public Key: {}", identity_public_key_string);
 
     // Initialize Embedding Generator & Unstructured API
     let embedding_generator = init_embedding_generator(&node_env);
@@ -151,11 +148,11 @@ fn main() {
                 node_keys.encryption_secret_key.clone(),
                 node_env.ping_interval,
                 node_commands_receiver,
-                main_db_path,
+                main_db_path.clone(),
                 node_env.first_device_needs_registration_code,
                 initial_agents,
                 node_env.js_toolkit_executor_remote.clone(),
-                vector_fs_db_path,
+                vector_fs_db_path.clone(),
                 Some(embedding_generator),
                 Some(unstructured_api),
             )
@@ -191,6 +188,8 @@ fn main() {
         if !node.lock().await.is_node_ready().await {
             println!("Warning! (Expected for a new Node) The node doesn't have any profiles or devices initialized so it's waiting for that.");
             let _ = generate_qr_codes(&node_commands_sender, &node_env.clone(), &node_keys, global_identity_name.as_str(), identity_public_key_string.as_str()).await;
+        } else {
+            print_node_info(&node_env, &encryption_public_key_string, &identity_public_key_string, &main_db_path, &vector_fs_db_path);
         }
 
         // Setup API Server task
@@ -325,4 +324,19 @@ async fn init_ws_server(
         shinkai_db.set_ws_manager(Arc::clone(&manager) as Arc<Mutex<dyn WSUpdateHandler + Send + 'static>>);
     }
     run_ws_api(node_env.ws_address.clone(), Arc::clone(&manager)).await;
+}
+
+/// Prints Useful Node information at startup
+pub fn print_node_info(node_env: &NodeEnvironment, encryption_pk: &str, signature_pk: &str, main_db_path: &str, vector_fs_db_path: &str) {
+    println!("---------------------------------------------------------------");
+    println!("Node API address: {}", node_env.api_listen_address);
+    println!("Node TCP address: {}", node_env.listen_address);
+    println!("Node WS address: {}", node_env.ws_address);
+    println!("Node Shinkai identity: {}", node_env.global_identity_name);
+    println!("Node Main Profile: main (assumption)"); // Assuming "main" as the main profile
+    println!("Node encryption pk: {}", encryption_pk);
+    println!("Node signature pk: {}", signature_pk);
+    println!("Main DB path: {}", main_db_path);
+    println!("Vector FS DB path: {}", vector_fs_db_path);
+    println!("---------------------------------------------------------------");
 }

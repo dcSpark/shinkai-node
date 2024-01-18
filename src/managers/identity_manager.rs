@@ -161,9 +161,9 @@ impl IdentityManager {
         }
     }
 
-    pub async fn search_local_agent(&self, agent_id: &str) -> Option<SerializedAgent> {
+    pub async fn search_local_agent(&self, agent_id: &str, profile: &ShinkaiName) -> Option<SerializedAgent> {
         let db = self.db.lock().await;
-        db.get_agent(agent_id).ok().flatten()
+        db.get_agent(agent_id, profile).ok().flatten()
     }
 
     // Primarily for testing

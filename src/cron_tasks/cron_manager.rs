@@ -162,7 +162,7 @@ impl CronManager {
             loop {
                 let jobs_to_process: HashMap<String, Vec<(String, CronTask)>> = {
                     let mut db_lock = db.lock().await;
-                    db_lock.get_all_cron_tasks_from_all_profiles().unwrap_or(HashMap::new())
+                    db_lock.get_all_cron_tasks_from_all_profiles(node_profile_name.clone()).unwrap_or(HashMap::new())
                 };
                 if !jobs_to_process.is_empty() {
                     shinkai_log(
@@ -258,7 +258,7 @@ impl CronManager {
         let job_id = job_manager
             .lock()
             .await
-            .process_job_creation(job_creation, &cron_job.agent_id)
+            .process_job_creation(job_creation, &shinkai_profile, &cron_job.agent_id)
             .await?;
 
         // Note(Nico): should we close the job after the processing?
@@ -329,7 +329,6 @@ impl CronManager {
         let next_execution_time = match cron_parser::parse(&cron_task.cron, &now_rounded) {
             Ok(datetime) => datetime,
             Err(_) => {
-                eprintln!("Invalid cron expression: {}", &cron_task.cron);
                 shinkai_log(
                     ShinkaiLogOption::CronExecution,
                     ShinkaiLogLevel::Error,

@@ -164,4 +164,19 @@ mod tests {
         assert!(!bob.contains(&alice_profile));
         assert!(!alice_agent.contains(&bob_agent));
     }
+
+    #[test]
+    fn test_get_fullname_without_node_name() {
+        let shinkai_name1 = ShinkaiName::new("@@alice.shinkai".to_string()).unwrap();
+        assert_eq!(shinkai_name1.get_fullname_without_node_name(), None);
+    
+        let shinkai_name2 = ShinkaiName::new("@@alice.shinkai/profileName".to_string()).unwrap();
+        assert_eq!(shinkai_name2.get_fullname_without_node_name(), Some("profilename".to_string()));
+    
+        let shinkai_name3 = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+        assert_eq!(shinkai_name3.get_fullname_without_node_name(), Some("profilename/agent/mychatgptagent".to_string()));
+    
+        let shinkai_name4 = ShinkaiName::new("@@alice.shinkai/profileName/device/myPhone".to_string()).unwrap();
+        assert_eq!(shinkai_name4.get_fullname_without_node_name(), Some("profilename/device/myphone".to_string()));
+    }
 }

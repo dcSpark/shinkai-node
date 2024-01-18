@@ -29,17 +29,18 @@ mod tests {
         init_tracing(); 
         setup();
         // Initialize ShinkaiDB
-        let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
+        let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo".to_string(),
         };
+        let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+        let profile = identity.extract_profile().unwrap();
 
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
-                .unwrap(),
+            full_identity_name: identity,
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -50,21 +51,27 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone()).expect("Failed to add new agent");
-        let retrieved_agent = db.get_agent(&test_agent.id).expect("Failed to get agent");
+        db.add_agent(test_agent.clone(), &profile)
+            .expect("Failed to add new agent");
+        let retrieved_agent = db.get_agent(&test_agent.id, &profile).expect("Failed to get agent");
         assert_eq!(test_agent, retrieved_agent.expect("Failed to retrieve agent"));
 
         // Remove the agent
-        let result = db.remove_agent(&test_agent.id);
+        let result = db.remove_agent(&test_agent.id, &profile);
         assert!(result.is_ok(), "Failed to remove agent");
 
         // Attempt to get the removed agent, expecting an error
-        let retrieved_agent = db.get_agent(&test_agent.id).expect("Failed to get agent");
-        assert_eq!(None, retrieved_agent);
+        let retrieved_agent_result = db.get_agent(&test_agent.id, &profile);
+        match retrieved_agent_result {
+            Ok(_) => panic!("Expected error, but got Ok"),
+            Err(e) => assert!(
+                matches!(e, ShinkaiDBError::FailedFetchingValue),
+                "Expected FailedFetchingValue error"
+            ),
+        }
 
         // Attempt to remove the same agent again, expecting an error
-        let result = db.remove_agent(&test_agent.id);
-        println!("{:?}", result);
+        let result = db.remove_agent(&test_agent.id, &profile);
         assert!(
             matches!(result, Err(ShinkaiDBError::RocksDBError(_))),
             "Expected RocksDBError error"
@@ -76,17 +83,18 @@ mod tests {
         init_tracing(); 
         setup();
         // Initialize ShinkaiDB
-        let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
+        let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
+        let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+        let profile = identity.extract_profile().unwrap();
 
         // Create an instance of SerializedAgent
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
-                .unwrap(),
+            full_identity_name: identity,
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -97,11 +105,13 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone()).expect("Failed to add new agent");
+        db.add_agent(test_agent.clone(), &profile)
+            .expect("Failed to add new agent");
 
         // Update agent access
         let result = db.update_agent_access(
             &test_agent.id,
+            &profile,
             Some(vec!["new_sender".to_string()]),
             Some(vec!["new_toolkit".to_string()]),
         );
@@ -110,6 +120,7 @@ mod tests {
         // Attempt to update access for a non-existent agent, expecting an error
         let result = db.update_agent_access(
             "non_existent_agent",
+            &profile,
             Some(vec!["new_sender".to_string()]),
             Some(vec!["new_toolkit".to_string()]),
         );
@@ -123,15 +134,17 @@ mod tests {
     fn test_get_agent_profiles_and_toolkits() {
         init_tracing(); 
         setup();
-        let db_path = format!("db_tests/{}", hash_string("agent_test".clone()));
+        let db_path = format!("db_tests/{}", hash_string("agent_test"));
         let mut db = ShinkaiDB::new(&db_path).unwrap();
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
+        let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/test_name".to_string()).unwrap();
+        let profile = identity.extract_profile().unwrap();
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/test_name".to_string()).unwrap(),
+            full_identity_name: identity,
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -142,15 +155,16 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone()).expect("Failed to add new agent");
+        db.add_agent(test_agent.clone(), &profile)
+            .expect("Failed to add new agent");
 
         // Get agent profiles with access
-        let profiles = db.get_agent_profiles_with_access(&test_agent.id);
+        let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile);
         assert!(profiles.is_ok(), "Failed to get agent profiles");
         assert_eq!(vec!["sender1", "sender2"], profiles.unwrap());
 
         // Get agent toolkits accessible
-        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id);
+        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id, &profile);
         assert!(toolkits.is_ok(), "Failed to get agent toolkits");
         assert_eq!(vec!["toolkit1", "toolkit2"], toolkits.unwrap());
     }
@@ -164,11 +178,13 @@ mod tests {
         let open_ai = OpenAI {
             model_type: "gpt-3.5-turbo-1106".to_string(),
         };
+        let identity = ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string()).unwrap();
+        let profile = identity.extract_profile().unwrap();
+        eprintln!("Profile: {:?}", profile);
 
         let test_agent = SerializedAgent {
             id: "test_agent".to_string(),
-            full_identity_name: ShinkaiName::new("@@alice.shinkai/profileName/agent/myChatGPTAgent".to_string())
-                .unwrap(),
+            full_identity_name: identity,
             perform_locally: false,
             external_url: Some("http://localhost:8080".to_string()),
             api_key: Some("test_api_key".to_string()),
@@ -179,18 +195,19 @@ mod tests {
         };
 
         // Add a new agent
-        db.add_agent(test_agent.clone()).expect("Failed to add new agent");
+        db.add_agent(test_agent.clone(), &profile)
+            .expect("Failed to add new agent");
 
         // Remove a profile from agent access
-        let result = db.remove_profile_from_agent_access(&test_agent.id, "sender1");
+        let result = db.remove_profile_from_agent_access(&test_agent.id, "sender1", &profile);
         assert!(result.is_ok(), "Failed to remove profile from agent access");
-        let profiles = db.get_agent_profiles_with_access(&test_agent.id).unwrap();
+        let profiles = db.get_agent_profiles_with_access(&test_agent.id, &profile).unwrap();
         assert_eq!(vec!["sender2"], profiles);
 
         // Remove a toolkit from agent access
-        let result = db.remove_toolkit_from_agent_access(&test_agent.id, "toolkit1");
+        let result = db.remove_toolkit_from_agent_access(&test_agent.id, "toolkit1", &profile);
         assert!(result.is_ok(), "Failed to remove toolkit from agent access");
-        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id).unwrap();
+        let toolkits = db.get_agent_toolkits_accessible(&test_agent.id, &profile).unwrap();
         assert_eq!(vec!["toolkit2"], toolkits);
     }
 

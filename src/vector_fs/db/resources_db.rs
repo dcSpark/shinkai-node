@@ -1,6 +1,6 @@
 use super::super::vector_fs_error::VectorFSError;
 use super::fs_db::{FSTopic, VectorFSDB};
-use crate::db::db::ProfileBoundWriteBatch;
+use crate::db::db_profile_bound::ProfileBoundWriteBatch;
 use crate::vector_fs::vector_fs_types::FSItem;
 use shinkai_message_primitives::schemas::shinkai_name::ShinkaiName;
 use shinkai_vector_resources::vector_resource::{BaseVectorResource, VRHeader};
@@ -17,7 +17,7 @@ impl VectorFSDB {
         let (bytes, cf) = self._prepare_resource(resource)?;
 
         // Insert into the "VectorResources" column family
-        batch.put_cf_pb(cf, &resource.as_trait_object().reference_string(), &bytes);
+        batch.pb_put_cf(cf, &resource.as_trait_object().reference_string(), &bytes);
 
         Ok(())
     }
