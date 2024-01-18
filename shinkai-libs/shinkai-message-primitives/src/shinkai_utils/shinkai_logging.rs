@@ -1,11 +1,78 @@
 use chrono::Local;
 use colored::*;
-use tracing::{span, Level, error, info, debug, instrument};
+use std::io::Write;
+use syslog::{Logger, Facility};
+use tracing::{span, Level, error, info, debug, instrument, Subscriber};
 use tracing_subscriber::FmtSubscriber;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::EnvFilter;
 
 // Note(Nico): Added this to avoid issues when running tests
 use std::sync::Once;
 static INIT: Once = Once::new();
+static mut GUARD: Option<WorkerGuard> = None;
+
+struct SyslogWriter {
+    logger: syslog::Logger<syslog::LoggerBackend, syslog::Formatter3164>,
+}
+
+impl SyslogWriter {
+    fn new(facility: Facility) -> Self {
+        let formatter = syslog::Formatter3164 {
+            facility: syslog::Facility::LOG_USER,
+            hostname: Some(std::env::var("LOG_SYSLOG_SERVER").unwrap_or("localhost".to_string())),
+            process: "shinkai_node".into(),
+            pid: 0,
+        };
+        let logger = syslog::unix(formatter).expect("Could not connect to syslog");
+        Self { logger }
+    }
+}
+
+impl Write for SyslogWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        eprintln!("buf: {:?}", buf);
+        let message_with_codes = String::from_utf8_lossy(buf);
+        let message = strip_ansi_escapes::strip(message_with_codes.clone().into_owned().as_bytes())
+            .unwrap_or_else(|_| message_with_codes.into_owned().into_bytes());
+        let message = String::from_utf8_lossy(&message);
+        eprintln!("message: {:?}", message);
+
+        let mut parts = message.split(' ');
+        parts.nth(3); // Skip the timestamp
+        let log_level = parts.next().unwrap_or("");
+        let log_message = parts.collect::<Vec<&str>>().join(" ");
+
+
+        eprintln!("Parsed log level: {}", log_level);
+        eprintln!("Parsed log message: {}", log_message);
+
+        match log_level {
+            "ERROR" => if let Err(e) = self.logger.err(log_message) {
+                eprintln!("Failed to send ERROR log: {}", e);
+            },
+            "INFO" => if let Err(e) = self.logger.info(log_message) {
+                eprintln!("Failed to send INFO log: {}", e);
+            },
+            "DEBUG" => if let Err(e) = self.logger.debug(log_message) {
+                eprintln!("Failed to send DEBUG log: {}", e);
+            },
+            _ => if let Err(e) = self.logger.info(log_message) {
+                eprintln!("Failed to send log: {}", e);
+            }, // Default to INFO if no level is found
+        }
+
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
 
 #[derive(PartialEq, Debug)]
 pub enum ShinkaiLogOption {
@@ -144,11 +211,24 @@ pub fn shinkai_log(option: ShinkaiLogOption, level: ShinkaiLogLevel, message: &s
 
 pub fn init_tracing() {
     INIT.call_once(|| {
+        let syslog_server = std::env::var("LOG_SYSLOG_SERVER").unwrap_or("".to_string());
+        let (non_blocking, guard) = if !syslog_server.is_empty() {
+            let syslog_writer = SyslogWriter::new(syslog::Facility::LOG_USER);
+            tracing_appender::non_blocking(syslog_writer)
+        } else {
+            tracing_appender::non_blocking(std::io::stdout())
+        };
+
         let subscriber = FmtSubscriber::builder()
-            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_writer(non_blocking)
             .finish();
 
         tracing::subscriber::set_global_default(subscriber)
             .expect("setting default subscriber failed");
+
+        unsafe {
+            GUARD = Some(guard);
+        }
     });
 }
